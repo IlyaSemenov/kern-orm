@@ -1,0 +1,67 @@
+diff --git a/lib/_tsc.js b/lib/_tsc.js
+index 9a9c0ac10f26d2027778f3350d9b62a5fa26ad1f..6cab7942d2521a7a45f1f989cbec73e61ee55724 100644
+--- a/lib/_tsc.js
++++ b/lib/_tsc.js
+@@ -16,6 +16,21 @@ and limitations under the License.
+ 
+ "use strict";
+ 
++// Profiler of kern-orm (benchmarks/types/profile.ts): with INST_OUT set, counts instantiations by type and writes them to INST_OUT at exit.
++var kernOrmProfile = process.env.INST_OUT ? {
++  counts: new Map(),
++  stack: [],
++  relationStack: [],
++  relationDumps: 0,
++  focus: process.env.INST_FOCUS,
++  relations: process.env.INST_RELATIONS
++} : undefined;
++if (kernOrmProfile) {
++  process.on("exit", () => {
++    require("fs").writeFileSync(process.env.INST_OUT, [...kernOrmProfile.counts].sort((a, b) => b[1] - a[1]).map(([label, count]) => count + "\t" + label).join("\n"));
++  });
++}
++
+ // src/compiler/corePublic.ts
+ var versionMajorMinor = "6.0";
+ var version = "6.0.3";
+@@ -63705,7 +63720,22 @@ function createTypeChecker(host) {
+     totalInstantiationCount++;
+     instantiationCount++;
+     instantiationDepth++;
++    if (kernOrmProfile) {
++      const profileSymbol = aliasSymbol || type.aliasSymbol || type.symbol || (type.target && type.target.symbol);
++      const profileLabel = (profileSymbol ? profileSymbol.escapedName : "?") + "|" + type.flags + "|" + (type.objectFlags || 0);
++      const profileKey = kernOrmProfile.focus !== undefined && profileLabel.startsWith(kernOrmProfile.focus)
++        ? profileLabel + " <- " + kernOrmProfile.stack.slice(-6).reverse().join(" <- ") + " args=" + (type.resolvedTypeArguments ? type.resolvedTypeArguments.map((a) => a.flags + ":" + ((a.aliasSymbol || a.symbol || {}).escapedName || "")).join(",") : "-") + " deferred=" + !!type.node
++        : profileLabel;
++      kernOrmProfile.counts.set(profileKey, (kernOrmProfile.counts.get(profileKey) || 0) + 1);
++      if (kernOrmProfile.relations !== undefined && profileLabel.startsWith(kernOrmProfile.relations) && ++kernOrmProfile.relationDumps <= 2) {
++        console.error(kernOrmProfile.relationStack.slice().reverse().map((describe) => describe()).join("\n   <= ") + "\n----");
++      }
++      kernOrmProfile.stack.push(profileLabel);
++    }
+     const result = instantiateTypeWorker(type, mapper, aliasSymbol, aliasTypeArguments);
++    if (kernOrmProfile) {
++      kernOrmProfile.stack.pop();
++    }
+     if (index === -1) {
+       popActiveMapper();
+     } else {
+@@ -65870,6 +65900,17 @@ function createTypeChecker(host) {
+       }
+     }
+     function structuredTypeRelatedTo(source2, target2, reportErrors2, intersectionState) {
++      if (!kernOrmProfile || kernOrmProfile.relations === undefined) {
++        return structuredTypeRelatedToProfiled(source2, target2, reportErrors2, intersectionState);
++      }
++      kernOrmProfile.relationStack.push(() => typeToString(source2).slice(0, 300) + "  =>  " + typeToString(target2).slice(0, 300));
++      try {
++        return structuredTypeRelatedToProfiled(source2, target2, reportErrors2, intersectionState);
++      } finally {
++        kernOrmProfile.relationStack.pop();
++      }
++    }
++    function structuredTypeRelatedToProfiled(source2, target2, reportErrors2, intersectionState) {
+       const saveErrorInfo = captureErrorCalculationState();
+       let result2 = structuredTypeRelatedToWorker(source2, target2, reportErrors2, intersectionState, saveErrorInfo);
+       if (relation !== identityRelation) {

@@ -1,0 +1,59 @@
+name: Test
+
+on:
+  push:
+    branches: ["**"]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # A test whose promise never settles under `expect(...).rejects` hangs `bun test` instead of timing out.
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Wait until postgres is ready before test steps run.
+        # See https://docs.github.com/en/actions/using-containerized-services/creating-postgresql-service-containers
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup mise
+        uses: jdx/mise-action@v5
+        with:
+          version: 2026.10.20
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Build and test packed packages
+        run: bun run test:package
+
+      - name: Typecheck package
+        run: bun run types
+
+      - name: Test under Bun
+        run: bun run test
+
+      - name: Test under Node.js
+        run: bun run test:node

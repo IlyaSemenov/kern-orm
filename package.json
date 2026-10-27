@@ -1,0 +1,55 @@
+{
+  "name": "@kern-orm/root",
+  "version": "0.0.0",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "packages/*",
+      "examples/*",
+      "benchmarks"
+    ],
+    "catalog": {
+      "postgres": "^4.0.0",
+      "typescript-6": "npm:typescript@6.0.3"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "build": "bun run --filter './packages/*' build",
+    "docs:build": "vitepress build docs",
+    "docs:dev": "vitepress dev docs",
+    "docs:preview": "vitepress preview docs",
+    "lint": "oxlint --fix && oxfmt",
+    "lint:check": "oxlint && oxfmt --check",
+    "prepare": "lefthook install",
+    "release:check": "bun run types && bun run test && bun run test:node && bun run test:package",
+    "test": "bun test",
+    "test:node": "vitest run",
+    "test:package": "bun run build && bun test ./packages/kern-orm/tests/package/consumer.package-test.ts",
+    "types": "bun check",
+    "types:stats": "tsc --noEmit -p . --extendedDiagnostics --checkers 1"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
+    "@changesets/cli": "^3.0.3",
+    "@ilyasemenov/oxc-config": "^0.1.1",
+    "@tsconfig/bun": "^1.0.11",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^24",
+    "changesets-local": "^1.2.1",
+    "esbuild": "^0.28.2",
+    "jest-extended": "^7.0.0",
+    "oxfmt": "^0.74.0",
+    "oxlint": "^1.89.0",
+    "publint": "^0.3.25",
+    "rolldown": "^1.2.15",
+    "tsdown": "^0.23.2",
+    "typescript": "7.1.0-beta",
+    "vitepress": "^1.6.4",
+    "vitest": "^5.0.5"
+  },
+  "packageManager": "bun@1.4.4",
+  "patchedDependencies": {
+    "typescript@6.0.3": "patches/typescript@6.0.3.patch"
+  }
+}

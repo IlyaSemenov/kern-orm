@@ -1,0 +1,68 @@
+// States of queries in types: the parts that a query carries in one type parameter and its methods change.
+
+import type { ResultMode, ResultRows } from "../result/result"
+import type { NoRelations, SchemaContext, UsedRelation } from "../schema/relation"
+import type { AnyTable } from "../table/table"
+
+/** Records of a query without selected fields. */
+export type EmptyRecord = Record<never, never>
+
+/** State of a query in types: the record or value of its rows, how its rows become its result, and the relations it selects records of. */
+export interface QueryState extends ResultMode {
+  /** Record of a row, or the value of its only field for a query made by `get`, `pluck`, or an aggregate method, such as `count`. */
+  readonly result: unknown
+  /** Relations whose records the query and the queries nested in it select, which a `Db` must have. */
+  readonly uses: UsedRelation
+}
+
+/**
+ * State of a select query in types: its table, the relations of its schema, the record or value of its rows and the values that its value accepts, how its rows become its result, and the relations it selects records of.
+ *
+ * Methods change only their own parts of the state.
+ */
+export interface SelectQueryState extends QueryState {
+  readonly table: AnyTable
+  readonly schema: SchemaContext
+  /** Values that the type of the value of a query of values encodes, such as the fallback of `coalesce`; `never` for a query of records. */
+  readonly input: unknown
+  /**
+   * Whether a required relation guarantees the row of the query, such as of `field.form`.
+   *
+   * The relation does not guarantee a record that also passes a filter, so `where`, `find`, and `findBy` end the guarantee and make rows `one` `nullable`, or `optional` for a query of values; `optional`, `nullable`, and `required` end it as well.
+   * The callback of a helper starts with it, so that the effect of the helper records whether the callback filters.
+   */
+  readonly guaranteed: boolean
+  /** Whether the query is made by an aggregate method, such as `count`, which makes `get`, `pluck`, and the aggregate methods reject it. */
+  readonly aggregate: boolean
+}
+
+// An interface rather than an intersection lets a call infer `T` and `C` from a query.
+/** State of a query over table `T` with schema context `C`, whatever its result. */
+export interface QueryStateOf<
+  T extends AnyTable,
+  C extends SchemaContext = SchemaContext,
+> extends SelectQueryState {
+  readonly table: T
+  readonly schema: C
+}
+
+/**
+ * State of a query that starts from table `T` with schema context `C`: rows as records without fields, all of them or of the records of relation `U` when given, in rows mode `Rows`, guaranteed by a required relation when `Guaranteed`.
+ *
+ * Without relations in `C`, it also types a query of the table in a schema that has relations of the table.
+ */
+export interface InitialQueryState<
+  T extends AnyTable,
+  C extends SchemaContext = NoRelations,
+  U extends UsedRelation = never,
+  Rows extends ResultRows = "many",
+  Guaranteed extends boolean = false,
+> extends QueryStateOf<T, C> {
+  readonly result: EmptyRecord
+  readonly input: never
+  readonly rows: Rows
+  readonly value: false
+  readonly uses: U
+  readonly guaranteed: Guaranteed
+  readonly aggregate: false
+}

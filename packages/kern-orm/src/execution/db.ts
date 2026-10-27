@@ -1,0 +1,188 @@
+import type { CompiledQuery } from "../compiler/postgres/compile"
+import { compileStatement } from "../compiler/postgres/compile"
+import { toRawSqlNode } from "../expression/sql"
+import { lowerStatement } from "../lowering/lower"
+import type { SelectQueryKind } from "../query/kind"
+import type { MutationQuery, MutationQueryState } from "../query/mutation"
+import type { RecordQuery, RecordQueryState, SelectionState } from "../query/record"
+import { startRecordQuery } from "../query/record"
+import { createQueryContexts } from "../query/relations"
+import type { QueryResult } from "../query/rows"
+import type { BoundSelectQuery, QueryOf } from "../query/select"
+import { bindQuery, startQuery } from "../query/select"
+import type { Selection } from "../query/selection"
+import type { InitialSqlQueryState, SqlQuery, SqlQueryState } from "../query/sql-query"
+import { startSqlQuery } from "../query/sql-query"
+import type { EmptyRecord, InitialQueryState, QueryStateOf } from "../query/state"
+import { decodeStatement } from "../result/result"
+import type {
+  SchemaRelations,
+  TableContext,
+  UsableRelation,
+  UsedRelation,
+} from "../schema/relation"
+import { collectDefinitions } from "../schema/relation"
+import type { AnySchema, Schema, Tables } from "../schema/schema"
+import { defineEntries, schemaRelations } from "../schema/schema"
+import type { AnyTable } from "../table/table"
+
+import type { Database } from "./database"
+import type { SqlStatement } from "./driver"
+import { createStatement } from "./driver"
+
+/** Physical placement of the tables of a schema bound to a database. */
+export interface BindOptions {
+  /** PostgreSQL schema of the tables; a function is called on every query, such as to resolve the current tenant. */
+  schemaName?: string | (() => string)
+}
+
+/**
+ * Schema bound to a database with `database.bind`.
+ *
+ * Its table entries start queries bound to it, which execute when awaited.
+ */
+export type Db<T extends Tables, R extends SchemaRelations = EmptyRecord> = DbEntries<T, R> &
+  DbMethods<T, R>
+
+/** Bound query entry points; each access starts a query over a new table occurrence. */
+type DbEntries<T extends Tables, R extends SchemaRelations> = {
+  readonly [K in keyof T]: BoundSelectQuery<InitialQueryState<T[K], TableContext<R, K>>>
+}
+
+/** Bound or unbound query over a table of `T`, of `$select`, or that changes the rows of a table of `T`, that selects records only of relations of `R`, or a query of SQL text. */
+type DbQuery<T extends Tables, R extends SchemaRelations> =
+  | QueryOf<DbQueryState<T[keyof T], UsableRelation<R>>>
+  | RecordQuery<RecordQueryState<unknown, UsableRelation<R>>, SelectQueryKind>
+  | MutationQuery<DbMutationState<T[keyof T], UsableRelation<R>>, SelectQueryKind>
+  | SqlQuery<SqlQueryState>
+
+/** State of a query that a `Db` can execute: over table `T`, selecting records only of relations `U`. */
+export interface DbQueryState<T extends AnyTable, U extends UsedRelation> extends QueryStateOf<T> {
+  readonly uses: U
+}
+
+/** State of an insert, update, or delete query that a `Db` can execute: of table `T`, selecting records only of relations `U`. */
+export interface DbMutationState<
+  T extends AnyTable,
+  U extends UsedRelation,
+> extends MutationQueryState {
+  readonly table: T
+  readonly uses: U
+}
+
+interface DbMethods<T extends Tables, R extends SchemaRelations> {
+  readonly $schema: Schema<T, R>
+  // Generic like `$execute`, so that comparing `Db` types compares its type parameter rather than the members of queries.
+  /**
+   * Compiles a query over the tables of the schema into SQL text and parameters.
+   *
+   * A query bound to another `Db`, and a query of a relation that the schema does not have, at any depth, are rejected.
+   */
+  $compile<Q extends DbQuery<T, R>>(query: Q): SqlStatement
+  // The whole query is inferred rather than its state, so that a union of queries, such as of an optional query and a required one, gives the union of their results.
+  /**
+   * Executes a query over the tables of the schema.
+   *
+   * A query bound to another `Db`, and a query of a relation that the schema does not have, at any depth, are rejected.
+   */
+  $execute<Q extends DbQuery<T, R>>(query: Q): Promise<QueryResult<Q["types"]>>
+  // Independent of `T` and `R`, so that it is the same in every `Db`; like an awaited query, its query is checked when it runs.
+  /**
+   * Starts a query of one record whose fields are the values of the expressions and the results of the queries of `selection`, selected in one statement when awaited.
+   *
+   * A query of `selection` is unbound or bound to this `Db`, and the value of its field is the result it gives when executed, such as an array of records or one value.
+   */
+  $select<Sel extends Selection>(selection: Sel): RecordQuery<SelectionState<Sel>, "bound">
+  /**
+   * Starts a query of the SQL statement of the template, which resolves to the number of the rows of its command tag when awaited, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of its rows instead.
+   *
+   * Interpolated values become query parameters, `sql` fragments and expressions stay SQL, and a table of the `Db`, such as `db.form`, becomes its name, qualified by the PostgreSQL schema of the `Db`.
+   */
+  $query(strings: TemplateStringsArray, ...values: unknown[]): SqlQuery<InitialSqlQueryState>
+  /**
+   * Executes a script of statements without parameters, such as DDL separated by semicolons, in the ambient transaction, or on the pool outside of one, where PostgreSQL runs them in one implicit transaction.
+   *
+   * The script must not start or end transactions, which the database tracks.
+   */
+  $script(text: string): Promise<void>
+  /**
+   * Executes the script of the template as `$script` of its text does.
+   *
+   * It interpolates tables of the `Db`, such as `db.form`, and `sql` fragments without values; it rejects values, since a script has no parameters.
+   */
+  $script(strings: TemplateStringsArray, ...values: unknown[]): Promise<void>
+  /**
+   * Runs `callback` in a transaction of the database, shared by every schema bound to it.
+   *
+   * Inside an existing transaction, it starts a nested transaction.
+   */
+  $transaction<Result>(callback: () => Promise<Result>): Promise<Result>
+}
+
+/**
+ * `Db` of schema `S`, such as the type of a parameter of code shared by several schemas.
+ *
+ * A `Db` of a schema that includes `S` is a `Db` of `S` too.
+ */
+export type DbOf<S extends AnySchema> = Db<S["$tables"], S[typeof schemaRelations]>
+
+/** `Db` of any schema. */
+// oxlint-disable-next-line typescript/no-explicit-any -- any Db regardless of its tables
+export type AnyDb = Db<any, any>
+
+/** Binds `schema` to `database`; see `Database.bind`. */
+export function bindSchema<T extends Tables, R extends SchemaRelations>(
+  schema: Schema<T, R>,
+  database: Database,
+  options: BindOptions = {},
+): Db<T, R> {
+  const tables = new Set<AnyTable>(Object.values(schema.$tables))
+  const relations = schema[schemaRelations]
+  const definitions = collectDefinitions(relations)
+  // Changing the options object after binding does not change the Db.
+  const { schemaName } = options
+
+  function compile(query: DbQuery<T, R>): CompiledQuery {
+    if (query.db !== undefined && query.db !== db) {
+      throw new Error("Cannot run a query bound to another Db")
+    }
+    return compileStatement(
+      lowerStatement(query.node, definitions, db),
+      { schemaName: typeof schemaName === "function" ? schemaName() : schemaName },
+      tables,
+      db,
+    )
+  }
+
+  const methods: DbMethods<T, R> = {
+    $schema: schema,
+    $compile(query) {
+      const { text, parameters } = compile(query)
+      return createStatement(text, parameters)
+    },
+    async $execute<Q extends DbQuery<T, R>>(query: Q) {
+      const compiled = compile(query)
+      return decodeStatement(compiled, await database.execute(compiled)) as QueryResult<Q["types"]>
+    },
+    $select: selection => startRecordQuery(selection, db),
+    $query: (strings, ...values) => startSqlQuery(toRawSqlNode(strings, values), db),
+    async $script(script: string | TemplateStringsArray, ...values: unknown[]) {
+      if (typeof script === "string") {
+        return database.script(script)
+      }
+      const { text, parameters } = compile(startSqlQuery(toRawSqlNode(script, values), db))
+      if (parameters.length > 0) {
+        throw new Error(
+          "A script takes no values, since it has no parameters; interpolate only tables and sql fragments without values",
+        )
+      }
+      return database.script(text)
+    },
+    $transaction: callback => database.transaction(callback),
+  }
+  const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
+  const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>
+    bindQuery(startQuery(schema.$tables[key]!, contexts[key]!), db),
+  )
+  return db
+}
