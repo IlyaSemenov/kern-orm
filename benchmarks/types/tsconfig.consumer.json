@@ -1,0 +1,14 @@
+{
+  // Checks the benchmarks as a consumer of the built packages, against the declarations that users receive.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["*.bench.ts"]
+}

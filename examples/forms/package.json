@@ -1,0 +1,11 @@
+{
+  "name": "@kern-orm/example-forms",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Tenant and SaaS schemas sharing form tables",
+  "type": "module",
+  "dependencies": {
+    "kern-orm": "workspace:*",
+    "ripple-di": "^3.2.0"
+  }
+}

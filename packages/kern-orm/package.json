@@ -1,0 +1,43 @@
+{
+  "name": "kern-orm",
+  "version": "0.0.0",
+  "description": "Fully typed relational query builder for PostgreSQL with ambient transactions",
+  "homepage": "https://github.com/IlyaSemenov/kern-orm#readme",
+  "bugs": "https://github.com/IlyaSemenov/kern-orm/issues",
+  "license": "MIT",
+  "author": "Ilya Semenov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IlyaSemenov/kern-orm.git",
+    "directory": "packages/kern-orm"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./testing": "./dist/testing.mjs",
+    "./types": "./dist/types.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@kern-orm/postgres-js": "workspace:*",
+    "postgres": "^3.4.9"
+  },
+  "engines": {
+    "bun": ">=1.4",
+    "node": ">=24"
+  }
+}

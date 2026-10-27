@@ -1,0 +1,46 @@
+{
+  "name": "@kern-orm/postgres-js",
+  "version": "0.0.0",
+  "description": "postgres.js driver for kern-orm",
+  "homepage": "https://github.com/IlyaSemenov/kern-orm/tree/main/packages/postgres-js#readme",
+  "bugs": "https://github.com/IlyaSemenov/kern-orm/issues",
+  "license": "MIT",
+  "author": "Ilya Semenov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IlyaSemenov/kern-orm.git",
+    "directory": "packages/postgres-js"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "kern-orm": "^0.0.0"
+  },
+  "devDependencies": {
+    "postgres": "^3.4.9"
+  },
+  "peerDependencies": {
+    "postgres": "^3.4.9"
+  },
+  "engines": {
+    "bun": ">=1.4",
+    "node": ">=24"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@kern-orm/benchmarks",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Benchmarks behind the SQL that kern-orm builds and the type-check cost of its API",
+  "type": "module",
+  "scripts": {
+    "bench": "bun --env-file=../.env.test.local run.ts",
+    "bench:types": "bun run --cwd .. build && node types/run.ts",
+    "profile:types": "bun run --cwd .. build && bun types/profile.ts"
+  },
+  "dependencies": {
+    "@ark/attest": "^0.58.0",
+    "@kern-orm/postgres-js": "workspace:*",
+    "kern-orm": "workspace:*",
+    "postgres": "^3.4.9",
+    "typescript-6": "npm:typescript@6.0.3"
+  }
+}
