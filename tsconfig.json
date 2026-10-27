@@ -1,0 +1,28 @@
+{
+  "extends": "@tsconfig/bun",
+  "compilerOptions": {
+    "types": ["bun"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    // Resolve workspace packages to their sources in tests, examples, and typecheck without building them.
+    "paths": {
+      "kern-orm": ["./packages/kern-orm/src/index.ts"],
+      "kern-orm/testing": ["./packages/kern-orm/src/testing.ts"],
+      "kern-orm/types": ["./packages/kern-orm/src/types.ts"],
+      "@kern-orm/postgres-js": ["./packages/postgres-js/src/index.ts"]
+    }
+  },
+  "include": [
+    "*.ts",
+    "docs/.vitepress/**/*.ts",
+    "packages/*/*.ts",
+    "packages/*/src/**/*.ts",
+    "packages/*/testing/**/*.ts",
+    "packages/*/tests/**/*.ts",
+    "examples/*/src/**/*.ts",
+    "examples/*/tests/**/*.ts",
+    "benchmarks/**/*.ts"
+  ],
+  // The package test type-checks its consumer fixtures against the packed packages.
+  "exclude": ["packages/*/tests/package/fixtures"]
+}
