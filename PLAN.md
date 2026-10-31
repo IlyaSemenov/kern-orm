@@ -78,16 +78,32 @@ Done when an aborted test transaction, with or without a fixture, releases its s
 
 ## Cheaper comparison of `Db` types
 
-The first comparison of two `Db` types, such as of a `Db` of a composed schema passed as a `DbOf` of an included one, compares their entries, queries of different states, member by member, once for each pair of `Db` types.
-It takes about 30 thousand instantiations for each shared table on the schemas measured: 65929 for the 2 shared tables of the benchmark "DbOf assignment", and about 370 thousand for 12 shared tables in a probe outside the repository.
+The entries of a `Db` are specialized `SelectQuery<S, "bound">` values, whose states differ by the schema contexts of a composed schema and one of its included schemas.
+TypeScript 6 measures the state parameter as invariant (unreliable) and the kind parameter as bivariant (unreliable), so comparing two `Db` types can compare every query method for every shared table.
+The first `DbOf` assignment in `benchmarks/types/first-use.bench.ts` costs 65929 instantiations for two shared tables, and an existing 12-table probe costs about 370 thousand.
 
-- TypeScript measures `SelectQuery` as invariant in its state, unreliably; a query that it measures as covariant would compare its state alone, and `QueryOfState` would no longer be needed.
-- Check separately, on minimal pairs of states, what prevents covariance: `WhereValues`, whose conditionals on `IsAny` and `null` make a query over a specific table also a query over any table, `OrderKey`, and the key constraints of `select`, `get`, and `pluck`.
-- Keep the checks that reject wrong filters, keys, and relations; an `out` annotation that TS2636 rejects is not a fix.
-- Weigh also entries of a `Db` typed so that comparing two `Db` types compares no queries.
+- `where` prevents `out S` through the `WhereFilter<S["table"]>` parameter: its union of object conditions and callbacks includes mapped column values, `IsAny`, and a conditional null check.
+- `orderBy(...keys)` prevents it through `OrderKey<S["table"]>`, a union of column keys and a mapped object of directions.
+- The `select("*")` and `select(...keys)` overloads prevent it through the return state's `MergeSelection`, `Selectable`, and `Pick`, with the key constraint depending on `S["table"]`.
+- The callback overload of `select` also has a recursive `this: SelectQuery<S, Kind>` constraint and callback references depending on both `ColumnRefs<S["table"]>` and `RelationRefs<S["schema"]>`.
+- `take`, both overloads of `get`, and both overloads of `pluck` prevent it through `ChangeState` and the conditional row mappings `OneRow`, `OneValueRows`, and `ValueRows`; the keyed overloads also index `Selectable<S["table"]>` by a key constrained by the table.
+- The other tested members do not individually reject `out S` in an isolated TypeScript 5.8.3 model, and `out Kind` passes there, but this is not a measurement of the actual declarations under TypeScript 6 or 7.
 
-Done when comparing two `Db` types compares the states of their queries but not their methods, its cold cost drops measurably on a small and a large schema, both kept as benchmarks, and a `Db` of a composed schema fits a `DbOf` of every schema that it includes, as the type tests of `DbOf` check.
+A generic `where<F extends WhereFilter<S["table"]>>` can evade the variance error, but it accepts an object containing a valid column and a misspelled column, so it is not an acceptable rewrite.
+`NoInfer` on the original parameter does not remove the variance error, and alternate conditional or lookup representations of `OneRow` do not remove the `take` error in the same model.
 
+Two designs remain candidates:
+
+- A state-independent query-method base declares methods generic in their receiver state, such as `where<Q extends SelectQueryState>(this: QueryOfState<Q>, filter: WhereFilter<NoInfer<Q["table"]>>)`, and `SelectQuery<S, Kind>` retains its state only in covariant members.
+- A narrower `Db`-entry facade combines branded `QueryOfState<S>` with a state-independent generic method surface, leaving the concrete `SelectQuery` class unchanged; it must preserve every query method and remain usable wherever the existing query type is required.
+
+A synthetic TypeScript 5.8.3 two-table and 12-table comparison, not using the repository's types, reduces the first-assignment deltas from 27452 and 153452 to 152 and 532 with the shared-method base, and to 555 and 2915 with the entry facade.
+These numbers are not `bench:types` counts, and the repository type tests, TypeScript 6/7 variances, and 12-table repository probe have not been verified with either candidate.
+
+Keep production types unchanged until a candidate passes every `*.type-test.ts` under `bun check`, including excess-property checks and `DbOf` assignability, and its effect on every `bench:types` count and both sizes of the `DbOf` comparison is measured.
+Prefer testing the `Db`-entry facade first because it changes a smaller surface, but keep the shared-method base available if the facade cannot preserve the public query contract.
+
+Done when a composed `Db` fits the `DbOf` of each included schema without member-by-member query comparison, with the full type tests passing and measured lower cold costs on both schema sizes.
 ## Later
 
 - Relation `EXISTS` and aggregates.
