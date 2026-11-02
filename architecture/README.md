@@ -37,7 +37,7 @@ Module paths are relative to `packages/kern-orm/src/`.
 - [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, and `result/`.
 - [Transactions](transactions.md): `execution/database.ts` and `execution/transaction.ts`.
 - [Testing](testing.md): `execution/testing.ts` and `execution/transaction.ts`.
-- [Drivers](drivers.md): `execution/driver.ts` and `packages/postgres-js/`.
+- [Drivers](drivers.md): `execution/driver.ts`, `packages/postgres-js/`, and `packages/postgres-js-v3/`.
 
 ## Decisions
 

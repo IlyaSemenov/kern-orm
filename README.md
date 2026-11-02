@@ -80,6 +80,7 @@ await db.$transaction(async () => {
 
 - [`kern-orm`](packages/kern-orm): tables, schemas, queries, SQL compiler, and transactions.
 - [`@kern-orm/postgres-js`](packages/postgres-js): [postgres.js](https://github.com/porsager/postgres) driver.
+- [`@kern-orm/postgres-js-v3`](packages/postgres-js-v3): postgres.js 3 driver.
 
 ## Development
 

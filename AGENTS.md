@@ -50,6 +50,7 @@ Do not catalog files or restate information evident from their names and locatio
     When a package needs runtime identity of `kern-orm`, such as its error classes, symbols, or transaction context, stop and reconsider how it depends on `kern-orm`.
 - Declare a workspace package used only by the tests of a published package in its `devDependencies` as `workspace:*`, such as `@kern-orm/postgres-js` in `kern-orm`: package managers do not install the dev dependencies of an installed package, and changesets neither rewrites the protocol nor releases the package for it.
 - Declare a registry package that several workspaces use in development, such as `postgres`, in their `devDependencies` as `"catalog:"`, with its version in `workspaces.catalog` of the root `package.json`.
+  A driver for an older major version of its client, such as `@kern-orm/postgres-js-v3`, declares that client by its own range instead; Bun installs it for that workspace alone, and typecheck resolves its types from there.
 - Keep `typescript` at 7.1 or later: tsdown generates declarations through the API of TypeScript 7, which 7.0 does not provide.
   Pin a prerelease of `typescript` to its exact version: a caret range resolves to a nightly `-dev` build.
   Typecheck uses `bun check`.

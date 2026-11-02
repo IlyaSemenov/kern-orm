@@ -22,6 +22,8 @@ bun add kern-orm @kern-orm/postgres-js postgres
 
 :::
 
+If your application uses postgres.js 3, see [Drivers](./drivers#postgres-js-3).
+
 kern-orm runs on Node.js 24 or newer and Bun 1.4 or newer.
 Use TypeScript 6.0 or newer, and keep `strict`, or at least `strictNullChecks`, enabled.
 

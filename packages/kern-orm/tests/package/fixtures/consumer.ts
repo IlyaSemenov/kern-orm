@@ -1,4 +1,4 @@
-// Uses every entry point of the published packages without connecting to a database.
+// Uses every entry point of `kern-orm` and `@kern-orm/postgres-js` without connecting to a database.
 import { postgresJsDriver } from "@kern-orm/postgres-js"
 import type { ResultOf } from "kern-orm"
 import { createDatabase, defineSchema, defineTable } from "kern-orm"

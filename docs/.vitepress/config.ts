@@ -12,6 +12,7 @@ export default defineConfig({
     nav: [{ text: "Docs", link: "/getting-started" }],
     sidebar: [
       { text: "Getting Started", link: "/getting-started" },
+      { text: "Drivers", link: "/drivers" },
       { text: "Tables and Schemas", link: "/schemas" },
       { text: "Types", link: "/types" },
       {

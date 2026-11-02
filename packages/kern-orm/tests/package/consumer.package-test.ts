@@ -8,7 +8,12 @@ import { build } from "esbuild"
 import { rolldown } from "rolldown"
 
 const root = join(import.meta.dir, "../../../..")
-const packageDirs = ["packages/kern-orm", "packages/postgres-js"]
+// Each packed package with the consumer project that installs it: the postgres.js 3 driver has a project of its own, whose `postgres` is postgres.js 3.
+const packages = [
+  { dir: "packages/kern-orm", project: "." },
+  { dir: "packages/postgres-js", project: "." },
+  { dir: "packages/postgres-js-v3", project: "postgres-js-v3" },
+]
 
 const compileOnlyOutput = {
   text: 'SELECT "form"."name" AS "name" FROM "form" AS "form" WHERE "form"."name" = $1',
@@ -28,13 +33,13 @@ let consumer: string
 beforeAll(async () => {
   consumer = await mkdtemp(join(tmpdir(), "kern-orm-consumer-"))
   // Assemble node_modules without network: the packed packages, and the dependencies they leave to the consumer.
-  for (const dir of packageDirs) {
+  for (const { dir, project } of packages) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
     // `changeset publish` publishes with npm, which, unlike Bun, leaves protocols such as `catalog:` as they are.
     const [{ filename }] = JSON.parse(
       run(["npm", "pack", "--json", "--pack-destination", consumer], join(root, dir)),
     ) as [{ filename: string }]
-    const target = join(consumer, "node_modules", name)
+    const target = join(consumer, project, "node_modules", name)
     await mkdir(target, { recursive: true })
     run(["tar", "-xzf", filename, "-C", target, "--strip-components=1"], consumer)
   }
@@ -42,6 +47,10 @@ beforeAll(async () => {
   await symlink(
     join(root, "packages/postgres-js/node_modules/postgres"),
     join(consumer, "node_modules/postgres"),
+  )
+  await symlink(
+    join(root, "packages/postgres-js-v3/node_modules/postgres"),
+    join(consumer, "postgres-js-v3/node_modules/postgres"),
   )
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
@@ -74,6 +83,24 @@ beforeAll(async () => {
       },
       include: ["declarations/*.d.ts"],
       exclude: [],
+    }),
+  )
+  // The project of the postgres.js 3 driver emits its declarations beside its node_modules, so that they resolve `postgres` to postgres.js 3.
+  await writeFile(
+    join(consumer, "postgres-js-v3/tsconfig.json"),
+    JSON.stringify({
+      extends: "../tsconfig.json",
+      compilerOptions: {
+        outDir: "declarations",
+      },
+      include: ["*.ts"],
+    }),
+  )
+  await writeFile(
+    join(consumer, "postgres-js-v3/tsconfig.declarations.json"),
+    JSON.stringify({
+      extends: "../tsconfig.declarations.json",
+      include: ["declarations/*.d.ts"],
     }),
   )
   await writeFile(
@@ -116,9 +143,11 @@ afterAll(async () => {
 
 test("publishes dependencies without the catalog: and workspace: protocols", async () => {
   const protocols: string[] = []
-  for (const dir of packageDirs) {
+  for (const { dir, project } of packages) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
-    const manifest = await Bun.file(join(consumer, "node_modules", name, "package.json")).json()
+    const manifest = await Bun.file(
+      join(consumer, project, "node_modules", name, "package.json"),
+    ).json()
     for (const field of ["dependencies", "peerDependencies"]) {
       for (const [dependency, range] of Object.entries<string>(manifest[field] ?? {})) {
         if (/^(catalog|workspace):/.test(range)) {
@@ -139,6 +168,8 @@ describe.each([
     run([...tsc, "-p", consumer], consumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], consumer)
     run([...tsc, "-p", "tsconfig.type-tests.json"], consumer)
+    run([...tsc, "-p", "postgres-js-v3"], consumer)
+    run([...tsc, "-p", "postgres-js-v3/tsconfig.declarations.json"], consumer)
   }, 60_000)
 
   test("names the reason in the errors of primaryKey() of a nullable type and column", () => {
@@ -163,6 +194,12 @@ describe.each([
 describe.each(["node", "bun"])("%s", runtime => {
   test("runs a consumer", () => {
     expect(JSON.parse(run([runtime, "consumer.ts"], consumer))).toEqual(consumerOutput)
+  })
+
+  test("runs a consumer of the postgres.js 3 driver", () => {
+    expect(JSON.parse(run([runtime, "postgres-js-v3/consumer.ts"], consumer))).toEqual({
+      acquireAfterClose: "Cannot acquire a connection: the driver is closed",
+    })
   })
 })
 
