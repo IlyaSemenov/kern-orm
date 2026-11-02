@@ -1,9 +1,7 @@
-import type { MigrationDirection } from "./error"
-import { getErrorMessage, MigrationError } from "./error"
 import type { MigrationHistory } from "./history"
 import { getMigrationNumber } from "./history"
-import type { MigrationDatabase, MigrationStep } from "./migration"
-import { runChange } from "./migration"
+import type { MigrationStep } from "./migration"
+import { runMigrationSteps, toMigrationDatabase } from "./migration"
 import type {
   MigrationTarget,
   MigrationTargetOptions,
@@ -72,8 +70,9 @@ export async function migrate(
     const pending = getPendingKeys(history, opened.target, versions).slice(0, count)
     const migrations = await loadMigrations(history, pending)
     await createVersionsTable(opened.target, versions)
+    const database = toMigrationDatabase(opened.target.database)
     for (const { key, steps } of migrations) {
-      await runSteps(opened.target, key, steps, "up")
+      await runMigrationSteps(database, key, steps, "up")
       await insertVersion(opened.target, key)
     }
     return pending
@@ -100,8 +99,9 @@ export async function rollback(
     const versions = await readVersions(opened.target)
     checkAppliedKeys(history, opened.target, versions, "roll back the migrations of")
     const keys = getLastKeys(versions, count).reverse()
+    const database = toMigrationDatabase(opened.target.database)
     for (const { key, steps } of await loadMigrations(history, keys)) {
-      await runSteps(opened.target, key, steps, "down")
+      await runMigrationSteps(database, key, steps, "down")
       await deleteVersion(opened.target, key)
     }
     return keys
@@ -129,13 +129,14 @@ export async function redo(
     checkAppliedKeys(history, opened.target, versions, "redo the migrations of")
     const keys = getLastKeys(versions, count)
     const migrations = await loadMigrations(history, keys)
+    const database = toMigrationDatabase(opened.target.database)
     for (let index = migrations.length - 1; index >= 0; index--) {
       const { key, steps } = migrations[index]!
-      await runSteps(opened.target, key, steps, "down")
+      await runMigrationSteps(database, key, steps, "down")
       await deleteVersion(opened.target, key)
     }
     for (const { key, steps } of migrations) {
-      await runSteps(opened.target, key, steps, "up")
+      await runMigrationSteps(database, key, steps, "up")
       await insertVersion(opened.target, key)
     }
     return keys
@@ -244,35 +245,6 @@ async function loadMigrations(
     migrations.push({ key, steps: await history.load(key) })
   }
   return migrations
-}
-
-/** Runs the changes of `direction` of the steps of migration `key`: `up` in the order of the steps, and `down` in reverse order. */
-async function runSteps(
-  target: ResolvedTarget,
-  key: string,
-  steps: readonly MigrationStep[],
-  direction: MigrationDirection,
-): Promise<void> {
-  const { database } = target
-  const migrationDatabase: MigrationDatabase = {
-    query: database.query.bind(database),
-    script: database.script.bind(database),
-  }
-  for (let position = 0; position < steps.length; position++) {
-    const index = direction === "up" ? position : steps.length - 1 - position
-    const change = steps[index]![direction]
-    if (change === undefined) {
-      continue
-    }
-    try {
-      await runChange(migrationDatabase, change)
-    } catch (error) {
-      throw new MigrationError(
-        `Migration ${key} failed in ${direction} of step ${index + 1}: ${getErrorMessage(error)}`,
-        { key, step: index + 1, direction, cause: error },
-      )
-    }
-  }
 }
 
 /** Returns the last `count` applied keys in order. */

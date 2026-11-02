@@ -30,4 +30,4 @@ const migrations = defineMigrations({
 await migrate(db, migrations)
 ```
 
-See [Migrations](https://ilyasemenov.github.io/kern-orm/migrations) for helpers, listing migrations, tenants, rolling back, and the command line.
+See [Migrations](https://ilyasemenov.github.io/kern-orm/migrations) for helpers, listing migrations, tenants, rolling back, the command line, and testing migrations.

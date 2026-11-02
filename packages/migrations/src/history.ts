@@ -1,4 +1,5 @@
 import { getErrorMessage, MigrationError } from "./error"
+import { getMigrationTestKey } from "./files"
 import type { MigrationStep } from "./migration"
 import { toMigrationSteps } from "./migration"
 
@@ -53,7 +54,7 @@ export function compareMigrationNumbers(left: bigint, right: bigint): number {
  * Defines a history of migrations from the loaders of their modules, by key or by path, as `import.meta.glob` returns them.
  *
  * A key is the file name without directories and extension, of the form `<number>_<name>`, such as `0001_create_form`, and the numbers order the history.
- * It rejects a key of another form and two keys of one number, such as migrations of two branches that took one number.
+ * It rejects a key of another form, a path of a file of migration tests, and two keys of one number, such as migrations of two branches that took one number.
  */
 export function defineMigrations(
   loaders: Readonly<Record<string, MigrationLoader>>,
@@ -61,7 +62,14 @@ export function defineMigrations(
 ): MigrationHistory {
   const entries: HistoryEntry[] = []
   for (const [name, load] of Object.entries(loaders)) {
-    const key = name.includes("/") ? getFileKey(name) : name
+    const isPath = name.includes("/")
+    // `import.meta.glob` of the migration modules also returns the files of migration tests beside them, unless its patterns exclude them.
+    if (isPath && getMigrationTestKey(name.slice(name.lastIndexOf("/") + 1)) !== undefined) {
+      throw new Error(
+        `${name} is a file of migration tests rather than a migration: exclude migration tests from the modules of the history, such as with "!./migrations/*.migration-test.ts" in the patterns of import.meta.glob`,
+      )
+    }
+    const key = isPath ? getFileKey(name) : name
     const number = getMigrationNumber(key)
     if (number === undefined) {
       throw new Error(

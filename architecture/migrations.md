@@ -6,7 +6,7 @@
   The migrator imports only types from `kern-orm`.
 - The migrator runs everything through the `Database` of its target: transactions with `transaction`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
 - The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
-  The entry point `@kern-orm/migrations/cli` holds the [command line](#command-line), which imports `node:*` modules.
+  The entry point `@kern-orm/migrations/cli` holds the [command line](#command-line), and `@kern-orm/migrations/testing` the [verification](#verification), which import `node:*` modules.
 
 ## Migrations
 
@@ -27,6 +27,7 @@
 - A key is the file name without directories and extension, of the form `<number>_<name>` without dots, and the number orders the history as an integer.
   A name of a loader that contains `/` is a path; another name is the key itself.
   `defineMigrations` rejects a key of another form and two keys of one number, such as `0002_create_user` and `2_create_tag`, or migrations of two branches that took one number.
+- `defineMigrations` rejects a path of a file of [migration tests](#verification) with a hint to exclude migration tests from the patterns of `import.meta.glob`, rather than skipping it: a bundler builds a chunk of every module that the patterns match, with its imports, such as the test runner.
 - A call loads only the migrations it applies or rolls back, so that migrating a target that is up to date loads none.
   It loads them all before running any, so that a module that fails to load changes nothing.
 - The cache of loaded modules is that of the runtime, so histories with the same keys never share migrations.
@@ -99,7 +100,7 @@
   - One key locks all extensions, so that histories that create several extensions in different orders do not deadlock.
     A transaction that migrates several targets holds the lock until it ends, so it can deadlock with a process that migrates one of them and creates another missing extension; PostgreSQL detects the deadlock and fails one transaction, as for two transactions that migrate the same targets in different orders.
   - The body of the block is quoted with a dollar tag that the names do not contain.
-  - Without `schema`, the extension goes to the target schema; a history of tenants must pass a schema of its own and list it in its `searchPath`.
+  - Without `schema`, the extension goes to the target schema, and the migrations of another schema miss it once it exists; a history that applies to several schemas, such as of tenants, or to the schema of the verification, must pass a schema of its own and list it in its `searchPath`.
 
 ## Command line
 
@@ -128,11 +129,46 @@
   - `new` checks the list module and builds its text before it creates the migration, so that these errors write nothing.
     It writes the list from the modules of the directory listed again after it creates the migration, so that the list keeps a migration that another `new` has created meanwhile, and two migrations of one number fail.
 
+## Verification
+
+- `verifyMigrations(target, history, options)` (`src/verification/`) checks a history in a temporary schema of the database of its target, whose schema it ignores, in a transaction that always rolls back, nested in the enclosing one, such as a test transaction.
+  - The temporary schema is `kern_verify_` with 12 random hexadecimal digits, so that verifications in parallel test processes do not wait for each other on the unique index of `pg_namespace`.
+  - Its search path is the temporary schema followed by the schemas of the history, as `migrate` gives a target.
+- Before any statement, it rejects a history without migrations, which more likely comes from a pattern that matches no file than from a project without migrations, loads the migration tests, rejecting a file of tests that matches no migration, and loads every migration.
+- It verifies the migrations in the order of the history, each on the schema that the migrations before it leave:
+  1. It applies the migration and describes the structure of the schema.
+  2. In a nested level that rolls back, it rolls the migration back and requires the structure that the migration found; runs each migration test of the migration in a nested level of its own that rolls back; and applies the migration again.
+  - The structure after the second `up` goes unchecked: from the structure that the first `up` found, `up` builds the same one unless it depends on something else, such as data, so the verification describes the schema twice for each migration rather than three times.
+  - Applying, rolling back, and applying again misses a `down` that leaves a change that `up` makes again without an error, such as `SET NOT NULL`, `SET DEFAULT`, or `CREATE INDEX IF NOT EXISTS`; comparing the structure catches it.
+    [rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing) 0.3.0 checks only the applied versions after each step.
+- It rejects at the first failure.
+  `up` and `down` of a migration reject with their `MigrationError`; a structure that differs lists the lines before the migration that the rollback lost, with `-`, and those that it left, with `+`; a second `up` that fails names the migration and keeps its error in `cause`.
+- The structure (`src/verification/structure.ts`) is lines of text of the objects of the schema that `pg_catalog` gives: tables, columns, constraints, indexes, views, sequences, types, functions, triggers, rules, policies, statistics, and collations, with the owners other than the role that runs the verification, which owns the objects of the migrations, and the privileges that differ from the defaults.
+  - The verification reads the role before the migrations run, since a migration may set another role, which would hide a change of owner to it.
+  - The lines of columns do not tell their order, since PostgreSQL adds a column only at the end, so that a column that a rollback adds back matches.
+  - It leaves out the objects of extensions, which `createExtension` keeps on rollback, including a composite type, whose type rather than relation belongs to the extension, and the objects that another object creates with itself, such as the array type of a type and the constructors of a range type.
+  - It sorts the items of ACLs and the options of tables, whose order follows the order of their changes, so that a rollback that restores them matches.
+  - It compares an ACL with the default ACL of its object, since a grant and its revoke leave an explicit ACL of the default items, and keeps an ACL that grants nothing apart from the default one.
+  - Definitions name the schemas that the search path lacks, so two descriptions compare only under one search path.
+- A migration test checks how a migration changes existing data: `defineMigrationTest(name, { setup, assertUp, assertDown })` runs `setup` on the schema before the migration, then `up`, `assertUp`, `down`, `assertDown`, and `up` again.
+  A test with `assertUpError`, instead of `assertUp` and `assertDown`, requires `up` to fail, and its callback receives the `MigrationError` of `up`.
+  - `up` of such a test runs in a nested level, so that `assertUpError` queries the data after the failure.
+  - A test is a plain value, like a migration, and its file is a fixed artifact that must not import the tables of the application.
+  - Its callbacks take the database of the migration, so that their SQL names tables without a schema, unlike the scenarios of rake-db-testing, which name them with `schemaRef`.
+  - `defineMigrationTest`, and loading a file of tests, reject an unknown property, such as a misspelled `assertDown`, which would never run, `assertUpError` together with `assertUp` or `assertDown`, and a test without callbacks.
+  - An error of a test names the test, its file, and the stage that failed, such as `assertUp`, and keeps the original error in `cause`.
+- The migration tests of a migration are the default exports, a test or a non-empty array of tests, of the files `<key>.migration-test.<extension>` and `<key>.<name>.migration-test.<extension>` beside it, with the extensions of migration modules.
+  - `tests` of `verifyMigrations` is their directory, whose other files it skips, or their modules or loaders by path, as `import.meta.glob` returns them, whose paths must name files of migration tests.
+  - The tests of a migration run in the order of the names of their files, and of the tests in a file.
+  - It imports the files of a directory by their `file:` URLs with the loader of the runtime, such as of Node.js or Bun; under Vitest, the loaders of `import.meta.glob` let Vite transform the files as it transforms test files, such as with the aliases of its configuration.
+  - The suffix `.migration-test` keeps the default patterns of `bun test` and Vitest from running such a file as a test file; `node --test` without patterns runs it as a file without tests.
+
 ## Not added
 
 - Generating migrations from tables, as [`db g`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/generate-migrations.md) of Orchid ORM 1.78.47 does, and generating tables from the database, as [`db pull`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-commands.md#pull) does: tables of kern-orm state what the database guarantees rather than describe its DDL.
 - Column types of migrations, as `createTable` and `changeTable` of rake-db 2.37.48 take: migrations and helpers take SQL text, and the database names its constraints and indexes as the migration does.
 - Commands that create, drop, or reset a database, or rename migrations, as `rebase` and `change-ids` of rake-db do, and callbacks before and after migrating: the application calls `migrate` and runs its own code around it.
+- A command of the command line that verifies a history: migration tests need the assertions and the module resolution of the test runner, and a project adds such a command by handling its arguments before `runMigrationCli`.
 
 ## Open questions
 

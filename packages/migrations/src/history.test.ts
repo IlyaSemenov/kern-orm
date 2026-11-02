@@ -35,6 +35,17 @@ describe("defineMigrations", () => {
     )
   })
 
+  it("rejects a path of a file of migration tests, such as of import.meta.glob of all modules of the directory", () => {
+    expect(() =>
+      defineMigrations({
+        "./migrations/0001_create_form.ts": load,
+        "./migrations/0001_create_form.migration-test.ts": load,
+      }),
+    ).toThrow(
+      './migrations/0001_create_form.migration-test.ts is a file of migration tests rather than a migration: exclude migration tests from the modules of the history, such as with "!./migrations/*.migration-test.ts" in the patterns of import.meta.glob',
+    )
+  })
+
   it("rejects two keys of one number, such as of two branches", () => {
     expect(() =>
       defineMigrations({

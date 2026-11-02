@@ -9,7 +9,7 @@ import { addColumn, changeColumn, dropColumn, renameColumn } from "./columns"
 import { dropConstraint } from "./constraints"
 import { dropIndex } from "./indexes"
 import { combineSteps } from "./step"
-import { applyStep, describeSchema, inHelperSchema } from "./testing"
+import { applyStep, describeHelperSchema, inHelperSchema } from "./testing"
 
 describe("addColumn", () => {
   it("adds a quoted column of a definition, and drops it", () => {
@@ -130,9 +130,9 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
     )
 
     expect(result).toEqual({
-      before: ["column form.id integer"],
-      up: ["column form.id integer", "column form.order integer NOT NULL DEFAULT 0"],
-      down: ["column form.id integer"],
+      before: ["column form.id integer", "table form"],
+      up: ["column form.id integer", "column form.order integer NOT NULL DEFAULT 0", "table form"],
+      down: ["column form.id integer", "table form"],
     })
   })
 
@@ -145,7 +145,7 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
       ),
     )
 
-    expect(result.up).toEqual(["column form.id integer"])
+    expect(result.up).toEqual(["column form.id integer", "table form"])
     expect(result.down).toEqual(result.before)
   })
 
@@ -166,7 +166,7 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
       ),
     )
 
-    expect(result.up).toEqual(["column form.id integer"])
+    expect(result.up).toEqual(["column form.id integer", "table form"])
     expect(result.down).toEqual(result.before)
   })
 
@@ -182,12 +182,12 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
           CREATE TABLE form (id integer PRIMARY KEY, slug text NOT NULL);
           INSERT INTO form (id, slug) VALUES (1, 'survey');
         `)
-        const before = await describeSchema(database)
+        const before = await describeHelperSchema(database)
         await runChange(database, step.up)
         await runChange(database, step.down!)
         return {
           before,
-          down: await describeSchema(database),
+          down: await describeHelperSchema(database),
           slugs: await database.query`SELECT slug FROM form`.pluck(t.text),
         }
       }),
@@ -203,9 +203,9 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
     )
 
     expect(result).toEqual({
-      before: ["column form.name text"],
-      up: ["column form.title text"],
-      down: ["column form.name text"],
+      before: ["column form.name text", "table form"],
+      up: ["column form.title text", "table form"],
+      down: ["column form.name text", "table form"],
     })
   })
 
@@ -250,9 +250,9 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
     )
 
     expect(result).toEqual({
-      before: ["column form.slug text"],
-      up: ["column form.slug text NOT NULL"],
-      down: ["column form.slug text"],
+      before: ["column form.slug text", "table form"],
+      up: ["column form.slug text NOT NULL", "table form"],
+      down: ["column form.slug text", "table form"],
     })
   })
 })

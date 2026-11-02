@@ -28,6 +28,7 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./cli": "./dist/cli.mjs",
+    "./testing": "./dist/testing.mjs",
     "./package.json": "./package.json"
   },
   "publishConfig": {

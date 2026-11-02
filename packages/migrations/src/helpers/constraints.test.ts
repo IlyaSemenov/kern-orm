@@ -45,9 +45,13 @@ describePostgres("constraint helpers in PostgreSQL", ({ database, testTransactio
     )
 
     expect(result).toEqual({
-      before: ["column form.price integer"],
-      up: ["column form.price integer", "constraint form.form_price_check CHECK ((price > 0))"],
-      down: ["column form.price integer"],
+      before: ["column form.price integer", "table form"],
+      up: [
+        "column form.price integer",
+        "constraint form.form_price_check CHECK ((price > 0))",
+        "table form",
+      ],
+      down: ["column form.price integer", "table form"],
     })
   })
 
@@ -60,7 +64,7 @@ describePostgres("constraint helpers in PostgreSQL", ({ database, testTransactio
       ),
     )
 
-    expect(result.up).toEqual(["column form.price integer"])
+    expect(result.up).toEqual(["column form.price integer", "table form"])
     expect(result.down).toEqual(result.before)
   })
 
@@ -74,9 +78,21 @@ describePostgres("constraint helpers in PostgreSQL", ({ database, testTransactio
     )
 
     expect(result).toEqual({
-      before: ["column form.price integer", "constraint form.form_price_check CHECK ((price > 0))"],
-      up: ["column form.price integer", "constraint form.form_price_check CHECK ((price >= 0))"],
-      down: ["column form.price integer", "constraint form.form_price_check CHECK ((price > 0))"],
+      before: [
+        "column form.price integer",
+        "constraint form.form_price_check CHECK ((price > 0))",
+        "table form",
+      ],
+      up: [
+        "column form.price integer",
+        "constraint form.form_price_check CHECK ((price >= 0))",
+        "table form",
+      ],
+      down: [
+        "column form.price integer",
+        "constraint form.form_price_check CHECK ((price > 0))",
+        "table form",
+      ],
     })
   })
 })

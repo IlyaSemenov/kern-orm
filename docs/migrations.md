@@ -188,7 +188,7 @@ Pass `name` for an index of expressions, such as `["lower(email)"]`.
 ### Extensions
 
 `createExtension` creates an extension unless the database has it, and rolling back keeps it, since other schemas may use it.
-With a [PostgreSQL schema per tenant](./multiple-schemas), create the extension in a schema of its own and list that schema in `searchPath` of the migrations, so that every tenant finds it:
+Create the extension in a schema of its own and list that schema in `searchPath` of the migrations, so that the migrations find it whatever schema they apply to, such as the schema of each [tenant](./multiple-schemas) or the schema where [`verifyMigrations`](#test-migrations) checks them:
 
 ```ts
 createExtension("pg_trgm", { schema: "extensions" })
@@ -204,8 +204,12 @@ With a bundler that supports `import.meta.glob`, such as Vite, pass its result:
 ```ts [src/migrations.ts]
 import { defineMigrations } from "@kern-orm/migrations"
 
-export const migrations = defineMigrations(import.meta.glob("./migrations/*.ts"))
+export const migrations = defineMigrations(
+  import.meta.glob(["./migrations/*.ts", "!./migrations/*.migration-test.ts"]),
+)
 ```
+
+The second pattern leaves out the files of [migration tests](#check-how-a-migration-changes-data).
 
 On Node.js and Bun, which lack `import.meta.glob`, let [`new`](#create-a-migration) of the command line write the list of the modules, and pass it to `defineMigrations`:
 
@@ -233,9 +237,10 @@ A module loads only when its migration applies or rolls back.
 When migrations use objects of other PostgreSQL schemas without naming the schema, such as functions of extensions installed in schema `extensions`, list those schemas in `searchPath`:
 
 ```ts
-export const migrations = defineMigrations(import.meta.glob("./migrations/*.ts"), {
-  searchPath: ["extensions"],
-})
+export const migrations = defineMigrations(
+  import.meta.glob(["./migrations/*.ts", "!./migrations/*.migration-test.ts"]),
+  { searchPath: ["extensions"] },
+)
 ```
 
 Each schema keeps its applied migrations in table `kern_migration`; to name the table otherwise, pass `tableName`.
@@ -394,3 +399,96 @@ The list imports each module by its file name, such as `./0001_create_form.ts`.
 To import the modules without the extension, as a bundler resolves them, pass `listModule: { path, extensions: false }`.
 
 To create migrations from a template of your own, such as one that imports your helpers, pass `template`, which takes the name of the module, such as `0003_add_form_slug`, and returns its text.
+
+## Test migrations
+
+To check that every migration applies and rolls back, call `verifyMigrations` with your `Db` and the migrations in a test:
+
+```ts [src/migrations.test.ts]
+import { test } from "bun:test"
+
+import { verifyMigrations } from "@kern-orm/migrations/testing"
+
+import { testTransaction } from "../test/helpers.ts"
+import { db } from "./db.ts"
+import { migrations } from "./migrations.ts"
+
+test(
+  "migrations",
+  () =>
+    testTransaction(() =>
+      verifyMigrations(db, migrations, {
+        tests: new URL("./migrations/", import.meta.url),
+      }),
+    ),
+  60_000,
+)
+```
+
+`verifyMigrations` applies the migrations one by one to an empty schema of its own.
+It rolls back each migration, checks that the structure of the schema is the same as before the migration, such as that no index or `NOT NULL` of the migration is left, and applies the migration again.
+`tests` is the directory of your [migration tests](#check-how-a-migration-changes-data).
+
+It rolls back all its changes.
+Call it in a [test transaction](./testing), as any query of a database created with `test: true`.
+Give the test a longer timeout: verifying a long history takes seconds.
+
+With Vitest, pass the migration tests that `import.meta.glob` finds:
+
+```ts
+test(
+  "migrations",
+  () =>
+    verifyMigrations(db, migrations, {
+      tests: import.meta.glob("./migrations/*.migration-test.ts"),
+    }),
+  60_000,
+)
+```
+
+Since the migrations apply to another schema, create extensions in a schema of their own, as [Extensions](#extensions) describes, even when your application has one schema.
+
+### Check how a migration changes data
+
+To check how a migration changes existing rows, write a migration test beside it, in a file named after the migration, such as `0003_add_form_slug.migration-test.ts`:
+
+```ts [src/migrations/0003_add_form_slug.migration-test.ts]
+import { expect } from "bun:test"
+
+import { defineMigrationTest } from "@kern-orm/migrations/testing"
+import * as t from "kern-orm/types"
+
+export default defineMigrationTest("fills slugs from names", {
+  setup: async database => {
+    await database.query`INSERT INTO form (name, published) VALUES ('Customer Survey', false)`
+  },
+  assertUp: async database => {
+    expect(await database.query`SELECT slug FROM form`.pluck(t.text)).toEqual(["customer-survey"])
+  },
+})
+```
+
+`setup` adds rows to the schema before the migration, and `assertUp` checks them after the migration applies.
+To check them after the migration rolls back, pass `assertDown`; then the migration applies again.
+Each callback receives the database of the migration, so write table names without a schema, as in migrations.
+Each test starts from the schema before its migration, without the rows of other tests.
+
+Do not import the tables of your application into a migration test: they describe the latest schema rather than the schema of the migration.
+
+To check that a migration refuses some rows, such as a migration that adds a unique index, pass `assertUpError` instead of `assertUp` and `assertDown`.
+The test fails unless the migration fails to apply, and `assertUpError` receives its `MigrationError`, with the error of PostgreSQL in `cause`:
+
+```ts
+export default defineMigrationTest("refuses forms whose slugs collide", {
+  setup: async database => {
+    await database.query`INSERT INTO form (name, published) VALUES ('Survey', false), ('SURVEY', false)`
+  },
+  assertUpError: error => {
+    expect(error.message).toContain("could not create unique index")
+  },
+})
+```
+
+To write several tests of a migration, export an array of them, or write them in several files, such as `0003_add_form_slug.edge-cases.migration-test.ts`.
+
+When you list the migrations with `import.meta.glob`, exclude their tests, as [List the migrations](#list-the-migrations) shows.

@@ -57,6 +57,7 @@ describePostgres("table helpers in PostgreSQL", ({ database, testTransaction }) 
         'constraint form.form_order_check CHECK (("order" > 0))',
         "constraint form.form_pkey PRIMARY KEY (id)",
         "index CREATE UNIQUE INDEX form_pkey ON migrations_helpers.form USING btree (id)",
+        "table form",
       ],
       down: [],
     })
@@ -81,9 +82,9 @@ describePostgres("table helpers in PostgreSQL", ({ database, testTransaction }) 
     )
 
     expect(result).toEqual({
-      before: ["column form.id integer"],
-      up: ["column survey.id integer"],
-      down: ["column form.id integer"],
+      before: ["column form.id integer", "table form"],
+      up: ["column survey.id integer", "table survey"],
+      down: ["column form.id integer", "table form"],
     })
   })
 })

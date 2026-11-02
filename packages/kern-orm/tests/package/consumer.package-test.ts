@@ -239,6 +239,17 @@ describe.each(["node", "bun"])("%s", runtime => {
     })
   })
 
+  test.skipIf(!process.env.DATABASE_URL)(
+    "verifies a history with the migration tests of its directory in PostgreSQL",
+    () => {
+      expect(JSON.parse(run([runtime, "migrations-testing.ts"], consumer))).toEqual({
+        calls: ["assertUp", "assertDown"],
+        failure:
+          "Rolling back migration 0001_create_form does not restore the structure of the schema (- before the migration, + after its rollback):\n  + column survey.id integer\n  + table survey",
+      })
+    },
+  )
+
   test("runs a consumer of the postgres.js 3 driver", () => {
     expect(JSON.parse(run([runtime, "postgres-js-v3/consumer.ts"], consumer))).toEqual({
       acquireAfterClose: "Cannot acquire a connection: the driver is closed",
@@ -439,6 +450,13 @@ describe("test runners", () => {
       }
       return groups
     }
+
+    test("Vitest verifies a history with the migration tests that import.meta.glob finds", () => {
+      run(
+        ["node", join(consumer, "node_modules/vitest/vitest.mjs"), "run"],
+        join(consumer, "runners/vitest-migrations"),
+      )
+    }, 60_000)
 
     test("node:test with t.signal rolls back a test that times out while its query runs once the query completes", async () => {
       const report = join(consumer, "node-postgres.tap")

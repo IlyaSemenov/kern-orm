@@ -5,13 +5,13 @@ import { defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { countLockWaiters, settleWithin, waitFor } from "../testing/concurrency"
+import { defineTestHistory } from "../testing/history"
 import { describePooledPostgres, describePostgres } from "../testing/postgres"
 
 import { MigrationError } from "./error"
-import type { MigrationHistoryOptions, MigrationLoader } from "./history"
 import { defineMigrations } from "./history"
 import { getMigrationStatus, migrate, redo, rollback } from "./migrate"
-import type { Migration, MigrationDatabase } from "./migration"
+import type { MigrationDatabase } from "./migration"
 
 const form = defineTable("form", {
   id: t.integer.primaryKey(),
@@ -723,18 +723,6 @@ describePooledPostgres("at once", ({ database }) => {
     expect(runs.count).toBe(1)
   })
 })
-
-/** Defines a history of migrations given as values, as modules that export them would. */
-function defineTestHistory(
-  migrations: Record<string, Migration>,
-  options?: MigrationHistoryOptions,
-) {
-  const loaders: Record<string, MigrationLoader> = {}
-  for (const [key, migration] of Object.entries(migrations)) {
-    loaders[key] = async () => ({ default: migration })
-  }
-  return defineMigrations(loaders, options)
-}
 
 /** Lists the tables of PostgreSQL schema `schemaName` by name. */
 async function listTables(database: Database, schemaName: string): Promise<string[]> {

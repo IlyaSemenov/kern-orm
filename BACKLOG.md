@@ -32,25 +32,6 @@ An expression over the columns and relations of a table that queries of the tabl
 - A function of `ColumnRefs<T>`, `RelationRefs<T>`, and the arguments may be enough once [queries are expressions](#queries-as-expressions); then document the pattern beside filters and helpers instead of adding an API.
 - Otherwise, decide whether `defineFilter` takes further arguments, as `defineHelper` does, and whether it defines expressions of types other than `boolean`.
 
-## Migrations
-
-The verification of histories and migration tests of `@kern-orm/migrations`:
-
-- The entry point `@kern-orm/migrations/testing` holds the verification of histories and migration tests.
-- `verifyMigrations(target, history, options)` applies the whole history to a temporary schema, one migration at a time, in a transaction that always rolls back, nested in the enclosing one, such as a test transaction.
-- For each migration, it applies `up` to the clean schema, and then, in a nested level that rolls back to keep the clean schema for the next migration, `down`, the migration tests of the migration, and `up` again.
-- After `down`, the structure of the schema must be the same as before `up`, and after `up` again, the same as after the first `up`.
-  The structure covers tables, columns, constraints, indexes, types, functions, and triggers, as `pg_catalog` describes them; it ignores the order of columns, since PostgreSQL cannot add a column at a position.
-  Applying, rolling back, and applying again misses a `down` that leaves a change that `up` makes again without an error, such as `SET NOT NULL`, `SET DEFAULT`, or `CREATE INDEX IF NOT EXISTS`; comparing the structure catches it.
-  The comparison skips the objects of extensions, which `createExtension` keeps on rollback.
-- A migration test checks how a migration changes existing data: `defineMigrationTest(name, { setup, assertUp, assertDown })` runs `setup` on the schema before the migration, then `up`, `assertUp`, `down`, `assertDown`, and `up` again.
-  A test with `assertUpError`, instead of `assertUp` and `assertDown`, requires `up` to fail and checks its error.
-  - Each test runs in its own nested level that rolls back, so tests do not affect each other or the history.
-  - Its callbacks take the database of the migration, so that their SQL names tables without a schema, unlike the scenarios of [rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing), which name them with `schemaRef`.
-- The migration tests of a migration are the default exports, a test or an array of tests, of the files `<key>.migration-test.ts` and `<key>.<name>.migration-test.ts` beside it.
-  `verifyMigrations` finds them in a directory or takes them as `import.meta.glob` returns them, and fails on a file of migration tests that matches no migration.
-- An error names the migration, the migration test, and the step, and keeps the original error in `cause`.
-
 ## Moving from rake-db
 
 Moving a project from rake-db to `@kern-orm/migrations`:
@@ -61,6 +42,13 @@ Moving a project from rake-db to `@kern-orm/migrations`:
 ## Migrations outside a transaction
 
 Migrations that PostgreSQL rejects in a transaction block, such as of `CREATE INDEX CONCURRENTLY`, while `@kern-orm/migrations` applies the pending migrations of a target in one transaction.
+
+## Irreversible migrations in verification
+
+A migration whose `down` cannot restore the structure, such as one that adds a value to an enum type, since PostgreSQL cannot remove a value of an enum, fails `verifyMigrations`.
+
+- Preliminary decision: an option of `verifyMigrations` lists the keys of such migrations, which it applies without running their `down`, running `setup`, `up`, and `assertUp` of their migration tests.
+- Decide what `rollback` and `redo` do with such a migration, such as reject before they change anything.
 
 ## Identifiers in SQL templates
 

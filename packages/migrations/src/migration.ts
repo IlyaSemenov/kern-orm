@@ -1,6 +1,7 @@
 import type { Database } from "kern-orm"
 
-import { MigrationError } from "./error"
+import type { MigrationDirection } from "./error"
+import { getErrorMessage, MigrationError } from "./error"
 
 /**
  * Database of a migration: its queries and scripts run in the transaction of the migration, and their unqualified names resolve in the target schema.
@@ -30,12 +31,45 @@ export function defineMigration(migration: Migration): Migration {
   return migration
 }
 
+/** Returns the database of the migrations of `database`, whose members join its ambient transaction. */
+export function toMigrationDatabase(database: Database): MigrationDatabase {
+  return { query: database.query.bind(database), script: database.script.bind(database) }
+}
+
 /** Runs a change of a step on the database of the migration: a SQL script, or a function of the database. */
 export async function runChange(
   database: MigrationDatabase,
   change: MigrationChange,
 ): Promise<void> {
   await (typeof change === "string" ? database.script(change) : change(database))
+}
+
+/**
+ * Runs the changes of `direction` of the steps of migration `key`: `up` in the order of the steps, and `down` in reverse order.
+ *
+ * It rejects with a `MigrationError` that names the step and the direction of a change that fails.
+ */
+export async function runMigrationSteps(
+  database: MigrationDatabase,
+  key: string,
+  steps: readonly MigrationStep[],
+  direction: MigrationDirection,
+): Promise<void> {
+  for (let position = 0; position < steps.length; position++) {
+    const index = direction === "up" ? position : steps.length - 1 - position
+    const change = steps[index]![direction]
+    if (change === undefined) {
+      continue
+    }
+    try {
+      await runChange(database, change)
+    } catch (error) {
+      throw new MigrationError(
+        `Migration ${key} failed in ${direction} of step ${index + 1}: ${getErrorMessage(error)}`,
+        { key, step: index + 1, direction, cause: error },
+      )
+    }
+  }
 }
 
 /** Returns the steps of the default export of the module of migration `key`, rejecting a value that is not a migration. */

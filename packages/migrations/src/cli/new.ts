@@ -2,6 +2,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from "node:path"
 
+import { moduleExtensions } from "../files"
 import { compareMigrationNumbers, getMigrationNumber } from "../history"
 
 /** Options of the list module that the command `new` writes. */
@@ -28,9 +29,6 @@ interface MigrationModule {
 
 /** First line of the list module, by which `new` recognizes a module that it may write. */
 const listModuleHeader = "// Written by the new command of @kern-orm/migrations"
-
-// Extensions of migration modules; other files of the directory, such as `*.json`, are not migrations.
-const moduleExtensions = new Set([".ts", ".mts", ".js", ".mjs"])
 
 /** Text of a new migration module, whose blank `up` and `down` fail to load until they are filled in. */
 export function getDefaultTemplate(): string {

@@ -130,3 +130,7 @@ Without a signal, as with `bun:test`, which gives none for a test, the transacti
 
 A query that the test has already sent runs to its end before the rollback.
 To limit how long such a query delays the next test, set `statement_timeout` for the connections of the test database.
+
+## Test migrations
+
+To check that every migration applies and rolls back, and how migrations change existing rows, see [Test migrations](./migrations#test-migrations).
