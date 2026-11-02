@@ -56,6 +56,17 @@
         "typescript-6": "catalog:",
       },
     },
+    "packages/migrations": {
+      "name": "@kern-orm/migrations",
+      "version": "0.0.0",
+      "dependencies": {
+        "kern-orm": "^0.1.0",
+      },
+      "devDependencies": {
+        "@kern-orm/postgres-js": "workspace:*",
+        "postgres": "catalog:",
+      },
+    },
     "packages/postgres-js": {
       "name": "@kern-orm/postgres-js",
       "version": "0.1.0",
@@ -294,6 +305,8 @@
     "@kern-orm/benchmarks": ["@kern-orm/benchmarks@workspace:benchmarks"],
 
     "@kern-orm/example-forms": ["@kern-orm/example-forms@workspace:examples/forms"],
+
+    "@kern-orm/migrations": ["@kern-orm/migrations@workspace:packages/migrations"],
 
     "@kern-orm/postgres-js": ["@kern-orm/postgres-js@workspace:packages/postgres-js"],
 

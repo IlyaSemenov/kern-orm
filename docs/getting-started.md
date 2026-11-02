@@ -24,6 +24,8 @@ bun add kern-orm @kern-orm/postgres-js postgres
 
 If your application uses postgres.js 3, see [Drivers](./drivers#postgres-js-3).
 
+To create and change tables with migrations, also install `@kern-orm/migrations`; see [Migrations](./migrations).
+
 kern-orm runs on Node.js 24 or newer and Bun 1.4 or newer.
 Use TypeScript 6.0 or newer, and keep `strict`, or at least `strictNullChecks`, enabled.
 
@@ -31,7 +33,7 @@ kern-orm is tested on PostgreSQL 18.
 
 ## Define tables
 
-kern-orm queries the tables that already exist in your database and does not create or alter them: create them with SQL or your migration tool, such as:
+kern-orm queries the tables that already exist in your database and does not create or alter them: create them with SQL, directly or in [migrations](./migrations):
 
 ```sql
 CREATE TABLE form (

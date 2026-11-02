@@ -13,6 +13,7 @@ const packages = [
   { dir: "packages/kern-orm", project: "." },
   { dir: "packages/postgres-js", project: "." },
   { dir: "packages/postgres-js-v3", project: "postgres-js-v3" },
+  { dir: "packages/migrations", project: "." },
 ]
 
 const compileOnlyOutput = {
@@ -194,6 +195,19 @@ describe.each([
 describe.each(["node", "bun"])("%s", runtime => {
   test("runs a consumer", () => {
     expect(JSON.parse(run([runtime, "consumer.ts"], consumer))).toEqual(consumerOutput)
+  })
+
+  test("runs a consumer of the migrator", () => {
+    expect(JSON.parse(run([runtime, "migrations.ts"], consumer))).toEqual({
+      keys: ["0001_create_form", "0002_drop_form"],
+      steps: [{ up: "CREATE TABLE form (id integer)", down: "DROP TABLE form" }],
+      loadError: {
+        name: "MigrationError",
+        key: "0002_drop_form",
+        message:
+          "Migration 0002_drop_form must export a step or a non-empty array of steps as its default export",
+      },
+    })
   })
 
   test("runs a consumer of the postgres.js 3 driver", () => {

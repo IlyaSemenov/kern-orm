@@ -1,65 +1,70 @@
 # Migrations
 
-## Decisions
-
-These hold for features that are not implemented yet.
-
-### Package
-
-- **Migrator** (`packages/migrations/`): `@kern-orm/migrations` applies, rolls back, and verifies histories of migrations.
+- **Migrator** (`packages/migrations/`): `@kern-orm/migrations` applies and rolls back histories of migrations.
   It is an official but replaceable migrator: `kern-orm` knows nothing of migrations, and another package must be able to implement migrations, their verification, and a command line with the public API of `kern-orm` alone.
 - A need of the migrator that the public API of `kern-orm` does not cover becomes a general capability of `kern-orm`, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
+  The migrator imports only types from `kern-orm`.
 - The migrator runs everything through the `Database` of its target: transactions with `transaction`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
-- Entry points:
-  - the main one, without `node:*` imports, so that it bundles into an application: the migration format, histories, helpers, and running;
-  - `@kern-orm/migrations/cli`: the command line;
-  - `@kern-orm/migrations/testing`: the verification of histories and migration tests.
+- The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, and running.
 
-### Migrations
+## Migrations
 
 - Migrations are fixed artifacts: they never import the tables, the custom types, or the database of the application, so that a migration does the same on every target and in every later version of the application.
-- A migration is the default export of a module: a step or an array of steps, plain values without runtime identity, which `defineMigration` only types.
+- A migration is the default export of a module: a step or a non-empty array of steps, plain values without runtime identity, which `defineMigration` only types.
   A module that does not export a migration rejects when it loads, rather than being recorded as applied.
   - rake-db 2.37.48 collects the steps of `change()` in the state of its module, so a migration that calls `change` of another copy of rake-db registers nothing, and migrating records it as applied ([orchid-orm#765](https://github.com/romeerez/orchid-orm/issues/765)).
-- A step has `up` and an optional `down`, each a SQL script or a function of the database of the migration.
+- A step has `up` and an optional `down`, each a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects when the migration loads instead of doing nothing on rollback.
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
 - The database of a migration is `Pick<Database, "query" | "script">` of the target: its statements run in the transaction of the migration, and its unqualified names resolve in the target schema through the search path.
   It lacks the other members of `Database`, such as `close` and `bind`, which a migration must not use.
 
-### Histories
+## Histories
 
 - `defineMigrations` takes the loaders of the migration modules by key, or by path as `import.meta.glob` returns them, and options of the history: the name of its table of versions and the schemas that its search path lists after the target schema, such as the schema of extensions.
-- A key is the file name without directories and extension, of the form `<number>_<name>`, and the number orders the history.
-  `defineMigrations` rejects a key of another form and two keys of one number, such as migrations of two branches that took one number.
+- A key is the file name without directories and extension, of the form `<number>_<name>` without dots, and the number orders the history as an integer.
+  A name of a loader that contains `/` is a path; another name is the key itself.
+  `defineMigrations` rejects a key of another form and two keys of one number, such as `0002_create_user` and `2_create_tag`, or migrations of two branches that took one number.
 - A call loads only the migrations it applies or rolls back, so that migrating a target that is up to date loads none.
+  It loads them all before running any, so that a module that fails to load changes nothing.
 - The cache of loaded modules is that of the runtime, so histories with the same keys never share migrations.
   rake-db shared the changes of migrations of two histories under one key ([orchid-orm#764](https://github.com/romeerez/orchid-orm/issues/764)).
 - Migrations of a history rely on the search path and do not name the target schema, so that one history applies to any schema, such as the schema of each tenant.
 
-### Targets
+## Targets
 
 - A target is a database and a PostgreSQL schema: a `Db`, which gives both, or a `Database`, so that a project that queries the database with another library can use kern-orm only to run its migrations.
+  A target is typed by the members `$database` and `$schemaName` of a `Db`, so that checking a `Db` against it compares no queries.
 - The `schemaName` option of a call overrides the PostgreSQL schema of the target, such as the schema of a tenant that is being created, which no context names yet.
-- A call resolves the PostgreSQL schema once, at its start; without one, the target is `current_schema()`.
+- A call resolves the PostgreSQL schema once, at its start, calling the function of `schemaName` of a `Db` at most once; without one, the target is `current_schema()`, and a call rejects when it is `NULL`.
 
-### Applying and rolling back
+## Applying and rolling back
 
-- Each target keeps the keys of its applied migrations, with the time of applying, in its table of versions in the target schema, `kern_migration` by default.
-  Migrating creates the schema and the table when they are missing with `IF NOT EXISTS`, never by a statement that fails, which would abort an enclosing transaction ([orchid-orm#702](https://github.com/romeerez/orchid-orm/issues/702)).
+- Each target keeps the keys of its applied migrations, with the time of applying, in its table of versions in the target schema, `kern_migration` by default, with columns `key` and `applied_at`.
+- Every call first resolves the target schema and checks that it and its table of versions exist, then reads the table only when it exists, since a statement on a missing table would fail and abort an enclosing transaction.
+  It checks them with a query of `pg_catalog` rather than with `to_regclass` and `to_regnamespace`, whose lookups in the catalog cache of the connection miss a schema that another transaction committed while this one waited for the lock of the target.
+  It rejects a target schema or a table of versions whose name is longer than `max_identifier_length` bytes before changing anything, since PostgreSQL truncates such a name, and the check would miss what the migrator created under it.
 - `migrate` applies the pending migrations of a target in one transaction and resolves to their keys.
   Inside a transaction, such as one that creates a tenant with its schema, or a test fixture, it runs as a nested level, so that its changes commit or roll back with the enclosing transaction.
-- `migrate` first reads the table of versions outside a transaction and returns when nothing is pending, so that migrating a tenant at the first access of each process costs one statement.
-  Otherwise, it locks the target with `pg_advisory_xact_lock` of a hash of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
+- `migrate` returns after the first read when nothing is pending, so that migrating a tenant that is up to date at the first access of each process costs two statements outside a transaction.
+  Otherwise, it locks the target with `pg_advisory_xact_lock` of `hashtextextended` of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
+- Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction ([orchid-orm#702](https://github.com/romeerez/orchid-orm/issues/702)).
+  Creating only what is missing keeps PostgreSQL from sending a notice of an existing schema, which postgres.js logs by default.
 - The lock belongs to the target, so that different targets, such as tenants, migrate at once.
   rake-db 2.37.48 locks every target with one key, unless each configuration sets its own `migrationLockKey`, so a test run that migrates in a transaction blocks every other run until it ends ([orchid-orm#771](https://github.com/romeerez/orchid-orm/issues/771)).
 - The search path of the level of the migrations is the target schema followed by the schemas of the history, and the level restores the previous search path when it ends.
 - A target is up to date when its applied keys are the keys of the history, followed by keys after the last key of the history, if any, which a newer version of the application has applied, such as during a rolling deploy.
-  `migrate` rejects an applied key that the history lacks before its last key, and a pending migration before an applied one.
-- `rollback` undoes the last applied migrations of a target, one by default, a given number of them, or all, and `redo` undoes and applies them again, each in one transaction.
+  `migrate` rejects an applied key that the history lacks before its last key or that is not of the form of a key, and a pending migration before an applied one.
+- `rollback` undoes the last applied migrations of a target, one by default, a given number of them, or all, and `redo` undoes and applies them again, each in one transaction that locks the target.
+  They resolve to the keys in the order they undo and apply them, and to none without a transaction when the target has no table of versions.
   They reject when the target has applied keys that the history lacks, since they cannot run the `down` of a migration they do not have.
-- `getMigrationStatus` lists the applied and the pending keys of a target, and its applied keys that the history lacks.
-- An error of a migration names its key and step, and keeps the original error in `cause`.
+- `getMigrationStatus` lists the applied and the pending keys of a target, and its applied keys that the history lacks, as `unknown`.
+- An error of a migration is a `MigrationError` that names its key, and its step and direction for an error of a step, and keeps the original error in `cause`.
+  Its message includes the message of the original error, since not every log shows `cause`.
+
+## Decisions
+
+These hold for features that are not implemented yet.
 
 ### Helpers
 
@@ -77,6 +82,7 @@ These hold for features that are not implemented yet.
 
 ### Command line
 
+- The entry point `@kern-orm/migrations/cli` holds the command line.
 - `runMigrationCli(target, history, options)` runs the command of the arguments of the process on a target: `status`, `up [count]`, `down [count | all]`, `redo [count]`, and `new <name>`, which creates the module of the next migration in the directory of the options.
 - `--schema` sets the PostgreSQL schema of the target; a `Db` whose PostgreSQL schema is a function, such as of the current tenant, requires it, since a command line has no context for the function.
 - It is a function that a script of the project calls, so that the project runs it with its own runtime and module resolution, such as path aliases, rather than a binary that loads the configuration of the project.
@@ -84,6 +90,7 @@ These hold for features that are not implemented yet.
 
 ### Verification
 
+- The entry point `@kern-orm/migrations/testing` holds the verification of histories and migration tests.
 - `verifyMigrations(target, history, options)` applies the whole history to a temporary schema, one migration at a time, in a transaction that always rolls back, nested in the enclosing one, such as a test transaction.
 - For each migration, it applies `up` to the clean schema, and then, in a nested level that rolls back to keep the clean schema for the next migration, `down`, the migration tests of the migration, and `up` again.
 - After `down`, the structure of the schema must be the same as before `up`, and after `up` again, the same as after the first `up`.
@@ -97,7 +104,7 @@ These hold for features that are not implemented yet.
   `verifyMigrations` finds them in a directory or takes them as `import.meta.glob` returns them, and fails on a file of migration tests that matches no migration.
 - An error names the migration, the migration test, and the step, and keeps the original error in `cause`.
 
-### Not added
+## Not added
 
 - Generating migrations from tables, as [`db g`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/generate-migrations.md) of Orchid ORM 1.78.47 does, and generating tables from the database, as [`db pull`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-commands.md#pull) does: tables of kern-orm state what the database guarantees rather than describe its DDL.
 - Column types of migrations, as `createTable` and `changeTable` of rake-db 2.37.48 take: migrations and helpers take SQL text, and the database names its constraints and indexes as the migration does.

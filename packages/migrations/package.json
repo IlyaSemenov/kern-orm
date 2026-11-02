@@ -1,0 +1,50 @@
+{
+  "name": "@kern-orm/migrations",
+  "version": "0.0.0",
+  "description": "Migrations of PostgreSQL schemas for kern-orm",
+  "keywords": [
+    "kern-orm",
+    "migrations",
+    "postgres",
+    "postgresql",
+    "schema"
+  ],
+  "homepage": "https://ilyasemenov.github.io/kern-orm/",
+  "bugs": "https://github.com/IlyaSemenov/kern-orm/issues",
+  "license": "MIT",
+  "author": "Ilya Semenov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IlyaSemenov/kern-orm.git",
+    "directory": "packages/migrations"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "kern-orm": "^0.1.0"
+  },
+  "devDependencies": {
+    "@kern-orm/postgres-js": "workspace:*",
+    "postgres": "catalog:"
+  },
+  "engines": {
+    "bun": ">=1.4",
+    "node": ">=24"
+  }
+}

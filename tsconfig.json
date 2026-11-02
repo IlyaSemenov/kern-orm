@@ -9,6 +9,7 @@
       "kern-orm": ["./packages/kern-orm/src/index.ts"],
       "kern-orm/testing": ["./packages/kern-orm/src/testing.ts"],
       "kern-orm/types": ["./packages/kern-orm/src/types.ts"],
+      "@kern-orm/migrations": ["./packages/migrations/src/index.ts"],
       "@kern-orm/postgres-js": ["./packages/postgres-js/src/index.ts"],
       "@kern-orm/postgres-js-v3": ["./packages/postgres-js-v3/src/index.ts"]
     }

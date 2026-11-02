@@ -26,6 +26,8 @@ features:
     details: Run each test in a transaction that rolls back, with node:test, bun:test, or Vitest.
   - title: SQL when you need it
     details: Add SQL conditions to queries, or run any SQL statement and get typed rows.
+  - title: Migrations
+    details: Apply SQL migrations to any PostgreSQL schema, such as the schema of each tenant.
 ---
 
 Load forms with their fields in one SQL statement:

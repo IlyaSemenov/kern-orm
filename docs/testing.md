@@ -79,11 +79,13 @@ describe("forms of an author", () => {
 })
 ```
 
-Put a fixture for all tests, such as one with migrations, into a setup module:
+Put a fixture for all tests, such as one that applies [migrations](./migrations), into a setup module:
 
 ```ts
 // test/setup.ts
-useTestFixture(() => migrate())
+import { migrate } from "@kern-orm/migrations"
+
+useTestFixture(() => migrate(db, migrations))
 ```
 
 Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./queries/sql#scripts), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.

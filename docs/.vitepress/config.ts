@@ -31,6 +31,7 @@ export default defineConfig({
       },
       { text: "Multiple Schemas", link: "/multiple-schemas" },
       { text: "Transactions", link: "/transactions" },
+      { text: "Migrations", link: "/migrations" },
       { text: "Testing", link: "/testing" },
       {
         text: "Advanced",

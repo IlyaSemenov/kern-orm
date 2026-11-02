@@ -34,9 +34,9 @@ An expression over the columns and relations of a table that queries of the tabl
 
 ## Migrations
 
-The package `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md) decides:
+The rest of `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md#decisions) decides:
 
-- the package with the migration format, histories, applying and rolling back, and the helpers;
+- the helpers;
 - the command line;
 - the verification of histories and migration tests.
 
