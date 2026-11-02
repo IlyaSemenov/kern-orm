@@ -41,6 +41,13 @@
 Members of schemas and `Db` other than tables start with `$`, and table keys must not.
 Column keys must not start with `$` either, which keeps such names free for members of the column references passed to query callbacks.
 
+## Decisions
+
+These hold for features that are not implemented yet.
+
+- `$database` of a `Db` is the database it is bound to, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else.
+- `$schemaName` of a `Db` resolves its PostgreSQL schema when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
+
 ## Open questions
 
 - Table identity: a query is tied to a table by object identity, so it cannot run against a table variant such as one with a different physical name.

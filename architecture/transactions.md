@@ -26,9 +26,11 @@
 
 These hold for features that are not implemented yet.
 
-- Settings of a level, such as its role and `set_config`, are statements on its connection, completed before its callback starts.
+- Settings of a level, such as its role, its search path, and `set_config`, are statements on its connection, completed before its callback starts.
   Scenarios of settings that Orchid ORM failed:
   - settings inside a test transaction were ignored ([orchid-orm#806](https://github.com/romeerez/orchid-orm/pull/806));
   - a setting still in flight at the rollback of a test transaction was restored after it, which left it on the connection for later tests ([orchid-orm#813](https://github.com/romeerez/orchid-orm/pull/813));
   - a callback that rejected before its settings completed crashed Node with an unhandled rejection ([orchid-orm#804](https://github.com/romeerez/orchid-orm/pull/804)).
+- `transaction` of a `Database` and `$transaction` of a `Db` take the search path of the level as a list of schemas, which they quote, such as the target schema and the schema of extensions of [migrations](migrations.md#applying-and-rolling-back).
+- A nested level restores the settings it changed when it ends, also when it is released, since PostgreSQL keeps a setting of `SET LOCAL` or `set_config(..., true)` of a released savepoint until the transaction ends.
 - After-commit hooks belong to the level that registered them: rolling the level back discards them, releasing it passes them to the enclosing level, and they run after the outermost commit.

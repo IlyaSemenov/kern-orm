@@ -180,6 +180,16 @@ An opt-in option of `createTestHelpers`, such as `statementTimeout` and `lockTim
 - Keep it opt-in: kern-orm does not know the timeouts of the test runner, and a limit that users did not set would fail slow tests whose code passes in production.
 - Orchid ORM bounds the wait in the teardown instead, with `teardownTimeout` of `testTransaction.hooks`, and blocks its adapter once it is exceeded ([orchid-orm#818](https://github.com/romeerez/orchid-orm/pull/818)).
 
+## Migrations
+
+The package `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md) decides:
+
+- `$database` and `$schemaName` of a `Db`;
+- settings of a transaction level, starting with the search path, restored when a nested level ends;
+- the package with the migration format, histories, applying and rolling back, and the helpers;
+- the command line;
+- the verification of histories and migration tests.
+
 ## Comparison with other ORMs
 
 A "Why kern-orm" section of the README and a page of the site that compare kern-orm with other ORMs and query builders, such as Drizzle ORM, Kysely, Prisma, and Orchid ORM, in the scenarios where it differs: related records in one statement, ambient transactions, tables and queries reused across PostgreSQL schemas, and tests in transactions that roll back.

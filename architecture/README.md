@@ -23,7 +23,7 @@ kern-orm exists to solve problems of production projects on Orchid ORM:
 - Shared tables across schemas ([orchid-orm#696](https://github.com/romeerez/orchid-orm/issues/696)): tenant and SaaS schemas share table definitions with their own relations, and typed business logic shared between them uses only what both have.
 - Dynamic PostgreSQL schemas ([orchid-orm#762](https://github.com/romeerez/orchid-orm/issues/762)): a PostgreSQL schema resolved at runtime, such as the schema of the current tenant from the async context, is read only when a query is compiled, never when a database is created or a schema is bound.
 - Singleton tables ([orchid-orm#752](https://github.com/romeerez/orchid-orm/issues/752)): a table that holds at most one row, such as application settings, is read and upserted without a sentinel key passed to every query or an `all()` that needs a comment at every use.
-- Migration verification ([rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing)): every migration applies, rolls back, and applies again, and data scenarios check how it transforms existing rows; kern-orm will include it.
+- Migration verification ([rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing)): every migration applies, rolls back, and applies again, and data scenarios check how it transforms existing rows; [`@kern-orm/migrations`](migrations.md) will include it.
 
 ## Map
 
@@ -38,9 +38,4 @@ Module paths are relative to `packages/kern-orm/src/`.
 - [Transactions](transactions.md): `execution/database.ts` and `execution/transaction.ts`.
 - [Testing](testing.md): `execution/testing.ts` and `execution/transaction.ts`.
 - [Drivers](drivers.md): `execution/driver.ts`, `packages/postgres-js/`, and `packages/postgres-js-v3/`.
-
-## Decisions
-
-These hold for features that are not implemented yet.
-
-- Migrations are fixed artifacts that never import runtime tables or types.
+- [Migrations](migrations.md): `packages/migrations/`.
