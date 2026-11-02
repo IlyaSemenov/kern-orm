@@ -176,6 +176,18 @@ it("resolves a schema name function on each compilation of a bound query", () =>
   expect(query.toSQL().text).toContain('FROM "tenant_2"."post"')
 })
 
+it("gives its PostgreSQL schema by $schemaName, calling a schema name function when read", () => {
+  let tenant = "tenant_1"
+  const database = createDatabase({ driver: createRecordingDriver().driver })
+  const tenantDb = database.bind(schema, { schemaName: () => tenant })
+
+  expect(tenantDb.$schemaName).toBe("tenant_1")
+  tenant = "tenant_2"
+  expect(tenantDb.$schemaName).toBe("tenant_2")
+  expect(database.bind(schema, { schemaName: "app" }).$schemaName).toBe("app")
+  expect(database.bind(schema).$schemaName).toBeUndefined()
+})
+
 it("keeps the bind options it was bound with", () => {
   const { driver } = createRecordingDriver()
   const options = { schemaName: "app" }
@@ -183,6 +195,13 @@ it("keeps the bind options it was bound with", () => {
   options.schemaName = "other"
 
   expect(db.post.select("id").toSQL().text).toContain('FROM "app"."post"')
+  expect(db.$schemaName).toBe("app")
+})
+
+it("gives the database it is bound to by $database", () => {
+  const database = createDatabase({ driver: createRecordingDriver().driver })
+
+  expect(database.bind(schema).$database).toBe(database)
 })
 
 it("rejects compile options of a bound query", () => {

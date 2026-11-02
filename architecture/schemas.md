@@ -35,18 +35,13 @@
   - In types, `required` of type `boolean` gives query results with `null`, as when the relation is not required, and `required` typed as an optional property, which may be missing at runtime, gives the union of its value and `false`.
 - **Db** (`execution/db.ts`): a schema bound to a database and a PostgreSQL schema; it compiles and executes queries over the tables of its schema.
   The PostgreSQL schema is resolved when a `Db` compiles a query, and a compiled statement never changes afterwards.
+  `$schemaName` resolves it when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
+  `$database` is the database that a `Db` is bound to, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else.
   `DbOf` types the `Db` of a schema, and a `Db` of every schema that includes it fits that type, since the types of entries and relations accept more tables and relations, so code shared by several schemas takes such a `Db` as a parameter.
   Comparing two `Db` types compares the states of the queries of their entries, since a query is covariant in its state; the methods of a `Db` and a schema are generic or typed by `this`, so that comparing them compares no queries.
 
 Members of schemas and `Db` other than tables start with `$`, and table keys must not.
 Column keys must not start with `$` either, which keeps such names free for members of the column references passed to query callbacks.
-
-## Decisions
-
-These hold for features that are not implemented yet.
-
-- `$database` of a `Db` is the database it is bound to, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else.
-- `$schemaName` of a `Db` resolves its PostgreSQL schema when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
 
 ## Open questions
 

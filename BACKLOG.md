@@ -184,7 +184,6 @@ An opt-in option of `createTestHelpers`, such as `statementTimeout` and `lockTim
 
 The package `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md) decides:
 
-- `$database` and `$schemaName` of a `Db`;
 - settings of a transaction level, starting with the search path, restored when a nested level ends;
 - the package with the migration format, histories, applying and rolling back, and the helpers;
 - the command line;

@@ -65,6 +65,12 @@ The schema only describes the tables and their relations, and `db` executes quer
 Start queries from the tables of `db`, such as `db.form`; see [Queries](./queries/).
 Where code has no `Db`, such as with dependency injection, start them from the schema instead; see [Queries without a Db](./queries/reusable#queries-without-a-db).
 
+In code that has only `db`, such as a script, reach its database with `$database`:
+
+```ts
+await db.$database.close()
+```
+
 To reuse tables in several schemas, such as tenant schemas and a shared application schema, include one schema in another; see [Multiple Schemas](./multiple-schemas).
 
 ### PostgreSQL schemas
@@ -82,6 +88,12 @@ For a PostgreSQL schema per tenant, pass a function that returns the schema of t
 export const db = database.bind(schema, { schemaName: () => useTenant().schema })
 
 await db.form.select("id") // FROM "tenant_1"."form"
+```
+
+Read the PostgreSQL schema of a `Db` with `$schemaName`, which calls the function, if any; without `schemaName`, it is `undefined` rather than the schema that `search_path` finds:
+
+```ts
+db.$schemaName // "tenant_1"
 ```
 
 ## Relations

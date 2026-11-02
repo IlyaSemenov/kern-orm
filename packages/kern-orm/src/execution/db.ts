@@ -72,6 +72,14 @@ export interface DbMutationState<
 
 interface DbMethods<T extends Tables, R extends SchemaRelations> {
   readonly $schema: Schema<T, R>
+  /** Database that the `Db` is bound to. */
+  readonly $database: Database
+  /**
+   * PostgreSQL schema of the tables, or `undefined` for a `Db` bound without `schemaName`.
+   *
+   * Reading it calls the function of `schemaName`, as compiling a query does, such as to resolve the schema of the current tenant.
+   */
+  readonly $schemaName: string | undefined
   // Generic like `$execute`, so that comparing `Db` types compares its type parameter rather than the members of queries.
   /**
    * Compiles a query over the tables of the schema into SQL text and parameters.
@@ -141,6 +149,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
   const definitions = collectDefinitions(relations)
   // Changing the options object after binding does not change the Db.
   const { schemaName } = options
+  const resolveSchemaName = () => (typeof schemaName === "function" ? schemaName() : schemaName)
 
   function compile(query: DbQuery<T, R>): CompiledQuery {
     if (query.db !== undefined && query.db !== db) {
@@ -148,7 +157,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     }
     return compileStatement(
       lowerStatement(query.node, definitions, db),
-      { schemaName: typeof schemaName === "function" ? schemaName() : schemaName },
+      { schemaName: resolveSchemaName() },
       tables,
       db,
     )
@@ -156,6 +165,10 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
 
   const methods: DbMethods<T, R> = {
     $schema: schema,
+    $database: database,
+    get $schemaName() {
+      return resolveSchemaName()
+    },
     $compile(query) {
       const { text, parameters } = compile(query)
       return createStatement(text, parameters)
