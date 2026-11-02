@@ -7,19 +7,11 @@ Fully typed relational query builder for PostgreSQL with ambient transactions an
 Read [README.md](README.md) completely before changing the public API, package behavior, supported runtimes, or user documentation.
 Before changing a module, read [architecture/README.md](architecture/README.md) and the files that its map lists for the module, and keep them in sync with the code.
 Record a contract in the file of its topic, a decision on a feature not implemented yet in its Decisions, and unresolved design in its Open questions; list a new file in the map.
+Track work not done yet in [BACKLOG.md](BACKLOG.md), in no order.
+Add each item as a section without a number, and delete it once it is done, moving its lasting contracts to [architecture/](architecture/README.md).
 
 Extend this guide only with stable, non-obvious conventions, architecture, contracts, workflows, and gotchas.
 Do not catalog files or restate information evident from their names and locations.
-
-## Release status
-
-The packages are at version 0.0.0 and have no users; remove this section with the initial release.
-
-- Judge a change only by the contract it produces.
-  Do not compare behavior with previous revisions, call changes breaking, or add compatibility paths, migration notes, or deprecations.
-- Do not add changesets: the pending initial release covers every change.
-- Track work not done yet in [BACKLOG.md](BACKLOG.md), in no order.
-  Add each item as a section without a number, and delete it once it is done, moving its lasting contracts to [architecture/](architecture/README.md).
 
 ## Scope
 
@@ -51,7 +43,7 @@ The packages are at version 0.0.0 and have no users; remove this section with th
 ## Workspaces
 
 - Register every workspace package and its subpath exports in `paths` of the root `tsconfig.json`; tests, examples, and typecheck resolve packages to their sources through it.
-- Declare a dependency of a published package on another workspace package in `dependencies` as a caret range that matches the local version, such as `"kern-orm": "^0.0.0"`; Bun links the workspace package, and changesets raises the range on release.
+- Declare a dependency of a published package on another workspace package in `dependencies` as a caret range that matches the local version, such as `"kern-orm": "^0.1.0"`; Bun links the workspace package, and changesets raises the range on release.
   - Do not use the `workspace:` protocol there: `changeset publish` publishes with npm, which does not rewrite it.
   - Do not declare workspace packages in `peerDependencies`: changesets releases a major version of the dependent whenever the peer range falls behind.
   - In other published packages, import only types from `kern-orm`, so that a duplicate copy of `kern-orm` cannot change runtime behavior.
