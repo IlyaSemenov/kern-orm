@@ -49,7 +49,7 @@
     },
     "packages/kern-orm": {
       "name": "kern-orm",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
         "postgres": "catalog:",
@@ -58,9 +58,9 @@
     },
     "packages/migrations": {
       "name": "@kern-orm/migrations",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
-        "kern-orm": "^0.1.0",
+        "kern-orm": "^0.2.0",
       },
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
@@ -69,9 +69,9 @@
     },
     "packages/postgres-js": {
       "name": "@kern-orm/postgres-js",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
-        "kern-orm": "^0.1.0",
+        "kern-orm": "^0.2.0",
       },
       "devDependencies": {
         "postgres": "catalog:",
@@ -82,9 +82,9 @@
     },
     "packages/postgres-js-v3": {
       "name": "@kern-orm/postgres-js-v3",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
-        "kern-orm": "^0.1.0",
+        "kern-orm": "^0.2.0",
       },
       "devDependencies": {
         "postgres": "^3.4.9",

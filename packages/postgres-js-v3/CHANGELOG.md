@@ -1,5 +1,13 @@
 # @kern-orm/postgres-js-v3
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [003d7d7]
+- Updated dependencies [7bc3662]
+  - kern-orm@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes

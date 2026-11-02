@@ -1,6 +1,6 @@
 {
   "name": "kern-orm",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Fully typed relational query builder for PostgreSQL with ambient transactions and single-query relation loading",
   "keywords": [
     "orm",
