@@ -4,6 +4,7 @@ import type { Database } from "kern-orm"
 import { defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
+import { countLockWaiters, settleWithin, waitFor } from "../testing/concurrency"
 import { describePooledPostgres, describePostgres } from "../testing/postgres"
 
 import { MigrationError } from "./error"
@@ -597,7 +598,10 @@ describePooledPostgres("at once", ({ database }) => {
       const first = start(migrate(db, history, target))
       await waitFor(async () => runs.count === 1)
       const second = start(migrate(db, history, target))
-      await waitFor(async () => (await countLockWaiters(database, "migrations_pool_1")) === 1)
+      await waitFor(
+        async () =>
+          (await countLockWaiters(database, '"migrations_pool_1"."kern_migration"')) === 1,
+      )
       openGate()
 
       expect([await first, await second]).toEqual([["0001_create_form"], []])
@@ -641,7 +645,10 @@ describePooledPostgres("at once", ({ database }) => {
       const first = start(rollback(db, history, target))
       await waitFor(async () => runs.count === 1)
       const second = start(rollback(db, history, target))
-      await waitFor(async () => (await countLockWaiters(database, "migrations_pool_1")) === 1)
+      await waitFor(
+        async () =>
+          (await countLockWaiters(database, '"migrations_pool_1"."kern_migration"')) === 1,
+      )
       openGate()
 
       expect([await first, await second]).toEqual([["0002_create_user"], ["0001_create_form"]])
@@ -680,42 +687,4 @@ async function listVersions(database: Database): Promise<string[]> {
 /** Reads the search path of the current transaction. */
 async function getSearchPath(database: Database): Promise<string> {
   return await database.query`SELECT current_setting('search_path')`.get(t.text)
-}
-
-/** Counts the transactions that wait for the lock of the target in PostgreSQL schema `schemaName`. */
-async function countLockWaiters(database: Database, schemaName: string): Promise<number> {
-  // PostgreSQL shows a lock of a bigint key as its high and low halves.
-  return await database.query`
-    SELECT count(*)::integer FROM pg_locks, (SELECT hashtextextended(${`"${schemaName}"."kern_migration"`}, 0) AS key) AS lock
-    WHERE locktype = 'advisory' AND NOT granted
-      AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
-      AND classid = ((lock.key >> 32) & 4294967295)::oid AND objid = (lock.key & 4294967295)::oid
-  `.get(t.integer)
-}
-
-/** Time that a test waits for a concurrent operation, shorter than the timeout of a test, so that the test cleans up after a failure. */
-const waitTimeout = 2000
-
-/** Waits until `condition` holds, checking it every 10 milliseconds, and rejects when it does not hold in time. */
-async function waitFor(condition: () => Promise<boolean>): Promise<void> {
-  const deadline = Date.now() + waitTimeout
-  while (!(await condition())) {
-    if (Date.now() > deadline) {
-      throw new Error("The condition did not hold in time")
-    }
-    await new Promise(resolve => setTimeout(resolve, 10))
-  }
-}
-
-/** Resolves to the result of `operation`, and rejects when it does not settle in time. */
-async function settleWithin<T>(operation: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("The operation did not settle in time")), waitTimeout)
-  })
-  try {
-    return await Promise.race([operation, timeout])
-  } finally {
-    clearTimeout(timer)
-  }
 }

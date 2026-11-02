@@ -3,6 +3,7 @@ import { getErrorMessage, MigrationError } from "./error"
 import type { MigrationHistory } from "./history"
 import { getMigrationNumber } from "./history"
 import type { MigrationDatabase, MigrationStep } from "./migration"
+import { runChange } from "./migration"
 import type {
   MigrationTarget,
   MigrationTargetOptions,
@@ -252,7 +253,7 @@ async function runSteps(
       continue
     }
     try {
-      await (typeof change === "string" ? database.script(change) : change(migrationDatabase))
+      await runChange(migrationDatabase, change)
     } catch (error) {
       throw new MigrationError(
         `Migration ${key} failed in ${direction} of step ${index + 1}: ${getErrorMessage(error)}`,

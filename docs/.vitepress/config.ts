@@ -34,8 +34,11 @@ export default defineConfig({
       { text: "Migrations", link: "/migrations" },
       { text: "Testing", link: "/testing" },
       {
-        text: "Advanced",
-        items: [{ text: "Custom Types", link: "/custom-types" }],
+        text: "Extending",
+        items: [
+          { text: "Custom Types", link: "/custom-types" },
+          { text: "Custom Migration Helpers", link: "/migration-helpers" },
+        ],
       },
     ],
     search: { provider: "local" },

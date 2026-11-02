@@ -5,7 +5,7 @@
 - A need of the migrator that the public API of `kern-orm` does not cover becomes a general capability of `kern-orm`, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
   The migrator imports only types from `kern-orm`.
 - The migrator runs everything through the `Database` of its target: transactions with `transaction`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
-- The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, and running.
+- The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
 
 ## Migrations
 
@@ -62,23 +62,46 @@
 - An error of a migration is a `MigrationError` that names its key, and its step and direction for an error of a step, and keeps the original error in `cause`.
   Its message includes the message of the original error, since not every log shows `cause`.
 
+## Helpers
+
+- Helpers (`src/helpers/`) build steps of typical changes, such as `createTable` and `changeColumn`, as plain steps of SQL text, so that they combine in the array of a migration with steps of its own.
+- A project writes its own helpers with the public primitives that the built-in helpers use:
+  - `quoteIdentifier` and `quoteLiteral`; `quoteLiteral` matches `quote_literal` of PostgreSQL, doubling quotes and backslashes and prefixing `E` to a value with a backslash, so that a literal keeps its value whatever `standard_conforming_strings` is;
+  - `invertStep`, which swaps `up` and `down` and rejects a step without `down`;
+  - `combineSteps`, which makes one step that runs the `up` of the steps in order and the `down` of those that have one in reverse order.
+    Changes of a direction that are all SQL text join into one script with each semicolon on a line of its own, so that a script that ends with a line comment does not comment it out; other changes run in order from a function.
+  - `invertStep` and `combineSteps` reject a value that is not a step, as loading a migration does, since the step they return would hide a problem such as a misspelled `down`.
+- The SQL that a helper builds never changes: applied migrations call the same helper on new targets, and a change of its SQL would change what they do there.
+  A new behavior requires a new helper or option; the helpers of a project must follow the same rule.
+- Helpers quote the names they take as arguments or keys and never qualify them with a schema, which the search path of the migration gives.
+  They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
+- They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
+- A helper checks its arguments when it is called, that is, when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.
+- A helper that drops an object is `invertStep` of the helper that creates it, with the same arguments, which give the definition that its `down` creates again.
+  Dropping a table or a column also drops its indexes and constraints, and the definition restores only what it describes, so a migration must drop standalone indexes and constraints with their own steps before, and describe each constraint once.
+- `changeColumn` takes the states of a column before and after the change, which list the same of `type`, `notNull`, and `default`, so that a missing property never means a value; `using` of a state converts the values to its type.
+  It builds one `ALTER TABLE` of the actions of the properties that differ.
+  When the type changes, it drops a default that the states list before the type and sets it after, since PostgreSQL otherwise casts the old default to the new type and fails, such as `''` of `text` to `integer`.
+  In one `ALTER TABLE`, PostgreSQL drops a default before it changes the type and sets one after, whatever the order of the actions.
+- `createIndex` without `name` names the index as PostgreSQL names an index without a name, `<table>_<columns>_idx` of its key and `include` columns, so that `dropIndex` also finds an index that SQL created without a name.
+  - It requires `name` when PostgreSQL would name the index otherwise: for an element that is not a lowercase column with an optional ordering, such as an expression, which PostgreSQL names `expr`; for a repeated column, which PostgreSQL numbers; and for a name longer than 63 bytes, which PostgreSQL truncates.
+  - It reads an element as PostgreSQL does: words separated by the whitespace of SQL only, since PostgreSQL reads another space, such as U+00A0, as a character of a name, and the keywords of an ordering in ASCII letters of any case.
+  - It never appends the number that PostgreSQL appends to a name that exists, so that a collision fails.
+  - Elements of `include` must be columns, since PostgreSQL accepts neither expressions nor orderings there.
+- `createExtension` has no `down`, since an extension belongs to the whole database, such as to every tenant.
+  - It checks `pg_extension` in a `DO` block rather than running `CREATE EXTENSION IF NOT EXISTS`, which sends a notice of an existing extension that postgres.js logs, at every new tenant of a history that creates one.
+  - When the extension is missing, it takes a transaction-level advisory lock and checks again, so that migrations of different targets that create one extension at once wait for each other instead of failing on the unique index of `pg_extension`.
+    The second check sees an extension that another transaction committed meanwhile under `READ COMMITTED`, since each statement of the block takes a new snapshot.
+  - With `schema`, it creates that schema under the lock when it is missing, before the extension, and keeps it on rollback, since it belongs to the whole database as the extension does.
+    It checks `pg_namespace` before `CREATE SCHEMA IF NOT EXISTS`, which would send a notice of an existing schema, and keeps `IF NOT EXISTS` for a schema that something other than a migration has created meanwhile.
+  - One key locks all extensions, so that histories that create several extensions in different orders do not deadlock.
+    A transaction that migrates several targets holds the lock until it ends, so it can deadlock with a process that migrates one of them and creates another missing extension; PostgreSQL detects the deadlock and fails one transaction, as for two transactions that migrate the same targets in different orders.
+  - The body of the block is quoted with a dollar tag that the names do not contain.
+  - Without `schema`, the extension goes to the target schema; a history of tenants must pass a schema of its own and list it in its `searchPath`.
+
 ## Decisions
 
 These hold for features that are not implemented yet.
-
-### Helpers
-
-- Helpers build the steps of typical changes, as plain steps of SQL text with `up` and `down`, so that they combine in the array of a migration and users write their own the same way:
-  - `createTable(table, definition)`, `dropTable(table, definition)`, and `renameTable(from, to)`;
-  - `addColumn(table, column, definition)`, `dropColumn(table, column, definition)`, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`, whose states of the column, `{ type, using, notNull, default }`, give `ALTER COLUMN` of the properties that differ;
-  - `createIndex(name, table, columns, options)` and `dropIndex` of the same arguments, with `unique`, `where`, `using`, and `include`;
-  - `addConstraint(table, name, definition)`, `dropConstraint(table, name, definition)`, and `changeConstraint(table, name, from, to)`;
-  - `createExtension(name, options)`, which creates an extension unless it exists and does nothing on rollback, since an extension belongs to the whole database.
-- A helper that drops an object takes the definition that its `down` creates again.
-- Definitions are SQL text; helpers quote the names they take and do not qualify them with a schema, which the search path gives.
-- Indexes and constraints require names, since `down` drops them by name, and the names of the database stay those of the migration.
-- The SQL that a helper builds never changes: applied migrations call the same helper, and a change of its SQL would change what they do on a new target.
-  A new behavior requires a new helper or option.
 
 ### Command line
 
@@ -96,6 +119,7 @@ These hold for features that are not implemented yet.
 - After `down`, the structure of the schema must be the same as before `up`, and after `up` again, the same as after the first `up`.
   The structure covers tables, columns, constraints, indexes, types, functions, and triggers, as `pg_catalog` describes them; it ignores the order of columns, since PostgreSQL cannot add a column at a position.
   Applying, rolling back, and applying again misses a `down` that leaves a change that `up` makes again without an error, such as `SET NOT NULL`, `SET DEFAULT`, or `CREATE INDEX IF NOT EXISTS`; comparing the structure catches it.
+  The comparison skips the objects of extensions, which `createExtension` keeps on rollback.
 - A migration test checks how a migration changes existing data: `defineMigrationTest(name, { setup, assertUp, assertDown })` runs `setup` on the schema before the migration, then `up`, `assertUp`, `down`, `assertDown`, and `up` again.
   A test with `assertUpError`, instead of `assertUp` and `assertDown`, requires `up` to fail and checks its error.
   - Each test runs in its own nested level that rolls back, so tests do not affect each other or the history.

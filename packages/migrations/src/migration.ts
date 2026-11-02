@@ -30,8 +30,13 @@ export function defineMigration(migration: Migration): Migration {
   return migration
 }
 
-// A step has only these properties, so that a misspelled `down` rejects instead of doing nothing on rollback.
-const stepKeys = new Set(["up", "down"])
+/** Runs a change of a step on the database of the migration: a SQL script, or a function of the database. */
+export async function runChange(
+  database: MigrationDatabase,
+  change: MigrationChange,
+): Promise<void> {
+  await (typeof change === "string" ? database.script(change) : change(database))
+}
 
 /** Returns the steps of the default export of the module of migration `key`, rejecting a value that is not a migration. */
 export function toMigrationSteps(key: string, value: unknown): readonly MigrationStep[] {
@@ -44,28 +49,37 @@ export function toMigrationSteps(key: string, value: unknown): readonly Migratio
     )
   }
   for (let index = 0; index < steps.length; index++) {
-    const step = steps[index]
-    const describe = (problem: string) =>
-      new MigrationError(`Step ${index + 1} of migration ${key} ${problem}`, {
+    const problem = findStepProblem(steps[index])
+    if (problem !== undefined) {
+      throw new MigrationError(`Step ${index + 1} of migration ${key} ${problem}`, {
         key,
         step: index + 1,
       })
-    if (typeof step !== "object" || step === null || Array.isArray(step)) {
-      throw describe("is not an object with up and an optional down")
-    }
-    const unknownKey = Object.keys(step).find(name => !stepKeys.has(name))
-    if (unknownKey !== undefined) {
-      throw describe(`has unknown property ${unknownKey}`)
-    }
-    const { up, down } = step as Record<string, unknown>
-    if (!isChange(up)) {
-      throw describe("requires up as a SQL script or a function")
-    }
-    if (down !== undefined && !isChange(down)) {
-      throw describe("requires down as a SQL script or a function, or no down")
     }
   }
   return steps as readonly MigrationStep[]
+}
+
+// A step has only these properties, so that a misspelled `down` rejects instead of doing nothing on rollback.
+const stepKeys = new Set(["up", "down"])
+
+/** Returns what makes `value` not a step, such as `has unknown property donw`, or `undefined` for a step. */
+export function findStepProblem(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return "is not an object with up and an optional down"
+  }
+  const unknownKey = Object.keys(value).find(name => !stepKeys.has(name))
+  if (unknownKey !== undefined) {
+    return `has unknown property ${unknownKey}`
+  }
+  const { up, down } = value as Record<string, unknown>
+  if (!isChange(up)) {
+    return "requires up as a SQL script or a function"
+  }
+  if (down !== undefined && !isChange(down)) {
+    return "requires down as a SQL script or a function, or no down"
+  }
+  return undefined
 }
 
 function isChange(value: unknown): value is MigrationChange {

@@ -36,9 +36,21 @@ An expression over the columns and relations of a table that queries of the tabl
 
 The rest of `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md#decisions) decides:
 
-- the helpers;
 - the command line;
 - the verification of histories and migration tests.
+
+## Identifiers in SQL templates
+
+A fragment of a quoted name, such as `sql.identifier(name)`, for the templates of `query`, `script`, and `sql`, so that a statement names a table or a column known only at runtime, such as in a migration that changes several tables in a loop.
+In `query` and `sql`, the values of the statement stay parameters; a script keeps having no parameters:
+
+```ts
+await database.query`UPDATE ${sql.identifier(table)} SET updated_at = ${now}`
+```
+
+- An interpolated string becomes a parameter of `query`, which PostgreSQL rejects in place of a name, so such code builds SQL text with `quoteIdentifier` of `@kern-orm/migrations` and puts values into it with `quoteLiteral`.
+- Decide whether it takes a qualified name, such as of a schema and a table.
+- Steps of SQL text and the helpers of `@kern-orm/migrations` keep `quoteIdentifier`, since a fragment is not text, and the migrator imports only types from `kern-orm`.
 
 ## Row locks
 

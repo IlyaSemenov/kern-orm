@@ -120,7 +120,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Mention an edge case in user documentation only when users must write different code because of it; record other edge cases, typing rules, and invariants in [architecture/](architecture/README.md) and cover them with tests.
 - Write a rule that users must follow as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
 - In [architecture/](architecture/README.md), state what users must do as a requirement of the contract, such as "must be split" or "requires a key", rather than as a description of what users do, such as "users split".
-- Keep material for authors of extensions, such as custom types and operators, on Advanced pages, separate from the guides for using the API.
+- Keep material for authors of extensions, such as custom types and operators, on Extending pages, separate from the guides for using the API.
 - When a change makes an existing statement false, fix that statement rather than add an explanation next to it.
 - Add JSDoc to every exported declaration and to internal helpers whose contract, inputs, output, or failure behavior is not obvious.
 - Add inline comments beside every non-obvious invariant, algorithmic choice, safety constraint, and intentionally limited behavior.
