@@ -1,5 +1,12 @@
-/** Quotes a PostgreSQL identifier, such as the name of a schema or a table, so that it keeps its case and characters. */
+/**
+ * Quotes a PostgreSQL identifier, such as the name of a schema or a table, so that it keeps its case and characters.
+ *
+ * It throws for an empty name, which PostgreSQL rejects, so that a helper with a name left blank fails when its migration loads rather than when it runs.
+ */
 export function quoteIdentifier(name: string): string {
+  if (name === "") {
+    throw new Error("Cannot quote an empty name")
+  }
   return `"${name.replaceAll('"', '""')}"`
 }
 

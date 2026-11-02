@@ -80,6 +80,7 @@
   They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
 - They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
 - A helper checks its arguments when it is called, that is, when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.
+  `quoteIdentifier` rejects an empty name, so that a name left blank fails when the migration loads.
 - A helper that drops an object is `invertStep` of the helper that creates it, with the same arguments, which give the definition that its `down` creates again.
   Dropping a table or a column also drops its indexes and constraints, and the definition restores only what it describes, so a migration must drop standalone indexes and constraints with their own steps before, and describe each constraint once.
 - `changeColumn` takes the states of a column before and after the change, which list the same of `type`, `notNull`, and `default`, so that a missing property never means a value; `using` of a state converts the values to its type.

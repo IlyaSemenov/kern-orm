@@ -8,6 +8,10 @@ describe("quoteIdentifier", () => {
   it("quotes a name, doubling its quotes", () => {
     expect(quoteIdentifier('my "form"')).toBe('"my ""form"""')
   })
+
+  it("rejects an empty name", () => {
+    expect(() => quoteIdentifier("")).toThrow("Cannot quote an empty name")
+  })
 })
 
 describe("quoteLiteral", () => {
