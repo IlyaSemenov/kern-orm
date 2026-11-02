@@ -47,9 +47,19 @@ export interface Database extends AsyncDisposable {
    *
    * Inside an existing transaction, it starts a nested transaction.
    */
-  transaction<T>(callback: () => Promise<T>): Promise<T>
+  transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T>
   /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions end. */
   close(): Promise<void>
+}
+
+/** Options of `transaction` of a `Database` and `$transaction` of a `Db`. */
+export interface TransactionOptions {
+  /**
+   * PostgreSQL schemas where the unqualified names of the statements of the transaction resolve, in their order, such as the schema of a tenant followed by the schema of extensions.
+   *
+   * It applies to the statements of the callback, including those of its nested transactions, until the transaction ends; a nested transaction then restores the search path of the enclosing transaction.
+   */
+  searchPath?: readonly string[]
 }
 
 /** Options of `createDatabase`. */
@@ -74,7 +84,7 @@ export function createDatabase({ driver, test }: DatabaseOptions): Database {
         ? coordinator.executeScript(script)
         : getTablelessDb().$script(script, ...values),
     execute: statement => coordinator.execute(statement),
-    transaction: callback => coordinator.transaction(callback),
+    transaction: (callback, options) => coordinator.transaction(callback, options),
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }

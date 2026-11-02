@@ -12,9 +12,22 @@
 - Closing a level closes all levels nested in it at once; a level whose callback settles while its nested level is still active closes it, rolls back, and rejects.
 - Every level has a single cleanup: whoever ends it, such as its callback, its enclosing level, a preemption, or the abort signal of a test, starts the cleanup or awaits the one already started.
   A level awaits the cleanup of its nested levels before its own.
-- A failed `RELEASE` or `ROLLBACK TO` of a nested level makes the enclosing level reject its statements and nested levels and roll back at its end, since the statement may not have reached PostgreSQL.
-- Starting a level rejects when its `BEGIN` or `SAVEPOINT` fails.
+- A failed `RELEASE` or `ROLLBACK TO` of a nested level, or a failed restore of its [settings](#settings) before `RELEASE`, makes the enclosing level reject its statements and nested levels and roll back at its end, since the statement may not have reached PostgreSQL.
+- Starting a level rejects when its `BEGIN` or `SAVEPOINT` fails, and rolls the level back and rejects when its settings fail.
 - A cleanup error of a transaction never replaces an earlier error: it suppresses it in a `SuppressedError`.
+
+## Settings
+
+- Settings of a level, such as its search path, are statements on its connection, `set_config(..., true)` after its `BEGIN` or `SAVEPOINT`, completed before its callback starts.
+  Scenarios of settings that Orchid ORM failed:
+  - settings inside a test transaction were ignored ([orchid-orm#806](https://github.com/romeerez/orchid-orm/pull/806));
+  - a setting still in flight at the rollback of a test transaction was restored after it, which left it on the connection for later tests ([orchid-orm#813](https://github.com/romeerez/orchid-orm/pull/813));
+  - a callback that rejected before its settings completed crashed Node with an unhandled rejection ([orchid-orm#804](https://github.com/romeerez/orchid-orm/pull/804)).
+- `transaction` of a `Database` and `$transaction` of a `Db` take the search path of the level as a list of schemas, which they quote, such as the target schema and the schema of extensions of [migrations](migrations.md#applying-and-rolling-back).
+  They take it in options after the callback, as `testTransaction` takes its options.
+- A nested level restores the settings it changed when it is released, since PostgreSQL keeps a setting of `SET LOCAL` or `set_config(..., true)` of a released savepoint until the transaction ends.
+  It reads their values in a statement of its own before it changes them, since PostgreSQL does not define the order in which it evaluates the expressions of one statement, and restores them before its `RELEASE`.
+  `ROLLBACK TO` restores them itself, so a level that rolls back sends no settings after its rollback.
 
 ## Lifecycle
 
@@ -26,11 +39,4 @@
 
 These hold for features that are not implemented yet.
 
-- Settings of a level, such as its role, its search path, and `set_config`, are statements on its connection, completed before its callback starts.
-  Scenarios of settings that Orchid ORM failed:
-  - settings inside a test transaction were ignored ([orchid-orm#806](https://github.com/romeerez/orchid-orm/pull/806));
-  - a setting still in flight at the rollback of a test transaction was restored after it, which left it on the connection for later tests ([orchid-orm#813](https://github.com/romeerez/orchid-orm/pull/813));
-  - a callback that rejected before its settings completed crashed Node with an unhandled rejection ([orchid-orm#804](https://github.com/romeerez/orchid-orm/pull/804)).
-- `transaction` of a `Database` and `$transaction` of a `Db` take the search path of the level as a list of schemas, which they quote, such as the target schema and the schema of extensions of [migrations](migrations.md#applying-and-rolling-back).
-- A nested level restores the settings it changed when it ends, also when it is released, since PostgreSQL keeps a setting of `SET LOCAL` or `set_config(..., true)` of a released savepoint until the transaction ends.
 - After-commit hooks belong to the level that registered them: rolling the level back discards them, releasing it passes them to the enclosing level, and they run after the outermost commit.

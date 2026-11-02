@@ -144,6 +144,18 @@ it("rejects values in the template of a script, also in a sql fragment", async (
   expect(scripts).toEqual([])
 })
 
+it("runs a transaction of the database with the options of $transaction", async () => {
+  const { db, statements } = connectRecorded()
+
+  await db.$transaction(() => db.$script("SELECT 1"), { searchPath: ["tenant_1"] })
+
+  expect(statements).toMatchObject([
+    { text: "BEGIN" },
+    { text: "SELECT set_config($1, $2, true)", parameters: ["search_path", '"tenant_1"'] },
+    { text: "COMMIT" },
+  ])
+})
+
 it("leaves unbound queries unexecuted when returned from async functions", async () => {
   const { db, statements } = connectRecorded()
   const buildQuery = async () => db.$schema.post.where({ title: "Draft" })

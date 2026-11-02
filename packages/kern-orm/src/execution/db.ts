@@ -26,7 +26,7 @@ import type { AnySchema, Schema, Tables } from "../schema/schema"
 import { defineEntries, schemaRelations } from "../schema/schema"
 import type { AnyTable } from "../table/table"
 
-import type { Database } from "./database"
+import type { Database, TransactionOptions } from "./database"
 import type { SqlStatement } from "./driver"
 import { createStatement } from "./driver"
 
@@ -124,7 +124,10 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    *
    * Inside an existing transaction, it starts a nested transaction.
    */
-  $transaction<Result>(callback: () => Promise<Result>): Promise<Result>
+  $transaction<Result>(
+    callback: () => Promise<Result>,
+    options?: TransactionOptions,
+  ): Promise<Result>
 }
 
 /**
@@ -191,7 +194,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
       }
       return database.script(text)
     },
-    $transaction: callback => database.transaction(callback),
+    $transaction: (callback, options) => database.transaction(callback, options),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
   const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>

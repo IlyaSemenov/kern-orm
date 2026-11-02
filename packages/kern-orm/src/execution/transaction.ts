@@ -1,5 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 
+import { quoteIdentifier } from "../compiler/postgres/identifier"
+import type { TextValue } from "../type/type"
+
+import type { TransactionOptions } from "./database"
 import type { Connection, Driver, DriverResult, SqlStatement, TransactionFailure } from "./driver"
 import { createStatement } from "./driver"
 import type { OpenedTestFixture, PendingTestFixture, TestTransactionOptions } from "./testing"
@@ -10,7 +14,7 @@ interface TransactionLevel {
   readonly parent: TransactionLevel | undefined
   /** Number of enclosing levels, which names the savepoint of a nested level. */
   readonly depth: number
-  /** A level accepts statements only while `open`; it is `starting` until its `BEGIN` or `SAVEPOINT` completes. */
+  /** A level accepts statements only while `open`; it is `starting` until its `BEGIN` or `SAVEPOINT` and its settings complete. */
   state: "starting" | "open" | "closing" | "closed"
   /** Active nested level, reserved before its `SAVEPOINT` is sent. */
   child: TransactionLevel | undefined
@@ -20,6 +24,14 @@ interface TransactionLevel {
   cleanup: Promise<Cleanup> | undefined
   /** Why something other than its callback ended the level, which its rejection reports. */
   endedBy: "enclosing level" | "preemption" | "abort" | undefined
+  /** Statement that restores the values that the settings of a nested level replaced, sent before its `RELEASE`. */
+  restore: SqlStatement | undefined
+}
+
+/** Run-time parameter of PostgreSQL that a level sets until it ends, with its value. */
+interface LevelSetting {
+  readonly name: string
+  readonly value: TextValue
 }
 
 /** Error to reject with; a later cleanup error suppresses it instead of replacing it. */
@@ -97,22 +109,23 @@ export class TransactionCoordinator {
   }
 
   /**
-   * Runs `callback` in a transaction that commits when it resolves and rolls back when it rejects.
+   * Runs `callback` in a transaction that commits when it resolves and rolls back when it rejects, with the settings of `options`.
    *
-   * Inside a transaction, it runs `callback` in a savepoint nested in it.
+   * Inside a transaction, it runs `callback` in a savepoint nested in it, which restores the settings it changed when it ends.
    * A failed cleanup after an error rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
    */
-  transaction<T>(callback: () => Promise<T>): Promise<T> {
+  transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T> {
+    const settings = getLevelSettings(options)
     const parent = this.#storage.getStore()
     if (parent) {
-      return this.#runNested(parent, callback, true)
+      return this.#runNested(parent, callback, true, undefined, settings)
     }
     if (this.#closed) {
       return Promise.reject(createDatabaseClosedError("start a transaction"))
     }
     return this.test
       ? Promise.reject(new Error(describeOutsideTest("start a transaction")))
-      : this.#runRoot(callback, true)
+      : this.#runRoot(callback, true, undefined, settings)
   }
 
   /**
@@ -488,6 +501,7 @@ export class TransactionCoordinator {
     callback: () => Promise<T>,
     commits: boolean,
     signal?: AbortSignal,
+    settings?: readonly LevelSetting[],
   ): Promise<T> {
     const connection = await (signal
       ? acquireUnlessAborted(this.driver, signal)
@@ -504,6 +518,13 @@ export class TransactionCoordinator {
       level.state = "closed"
       outcome = { rejection: { error: suppressAbortReason(error, signal) }, failure: { error } }
     }
+    if (!outcome && settings) {
+      try {
+        await applySettings(level, settings)
+      } catch (error) {
+        outcome = await getEndedOutcome(this.#end(level, false), error)
+      }
+    }
     outcome ??= await this.#run(level, callback, commits, signal)
     const rejection = await releaseConnection(connection, outcome.failure, outcome.rejection)
     if (rejection) {
@@ -517,20 +538,31 @@ export class TransactionCoordinator {
     callback: () => Promise<T>,
     commits: boolean,
     signal?: AbortSignal,
+    settings?: readonly LevelSetting[],
   ): Promise<T> {
     const unavailable = createUnavailableError(parent, "start a nested transaction")
     if (unavailable) {
       throw unavailable
     }
-    return this.#runStarted(await this.#startNested(parent, signal), callback, commits, signal)
+    return this.#runStarted(
+      await this.#startNested(parent, signal, settings),
+      callback,
+      commits,
+      signal,
+    )
   }
 
   /**
-   * Reserves a nested level of `parent` and sends its `SAVEPOINT`, rejecting when it fails.
+   * Reserves a nested level of `parent`, sends its `SAVEPOINT`, and applies its `settings`, rejecting when one of them fails.
    *
+   * A level whose settings fail rolls back to its savepoint first.
    * The failure suppresses the reason of `signal` when the signal aborted before it.
    */
-  async #startNested(parent: TransactionLevel, signal?: AbortSignal): Promise<TransactionLevel> {
+  async #startNested(
+    parent: TransactionLevel,
+    signal?: AbortSignal,
+    settings?: readonly LevelSetting[],
+  ): Promise<TransactionLevel> {
     // Reserving the level before SAVEPOINT is sent keeps statements of the parent from running inside it.
     const level = createLevel(parent.connection, parent)
     parent.child = level
@@ -543,6 +575,17 @@ export class TransactionCoordinator {
       }
       // Its enclosing level ended while SAVEPOINT was running and started its cleanup.
       throw suppressAbortReason(combineRejections({ error }, await level.cleanup)!.error, signal)
+    }
+    if (settings) {
+      try {
+        await applySettings(level, settings)
+      } catch (error) {
+        // Its enclosing level may have ended it meanwhile, and then this awaits the cleanup already started.
+        throw suppressAbortReason(
+          combineRejections({ error }, await this.#end(level, false))!.error,
+          signal,
+        )
+      }
     }
     return level
   }
@@ -574,13 +617,13 @@ export class TransactionCoordinator {
     signal?: AbortSignal,
   ): Promise<Outcome<T>> {
     if (level.cleanup) {
-      // Its enclosing level ended while SAVEPOINT was running.
+      // Its enclosing level ended while the level was starting.
       return getEndedOutcome(level.cleanup, createClosedError(level, undefined))
     }
     let result: T | undefined
     let rejection: Rejection | undefined
     if (signal?.aborted) {
-      // Aborted while its BEGIN or SAVEPOINT ran: the level ends without running the callback.
+      // Aborted while the level was starting: it ends without running the callback.
       void this.#end(level, false, "abort")
     } else {
       level.state = "open"
@@ -688,7 +731,59 @@ function createLevel(
     rollbackOnly: undefined,
     cleanup: undefined,
     endedBy: undefined,
+    restore: undefined,
   }
+}
+
+/** Settings of a level of `transaction` with `options`, or `undefined` when it has none. */
+function getLevelSettings(options: TransactionOptions | undefined): LevelSetting[] | undefined {
+  // The value of `search_path` is a list of identifiers, so each schema is quoted, as the PostgreSQL schema of a Db is, which keeps the case of its name and lets it contain commas and quotes.
+  return options?.searchPath
+    ? [{ name: "search_path", value: options.searchPath.map(quoteIdentifier).join(", ") }]
+    : undefined
+}
+
+/**
+ * Applies `settings` to a level whose `BEGIN` or `SAVEPOINT` completed, unless its cleanup has started.
+ *
+ * A nested level first reads the values they replace, which it restores before its `RELEASE`: PostgreSQL keeps a setting of a released savepoint until the transaction ends, while `ROLLBACK TO` restores it itself.
+ */
+async function applySettings(
+  level: TransactionLevel,
+  settings: readonly LevelSetting[],
+): Promise<void> {
+  // Whoever ends a starting level, such as its enclosing level or the abort of a test, queues its rollback behind the running statement, so a later statement would run after the rollback, or on a connection already released.
+  if (level.cleanup) {
+    return
+  }
+  if (level.parent) {
+    // A statement of its own reads the values before they change, since PostgreSQL does not define the order in which it evaluates the expressions of one statement.
+    let text = "SELECT"
+    const names: string[] = []
+    for (const { name } of settings) {
+      names.push(name)
+      text += `${names.length > 1 ? "," : ""} current_setting($${names.length})`
+    }
+    const values = (await level.connection.execute(createStatement(text, names))).rows[0]!
+    level.restore = createSettingStatement(
+      settings.map(({ name }, index) => ({ name, value: values[index]! })),
+    )
+    if (level.cleanup) {
+      return
+    }
+  }
+  await level.connection.execute(createSettingStatement(settings))
+}
+
+/** Creates the statement that sets `settings` until the transaction ends or rolls back to an earlier savepoint, as `SET LOCAL` does. */
+function createSettingStatement(settings: readonly LevelSetting[]): SqlStatement {
+  let text = "SELECT"
+  const parameters: TextValue[] = []
+  for (const { name, value } of settings) {
+    parameters.push(name, value)
+    text += `${parameters.length > 2 ? "," : ""} set_config($${parameters.length - 1}, $${parameters.length}, true)`
+  }
+  return createStatement(text, parameters)
 }
 
 /** Name of the savepoint of a nested level; a level has at most one nested level, so the depth makes it unique. */
@@ -858,12 +953,18 @@ async function endTransaction(connection: Connection, commit: boolean): Promise<
   }
 }
 
-/** Ends the savepoint of a nested level, releasing it on commit and rolling back to it otherwise. */
+/**
+ * Ends the savepoint of a nested level, releasing it on commit and rolling back to it otherwise.
+ *
+ * Before a release, it restores the settings that the level changed; a rollback restores them itself.
+ */
 async function endSavepoint(level: TransactionLevel, commit: boolean): Promise<Cleanup> {
   const name = getSavepointName(level)
   try {
     if (!commit) {
       await level.connection.execute(createStatement(`ROLLBACK TO SAVEPOINT ${name}`))
+    } else if (level.restore) {
+      await level.connection.execute(level.restore)
     }
     await level.connection.execute(createStatement(`RELEASE SAVEPOINT ${name}`))
     return {}

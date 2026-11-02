@@ -602,6 +602,218 @@ describe("TransactionCoordinator", () => {
     })
   })
 
+  describe("settings", () => {
+    const readSetting = "SELECT current_setting($1)"
+    const setSetting = "SELECT set_config($1, $2, true)"
+    const previousSearchPath = '"$user", public'
+
+    /** Response that awaits `respond`, such as of `failOn` or `holdOn`, for every statement, and answers reading a setting with `previousSearchPath`. */
+    function respondWithSetting(respond: (statement: SqlStatement) => unknown = () => {}) {
+      return async (statement: SqlStatement) => {
+        await respond(statement)
+        return statement.text === readSetting ? { rows: [[previousSearchPath]] } : {}
+      }
+    }
+
+    it("sets the quoted search path of a transaction after its BEGIN and calls its callback once the setting completes", async () => {
+      const setting = holdOn(setSetting)
+      const { driver, statements } = createRecordingDriver({ respond: setting.respond })
+      const coordinator = new TransactionCoordinator(driver)
+
+      let called = false
+      const transaction = coordinator.transaction(
+        async () => {
+          called = true
+          await coordinator.execute(createStatement("inside"))
+        },
+        { searchPath: ["tenant_1", 'Ext"ensions'] },
+      )
+      await setting.reached
+      await settleCallbacks()
+      expect(called).toBe(false)
+      setting.resume()
+      await transaction
+
+      expect(statements).toEqual([
+        { connection: 1, text: "BEGIN", parameters: [] },
+        {
+          connection: 1,
+          text: setSetting,
+          parameters: ["search_path", '"tenant_1", "Ext""ensions"'],
+        },
+        { connection: 1, text: "inside", parameters: [] },
+        { connection: 1, text: "COMMIT", parameters: [] },
+      ])
+    })
+
+    it("restores the settings that a nested level replaced before its RELEASE", async () => {
+      const { driver, statements } = createRecordingDriver({ respond: respondWithSetting() })
+      const coordinator = new TransactionCoordinator(driver)
+
+      await coordinator.transaction(() =>
+        coordinator.transaction(run(coordinator, "inside"), { searchPath: ["tenant_1"] }),
+      )
+
+      expect(statements).toMatchObject([
+        { text: "BEGIN" },
+        { text: "SAVEPOINT kern_1" },
+        { text: readSetting, parameters: ["search_path"] },
+        { text: setSetting, parameters: ["search_path", '"tenant_1"'] },
+        { text: "inside" },
+        { text: setSetting, parameters: ["search_path", previousSearchPath] },
+        { text: "RELEASE SAVEPOINT kern_1" },
+        { text: "COMMIT" },
+      ])
+    })
+
+    it("rolls back a nested level without restoring its settings, which the rollback restores", async () => {
+      const { driver, statements } = createRecordingDriver({ respond: respondWithSetting() })
+      const coordinator = new TransactionCoordinator(driver)
+
+      const failure = new Error("failure")
+      await coordinator.transaction(async () => {
+        const nested = coordinator.transaction(() => Promise.reject(failure), {
+          searchPath: ["tenant_1"],
+        })
+        await expect(nested).rejects.toBe(failure)
+      })
+
+      expect(statements.map(({ text }) => text)).toEqual([
+        "BEGIN",
+        "SAVEPOINT kern_1",
+        readSetting,
+        setSetting,
+        "ROLLBACK TO SAVEPOINT kern_1",
+        "RELEASE SAVEPOINT kern_1",
+        "COMMIT",
+      ])
+    })
+
+    it("rejects with failed settings without calling the callback, and rolls back the transaction", async () => {
+      const settingError = new Error("setting")
+      const { driver, statements, releases } = createRecordingDriver({
+        respond: failOn(setSetting, settingError),
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      let called = false
+      const transaction = coordinator.transaction(
+        async () => {
+          called = true
+        },
+        { searchPath: ["tenant_1"] },
+      )
+
+      await expect(transaction).rejects.toBe(settingError)
+      expect(called).toBe(false)
+      expect(statements.map(({ text }) => text)).toEqual(["BEGIN", setSetting, "ROLLBACK"])
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("rejects with failed settings of a nested level without calling its callback, and frees the enclosing transaction", async () => {
+      const settingError = new Error("setting")
+      const { driver, statements } = createRecordingDriver({
+        respond: respondWithSetting(failOn(setSetting, settingError)),
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      let called = false
+      await coordinator.transaction(async () => {
+        const nested = coordinator.transaction(
+          async () => {
+            called = true
+          },
+          { searchPath: ["tenant_1"] },
+        )
+        await expect(nested).rejects.toBe(settingError)
+        await coordinator.execute(createStatement("after"))
+      })
+
+      expect(called).toBe(false)
+      expect(statements.map(({ text }) => text)).toEqual([
+        "BEGIN",
+        "SAVEPOINT kern_1",
+        readSetting,
+        setSetting,
+        "ROLLBACK TO SAVEPOINT kern_1",
+        "RELEASE SAVEPOINT kern_1",
+        "after",
+        "COMMIT",
+      ])
+    })
+
+    it("rolls back the transaction after a nested level fails to restore its settings", async () => {
+      const restoreError = new Error("restore")
+      const { driver, statements } = createRecordingDriver({
+        respond: respondWithSetting(failOn(setSetting, restoreError, 2)),
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      const transaction = coordinator.transaction(async () => {
+        const nested = coordinator.transaction(() => Promise.resolve(), {
+          searchPath: ["tenant_1"],
+        })
+        await expect(nested).rejects.toBe(restoreError)
+        await expect(coordinator.execute(createStatement("after"))).rejects.toThrow(
+          "the transaction can only roll back",
+        )
+      })
+
+      await expect(transaction).rejects.toThrow("a nested transaction failed to end")
+      expect(statements.map(({ text }) => text)).toEqual([
+        "BEGIN",
+        "SAVEPOINT kern_1",
+        readSetting,
+        setSetting,
+        setSetting,
+        "ROLLBACK",
+      ])
+    })
+
+    // Orchid ORM restored a setting still in flight at the rollback of a test transaction after the rollback, which left it on the connection for later tests: https://github.com/romeerez/orchid-orm/pull/813
+    const startStatements = ["SAVEPOINT kern_1", readSetting, setSetting]
+    for (const { step, text } of [
+      { step: "its SAVEPOINT", text: "SAVEPOINT kern_1" },
+      { step: "the reading of its settings", text: readSetting },
+      { step: "its settings", text: setSetting },
+    ]) {
+      it(`rolls back a nested level whose test transaction aborts during ${step}, and sends nothing after the rollback`, async () => {
+        const held = holdOn(text)
+        const { coordinator, statements, releases } = createTestCoordinator({
+          respond: respondWithSetting(held.respond),
+        })
+        const controller = new AbortController()
+
+        let called = false
+        const test = coordinator.testTransaction(
+          () =>
+            coordinator.transaction(
+              async () => {
+                called = true
+              },
+              { searchPath: ["tenant_1"] },
+            ),
+          { signal: controller.signal },
+        )
+        await held.reached
+        controller.abort()
+        held.resume()
+
+        await expect(test).rejects.toBe(controller.signal.reason)
+        await settleCallbacks()
+        expect(called).toBe(false)
+        expect(statements.map(statement => statement.text)).toEqual([
+          "BEGIN",
+          ...startStatements.slice(0, startStatements.indexOf(text) + 1),
+          "ROLLBACK TO SAVEPOINT kern_1",
+          "RELEASE SAVEPOINT kern_1",
+          "ROLLBACK",
+        ])
+        expect(releases).toEqual([{ connection: 1 }])
+      })
+    }
+  })
+
   describe("test fixtures", () => {
     it("runs test transactions in the innermost fixture and keeps its seeded changes until it closes", async () => {
       const { coordinator, statements, releases } = createTestCoordinator()

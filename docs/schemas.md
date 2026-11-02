@@ -75,7 +75,7 @@ To reuse tables in several schemas, such as tenant schemas and a shared applicat
 
 ### PostgreSQL schemas
 
-To query tables in a specific PostgreSQL schema, pass `schemaName`; without it, PostgreSQL finds them through `search_path`:
+To query tables in a specific PostgreSQL schema, pass `schemaName`; without it, PostgreSQL finds them through `search_path`, which you can override for a [transaction](./transactions#search-path):
 
 ```ts
 export const db = database.bind(schema, { schemaName: "app" })

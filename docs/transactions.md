@@ -36,3 +36,21 @@ await db.$transaction(async () => {
   // The enclosing transaction continues.
 })
 ```
+
+## Search path
+
+To run SQL whose unqualified names resolve in a PostgreSQL schema of your choice, such as SQL that creates tables in the schema of a new tenant, pass the schemas as `searchPath`:
+
+```ts
+await db.$transaction(
+  async () => {
+    await db.$script(`
+      CREATE SCHEMA tenant_3;
+      CREATE TABLE form (id uuid PRIMARY KEY, name text NOT NULL);
+    `)
+  },
+  { searchPath: ["tenant_3", "extensions"] },
+)
+```
+
+The search path applies to the queries of the callback, including those of its nested transactions, until the transaction ends; a nested transaction with its own `searchPath` then restores the search path of the enclosing one.
