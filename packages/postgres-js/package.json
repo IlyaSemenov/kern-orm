@@ -1,6 +1,6 @@
 {
   "name": "@kern-orm/postgres-js",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "postgres.js driver for kern-orm",
   "keywords": [
     "driver",
@@ -37,7 +37,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "kern-orm": "^0.0.0"
+    "kern-orm": "^0.1.0"
   },
   "devDependencies": {
     "postgres": "catalog:"

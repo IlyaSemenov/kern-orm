@@ -49,7 +49,7 @@
     },
     "packages/kern-orm": {
       "name": "kern-orm",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
         "postgres": "catalog:",
@@ -58,9 +58,9 @@
     },
     "packages/postgres-js": {
       "name": "@kern-orm/postgres-js",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
-        "kern-orm": "^0.0.0",
+        "kern-orm": "^0.1.0",
       },
       "devDependencies": {
         "postgres": "catalog:",
