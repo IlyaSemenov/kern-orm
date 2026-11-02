@@ -71,7 +71,7 @@
     },
     "packages/postgres-js-v3": {
       "name": "@kern-orm/postgres-js-v3",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "kern-orm": "^0.1.0",
       },

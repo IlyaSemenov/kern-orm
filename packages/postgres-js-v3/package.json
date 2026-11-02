@@ -1,6 +1,6 @@
 {
   "name": "@kern-orm/postgres-js-v3",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "postgres.js 3 driver for kern-orm",
   "keywords": [
     "driver",
