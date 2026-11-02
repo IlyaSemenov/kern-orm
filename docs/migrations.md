@@ -1,6 +1,6 @@
 # Migrations
 
-Write each change of your database, such as a new table or column, as a migration: SQL that makes the change, and SQL that undoes it.
+Write each change of your database, such as a new table or column, as a migration of steps that helpers, such as `createTable`, build together with the SQL that undoes them.
 Call `migrate`, such as when your application starts, to bring the database up to date: it applies the new migrations and remembers which ones it has applied.
 
 Install `@kern-orm/migrations`:
@@ -23,106 +23,31 @@ bun add @kern-orm/migrations
 
 ## Write a migration
 
-Put each migration in its own module and export it with `defineMigration`: `up` applies the change, and `down` undoes it.
+Put each migration in its own module and export its steps with `defineMigration`, building them with helpers:
 
 ```ts [src/migrations/0001_create_form.ts]
-import { defineMigration } from "@kern-orm/migrations"
+import { createIndex, createTable, defineMigration } from "@kern-orm/migrations"
 
-export default defineMigration({
-  up: `
-    CREATE TABLE form (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      name text NOT NULL,
-      published boolean NOT NULL
-    )
-  `,
-  down: "DROP TABLE form",
-})
+export default defineMigration([
+  createTable("form", {
+    id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
+    name: "text NOT NULL",
+    published: "boolean NOT NULL",
+  }),
+  createIndex("form", ["name"]),
+])
 ```
 
+The steps apply in order, and rolling back the migration undoes them in reverse order.
+
 Name each module `<number>_<name>`, such as `0001_create_form.ts`, with a number of its own: the numbers order the migrations.
+[`new`](#create-a-migration) of the command line creates the module with the next number.
 
 Write names without a PostgreSQL schema, such as `form` rather than `app.form`: migrations run with the search path of the schema they apply to, so the same migrations apply to any schema.
 
 Do not import the tables, custom types, or database of your application into a migration: a migration must do the same on every database and in every later version of the application.
 
-### Several steps
-
-To make several changes in one migration, export an array of steps: they apply in order and roll back in reverse order.
-
-```ts
-export default defineMigration([
-  {
-    up: `
-      CREATE TABLE form_field (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        form_id uuid NOT NULL REFERENCES form,
-        label text NOT NULL
-      )
-    `,
-    down: "DROP TABLE form_field",
-  },
-  {
-    up: "CREATE INDEX form_field_form_id ON form_field (form_id)",
-    down: "DROP INDEX form_field_form_id",
-  },
-])
-```
-
-Leave out `down` of a step that cannot be undone, such as a change of data: rolling back skips it.
-
-### Code in a migration
-
-When a step needs code, such as to compute values from existing rows, pass a function instead of SQL.
-It receives the database of the migration, whose `query` and `script` run in the transaction of the migration:
-
-```ts
-import { defineMigration } from "@kern-orm/migrations"
-import * as t from "kern-orm/types"
-
-const toSlug = (name: string) => name.toLowerCase().replaceAll(/\W+/g, "-")
-
-export default defineMigration({
-  up: async database => {
-    await database.script("ALTER TABLE form ADD COLUMN slug text")
-    const forms = await database.query`SELECT id, name FROM form`.select({
-      id: t.uuid,
-      name: t.text,
-    })
-    for (const form of forms) {
-      await database.query`UPDATE form SET slug = ${toSlug(form.name)} WHERE id = ${form.id}`
-    }
-  },
-  down: "ALTER TABLE form DROP COLUMN slug",
-})
-```
-
 ## Helpers
-
-Build the steps of typical changes with helpers, which write `down` for you, and mix them with steps of your own:
-
-```ts
-import {
-  addColumn,
-  changeColumn,
-  createIndex,
-  createTable,
-  defineMigration,
-} from "@kern-orm/migrations"
-
-export default defineMigration([
-  createTable("form_field", {
-    id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
-    form_id: "uuid NOT NULL REFERENCES form ON DELETE CASCADE",
-    position: "integer NOT NULL",
-    label: "text NOT NULL",
-  }),
-  createIndex("form_field", ["form_id", "position"], { unique: true }),
-  addColumn("form", "slug", "text"),
-  { up: "UPDATE form SET slug = id::text" },
-  changeColumn("form", "slug", { notNull: false }, { notNull: true }),
-])
-```
 
 Pass the names of tables, columns, indexes, and constraints without quotes: helpers quote them.
 Pass definitions, conditions, defaults, and the columns of an index as SQL, quoting a name in them where SQL needs it, such as `'"order"'`.
@@ -134,7 +59,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
 - Extensions: `createExtension(name, { schema })`.
 
-To write helpers of your own, see [Custom Migration Helpers](./migration-helpers).
+For a change that no helper covers, write a [step of SQL](#sql-steps), or [a helper of your own](./migration-helpers) to reuse it in several migrations.
 
 ### Change a column
 
@@ -182,7 +107,7 @@ An index of a `PRIMARY KEY` or `UNIQUE` constraint goes with its constraint.
 
 ### Index names
 
-`createIndex` names an index as PostgreSQL names an index without a name, such as `form_field_form_id_position_idx`, and `dropIndex` with the same arguments finds it.
+`createIndex` names an index as PostgreSQL names an index without a name, such as `form_name_idx`, and `dropIndex` with the same arguments finds it.
 Pass `name` for an index of expressions, such as `["lower(email)"]`.
 
 ### Extensions
@@ -195,6 +120,61 @@ createExtension("pg_trgm", { schema: "extensions" })
 ```
 
 It creates the schema too when the database lacks it, and rolling back keeps the schema with the extension.
+
+## SQL steps
+
+For a change that no helper covers, such as filling a new column, write a step of SQL: `up` applies the change, and `down` undoes it.
+Put it among the helpers of a migration:
+
+```ts [src/migrations/0003_add_form_slug.ts]
+import { addColumn, changeColumn, createIndex, defineMigration } from "@kern-orm/migrations"
+
+export default defineMigration([
+  addColumn("form", "slug", "text"),
+  { up: "UPDATE form SET slug = regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g')" },
+  changeColumn("form", "slug", { notNull: false }, { notNull: true }),
+  createIndex("form", ["slug"], { unique: true }),
+])
+```
+
+Leave out `down` of a step that cannot be undone, such as a change of data: rolling back skips it.
+
+A migration of a single step, such as a view, can export the step without an array:
+
+```ts
+export default defineMigration({
+  up: "CREATE VIEW published_form AS SELECT * FROM form WHERE published",
+  down: "DROP VIEW published_form",
+})
+```
+
+### Code in a migration
+
+When a step needs code, such as to compute values from existing rows, pass a function instead of SQL.
+It receives the database of the migration, whose `query` and `script` run in the transaction of the migration:
+
+```ts
+import { addColumn, changeColumn, defineMigration } from "@kern-orm/migrations"
+import * as t from "kern-orm/types"
+
+const toSlug = (name: string) => name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")
+
+export default defineMigration([
+  addColumn("form", "slug", "text"),
+  {
+    up: async database => {
+      const forms = await database.query`SELECT id, name FROM form`.select({
+        id: t.uuid,
+        name: t.text,
+      })
+      for (const form of forms) {
+        await database.query`UPDATE form SET slug = ${toSlug(form.name)} WHERE id = ${form.id}`
+      }
+    },
+  },
+  changeColumn("form", "slug", { notNull: false }, { notNull: true }),
+])
+```
 
 ## List the migrations
 
@@ -375,7 +355,7 @@ For the migrations of another `Db`, such as of the SaaS schema, write a script o
 ### Create a migration
 
 `new` creates the module of the next migration in `directory`, such as `src/migrations/0003_add_form_slug.ts`.
-Its `up` and `down` are empty: fill in `up`, and fill in `down` or leave it out if the change cannot be undone; until then, the migration fails to apply.
+It exports a [step of SQL](#sql-steps) with empty `up` and `down`: replace it with the steps of the migration, such as helpers, or fill in its SQL; until then, the migration fails to apply.
 
 On Node.js and Bun, which lack `import.meta.glob`, pass `listModule`: `new` writes there the [list of the migration modules](#list-the-migrations) of the directory.
 

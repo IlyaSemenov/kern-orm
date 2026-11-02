@@ -27,7 +27,7 @@ features:
   - title: SQL when you need it
     details: Add SQL conditions to queries, or run any SQL statement and get typed rows.
   - title: Migrations
-    details: Apply SQL migrations to any PostgreSQL schema, such as the schema of each tenant.
+    details: Write migrations with helpers or SQL, and apply them to any PostgreSQL schema, such as the schema of each tenant.
 ---
 
 Load forms with their fields in one SQL statement:
