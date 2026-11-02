@@ -34,10 +34,7 @@ An expression over the columns and relations of a table that queries of the tabl
 
 ## Migrations
 
-The rest of `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md#decisions) decides:
-
-- the command line;
-- the verification of histories and migration tests.
+The verification of histories and migration tests of `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md#decisions) decides.
 
 ## Identifiers in SQL templates
 

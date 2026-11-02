@@ -70,6 +70,33 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     expect(keys).toEqual(["0002_create_user"])
   })
 
+  it("applies the first pending migrations of count", async () => {
+    const history = defineTestHistory({
+      "0001_create_form": createForm,
+      "0002_create_user": createUser,
+      "0003_create_tag": createTag,
+    })
+
+    const keys = await testTransaction(async () => [
+      await migrate(db, history, { count: 1 }),
+      await migrate(db, history, { count: 5 }),
+    ])
+
+    expect(keys).toEqual([["0001_create_form"], ["0002_create_user", "0003_create_tag"]])
+  })
+
+  it("rejects a count that is not a positive integer before any statement", async () => {
+    const history = defineTestHistory({ "0001_create_form": createForm })
+
+    const statements = await recordStatements(async () => {
+      await expect(migrate(db, history, { count: 1.5 })).rejects.toThrow(
+        "count must be a positive integer, not 1.5",
+      )
+    })
+
+    expect(statements).toEqual([])
+  })
+
   it("applies nothing to a target that is up to date, with two statements outside a transaction", async () => {
     const history = defineTestHistory({ "0001_create_form": createForm })
 
@@ -202,16 +229,29 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("targets current_schema() of a Database", async () => {
-    const tables = await testTransaction(async () => {
+    const history = defineTestHistory({ "0001_create_form": createForm })
+
+    const result = await testTransaction(async () => {
       await database.script("CREATE SCHEMA migrations_current")
-      await database.transaction(
-        () => migrate(database, defineTestHistory({ "0001_create_form": createForm })),
+      const status = await database.transaction(
+        async () => {
+          await migrate(database, history)
+          return await getMigrationStatus(database, history)
+        },
         { searchPath: ["migrations_current"] },
       )
-      return await listTables(database, "migrations_current")
+      return { status, tables: await listTables(database, "migrations_current") }
     })
 
-    expect(tables).toEqual(["form", "kern_migration"])
+    expect(result).toEqual({
+      status: {
+        schemaName: "migrations_current",
+        applied: ["0001_create_form"],
+        pending: [],
+        unknown: [],
+      },
+      tables: ["form", "kern_migration"],
+    })
   })
 
   it("targets the schema of the schemaName option of a Database", async () => {
@@ -229,7 +269,12 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     expect(result).toEqual({
       migrated: ["0001_create_form"],
       tables: ["form", "kern_migration"],
-      status: { applied: ["0001_create_form"], pending: [], unknown: [] },
+      status: {
+        schemaName: "migrations_tenant",
+        applied: ["0001_create_form"],
+        pending: [],
+        unknown: [],
+      },
       rolledBack: ["0001_create_form"],
       tablesAfterRollback: ["kern_migration"],
     })
@@ -262,7 +307,12 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       return await getMigrationStatus(db, history)
     })
 
-    expect(status).toEqual({ applied: [], pending: ["0001_create_form"], unknown: [] })
+    expect(status).toEqual({
+      schemaName: "migrations_tenant",
+      applied: [],
+      pending: ["0001_create_form"],
+      unknown: [],
+    })
   })
 
   it("rolls back every migration of the call when a step fails, and rejects with a MigrationError of its key and step", async () => {
@@ -334,6 +384,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       expect(result).toEqual({
         keys: [],
         status: {
+          schemaName: "migrations_tenant",
           applied: ["0001_create_form", "0002_create_user"],
           pending: [],
           unknown: ["0003_create_tag"],
@@ -403,7 +454,12 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
       expect(result).toEqual({
         keys: ["0002_create_user"],
-        status: { applied: ["0001_create_form"], pending: ["0002_create_user"], unknown: [] },
+        status: {
+          schemaName: "migrations_tenant",
+          applied: ["0001_create_form"],
+          pending: ["0002_create_user"],
+          unknown: [],
+        },
       })
       expect(changes).toEqual(["0002:down:3", "0002:down:1"])
     })
@@ -504,7 +560,12 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
       expect(result).toEqual({
         keys: ["0001_create_form", "0002_create_user"],
-        status: { applied: ["0001_create_form", "0002_create_user"], pending: [], unknown: [] },
+        status: {
+          schemaName: "migrations_tenant",
+          applied: ["0001_create_form", "0002_create_user"],
+          pending: [],
+          unknown: [],
+        },
       })
       expect(changes).toEqual([
         "0002:down:3",
@@ -534,7 +595,12 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
       expect(result).toEqual({
         error: 'Migration 0001_create_form failed in up of step 1: relation "form" already exists',
-        status: { applied: ["0001_create_form"], pending: [], unknown: [] },
+        status: {
+          schemaName: "migrations_tenant",
+          applied: ["0001_create_form"],
+          pending: [],
+          unknown: [],
+        },
         forms: [{ id: 1 }],
       })
     })

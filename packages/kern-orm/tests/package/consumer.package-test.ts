@@ -67,6 +67,8 @@ beforeAll(async () => {
         strict: true,
         declaration: true,
         emitDeclarationOnly: true,
+        // The script of the command line imports the list module of its migrations by its file name, as Node.js requires.
+        allowImportingTsExtensions: true,
         outDir: "declarations",
         types: ["node"],
       },
@@ -207,6 +209,33 @@ describe.each(["node", "bun"])("%s", runtime => {
         message:
           "Migration 0002_drop_form must export a step or a non-empty array of steps as its default export",
       },
+    })
+  })
+
+  test("runs the command line of the migrator from a script whose migrations come from the list that new writes", async () => {
+    // Each runtime starts from the empty list of the fixtures, as a project creates it before its first migration.
+    await rm(join(consumer, "cli-migrations"), { recursive: true, force: true })
+    await cp(join(import.meta.dir, "fixtures/cli-migrations"), join(consumer, "cli-migrations"), {
+      recursive: true,
+    })
+    const runCli = (...args: string[]) => run([runtime, "migrations-cli.ts", ...args], consumer)
+
+    expect(runCli("new", "create_form")).toBe(
+      `Created cli-migrations/0001_create_form.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({ keys: [], loadErrors: [] })}\n`,
+    )
+    expect(runCli("new", "create_user")).toBe(
+      `Created cli-migrations/0002_create_user.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({
+        keys: ["0001_create_form"],
+        // The template of a new migration fails to load until its blank up and down are filled in.
+        loadErrors: [
+          "Step 1 of migration 0001_create_form requires up as a non-blank SQL script or a function",
+        ],
+      })}\n`,
+    )
+    const unknown = Bun.spawnSync({ cmd: [runtime, "migrations-cli.ts", "unknown"], cwd: consumer })
+    expect({ exitCode: unknown.exitCode, stderr: unknown.stderr.toString() }).toEqual({
+      exitCode: 1,
+      stderr: "Unknown command unknown\nRun with --help to list the commands.\n",
     })
   })
 

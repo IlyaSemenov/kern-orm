@@ -6,6 +6,7 @@
   The migrator imports only types from `kern-orm`.
 - The migrator runs everything through the `Database` of its target: transactions with `transaction`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
 - The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
+  The entry point `@kern-orm/migrations/cli` holds the [command line](#command-line), which imports `node:*` modules.
 
 ## Migrations
 
@@ -14,6 +15,7 @@
   A module that does not export a migration rejects when it loads, rather than being recorded as applied.
   - rake-db 2.37.48 collects the steps of `change()` in the state of its module, so a migration that calls `change` of another copy of rake-db registers nothing, and migrating records it as applied ([orchid-orm#765](https://github.com/romeerez/orchid-orm/issues/765)).
 - A step has `up` and an optional `down`, each a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects when the migration loads instead of doing nothing on rollback.
+  Blank SQL text, such as of the template of `new`, rejects too, so that a migration left blank is never recorded as applied.
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
 - The database of a migration is `Pick<Database, "query" | "script">` of the target: its statements run in the transaction of the migration, and its unqualified names resolve in the target schema through the search path.
@@ -44,7 +46,7 @@
 - Every call first resolves the target schema and checks that it and its table of versions exist, then reads the table only when it exists, since a statement on a missing table would fail and abort an enclosing transaction.
   It checks them with a query of `pg_catalog` rather than with `to_regclass` and `to_regnamespace`, whose lookups in the catalog cache of the connection miss a schema that another transaction committed while this one waited for the lock of the target.
   It rejects a target schema or a table of versions whose name is longer than `max_identifier_length` bytes before changing anything, since PostgreSQL truncates such a name, and the check would miss what the migrator created under it.
-- `migrate` applies the pending migrations of a target in one transaction and resolves to their keys.
+- `migrate` applies the pending migrations of a target, or the first `count` of them, in one transaction and resolves to their keys.
   Inside a transaction, such as one that creates a tenant with its schema, or a test fixture, it runs as a nested level, so that its changes commit or roll back with the enclosing transaction.
 - `migrate` returns after the first read when nothing is pending, so that migrating a tenant that is up to date at the first access of each process costs two statements outside a transaction.
   Otherwise, it locks the target with `pg_advisory_xact_lock` of `hashtextextended` of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
@@ -58,7 +60,7 @@
 - `rollback` undoes the last applied migrations of a target, one by default, a given number of them, or all, and `redo` undoes and applies them again, each in one transaction that locks the target.
   They resolve to the keys in the order they undo and apply them, and to none without a transaction when the target has no table of versions.
   They reject when the target has applied keys that the history lacks, since they cannot run the `down` of a migration they do not have.
-- `getMigrationStatus` lists the applied and the pending keys of a target, and its applied keys that the history lacks, as `unknown`.
+- `getMigrationStatus` gives the PostgreSQL schema that it resolved, the applied and the pending keys of the target, and its applied keys that the history lacks, as `unknown`.
 - An error of a migration is a `MigrationError` that names its key, and its step and direction for an error of a step, and keeps the original error in `cause`.
   Its message includes the message of the original error, since not every log shows `cause`.
 
@@ -99,17 +101,36 @@
   - The body of the block is quoted with a dollar tag that the names do not contain.
   - Without `schema`, the extension goes to the target schema; a history of tenants must pass a schema of its own and list it in its `searchPath`.
 
+## Command line
+
+- `runMigrationCli(target, history, options)` runs the command of the arguments of the process, or of `args`, on a target: `migrate [count]`, `rollback [count | all]`, `redo [count]`, `status`, and `new <name>`, named as the functions they call.
+- It is a function that a script of the project calls, so that the project runs it with its own runtime and module resolution, such as path aliases, rather than a binary that loads the configuration of the project.
+  A project adds commands of its own by handling its arguments before the call and passing the rest in `args`.
+- It does not close the database: the script that created the database owns it.
+  It never rejects: it prints an error to stderr and sets `process.exitCode` to 1, so that the script closes the database after it.
+  - A usage error prints its message with a hint to `--help`; arguments without a command print the usage to stderr.
+  - An error of a command prints whole with `console.error`, with its stack, `cause`, and the fields of a PostgreSQL error, such as `detail`.
+- `--schema` sets the PostgreSQL schema of the target.
+  Otherwise, the command line reads `$schemaName` of a `Db` once, before the command, and passes the call the `Database` of the target with that `schemaName`, so that the call does not read it again.
+  When the function of the schema throws, such as of the current tenant, which a command line has no context for, the error names `--schema`.
+- `new <name>` creates the module of the next migration in `directory`, and never overwrites a file.
+  - `<name>` has only letters, digits, `_`, and `-`, so that it makes a key, a file name on every file system, and an import specifier.
+  - Its number follows the greatest number of the keys of the history and of the migration modules of the directory, with as many digits as the key of that number.
+  - The migration modules of a directory are its files of `.ts`, `.mts`, `.js`, or `.mjs` whose name without the extension is a key, so that `index.ts` and migration tests `<key>.migration-test.ts` are not; two modules of one number are an error.
+  - The default template has blank `up` and `down`, which fail to load until they are filled in.
+- With `listModule`, `new` also writes a module whose default export is the loaders of the migration modules of the directory by key, for `defineMigrations` on runtimes without `import.meta.glob`, such as Node.js and Bun.
+  - Its import specifiers are relative to the list module, which may be inside the directory or outside it.
+    They keep the extensions of the module files, which Node.js requires, unless `extensions` is `false`, for projects that import without extensions through a bundler.
+  - A specifier with `#`, `?`, or `%` is an error rather than escaped: Node.js reads a specifier as a URL, and Bun and bundlers read it as a path.
+  - `new` writes only a list module that starts with its header line, whatever its line endings, so that it never overwrites a module written by hand; a project creates the list with that line before its first migration, since its script imports the list, and adds the line to a list written by hand to let `new` write it.
+  - The list module must not be named as a migration, whose module it would replace.
+  - The list module and the migration modules must be on the same Windows drive, since a module on another drive has no relative specifier.
+  - `new` checks the list module and builds its text before it creates the migration, so that these errors write nothing.
+    It writes the list from the modules of the directory listed again after it creates the migration, so that the list keeps a migration that another `new` has created meanwhile, and two migrations of one number fail.
+
 ## Decisions
 
 These hold for features that are not implemented yet.
-
-### Command line
-
-- The entry point `@kern-orm/migrations/cli` holds the command line.
-- `runMigrationCli(target, history, options)` runs the command of the arguments of the process on a target: `status`, `up [count]`, `down [count | all]`, `redo [count]`, and `new <name>`, which creates the module of the next migration in the directory of the options.
-- `--schema` sets the PostgreSQL schema of the target; a `Db` whose PostgreSQL schema is a function, such as of the current tenant, requires it, since a command line has no context for the function.
-- It is a function that a script of the project calls, so that the project runs it with its own runtime and module resolution, such as path aliases, rather than a binary that loads the configuration of the project.
-- It does not close the database: the script that created the database owns it.
 
 ### Verification
 
@@ -137,7 +158,6 @@ These hold for features that are not implemented yet.
 ## Open questions
 
 - Migrations outside a transaction, such as `CREATE INDEX CONCURRENTLY`, which PostgreSQL rejects in a transaction block.
-- Listing migrations without `import.meta.glob`, which Bun and bundlers such as Rollup lack: whether the command line writes the module of the loaders of a directory, so that users do not list migrations by hand.
 - A command for every schema of a target whose PostgreSQL schema is a function, such as all tenants, from a list of schemas that the project gives.
 - Recurrent SQL, such as functions and views that rake-db creates again after every migration ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations)).
 - Helpers of enums: PostgreSQL cannot drop a value of an enum, so undoing an added value creates the type again with the columns that use it.

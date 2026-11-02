@@ -19,6 +19,12 @@ import {
   readVersions,
 } from "./target"
 
+/** Options of `migrate`. */
+export interface MigrateOptions extends MigrationTargetOptions {
+  /** Number of the first pending migrations to apply; all by default. */
+  count?: number
+}
+
 /** Options of `rollback`. */
 export interface RollbackOptions extends MigrationTargetOptions {
   /** Number of the last applied migrations to roll back, or `"all"`; one by default. */
@@ -33,6 +39,8 @@ export interface RedoOptions extends MigrationTargetOptions {
 
 /** Migrations of a history as a target has applied them. */
 export interface MigrationStatus {
+  /** PostgreSQL schema of the target that the call resolved, such as `current_schema()` of a `Database`. */
+  readonly schemaName: string
   /** Keys of the applied migrations of the history, in order. */
   readonly applied: readonly string[]
   /** Keys of the migrations of the history that the target has not applied, in order. */
@@ -42,7 +50,7 @@ export interface MigrationStatus {
 }
 
 /**
- * Applies the pending migrations of `history` to `target` in one transaction and resolves to their keys.
+ * Applies the pending migrations of `history` to `target` in one transaction, or the first `count` of them, and resolves to their keys.
  *
  * Inside a transaction, it runs in a nested transaction, so that the migrations commit or roll back with the enclosing one.
  * A target that is up to date costs two statements outside a transaction; otherwise, it locks the target, so that processes that migrate it at once apply each migration once.
@@ -51,15 +59,17 @@ export interface MigrationStatus {
 export async function migrate(
   target: MigrationTarget,
   history: MigrationHistory,
-  options: MigrationTargetOptions = {},
+  options: MigrateOptions = {},
 ): Promise<string[]> {
+  const count =
+    options.count === undefined ? Number.POSITIVE_INFINITY : getCount(options.count, false)
   const opened = await openTarget(target, history, options)
   if (getPendingKeys(history, opened.target, opened.versions).length === 0) {
     return []
   }
   return await runLocked(opened.target, async () => {
     const versions = await readVersions(opened.target)
-    const pending = getPendingKeys(history, opened.target, versions)
+    const pending = getPendingKeys(history, opened.target, versions).slice(0, count)
     const migrations = await loadMigrations(history, pending)
     await createVersionsTable(opened.target, versions)
     for (const { key, steps } of migrations) {
@@ -138,10 +148,12 @@ export async function getMigrationStatus(
   history: MigrationHistory,
   options: MigrationTargetOptions = {},
 ): Promise<MigrationStatus> {
-  const { versions } = await openTarget(target, history, options)
+  const opened = await openTarget(target, history, options)
+  const { versions } = opened
   const known = new Set(history.keys)
   const applied = new Set(versions.applied)
   return {
+    schemaName: opened.target.schemaName,
     applied: versions.applied.filter(key => known.has(key)),
     pending: history.keys.filter(key => !applied.has(key)),
     unknown: versions.applied.filter(key => !known.has(key)),

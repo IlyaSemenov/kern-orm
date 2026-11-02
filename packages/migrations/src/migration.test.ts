@@ -41,11 +41,25 @@ describe("toMigrationSteps", () => {
 
   it.each([
     ["is not an object with up and an optional down", null],
-    ["requires up as a SQL script or a function", { down: "SELECT 1" }],
-    ["requires down as a SQL script or a function, or no down", { up: "SELECT 1", down: 1 }],
+    ["requires up as a non-blank SQL script or a function", { down: "SELECT 1" }],
+    [
+      "requires down as a non-blank SQL script or a function, or no down",
+      { up: "SELECT 1", down: 1 },
+    ],
   ])("rejects a step that %s", (problem, step) => {
     expect(() => toMigrationSteps("0001_form", [step])).toThrow(
       `Step 1 of migration 0001_form ${problem}`,
+    )
+  })
+
+  it("rejects blank SQL text of up and down, such as of the template of a new migration", () => {
+    expect(() => toMigrationSteps("0001_form", { up: " \n ", down: "DROP TABLE form" })).toThrow(
+      "Step 1 of migration 0001_form requires up as a non-blank SQL script or a function",
+    )
+    expect(() =>
+      toMigrationSteps("0001_form", { up: "CREATE TABLE form (id integer)", down: "" }),
+    ).toThrow(
+      "Step 1 of migration 0001_form requires down as a non-blank SQL script or a function, or no down",
     )
   })
 })

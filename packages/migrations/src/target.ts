@@ -17,6 +17,11 @@ export interface MigrationTargetDb {
   readonly $schemaName: string | undefined
 }
 
+/** Checks whether `target` is a `Db` rather than a `Database`. */
+export function isMigrationTargetDb(target: MigrationTarget): target is MigrationTargetDb {
+  return "$database" in target
+}
+
 /** Options of a call on a target. */
 export interface MigrationTargetOptions {
   /** PostgreSQL schema of the target instead of that of its `Db`, such as the schema of a tenant that is being created. */
@@ -52,9 +57,10 @@ export async function openTarget(
   history: MigrationHistory,
   options: MigrationTargetOptions,
 ): Promise<{ target: ResolvedTarget; versions: TargetVersions }> {
-  const database = "$database" in target ? target.$database : target
+  const isDb = isMigrationTargetDb(target)
+  const database = isDb ? target.$database : target
   // The function of `schemaName` of a Db is called once, so that the call keeps one schema.
-  const schemaName = options.schemaName ?? ("$database" in target ? target.$schemaName : undefined)
+  const schemaName = options.schemaName ?? (isDb ? target.$schemaName : undefined)
   const state = await readState(database, schemaName ?? null, history.tableName)
   const resolved: ResolvedTarget = {
     database,

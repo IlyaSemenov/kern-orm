@@ -74,14 +74,15 @@ export function findStepProblem(value: unknown): string | undefined {
   }
   const { up, down } = value as Record<string, unknown>
   if (!isChange(up)) {
-    return "requires up as a SQL script or a function"
+    return "requires up as a non-blank SQL script or a function"
   }
   if (down !== undefined && !isChange(down)) {
-    return "requires down as a SQL script or a function, or no down"
+    return "requires down as a non-blank SQL script or a function, or no down"
   }
   return undefined
 }
 
+/** Checks that `value` is a change; blank SQL text is not one, so that a step left blank, such as of the template of a new migration, is never recorded as applied. */
 function isChange(value: unknown): value is MigrationChange {
-  return typeof value === "string" || typeof value === "function"
+  return typeof value === "string" ? value.trim() !== "" : typeof value === "function"
 }

@@ -207,7 +207,17 @@ import { defineMigrations } from "@kern-orm/migrations"
 export const migrations = defineMigrations(import.meta.glob("./migrations/*.ts"))
 ```
 
-On Node.js and Bun, which lack `import.meta.glob`, list the modules by name:
+On Node.js and Bun, which lack `import.meta.glob`, let [`new`](#create-a-migration) of the command line write the list of the modules, and pass it to `defineMigrations`:
+
+```ts [src/migrations.ts]
+import { defineMigrations } from "@kern-orm/migrations"
+
+import list from "./migrations/index.ts"
+
+export const migrations = defineMigrations(list)
+```
+
+Or list the modules by name:
 
 ```ts [src/migrations.ts]
 import { defineMigrations } from "@kern-orm/migrations"
@@ -241,6 +251,7 @@ await migrate(db, migrations)
 ```
 
 It applies the pending migrations to the PostgreSQL schema of the `Db` in one transaction, and resolves to their names.
+Pass `count` to apply only the first pending migrations, such as `{ count: 2 }` for the first two.
 It creates the schema and its table of migrations when they are missing.
 Instances of the application that migrate one schema at once, such as when they start together, apply each migration once.
 
@@ -314,3 +325,72 @@ const { applied, pending, unknown } = await getMigrationStatus(db, migrations)
 ```
 
 `unknown` lists the applied migrations that `migrations` lack, such as those of a newer version of the application.
+
+## Command line
+
+To apply, roll back, and create migrations from your terminal, write a script that runs the command line on your `Db` with your migrations:
+
+```ts [src/migrations-cli.ts]
+import { runMigrationCli } from "@kern-orm/migrations/cli"
+
+import { db } from "./db.ts"
+import { migrations } from "./migrations.ts"
+
+await runMigrationCli(db, migrations, {
+  directory: new URL("./migrations/", import.meta.url),
+})
+await db.$database.close()
+```
+
+Add it to the scripts of `package.json`, such as `"db": "node src/migrations-cli.ts"`, and run its commands:
+
+```sh
+npm run db migrate
+npm run db rollback
+npm run db status
+npm run db new add_form_slug
+```
+
+- `migrate` applies the pending migrations; `migrate 2` applies the first two of them.
+- `rollback` rolls back the last applied migration; `rollback 2` rolls back the last two, and `rollback all` every migration.
+- `redo` rolls back the last applied migration and applies it again; `redo 2` does it for the last two.
+- `status` lists the applied and the pending migrations.
+- `new <name>` creates the module of the next migration.
+
+When a command fails, `runMigrationCli` prints the error and sets the exit code of the process to 1 instead of rejecting, so the script closes the database after it in any case.
+
+With a [PostgreSQL schema per tenant](./multiple-schemas), pass the schema of the tenant with `--schema`, since the command line has no current tenant:
+
+```sh
+npm run db -- migrate --schema tenant_acme
+```
+
+For the migrations of another `Db`, such as of the SaaS schema, write a script of its own.
+
+### Create a migration
+
+`new` creates the module of the next migration in `directory`, such as `src/migrations/0003_add_form_slug.ts`.
+Its `up` and `down` are empty: fill in `up`, and fill in `down` or leave it out if the change cannot be undone; until then, the migration fails to apply.
+
+On Node.js and Bun, which lack `import.meta.glob`, pass `listModule`: `new` writes there the [list of the migration modules](#list-the-migrations) of the directory.
+
+```ts
+await runMigrationCli(db, migrations, {
+  directory: new URL("./migrations/", import.meta.url),
+  listModule: new URL("./migrations/index.ts", import.meta.url),
+})
+```
+
+Create the list once, before your first migration, with the line by which `new` recognizes a list that it writes:
+
+```ts [src/migrations/index.ts]
+// Written by the new command of @kern-orm/migrations
+export default {}
+```
+
+To let `new` write a list that you have written by hand, add that line at its top.
+
+The list imports each module by its file name, such as `./0001_create_form.ts`.
+To import the modules without the extension, as a bundler resolves them, pass `listModule: { path, extensions: false }`.
+
+To create migrations from a template of your own, such as one that imports your helpers, pass `template`, which takes the name of the module, such as `0003_add_form_slug`, and returns its text.
