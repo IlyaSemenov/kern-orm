@@ -47,8 +47,6 @@ Column keys must not start with `$` either, which keeps such names free for memb
 
 - Table identity: a query is tied to a table by object identity, so it cannot run against a table variant such as one with a different physical name.
   This covers tables shared between schemas that differ only in PostgreSQL schema and relations; variants would need a separate table binding concept.
-- Schema views: restricted views of schemas for shared business logic are not designed yet.
 - Type schemas: an unqualified type name in a cast resolves through `search_path` rather than the PostgreSQL schema of a `Db`, so `param` with such a type, such as an enum in the schema of each tenant, fails outside `search_path`.
   A type can name a fixed schema, but cannot follow the PostgreSQL schema of a `Db`.
 - Long names: PostgreSQL truncates a table or column name of more than 63 bytes, with a notice on every statement, so two names that share their first 63 bytes name one table or column; whether `defineTable` rejects such a name, whose length in bytes depends on the server encoding.
-- Singleton tables: what guarantees that a table holds at most one row, and whether that guarantee lets its mutations go without a restriction or `all()`, which [mutations](mutations.md#rows-to-change) otherwise require.

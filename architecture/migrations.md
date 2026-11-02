@@ -128,27 +128,6 @@
   - `new` checks the list module and builds its text before it creates the migration, so that these errors write nothing.
     It writes the list from the modules of the directory listed again after it creates the migration, so that the list keeps a migration that another `new` has created meanwhile, and two migrations of one number fail.
 
-## Decisions
-
-These hold for features that are not implemented yet.
-
-### Verification
-
-- The entry point `@kern-orm/migrations/testing` holds the verification of histories and migration tests.
-- `verifyMigrations(target, history, options)` applies the whole history to a temporary schema, one migration at a time, in a transaction that always rolls back, nested in the enclosing one, such as a test transaction.
-- For each migration, it applies `up` to the clean schema, and then, in a nested level that rolls back to keep the clean schema for the next migration, `down`, the migration tests of the migration, and `up` again.
-- After `down`, the structure of the schema must be the same as before `up`, and after `up` again, the same as after the first `up`.
-  The structure covers tables, columns, constraints, indexes, types, functions, and triggers, as `pg_catalog` describes them; it ignores the order of columns, since PostgreSQL cannot add a column at a position.
-  Applying, rolling back, and applying again misses a `down` that leaves a change that `up` makes again without an error, such as `SET NOT NULL`, `SET DEFAULT`, or `CREATE INDEX IF NOT EXISTS`; comparing the structure catches it.
-  The comparison skips the objects of extensions, which `createExtension` keeps on rollback.
-- A migration test checks how a migration changes existing data: `defineMigrationTest(name, { setup, assertUp, assertDown })` runs `setup` on the schema before the migration, then `up`, `assertUp`, `down`, `assertDown`, and `up` again.
-  A test with `assertUpError`, instead of `assertUp` and `assertDown`, requires `up` to fail and checks its error.
-  - Each test runs in its own nested level that rolls back, so tests do not affect each other or the history.
-  - Its callbacks take the database of the migration, so that their SQL names tables without a schema, unlike the scenarios of [rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing), which name them with `schemaRef`.
-- The migration tests of a migration are the default exports, a test or an array of tests, of the files `<key>.migration-test.ts` and `<key>.<name>.migration-test.ts` beside it.
-  `verifyMigrations` finds them in a directory or takes them as `import.meta.glob` returns them, and fails on a file of migration tests that matches no migration.
-- An error names the migration, the migration test, and the step, and keeps the original error in `cause`.
-
 ## Not added
 
 - Generating migrations from tables, as [`db g`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/generate-migrations.md) of Orchid ORM 1.78.47 does, and generating tables from the database, as [`db pull`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-commands.md#pull) does: tables of kern-orm state what the database guarantees rather than describe its DDL.
@@ -157,10 +136,4 @@ These hold for features that are not implemented yet.
 
 ## Open questions
 
-- Migrations outside a transaction, such as `CREATE INDEX CONCURRENTLY`, which PostgreSQL rejects in a transaction block.
-- A command for every schema of a target whose PostgreSQL schema is a function, such as all tenants, from a list of schemas that the project gives.
-- Recurrent SQL, such as functions and views that rake-db creates again after every migration ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations)).
-- Helpers of enums: PostgreSQL cannot drop a value of an enum, so undoing an added value creates the type again with the columns that use it.
 - Isolation: reading the versions again after the lock sees the commit of another process only under `READ COMMITTED`, so decide what `migrate` does in a transaction of a stricter isolation level, which kern-orm does not start yet.
-- Moving from rake-db: whether the migrator imports the applied versions of a rake-db table, of `version` and `name`, once, or projects convert them, and how a history whose earlier migrations a baseline of the schema replaces marks the baseline applied on existing targets.
-- Checking tables against the database instead of generating migrations: a check, such as in tests after migrating, that each table of a schema exists with its columns and their nullability, that a constraint or a unique index backs each of its keys, and that a foreign key backs each required relation `one`.

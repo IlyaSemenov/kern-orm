@@ -7,9 +7,9 @@ Fully typed relational query builder for PostgreSQL with ambient transactions an
 Read [README.md](README.md) completely before changing the public API, package behavior, supported runtimes, or user documentation.
 
 Before changing a module, read [architecture/README.md](architecture/README.md) and the files that its map lists for the module, and keep them in sync with the code.
-Record a contract in the file of its topic, a decision on a feature not implemented yet in its Decisions, and unresolved design in its Open questions; list a new file in the map.
+Keep [architecture/](architecture/README.md) to the code as it is: record a contract in the file of its topic and unresolved design of the code in its Open questions; list a new file in the map.
 
-Track work not done yet in [BACKLOG.md](BACKLOG.md), roughly from the most important.
+Track work not done yet in [BACKLOG.md](BACKLOG.md), with its preliminary decisions and open questions, roughly from the most important.
 Add each item as a section without a number where its importance roughly fits, and delete it once it is done, moving its lasting contracts to [architecture/](architecture/README.md).
 The order is a loose hint: do not reorder other items to place a new one exactly.
 

@@ -195,17 +195,3 @@ Queries come in two kinds that share the query methods and differ only by execut
 - A helper checks the query it is applied to by the constraint of its state rather than by a conditional type: TypeScript defers a conditional type of a generic state and accepts a query for it only when the query fits both branches, one of which is the error.
   So a function generic over the state applies every helper that the constraint of its state allows: one that selects fields or ends with `nullable` when the constraint has `value: false`, and one that reads relations when the constraint has a schema context with them.
   The constraint of `value` is `false` or the error that names what the helper cannot do, so that the error of a query of values names it; for a missing relation, TypeScript names the relation itself.
-
-## Decisions
-
-These hold for features that are not implemented yet.
-
-- Scope predicates are never operands of a user `OR` ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
-- A scope that may exclude records ends the guarantee of the row as a filter does, so a query of a required relation to a table with such a scope starts with rows `nullable`.
-- Entry points of singleton tables start queries of one row, so `optional`, `nullable`, and `required` apply to them.
-
-## Open questions
-
-- `where` predicates with joins: which source objects of column values resolve against, whether they can address joined tables, and how a callback receives the columns of joined tables.
-  `SelectQuery` is typed by a single table and will need the shape of all query sources.
-  A column of a source joined with `LEFT JOIN` is `NULL` without a match whatever its type, so its result type needs the nullability of the join.

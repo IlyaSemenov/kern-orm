@@ -34,7 +34,33 @@ An expression over the columns and relations of a table that queries of the tabl
 
 ## Migrations
 
-The verification of histories and migration tests of `@kern-orm/migrations`, as [architecture/migrations.md](architecture/migrations.md#decisions) decides.
+The verification of histories and migration tests of `@kern-orm/migrations`:
+
+- The entry point `@kern-orm/migrations/testing` holds the verification of histories and migration tests.
+- `verifyMigrations(target, history, options)` applies the whole history to a temporary schema, one migration at a time, in a transaction that always rolls back, nested in the enclosing one, such as a test transaction.
+- For each migration, it applies `up` to the clean schema, and then, in a nested level that rolls back to keep the clean schema for the next migration, `down`, the migration tests of the migration, and `up` again.
+- After `down`, the structure of the schema must be the same as before `up`, and after `up` again, the same as after the first `up`.
+  The structure covers tables, columns, constraints, indexes, types, functions, and triggers, as `pg_catalog` describes them; it ignores the order of columns, since PostgreSQL cannot add a column at a position.
+  Applying, rolling back, and applying again misses a `down` that leaves a change that `up` makes again without an error, such as `SET NOT NULL`, `SET DEFAULT`, or `CREATE INDEX IF NOT EXISTS`; comparing the structure catches it.
+  The comparison skips the objects of extensions, which `createExtension` keeps on rollback.
+- A migration test checks how a migration changes existing data: `defineMigrationTest(name, { setup, assertUp, assertDown })` runs `setup` on the schema before the migration, then `up`, `assertUp`, `down`, `assertDown`, and `up` again.
+  A test with `assertUpError`, instead of `assertUp` and `assertDown`, requires `up` to fail and checks its error.
+  - Each test runs in its own nested level that rolls back, so tests do not affect each other or the history.
+  - Its callbacks take the database of the migration, so that their SQL names tables without a schema, unlike the scenarios of [rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing), which name them with `schemaRef`.
+- The migration tests of a migration are the default exports, a test or an array of tests, of the files `<key>.migration-test.ts` and `<key>.<name>.migration-test.ts` beside it.
+  `verifyMigrations` finds them in a directory or takes them as `import.meta.glob` returns them, and fails on a file of migration tests that matches no migration.
+- An error names the migration, the migration test, and the step, and keeps the original error in `cause`.
+
+## Moving from rake-db
+
+Moving a project from rake-db to `@kern-orm/migrations`:
+
+- Decide whether the migrator imports the applied versions of a rake-db table, of `version` and `name`, once, or projects convert them.
+- Decide how a history whose earlier migrations a baseline of the schema replaces marks the baseline applied on existing targets.
+
+## Migrations outside a transaction
+
+Migrations that PostgreSQL rejects in a transaction block, such as of `CREATE INDEX CONCURRENTLY`, while `@kern-orm/migrations` applies the pending migrations of a target in one transaction.
 
 ## Identifiers in SQL templates
 
@@ -113,9 +139,10 @@ Column names derived from their keys in snake case, such as `form_id` of `formId
 
 ## Scopes and soft delete
 
-Predicates that a table applies to its queries, such as excluding soft-deleted records, kept as the `scope` filters of a query, as the [decisions on queries](architecture/queries.md#decisions) state, like `scopes` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/scopes.md)).
-Test that a scope predicate is never an operand of a user `OR` ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
+Predicates that a table applies to its queries, such as excluding soft-deleted records, kept as the `scope` filters of a query, like `scopes` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/scopes.md)).
 
+- Scope predicates are never operands of a user `OR`; test it ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
+- A scope that may exclude records ends the guarantee of the row as a filter does, so a query of a required relation to a table with such a scope starts with rows `nullable`.
 - A scope applies to every query of its table, including queries of relations to it, nested queries, and queries of expressions, unless a query leaves it out by name, as `unscope` of Orchid ORM, such as to list deleted records.
 - Decide whether a table or a schema declares scopes, as a schema declares relations.
 - Soft delete builds on a scope: `delete` of a table with soft delete sets its column, such as `deletedAt` to `now()`, instead of deleting the rows, and a hard delete deletes them, as `softDelete`, `includeDeleted`, and `hardDelete` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/soft-delete.md)).
@@ -188,11 +215,11 @@ An update of several records, each with its own values, such as the positions an
 ## After-commit hooks
 
 Callbacks that run after the current transaction commits, such as sending the notifications of the changes it made, as `$afterCommit` of Orchid ORM 1.78.47 does ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#aftercommit)).
-A hook belongs to the level that registers it and runs only for the work that the outermost commit keeps, whichever `Db` of the database registers it, as the [motivation](architecture/README.md#motivation) requires and the [decisions on transactions](architecture/transactions.md#decisions) state.
+A hook belongs to the level that registers it: rolling the level back discards it, releasing the level passes it to the enclosing level, and it runs after the outermost commit, so that it runs only for the work that the commit keeps, whichever `Db` of the database registers it, as the [motivation](architecture/README.md#motivation) requires.
 
 - Decide what a hook registered outside a transaction does; Orchid ORM runs it on the next microtask.
 - Decide how a failure of a hook is reported once the transaction has committed; Orchid ORM leaves it to `uncaughtException` or `unhandledRejection`.
-- The outermost transaction of code under test is a nested level of the test level, which never commits: decide whether its hooks run when it is released, as in production, and whether the rollback of the test level waits for them, as in Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#after-commit-hooks-in-tests)), so that their queries roll back with the test.
+- The outermost transaction of code under test is a nested level of the test level, which never commits: decide whether its hooks run when it is released, as in production, and whether the rollback of the test level waits for them, as in Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#after-commit-hooks-in-tests), [orchid-orm#822](https://github.com/romeerez/orchid-orm/pull/822)), so that their queries roll back with the test.
   Decide it together with whether a test level counts as a transaction for [joining the current transaction](#joining-the-current-transaction).
 
 ## Type of the fields of a helper
@@ -214,11 +241,16 @@ A lock of `pg_advisory_xact_lock` held by the current transaction, such as `db.$
 - Decide whether it also takes the integer keys of PostgreSQL, and a variant that returns instead of waiting, `pg_try_advisory_xact_lock`.
 - Decide whether `Database` has it too, as it has `transaction`, so that the [migrator](architecture/migrations.md#applying-and-rolling-back), which locks its target the same way, uses it.
 
+## Migrating every tenant
+
+A command of the migration command line for every schema of a target whose PostgreSQL schema is a function, such as all tenants, from a list of schemas that the project gives.
+
 ## Singleton tables
 
-Tables that hold at most one row, such as the settings of an application, whose entry points start queries of one row, as the [decisions on queries](architecture/queries.md#decisions) state, so that reading, updating, and [upserting](#upsert) the row need no sentinel key or `all().take()` ([orchid-orm#752](https://github.com/romeerez/orchid-orm/issues/752)).
+Tables that hold at most one row, such as the settings of an application, whose entry points start queries of one row, so that reading, updating, and [upserting](#upsert) the row need no sentinel key or `all().take()` ([orchid-orm#752](https://github.com/romeerez/orchid-orm/issues/752)).
 
-- Decide what guarantees that the table holds one row, and whether it lets mutations go without a restriction or `all()`, as [architecture/schemas.md](architecture/schemas.md#open-questions) asks.
+- `optional`, `nullable`, and `required` apply to the queries of their entry points, as to other queries of one row.
+- Decide what guarantees that the table holds at most one row, and whether that guarantee lets its mutations go without a restriction or `all()`, which [architecture/mutations.md](architecture/mutations.md#rows-to-change) otherwise requires.
 
 ## Runtime defaults of columns
 
@@ -261,6 +293,14 @@ Records of a relation of a table to itself at any depth through `WITH RECURSIVE`
 
 `UNION ALL` of queries, `WITH` queries, and queries of a derived source of another query, such as the nearest administrators of a record among those of its ancestors.
 [Records of a relation at any depth](#records-of-a-relation-at-any-depth) need `WITH RECURSIVE` too.
+
+## Joins
+
+Queries with joined tables:
+
+- Decide which sources the column values of `where` resolve against, whether they can address joined tables, and how a callback receives the columns of joined tables.
+- `SelectQuery` is typed by a single table and will need the shape of all query sources.
+- A column of a source joined with `LEFT JOIN` is `NULL` without a match whatever its type, so its result type needs the nullability of the join.
 
 ## Values before an update
 
@@ -346,6 +386,24 @@ Optional, research: a function that types a union of queries of several tables o
 - Branches of a callback of `use` or of a helper that leave different states could become one query of a union state the same way.
 - Alternatively, methods that change the state could apply to a union of queries by one of the designs that [architecture/queries.md](architecture/queries.md) weighs, at the costs it records.
 
+## Schema views
+
+Restricted views of schemas for business logic shared between schemas.
+
+## Checking tables against the database
+
+A check, such as in tests after migrating, that each table of a schema exists with its columns and their nullability, that a constraint or a unique index backs each of its keys, and that a foreign key backs each required relation `one`, instead of generating migrations from tables, which [architecture/migrations.md](architecture/migrations.md#not-added) leaves out.
+
+## Recurrent SQL of migrations
+
+SQL that the migrator runs again after every migration, such as of functions and views, as rake-db runs recurrent migrations ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations)).
+
+## Migration helpers of enums
+
+Helpers that change enum types: PostgreSQL cannot drop a value of an enum, so undoing an added value creates the type again with the columns that use it.
+
 ## Relation-aware mutations
 
 A separate project.
+
+- An update that deletes the record its selected records reference changes only the selected records; other records that reference it only lose the reference ([orchid-orm#853](https://github.com/romeerez/orchid-orm/issues/853)).

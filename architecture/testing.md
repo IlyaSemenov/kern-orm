@@ -43,9 +43,3 @@
 - Closing an open fixture first closes the fixtures opening in it, since `node:test` runs the `after` hook of a preload module before the one of a test file, and a seed that never settles would hold the queue of the fixture stack.
   A fixture started after a closing of an open fixture is requested opens outside of the closed fixture, so a repeated closing of the closed fixture or a closing of a fixture nested in it leaves the new fixture open.
 - The `data` of a fixture throws while the fixture is not open, including after an enclosing fixture closes it.
-
-## Open questions
-
-- After-commit hooks in tests: hooks run after the outermost commit, and a test transaction never commits, so hooks registered by the tested code never run in a test.
-  How tests run or check them is not designed yet.
-  Orchid ORM runs the hooks of a transaction nested in a test transaction when it ends, and the rollback of the test transaction waits for the running hooks ([orchid-orm#822](https://github.com/romeerez/orchid-orm/pull/822)).

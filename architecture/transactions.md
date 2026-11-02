@@ -34,9 +34,3 @@
 - Objects with an explicit lifecycle, such as a database and a test fixture, are async disposable.
 - Closing a database closes its test fixtures, including those still opening, and then closes the driver; closing it inside a transaction rejects, since the driver would wait for that transaction forever.
   From the first closing, statements, transactions, and fixtures started outside a transaction reject, so nothing opens after the fixtures close; the levels already running still end, and a repeated closing returns the first one.
-
-## Decisions
-
-These hold for features that are not implemented yet.
-
-- After-commit hooks belong to the level that registered them: rolling the level back discards them, releasing it passes them to the enclosing level, and they run after the outermost commit.
