@@ -58,7 +58,7 @@
     },
     "packages/migrations": {
       "name": "@kern-orm/migrations",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "kern-orm": "^0.2.0",
       },
