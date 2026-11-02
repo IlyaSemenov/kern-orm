@@ -116,7 +116,7 @@ export function findStepProblem(value: unknown): string | undefined {
   return undefined
 }
 
-/** Checks that `value` is a change; blank SQL text is not one, so that a step left blank, such as of the template of a new migration, is never recorded as applied. */
+/** Checks that `value` is a change; blank SQL text is not one, so that a step left blank is never recorded as applied. */
 function isChange(value: unknown): value is MigrationChange {
   return typeof value === "string" ? value.trim() !== "" : typeof value === "function"
 }

@@ -38,12 +38,25 @@ describe("createMigration", () => {
 
     expect(paths).toEqual([join(directory, "0001_create_form.ts")])
     expect(await readFile(paths[0]!, "utf8"))
-      .toBe(`import { defineMigration } from "@kern-orm/migrations"
+      .toBe(`import { createTable, defineMigration } from "@kern-orm/migrations"
 
-export default defineMigration({
-  up: "",
-  down: "",
-})
+export default defineMigration([
+  createTable(/* table */ "", {
+    id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
+  }),
+])
+`)
+  })
+
+  it("creates the module of a later migration from the default template of adding a column", async () => {
+    const [path] = await createMigration(["0001_create_form"], "add_form_slug", getOptions())
+
+    expect(await readFile(path!, "utf8"))
+      .toBe(`import { addColumn, defineMigration } from "@kern-orm/migrations"
+
+export default defineMigration([
+  addColumn(/* table */ "", /* column */ "", "text"),
+])
 `)
   })
 

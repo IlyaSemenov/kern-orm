@@ -17,7 +17,8 @@ export interface MigrationListModuleOptions {
 export interface CreateMigrationOptions {
   readonly directory: string
   readonly listModule: { readonly path: string; readonly extensions: boolean } | undefined
-  readonly template: (key: string) => string
+  /** Returns the text of the module by its key, and whether it is the first migration of the history and the directory. */
+  readonly template: (key: string, isFirst: boolean) => string
 }
 
 /** Migration module of a directory. */
@@ -30,14 +31,26 @@ interface MigrationModule {
 /** First line of the list module, by which `new` recognizes a module that it may write. */
 const listModuleHeader = "// Written by the new command of @kern-orm/migrations"
 
-/** Text of a new migration module, whose blank `up` and `down` fail to load until they are filled in. */
-export function getDefaultTemplate(): string {
-  return `import { defineMigration } from "@kern-orm/migrations"
+/**
+ * Text of a new migration module: `createTable` for the first migration and `addColumn` for a later one.
+ *
+ * Their names are blank, with comments that name them, and fail to load until they are filled in, so that a migration left as created never applies.
+ */
+export function getDefaultTemplate(_key: string, isFirst: boolean): string {
+  return isFirst
+    ? `import { createTable, defineMigration } from "@kern-orm/migrations"
 
-export default defineMigration({
-  up: "",
-  down: "",
-})
+export default defineMigration([
+  createTable(/* table */ "", {
+    id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
+  }),
+])
+`
+    : `import { addColumn, defineMigration } from "@kern-orm/migrations"
+
+export default defineMigration([
+  addColumn(/* table */ "", /* column */ "", "text"),
+])
 `
 }
 
@@ -58,7 +71,8 @@ export async function createMigration(
     await checkListModule(listModule.path)
   }
   const modules = await listMigrationModules(directory)
-  const key = getNextKey([...keys, ...modules.map(module => module.key)], name)
+  const existingKeys = [...keys, ...modules.map(module => module.key)]
+  const key = getNextKey(existingKeys, name)
   const fileName = `${key}.ts`
   if (listModule !== undefined) {
     formatListModule(
@@ -70,7 +84,7 @@ export async function createMigration(
   await mkdir(directory, { recursive: true })
   const path = join(directory, fileName)
   // The `wx` flag never overwrites a file, such as one that another process has created meanwhile.
-  await writeFile(path, options.template(key), { flag: "wx" })
+  await writeFile(path, options.template(key, existingKeys.length === 0), { flag: "wx" })
   if (listModule === undefined) {
     return [path]
   }

@@ -15,7 +15,7 @@
   A module that does not export a migration rejects when it loads, rather than being recorded as applied.
   - rake-db 2.37.48 collects the steps of `change()` in the state of its module, so a migration that calls `change` of another copy of rake-db registers nothing, and migrating records it as applied ([orchid-orm#765](https://github.com/romeerez/orchid-orm/issues/765)).
 - A step has `up` and an optional `down`, each a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects when the migration loads instead of doing nothing on rollback.
-  Blank SQL text, such as of the template of `new`, rejects too, so that a migration left blank is never recorded as applied.
+  Blank SQL text rejects too, so that a migration left blank is never recorded as applied.
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
 - The database of a migration is `Pick<Database, "query" | "script">` of the target: its statements run in the transaction of the migration, and its unqualified names resolve in the target schema through the search path.
@@ -119,7 +119,7 @@
   - `<name>` has only letters, digits, `_`, and `-`, so that it makes a key, a file name on every file system, and an import specifier.
   - Its number follows the greatest number of the keys of the history and of the migration modules of the directory, with as many digits as the key of that number.
   - The migration modules of a directory are its files of `.ts`, `.mts`, `.js`, or `.mjs` whose name without the extension is a key, so that `index.ts` and migration tests `<key>.migration-test.ts` are not; two modules of one number are an error.
-  - The default template has blank `up` and `down`, which fail to load until they are filled in.
+  - The default template is `createTable` for the first migration of the history and the directory, and `addColumn` for a later one, the most common changes; their names are blank, which fail to load until they are filled in, so that a migration left as created never applies.
 - With `listModule`, `new` also writes a module whose default export is the loaders of the migration modules of the directory by key, for `defineMigrations` on runtimes without `import.meta.glob`, such as Node.js and Bun.
   - Its import specifiers are relative to the list module, which may be inside the directory or outside it.
     They keep the extensions of the module files, which Node.js requires, unless `extensions` is `false`, for projects that import without extensions through a bundler.

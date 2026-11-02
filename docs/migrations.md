@@ -354,8 +354,18 @@ For the migrations of another `Db`, such as of the SaaS schema, write a script o
 
 ### Create a migration
 
-`new` creates the module of the next migration in `directory`, such as `src/migrations/0003_add_form_slug.ts`.
-It exports a [step of SQL](#sql-steps) with empty `up` and `down`: replace it with the steps of the migration, such as helpers, or fill in its SQL; until then, the migration fails to apply.
+`new` creates the module of the next migration in `directory`, such as `src/migrations/0003_add_form_slug.ts`, with a step whose names are blank:
+
+```ts [src/migrations/0003_add_form_slug.ts]
+import { addColumn, defineMigration } from "@kern-orm/migrations"
+
+export default defineMigration([addColumn(/* table */ "", /* column */ "", "text")])
+```
+
+For the first migration of the directory, the step is `createTable`.
+Fill in the names, or replace the step with the steps of your migration; until then, the migration fails to apply.
+
+To create migrations from a template of your own, such as one that imports your helpers, pass `template`, which takes the name of the module, such as `0003_add_form_slug`, and returns its text.
 
 On Node.js and Bun, which lack `import.meta.glob`, pass `listModule`: `new` writes there the [list of the migration modules](#list-the-migrations) of the directory.
 
@@ -377,8 +387,6 @@ To let `new` write a list that you have written by hand, add that line at its to
 
 The list imports each module by its file name, such as `./0001_create_form.ts`.
 To import the modules without the extension, as a bundler resolves them, pass `listModule: { path, extensions: false }`.
-
-To create migrations from a template of your own, such as one that imports your helpers, pass `template`, which takes the name of the module, such as `0003_add_form_slug`, and returns its text.
 
 ## Test migrations
 

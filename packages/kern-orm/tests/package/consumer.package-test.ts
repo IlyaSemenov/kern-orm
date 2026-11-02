@@ -226,10 +226,8 @@ describe.each(["node", "bun"])("%s", runtime => {
     expect(runCli("new", "create_user")).toBe(
       `Created cli-migrations/0002_create_user.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({
         keys: ["0001_create_form"],
-        // The template of a new migration fails to load until its blank up and down are filled in.
-        loadErrors: [
-          "Step 1 of migration 0001_create_form requires up as a non-blank SQL script or a function",
-        ],
+        // The template of a new migration fails to load until its blank names are filled in.
+        loadErrors: ["Cannot load migration 0001_create_form: Cannot quote an empty name"],
       })}\n`,
     )
     const unknown = Bun.spawnSync({ cmd: [runtime, "migrations-cli.ts", "unknown"], cwd: consumer })
