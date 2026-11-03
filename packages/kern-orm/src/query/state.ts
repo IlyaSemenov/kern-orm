@@ -9,7 +9,7 @@ export type EmptyRecord = Record<never, never>
 
 /** State of a query in types: the record or value of its rows, how its rows become its result, and the relations it selects records of. */
 export interface QueryState extends ResultMode {
-  /** Record of a row, or the value of its only field for a query made by `get`, `pluck`, or an aggregate method, such as `count`. */
+  /** Record of a row, or the value of its only field for a query made by `get`, `pluck`, an aggregate method, such as `count`, or `exists`. */
   readonly result: unknown
   /** Relations whose records the query and the queries nested in it select, which a `Db` must have. */
   readonly uses: UsedRelation
@@ -32,7 +32,7 @@ export interface SelectQueryState extends QueryState {
    * The callback of a helper starts with it, so that the effect of the helper records whether the callback filters.
    */
   readonly guaranteed: boolean
-  /** Whether the query is made by an aggregate method, such as `count`, which makes `get`, `pluck`, and the aggregate methods reject it. */
+  /** Whether the query is made by an aggregate method, such as `count`, or by `exists`, which makes `get`, `pluck`, the aggregate methods, and `exists` reject it. */
   readonly aggregate: boolean
 }
 

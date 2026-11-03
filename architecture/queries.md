@@ -65,7 +65,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - `optional`, `nullable`, and `required` turn a query of one row into `optional`, `nullable`, and `one`, and reject a query of many rows.
   - The value of a missing row is never `null`, which would read as a `NULL` value: the method `nullable` rejects a query of values, and `get` and `pluck` turn rows `nullable` into `optional`.
   - `pluck` replaces the projections with one and makes the rows values, keeping the rows of the query apart from rows `nullable`; `get` is `pluck` followed by `take`.
-  - `select` and `clearSelect` reject a query of values, at runtime as well as in types; `get` and `pluck` replace its projection, unless it is an aggregate query.
+  - `select` and `clearSelect` reject a query of values, at runtime as well as in types; `get` and `pluck` replace its projection, unless it is an aggregate query or a query of [`exists`](#exists).
   - The rows do not imply a limit: only `take` adds `LIMIT 1`, when it changes rows `many` to `one`, since a relation `one` and a query of `find` must detect several matches.
   - The result mode applies to an executed query and to packed nested rows; a query nested in a scalar subquery, `EXISTS`, or a derived source keeps only its SQL.
   - The result type of a query state is the union of the results of every mode it allows, such as of a union of rows modes or of states; `$execute` infers the whole query, so a union of queries gives the union of their results.
@@ -106,7 +106,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Aggregates
 
-- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query: it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
+- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of [`exists`](#exists): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
   - `count` without an argument is `count(*)`; with a column or an expression, `count` and `countDistinct` count its values other than `NULL`, each distinct value once for `countDistinct`.
   - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `null` without values other than `NULL`.
   - The argument is a column key or a callback that returns an expression with a type, as of `get` and `pluck`.
@@ -122,10 +122,19 @@ Queries come in two kinds that share the query methods and differ only by execut
   - `stringAgg` joins the values in the order of the query; the other aggregates do not depend on the order of their rows.
 - The methods that keep the rows apply to an aggregate query as they apply before it: `where`, `find`, and `findBy` restrict the aggregated rows, and `orderBy` changes the rows of a page and the order of `stringAgg`; `limit` and `offset` reject it as a query of one row, so they come before the aggregate.
   The callback of `orderBy` receives the aggregate as the value of the query, and sorting by it fails in PostgreSQL with a limit, an offset, or `stringAgg`, and has no effect otherwise.
-- `get`, `pluck`, and the aggregate methods reject an aggregate query, at runtime as well as in types, also after the methods that keep its value, such as `where` and `coalesce`: its rows `one` are the aggregated rows without a limit, so a value of a row would decode several rows as one, and another aggregate would aggregate those rows rather than the row of the aggregate.
-  - The `aggregate` part of the state tells an aggregate query in types, and a state that may be of an aggregate query, such as `QueryStateOf<T>`, rejects them too.
+- `get`, `pluck`, the aggregate methods, and `exists` reject an aggregate query, at runtime as well as in types, also after the methods that keep its value, such as `where` and `coalesce`: its rows `one` are the aggregated rows without a limit, so a value of a row would decode several rows as one, and another aggregate would aggregate those rows rather than the row of the aggregate.
+  - The `aggregate` part of the state tells an aggregate query or a query of `exists` in types, and a state that may be of one, such as `QueryStateOf<T>`, rejects them too.
     The part adds about 4 instantiations to each method that changes the state, up to 3% of a query ([benchmark](../benchmarks/types/queries.bench.ts)); rejecting them on every query of values would spare it, but would also reject `count` of a query of `pluck`, such as one that a helper or shared code prepares.
   - At runtime, the methods and lowering recognize an aggregate query by the projection of its aggregate, which only the aggregate methods select and `coalesce` keeps, so the node has no part for it.
+
+## Exists
+
+- `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of `exists`: it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
+  - It checks the rows that the filters, the limit, and the offset of the query choose, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
+  - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`, and selected as a field, `EXISTS (...)` in the select list rather than a packed row.
+  - The methods that keep the rows apply to it as they apply before it, as to an aggregate query: `where`, `find`, and `findBy` restrict the rows that it checks, and `coalesce` keeps it as it is, since `EXISTS` is never `NULL`.
+  - In types, it is marked as an aggregate query, `aggregate: true`, so that `get`, `pluck`, the aggregate methods, and `exists` reject it, as does the callback of a helper.
+  - At runtime, the methods and lowering recognize a query of `exists` by the projection of `exists`, which only `exists` selects and `coalesce` keeps, as they recognize an aggregate query.
 
 ## Replacing NULL
 
@@ -185,7 +194,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - The marker starts with no selected keys and accumulates their union on every selection, including through another helper.
     The marker prevents a branch selecting extra keys from being reduced to one selecting fewer fields or none, preserving possible overwrites of input fields.
   - The public type of a helper holds the selected fields without the marker, so that the declarations of a module exporting a helper never name it.
-  - Every branch of a helper must retain the marker and remain a record query; `clearSelect`, `get`, `pluck`, and the aggregate methods are rejected because its effect cannot describe the discarded input fields.
+  - Every branch of a helper must retain the marker and remain a record query; `clearSelect`, `get`, `pluck`, the aggregate methods, and `exists` are rejected because its effect cannot describe the discarded input fields.
   - A helper adds or replaces fields by the same merge as `select`, for every branch of its effect; a query of values rejects a helper that selects fields or ends with a call of `nullable` in any branch.
   - A helper checks that its callback returns the input query or one derived from it, also when called directly.
     The returned query keeps the kind and the `Db` of the input query.

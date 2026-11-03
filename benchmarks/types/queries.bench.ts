@@ -72,6 +72,15 @@ bench.baseline(async () => {
   await tenantDb.field.where({ label: "baseline" }).count()
   await tenantDb.field.where({ label: "baseline" }).max("position")
   await tenantDb.field.where({ label: "baseline" }).min("label").coalesce("baseline")
+  await tenantDb.field.where({ label: "baseline" }).exists()
+  await tenantDb.$execute(
+    formsSchema.field
+      .where({ label: "baseline" })
+      .select("label")
+      .select(field => ({
+        hasForm: field.form.exists(),
+      })),
+  )
   await tenantDb.field.select("id").use(withLabel)
   await tenantDb.form.select("published").use(withPositions)
   await tenantDb.$select({
@@ -132,13 +141,17 @@ bench("aggregate with a fallback", async () => {
   await tenantDb.form.where({ name: "x" }).max("name").coalesce("x")
 }).types([261, "instantiations"])
 
+bench("exists", async () => {
+  await tenantDb.form.where({ name: "x" }).exists()
+}).types([141, "instantiations"])
+
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1045, "instantiations"])
+}).types([1048, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1131, "instantiations"])
+}).types([1134, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -185,6 +198,17 @@ bench("relation one", async () => {
       })),
   )
 }).types([834, "instantiations"])
+
+bench("exists of a relation", async () => {
+  await tenantDb.$execute(
+    formsSchema.form
+      .where({ id: "x" })
+      .select("id")
+      .select(form => ({
+        hasFields: form.fields.exists(),
+      })),
+  )
+}).types([1024, "instantiations"])
 
 bench("filtered relation one", async () => {
   await tenantDb.$execute(

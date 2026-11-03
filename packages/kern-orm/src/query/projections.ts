@@ -9,6 +9,7 @@ import type { AnyType } from "../type/type"
 import { addFallback, isAggregateProjection } from "./aggregate"
 import type { QueryContext } from "./column-refs"
 import { createColumnRefs, createSelectionRefs } from "./column-refs"
+import { isExistsProjection } from "./exists"
 import { MutationQuery } from "./mutation"
 import type { SelectedNode } from "./node"
 import { RecordQuery } from "./record"
@@ -90,10 +91,14 @@ export function projectValue(
  * Creates the projection of the value of `field`, the only projection of a query of values, whose `NULL` `fallback` replaces: a value that the type of the field encodes, or an expression.
  *
  * The projection of an aggregate keeps its call, which lowering builds, and adds the fallback after its earlier ones.
+ * The projection of `exists` stays as it is, since `EXISTS` is never `NULL`.
  */
 export function coalesceValue(field: ScalarProjection, fallback: unknown): ScalarProjection {
   if (fallback === null || fallback === undefined) {
     throw new TypeError(`coalesce takes a value other than ${String(fallback)}`)
+  }
+  if (isExistsProjection(field)) {
+    return field
   }
   const value = toValueNode(fallback, field.type)
   if (isAggregateProjection(field)) {

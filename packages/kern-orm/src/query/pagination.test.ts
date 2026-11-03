@@ -29,6 +29,14 @@ it("rejects an aggregate query, which aggregates the rows of a page of a limit a
   }
 })
 
+it("rejects a query of exists, which checks the rows of a page of a limit and an offset before it", () => {
+  const { node } = from(post).exists().where({ title: "First" })
+
+  expect(() => createPageCount(node, "offset", 1)).toThrow(
+    "offset applies only to a query of many rows; call it before exists to check the rows of a page",
+  )
+})
+
 it("rejects a number of rows that is not a non-negative integer", () => {
   const { node } = from(post)
 

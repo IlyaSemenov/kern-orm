@@ -8,10 +8,11 @@ import type { ResultRows } from "../result/result"
 import type { SchemaContext } from "../schema/relation"
 import type { AnyTable, ColumnValues, Selectable } from "../table/table"
 
-import type { AggregateMethod, AggregateProjection } from "./aggregate"
+import type { AggregateMethod } from "./aggregate"
 import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { noContext } from "./column-refs"
+import { getExistsProjection, isExistsQuery } from "./exists"
 import type { EqValue, WhereFilter } from "./filters"
 import { addUserFilter } from "./filters"
 import type { KeyCheck, PrimaryKeyValues } from "./find"
@@ -79,13 +80,13 @@ type RecordQueryState = SelectQueryState & { readonly value: false }
 /** State of a query whose row no relation guarantees, which a filter keeps. */
 type UnguaranteedQueryState = SelectQueryState & { readonly guaranteed: false }
 
-/** State of a query whose rows are values, made by `get`, `pluck`, or an aggregate method, such as `count`. */
+/** State of a query whose rows are values, made by `get`, `pluck`, an aggregate method, such as `count`, or `exists`. */
 type ValueQueryState = SelectQueryState & { readonly value: true }
 
-/** State of a query not made by an aggregate method, which `get`, `pluck`, and the aggregate methods apply to. */
+/** State of a query not made by an aggregate method or `exists`, which `get`, `pluck`, the aggregate methods, and `exists` apply to. */
 type UnaggregatedQueryState = SelectQueryState & { readonly aggregate: false }
 
-/** State of a query of the value `V` of an aggregate over the rows of a query of state `S`, which always returns one row, accepting values `I` in place of its value. */
+/** State of a query of the value `V` of an aggregate or of `exists` over the rows of a query of state `S`, which always returns one row, accepting values `I` in place of its value. */
 type AggregateState<S extends SelectQueryState, V, I> = ChangeState<
   S,
   { result: V; input: I; rows: "one"; value: true; guaranteed: false; aggregate: true }
@@ -578,6 +579,20 @@ export class SelectQuery<
     return this.aggregateBy("stringAgg", arg, delimiter)
   }
 
+  // Like an aggregate query, it always has its row, so no relation needs to guarantee it, and a filter keeps its rows mode.
+  /**
+   * Replaces the selected fields with whether the query has a row and returns it instead of the rows.
+   *
+   * It keeps the filters, the limit, and the offset, and ignores the order.
+   */
+  exists<S extends UnaggregatedQueryState, Kind extends SelectQueryKind>(
+    this: SelectQuery<S, Kind>,
+  ): SelectQuery<AggregateState<S, boolean, boolean>, Kind>
+  exists(): unknown {
+    this.rejectAggregate("exists")
+    return this.deriveAggregate(getExistsProjection())
+  }
+
   /**
    * Replaces a `NULL` value of a query of values, such as one made by `get`, `pluck`, or an aggregate, with `fallback`, such as `0` for a sum without rows.
    *
@@ -811,8 +826,8 @@ export class SelectQuery<
     return this.derive(changes)
   }
 
-  /** Creates the query of the value of `projection`, an aggregate over the rows of this query, which always returns one row. */
-  private deriveAggregate(projection: AggregateProjection): AnySelectQuery {
+  /** Creates the query of the value of `projection`, of an aggregate or of `exists` over the rows of this query, which always returns one row. */
+  private deriveAggregate(projection: ScalarProjection): AnySelectQuery {
     return this.derive({ projections: [projection], rows: "one", value: true, guaranteed: false })
   }
 
@@ -864,11 +879,15 @@ export class SelectQuery<
     )
   }
 
-  // An aggregate query has rows `one` over the aggregated rows without a limit, so a value of a row would decode several rows as one, and another aggregate would aggregate those rows rather than the row of the aggregate.
-  /** Rejects `method`, which replaces the value or the selection, on a query made by an aggregate method. */
+  // An aggregate query has rows `one` over the aggregated rows without a limit, so a value of a row would decode several rows as one, and another aggregate would aggregate those rows rather than the row of the aggregate; so does a query of `exists`.
+  /** Rejects `method`, which replaces the value or the selection, on a query made by an aggregate method or `exists`. */
   private rejectAggregate(method: string): void {
-    if (isAggregateQuery(this.node)) {
+    const { node } = this
+    if (isAggregateQuery(node)) {
       throw new Error(`${method} cannot be used after an aggregate`)
+    }
+    if (isExistsQuery(node)) {
+      throw new Error(`${method} cannot be used after exists`)
     }
   }
 }

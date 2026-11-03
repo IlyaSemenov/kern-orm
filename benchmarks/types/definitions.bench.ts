@@ -80,7 +80,7 @@ bench("schema with relations", () => {
 
 bench("first filter of a table", () => {
   defineFilter(formsSchema.form, { name: "x" })
-}).types([560, "instantiations"])
+}).types([561, "instantiations"])
 
 bench("first helper of a table", () => {
   defineHelper(formsSchema.form, query => query.where({ published: true }))

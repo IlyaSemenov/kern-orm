@@ -2,19 +2,42 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
+## `exists` of queries
+
+[`exists`](architecture/queries.md#exists) of a query as a condition, such as the forms that have submissions or the submissions without comments, so that conditions such as access checks are built of typed queries rather than of SQL text that names tables and aliases.
+It takes a query of a relation, a query of a table without correlation, and a query that a helper prepares.
+
+Preliminary decisions:
+
+- `where`, `and`, `or`, and `not` take a query of one `boolean` value as a predicate, such as `where(form => not(form.fields.exists()))` for `NOT EXISTS (...)`; a query of `get` of a `boolean` value is a scalar subquery there, and other queries are rejected at runtime too.
+- The callbacks of `where` and `defineFilter` receive the relations of the table, as that of `select` does; `defineFilter` with a query of a schema or a `Db` gives the relations of its schema context.
+  Measure the cost of the relations of the callback of `where` with `bench:types`.
+- A semantic expression node holds a query and its `Db`, as the `values` node is a semantic node in the shared union of expression nodes; lowering replaces it in every place of expressions, the filters, the order, the projections, the arguments and fallbacks of aggregates, and the parts of mutations, checking the `Db` and the relation definitions as for a nested selection, so that the compiler knows no semantic queries.
+- Types do not check the relations of the queries of a condition against a `Db`, since the condition does not carry `uses`; lowering checks them at runtime.
+
 ## Queries as expressions
 
-A query as an expression in conditions, sort keys, operands, and SQL fragments, beside a field of a selection, so that conditions such as access checks are built of typed queries rather than of SQL text that names tables and aliases:
+A query as an expression in operands, sort keys, and SQL fragments, beside a field of a selection and [`exists`](#exists-of-queries) as a condition, built on the semantic node of a query that `exists` adds.
 
-- `EXISTS` of a query as a condition and as a selected value, such as the forms that have submissions or the submissions without comments, and as a query of a `boolean` value, such as `await db.form.where({ published: true }).exists()`.
-  It takes a query of a relation, a query of a table without correlation, and a query that a helper prepares.
-- `in` of a query of values, such as of `pluck` of the groups of a user, beside a list of values.
-- A query of one value, such as of `get` or of an aggregate, as a scalar subquery of the type of its value, such as `form.fields.count()` or `form.fields.max("position")` in a comparison or in `orderBy`, so that `orderBy` sorts by an aggregate of related records through the selected fields.
-  Then `coalesce` could also be a function of expressions, beside the method of queries of values.
-- A query with clauses interpolated into `sql` as a subquery, such as ``sql`EXISTS (${query})` ``, which `sql` rejects so that it can take this meaning, as [architecture/types.md](architecture/types.md#parameters-and-sql-fragments) states.
-- The callbacks of `where` and `orderBy` receive the relations of the table, as that of `select` does.
+Preliminary decisions:
+
+- `in` takes a query of values of any rows, such as of `pluck` of the groups of a user, beside a list of values, as `IN (SELECT ...)`.
+- A query of one value, such as of `get`, of an aggregate, or of `exists`, is a scalar subquery wherever an operand is taken: of operators, such as `field.position.lt(form.fields.max("position"))`, as a value of an object condition, as the fallback of `coalesce`, and as a sort key of `orderBy`, `asc`, and `desc`.
+  - Types reject a query of many rows, which PostgreSQL rejects with a second row.
+  - A query of `get` without its row gives `NULL`, so its value is `T | null` there; an aggregate query and `exists` always have their row.
+- The callback of `orderBy` receives the relations of the table, so that it sorts by an aggregate of related records, such as `desc(form.fields.count())`.
+- `sql` interpolates a query with clauses as a subquery in parentheses, `(SELECT ...)`, so that it is an operand anywhere; PostgreSQL 18 parses `EXISTS ((SELECT 1))` and `1 IN ((SELECT 1 UNION SELECT 2))` as subqueries, so both ``sql`EXISTS (${query})` `` and ``sql`EXISTS ${query}` `` work.
+  A query of a table without clauses stays the name of its table.
+- Then `coalesce` could also be a function of expressions, beside the method of queries of values.
 - A condition on the columns of the record of a relation `one`, such as of the fields of published forms, shorter than `EXISTS` of the relation.
-- Decide how a query becomes an expression: methods of a query that return expressions, such as `exists`, the operators of the type of its value on a query of one value, or a function of a query.
+
+Open question: comparing the value of a query of one value on the left, such as `form.fields.count().gt(3)`; until then, it is an operand on the right or a fragment such as ``sql<boolean>`${form.fields.count()} > ${3}` ``.
+
+- Preliminary decision: a method of a query of one value, such as `expr()`, returns an expression of its value with the operators of its type, `form.fields.count().expr().gt(3)`.
+- A query is not an expression: it executes, keeps its `Db` and the relations it uses, and takes `where`, `orderBy`, and `coalesce` after an aggregate.
+- Either way the state of a query needs the operators of the type of its value, which `get`, `pluck`, and the aggregate methods set; measure its cost with `bench:types`.
+- The type of a count needs the operators of `orderingOperators`, which it lacks.
+- Rejected: the operators of the type of the value as methods of the query, as in Orchid ORM: a custom operator could take the name of a method of a query, so `withOperators` would reject those names, and every new method of a query would break the custom types that have an operator of its name; the query would also need a prototype for each type of its value.
 
 ## Functions of expressions
 

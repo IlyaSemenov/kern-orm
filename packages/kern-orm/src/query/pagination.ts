@@ -4,6 +4,7 @@ import type { ExpressionNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 
 import { isAggregateQuery } from "./aggregate"
+import { isExistsQuery } from "./exists"
 import type { QueryNode } from "./node"
 
 // A query of one row has no pagination, which would hide a second row that it must reject.
@@ -28,8 +29,12 @@ function createPaginationHint(node: QueryNode): string {
   if (node.relation?.kind === "one") {
     return ""
   }
-  // An aggregate takes the rows of the page that a limit and an offset before it choose.
-  return isAggregateQuery(node)
-    ? "; call it before count or another aggregate to aggregate the rows of a page"
-    : "; call it before take or get"
+  // An aggregate and `exists` take the rows of the page that a limit and an offset before them choose.
+  if (isAggregateQuery(node)) {
+    return "; call it before count or another aggregate to aggregate the rows of a page"
+  }
+  if (isExistsQuery(node)) {
+    return "; call it before exists to check the rows of a page"
+  }
+  return "; call it before take or get"
 }

@@ -610,6 +610,39 @@ describe("aggregates", () => {
   })
 })
 
+describe("exists", () => {
+  test("returns whether a query of any rows and value has a row", () => {
+    const exists = from(post).select("id").where({ title: "First" }).exists()
+    expectTypeOf<Executed<typeof exists>>().toEqualTypeOf<boolean>()
+
+    const optional = from(post).get("hint").optional().exists()
+    expectTypeOf<Executed<typeof optional>>().toEqualTypeOf<boolean>()
+
+    const page = db.post.limit(20).offset(40).pluck("title").exists()
+    expectTypeOf<Awaited<typeof page>>().toEqualTypeOf<boolean>()
+
+    const filtered = from(post).exists().where({ title: "First" }).coalesce(false)
+    expectTypeOf<Executed<typeof filtered>>().toEqualTypeOf<boolean>()
+  })
+
+  test("rejects a change of the selection or the value, an aggregate, exists, and pagination, and applies to no aggregate query", () => {
+    const exists = from(post).exists()
+
+    // @ts-expect-error A query of exists cannot select fields.
+    exists.select("id")
+    // @ts-expect-error A query of exists cannot replace its value with a value of the rows.
+    exists.get("title")
+    // @ts-expect-error A query of exists cannot be aggregated.
+    exists.count()
+    // @ts-expect-error A query of exists cannot be checked again.
+    exists.exists()
+    // @ts-expect-error A query of exists has no pagination.
+    exists.limit(1)
+    // @ts-expect-error An aggregate query does not accept exists.
+    from(post).count().exists()
+  })
+})
+
 describe("coalesce", () => {
   const stat = defineTable("stat", {
     page: t.text,

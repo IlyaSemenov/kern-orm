@@ -195,6 +195,17 @@ const lastPosition = await db.field.where({ formId }).max("position").coalesce(0
 An aggregate keeps the filters of the query and ignores its selected fields.
 With [`limit` and `offset`](./sorting#pagination), it aggregates the rows of the page, which the order of the query chooses.
 
+## Whether rows exist
+
+To check whether a query has rows, such as whether any form is published, call `exists`:
+
+```ts
+const hasPublished = await db.form.where({ published: true }).exists()
+// hasPublished: boolean
+```
+
+`exists` keeps the filters of the query and ignores its selected fields; with [`limit` and `offset`](./sorting#pagination), it checks the rows of the page.
+
 ## Several queries at once
 
 To load the results of independent queries in one round trip, such as the forms of a page and the number of users, pass the queries to `db.$select` under keys of your choice:

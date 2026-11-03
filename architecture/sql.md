@@ -3,8 +3,9 @@
 - **AST** (`ast/`): the SQL AST, structural expression and statement nodes, and their pure transformations, such as Boolean simplification.
   A select statement nests queries in scalar subqueries, `EXISTS`, and derived sources of `FROM`, plain or `LATERAL`; nodes store no lexical scopes, which the compiler derives from the position of a query in the tree.
 - **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps a statement of SQL text as it is; the compiler knows no relation definitions or semantic query nodes.
-  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query, of its statement, and a query other than an aggregate query without nested queries keeps its projections.
+  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query, of its statement, or `EXISTS` of its rows for a query of `exists`, and a query other than an aggregate query or a query of `exists` without nested queries keeps its projections.
   A query of `$select` has no source and becomes a statement without `FROM` of rows `one`, which PostgreSQL returns as exactly one row.
+  A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, and has no order.
   An aggregate query becomes a statement of its aggregate without an order, which PostgreSQL rejects beside an aggregate unless it sorts by aggregates; `string_agg` takes the order of the query inside its call, and `coalesce` of the fallbacks of the query wraps the call.
   An aggregate takes the rows before the limit and the offset of its own query, so with a limit or an offset it reads the rows of the page from a derived source that selects the first argument of the aggregate and its sort keys, as nested rows are packed; `count(*)` reads a derived source without projections or an order.
   PostgreSQL assigns an aggregate to the innermost query whose sources its arguments refer to, so an argument that does not refer to the source of its query outside nested queries, such as a column of the parent row, is read from such a derived source too.
@@ -71,6 +72,7 @@
   PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, and lowering does not parse SQL fragments to identify their aggregates, so such a fragment, such as `sum` of a column of the parent row, may aggregate the rows of the query before its offset.
 - A nested aggregate query is selected as a scalar subquery of its statement, decoded by the type of the aggregate, rather than packed: it always returns one row of one value.
   For a count of 1000 and 10000 parents of 10 rows each, PostgreSQL evaluates it in 20 to 25% less time than the packed number, and the round trips are within their noise ([benchmark](../benchmarks/suites/nested-count.ts)).
+- A nested query of `exists` is selected as `EXISTS` of its rows, decoded as a Boolean, rather than packed: it always has one value, which is never `NULL`.
 - Nested rows are packed as JSON in the row of their parent and decoded by the result plan of their query, at any depth:
   - Rows `many` are an array, `coalesce(json_agg(...), '[]')`, and the other rows modes are one packed row or `NULL`, which a nested query of rows `one` rejects.
     Several rows of a nested query of one row fail the statement in PostgreSQL with SQLSTATE `21000`, whose error names no field.

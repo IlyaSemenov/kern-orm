@@ -81,6 +81,18 @@ const forms = await db.form.select("id").select(form => ({
 
 To get a value instead of `null` for a row without related records, pass it to [`coalesce`](./selecting#aggregates), such as `form.fields.max("position").coalesce(0)`; it also takes an expression, such as a column of the row.
 
+## Whether related records exist
+
+To tell whether each row has related records, such as whether each form has fields, select [`exists`](./selecting#whether-rows-exist) of the relation:
+
+```ts
+const forms = await db.form.select("id").select(form => ({
+  hasFields: form.fields.exists(),
+  hasEmail: form.fields.where({ label: "Email" }).exists(),
+}))
+// forms: { id: string; hasFields: boolean; hasEmail: boolean }[]
+```
+
 ## Sorting and pagination
 
 To load related records in order, such as the fields of each form by position, call [`orderBy`](./sorting) on the relation; `limit` and `offset` then apply to the records of each row:

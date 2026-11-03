@@ -572,6 +572,28 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
   })
 
+  it("selects whether related records exist for each row, also of a page after an offset", async () => {
+    const labeled = defineHelper(schema.field, (field, label: string) => field.where({ label }))
+    const query = db.form
+      .orderBy("id")
+      .select("id")
+      .select(form => ({
+        hasFields: form.fields.exists(),
+        hasEmail: form.fields.use(labeled, "Email").exists(),
+      }))
+
+    const results = await testTransaction(async () => [await query, await query.limit(1).offset(1)])
+
+    expect(results).toEqual([
+      [
+        { id: 1, hasFields: true, hasEmail: true },
+        { id: 2, hasFields: true, hasEmail: false },
+        { id: 3, hasFields: false, hasEmail: false },
+      ],
+      [{ id: 2, hasFields: true, hasEmail: false }],
+    ])
+  })
+
   it("counts the records of a relation for each parent, also of a page", async () => {
     const counted = db.form.orderBy("id").select(form => ({
       id: form.id,

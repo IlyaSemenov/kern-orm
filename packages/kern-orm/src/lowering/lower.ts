@@ -1,5 +1,6 @@
 import type {
   AggregateNode,
+  ExistsNode,
   ExpressionNode,
   JoinNode,
   MutationStatementNode,
@@ -16,6 +17,7 @@ import { collectColumnKeys, holdsFragmentOfSource } from "../ast/references"
 import type { AnyDb } from "../execution/db"
 import type { AggregateProjection } from "../query/aggregate"
 import { countProjection, isAggregateQuery } from "../query/aggregate"
+import { isExistsQuery } from "../query/exists"
 import type { MutationNode, QueryNode, RecordQueryNode, SelectedNode } from "../query/node"
 import { isNestedSelection } from "../query/node"
 import type { RelationDefinition } from "../schema/relation"
@@ -28,6 +30,8 @@ import { deriveOrderedSource, sortByPositions } from "./order"
 const noJoins: readonly JoinNode[] = /* @__PURE__ */ Object.freeze([])
 
 const noOrder: readonly OrderNode[] = /* @__PURE__ */ Object.freeze([])
+
+const noProjections: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
 
 /**
  * Lowers a query to the SQL statement that executes it: the select statement of `lowerQuery` that sorts by the positions of the projections that have the values of its sort expressions, the statement without a source of a query of `$select`, the statement of a mutation, or a statement of SQL text as it is.
@@ -111,9 +115,9 @@ function lowerMutation(
 }
 
 /**
- * Lowers a query to a SQL select statement, packing the rows of each nested query into the value of its field, or selecting the value of a nested aggregate query.
+ * Lowers a query to a SQL select statement, packing the rows of each nested query into the value of its field, or selecting the value of a nested aggregate query or `EXISTS` of a nested query of `exists`.
  *
- * The statement of a query other than an aggregate query keeps the sort expressions of the query, which packing reads when the query is nested.
+ * The statement of a query other than an aggregate query or a query of `exists` keeps the sort expressions of the query, which packing reads when the query is nested.
  * With `definitions`, such as the relations of the schema of a `Db`, a query of a relation outside them is rejected at any depth.
  * With `db`, the `Db` that runs the statement, a nested query bound to another `Db` is rejected at any depth; without it, such as for `toSQL` of an unbound query, a nested query bound to any `Db` is.
  */
@@ -121,7 +125,7 @@ export function lowerQuery(
   node: QueryNode,
   definitions?: ReadonlySet<RelationDefinition>,
   db?: AnyDb,
-): SelectNode<SourceNode> {
+): SelectNode {
   return lowerSelect(node, definitions, db, false)
 }
 
@@ -131,17 +135,15 @@ function lowerSelect(
   definitions: ReadonlySet<RelationDefinition> | undefined,
   db: AnyDb | undefined,
   positions: boolean,
-): SelectNode<SourceNode> {
-  const { relation } = node
-  // A relation is checked by identity, so a relation of the same name and keys declared by another schema is rejected.
-  if (relation !== undefined && definitions !== undefined && !definitions.has(relation)) {
-    throw new Error(
-      `Relation "${formatRelationName(relation.key, relation.name)}" is not part of the schema`,
-    )
+): SelectNode {
+  if (isExistsQuery(node)) {
+    return selectExists(node, definitions)
   }
+  checkRelation(node, definitions)
   if (isAggregateQuery(node)) {
     return lowerAggregate(node)
   }
+  const { relation } = node
   const projections = lowerProjections(node.projections, definitions, db)
   // Without its row, such a query breaks the promise of the relation rather than missing a record it looks up.
   const guaranteedBy =
@@ -172,6 +174,20 @@ function lowerSelect(
     value: node.value,
     guaranteedBy,
   })
+}
+
+/** Rejects a query of a relation outside `definitions`. */
+function checkRelation(
+  node: QueryNode,
+  definitions: ReadonlySet<RelationDefinition> | undefined,
+): void {
+  const { relation } = node
+  // A relation is checked by identity, so a relation of the same name and keys declared by another schema is rejected.
+  if (relation !== undefined && definitions !== undefined && !definitions.has(relation)) {
+    throw new Error(
+      `Relation "${formatRelationName(relation.key, relation.name)}" is not part of the schema`,
+    )
+  }
 }
 
 /**
@@ -404,6 +420,64 @@ function refersToSource(node: ExpressionNode, source: SourceNode): boolean {
   }
 }
 
+// Whether a row exists depends on neither the selected fields, including nested queries, nor the order, even of the rows of a page, so the query of `EXISTS` has neither.
+/** Lowers a query of `exists` to `EXISTS` of the rows that its filters, limit, and offset choose. */
+function lowerExists(
+  node: QueryNode,
+  definitions: ReadonlySet<RelationDefinition> | undefined,
+): ExistsNode {
+  checkRelation(node, definitions)
+  return createNode({
+    kind: "exists",
+    query: Object.freeze({
+      kind: "select",
+      from: node.from,
+      joins: noJoins,
+      projections: noProjections,
+      filters: node.filters,
+      orderBy: noOrder,
+      limit: node.limit,
+      offset: node.offset,
+      rows: "many",
+      value: false,
+      guaranteedBy: undefined,
+    }),
+  })
+}
+
+/** Lowers a query of `exists` to a statement without a source of one row of `EXISTS` of its rows. */
+function selectExists(
+  node: QueryNode,
+  definitions: ReadonlySet<RelationDefinition> | undefined,
+): SelectNode<undefined> {
+  return Object.freeze({
+    kind: "select",
+    from: undefined,
+    joins: noJoins,
+    projections: [projectExists(node.projections[0]!.key, node, definitions)],
+    filters: noFilters,
+    orderBy: noOrder,
+    limit: undefined,
+    offset: undefined,
+    rows: node.rows,
+    value: true,
+    guaranteedBy: undefined,
+  })
+}
+
+/** Creates the projection of `EXISTS` of the rows of `node`, a query of `exists`, under `key`, decoded by the type of the projection of `exists`. */
+function projectExists(
+  key: string,
+  node: QueryNode,
+  definitions: ReadonlySet<RelationDefinition> | undefined,
+): ProjectionNode {
+  return Object.freeze({
+    key,
+    expression: lowerExists(node, definitions),
+    type: (node.projections[0] as ScalarProjection).type,
+  })
+}
+
 /** Lowers a query of `$select` to a statement without a source, which returns one row of its fields. */
 function lowerRecord(
   node: RecordQueryNode,
@@ -426,7 +500,7 @@ function lowerRecord(
 }
 
 /**
- * Lowers the fields of a query to projections, packing the rows of each nested query into the value of its field, or selecting the value of an aggregate query; checks them as `lowerQuery` does.
+ * Lowers the fields of a query to projections, packing the rows of each nested query into the value of its field, or selecting the value of an aggregate query or `EXISTS` of a query of `exists`; checks them as `lowerQuery` does.
  *
  * Without nested queries, it returns `selected` itself.
  */
@@ -448,17 +522,26 @@ function lowerProjections(
         )
       }
       lowered ??= selected.slice(0, index) as ProjectionNode[]
-      const query = lowerSelect(field.query, definitions, db, false)
-      lowered.push(
-        isAggregateQuery(field.query)
-          ? projectAggregateValue(field.key, query)
-          : projectRows(field.key, query),
-      )
+      lowered.push(projectQuery(field.key, field.query, definitions, db))
     } else if (lowered !== undefined) {
       lowered.push(field)
     }
   }
   return lowered ?? (selected as readonly ProjectionNode[])
+}
+
+/** Creates the projection of the value of `node`, a nested query, under `key`: `EXISTS` of a query of `exists`, the value of an aggregate query, or the packed rows of another query. */
+function projectQuery(
+  key: string,
+  node: QueryNode,
+  definitions: ReadonlySet<RelationDefinition> | undefined,
+  db: AnyDb | undefined,
+): ProjectionNode {
+  if (isExistsQuery(node)) {
+    return projectExists(key, node, definitions)
+  }
+  const query = lowerSelect(node, definitions, db, false)
+  return isAggregateQuery(node) ? projectAggregateValue(key, query) : projectRows(key, query)
 }
 
 // An aggregate query always returns one row of one value, so its value needs no packing.

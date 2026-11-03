@@ -91,6 +91,19 @@ describe("lowerStatement", () => {
     )
   })
 
+  it("reads the page of a query that selects a nested query of exists after an offset from a derived source of the page", () => {
+    const { node } = schema.form
+      .orderBy("id")
+      .offset(20)
+      .select(form => ({
+        hasFields: form.fields.exists(),
+      }))
+
+    expect(compileStatement(lowerStatement(node)).text).toBe(
+      'SELECT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "hasFields" FROM (SELECT "form_2"."id" AS "id" FROM "form" AS "form_2" ORDER BY 1 OFFSET $1) AS "form" ORDER BY "form"."id"',
+    )
+  })
+
   it("keeps the page of a query on its table without an offset, without nested queries, or with a SQL fragment of its columns in a nested query", () => {
     const limited = schema.form.orderBy("id").limit(20)
     const nested = limited.select(form => ({
@@ -114,6 +127,19 @@ describe("lowerStatement", () => {
     )
     expect(compileStatement(lowerStatement(fragment.node)).text).toEndWith(
       ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
+    )
+  })
+
+  it("lowers a query of exists to a statement without a source of one row of EXISTS of its rows", () => {
+    const query = schema.form.where({ id: 1 }).exists()
+    const statement = lowerStatement(query.node)
+
+    expect(statement).toMatchObject({ from: undefined, rows: "one", value: true })
+    expect(statement.projections).toMatchObject([
+      { key: "exists", expression: { kind: "exists" }, type: t.boolean },
+    ])
+    expect(compileStatement(statement).text).toBe(
+      'SELECT EXISTS (SELECT FROM "form" AS "form" WHERE "form"."id" = $1) AS "exists"',
     )
   })
 
@@ -201,6 +227,20 @@ describe("lowerQuery", () => {
     expect<readonly unknown[]>(lowerQuery(node).projections).toBe(node.projections)
   })
 
+  it("selects EXISTS of a nested query of exists in place of its field, decoded as a Boolean", () => {
+    const { node } = schema.form.select(form => ({
+      hasFields: form.fields.exists(),
+    }))
+    const statement = lowerQuery(node)
+
+    expect(statement.projections).toMatchObject([
+      { key: "hasFields", expression: { kind: "exists" }, type: t.boolean },
+    ])
+    expect(compileStatement(statement).text).toBe(
+      'SELECT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "hasFields" FROM "form" AS "form"',
+    )
+  })
+
   it("selects the packed rows of a nested query, decoded by its result plan, in place of its field", () => {
     const { node } = schema.form.select(form => ({
       fields: form.fields.pluck("label"),
@@ -245,7 +285,7 @@ describe("lowerQuery", () => {
     ])
   })
 
-  it("rejects a relation outside the definitions at any depth, also of a query of count", () => {
+  it("rejects a relation outside the definitions at any depth, also of a query of count or of exists", () => {
     for (const { node } of [
       schema.form.select(form => ({
         fields: form.fields.select(field => ({
@@ -255,6 +295,11 @@ describe("lowerQuery", () => {
       schema.form.select(form => ({
         fields: form.fields.select(field => ({
           optionCount: field.options.count(),
+        })),
+      })),
+      schema.form.select(form => ({
+        fields: form.fields.select(field => ({
+          hasOptions: field.options.exists(),
         })),
       })),
     ]) {
@@ -435,6 +480,18 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
 
     expect(counts).toEqual([20, 5, 2, 3])
+  })
+
+  it("tells whether a query has a row, also of a page", async () => {
+    const results = await testTransaction(async () => [
+      await db.form.exists(),
+      await db.form.where(form => form.id.gt(20)).exists(),
+      await db.form.offset(19).exists(),
+      await db.form.offset(20).exists(),
+      await db.form.limit(0).exists(),
+    ])
+
+    expect(results).toEqual([true, false, true, false, false])
   })
 
   it("aggregates the values that the filters choose, also of a page in the order of the query", async () => {

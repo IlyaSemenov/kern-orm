@@ -223,6 +223,17 @@ describe("select", () => {
     >()
   })
 
+  test("gives whether related records exist, also of a relation one", () => {
+    const checked = tenant.field.select(field => ({
+      hasYes: field.answers.where({ value: "Yes" }).exists(),
+      hasForm: field.form.exists(),
+    }))
+
+    expectTypeOf<Executed<typeof checked>>().toEqualTypeOf<
+      { hasYes: boolean; hasForm: boolean }[]
+    >()
+  })
+
   test("gives undefined without the record of a required relation that a filter excludes for a value of type never", () => {
     const failing = t.text.transform({
       decode: (): never => {

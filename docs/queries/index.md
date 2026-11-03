@@ -11,7 +11,7 @@ A method never changes the query it is called on, so a query can be extended in 
 
 ## Guides
 
-- [Selecting](./selecting): choose the fields of records, take one row, get plain values, count rows and compute other aggregates, or load several queries at once.
+- [Selecting](./selecting): choose the fields of records, take one row, get plain values, count rows and compute other aggregates, check whether rows exist, or load several queries at once.
 - [Filtering](./filtering): find records by column values, operators, and SQL conditions.
 - [Sorting and Pagination](./sorting): sort rows by columns and expressions, and get them page by page.
 - [Related Records](./relations): load the related records of each row in the same query.

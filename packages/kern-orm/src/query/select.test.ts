@@ -370,6 +370,7 @@ describe("count", () => {
         ["count", () => query.count("title")],
         ["max", () => query.max("title")],
         ["stringAgg", () => query.stringAgg("title", ", ")],
+        ["exists", () => query.exists()],
       ] as const) {
         expect(call).toThrow(`${method} cannot be used after an aggregate`)
       }
@@ -458,6 +459,67 @@ describe("aggregates", () => {
     expect(() => from(visit).max(() => sql<number>`1` as never)).toThrow(
       "The expression of max has no type to decode its values; build a sql fragment with a type, such as sql(t.integer)",
     )
+  })
+})
+
+describe("exists", () => {
+  it("replaces the selected fields with whether the query has a row, keeping the filters, the limit, and the offset and ignoring the order", () => {
+    const query = from(post)
+      .where({ title: "First" })
+      .select("id")
+      .orderBy("title")
+      .limit(5)
+      .offset(10)
+      .exists()
+
+    expect(compile(query)).toMatchObject({
+      text: 'SELECT EXISTS (SELECT FROM "post" AS "post" WHERE "post"."title" = $1 LIMIT $2 OFFSET $3) AS "exists"',
+      parameters: ["First", "5", "10"],
+      fields: [{ key: "exists", type: t.boolean }],
+      rows: "one",
+      value: true,
+    })
+  })
+
+  it("applies to a query of any rows and value", () => {
+    const found = from(post).find("post-id")
+
+    expect(compile(from(post).pluck("title").exists())).toEqual(compile(from(post).exists()))
+    expect(compile(found.get("title").optional().exists())).toEqual(
+      compile(from(post).where({ id: "post-id" }).exists()),
+    )
+    expect(from(post).take().exists().toSQL().text).toBe(
+      'SELECT EXISTS (SELECT FROM "post" AS "post" LIMIT 1) AS "exists"',
+    )
+  })
+
+  it("checks the rows that a later filter chooses, and keeps its value on coalesce", () => {
+    const expected = compile(from(post).where({ title: "First" }).exists())
+
+    expect(compile(from(post).exists().where({ title: "First" }).orderBy("title"))).toEqual(
+      expected,
+    )
+    expect(compile(from(post).where({ title: "First" }).exists().coalesce(false))).toEqual(expected)
+  })
+
+  it("rejects a change of the selection or the value, an aggregate, and exists, also after the methods that keep its value", () => {
+    // Types reject these calls, which a query held as any query can still make.
+    for (const query of [
+      from(post).exists(),
+      from(post).exists().where({ title: "First" }).coalesce(false),
+    ] as AnySelectQuery[]) {
+      for (const [method, call] of [
+        ["select", () => query.select("id")],
+        ["clearSelect", () => query.clearSelect()],
+        ["get", () => query.get("title")],
+        ["pluck", () => query.pluck("title")],
+        ["count", () => query.count()],
+        ["max", () => query.max("title")],
+        ["exists", () => query.exists()],
+      ] as const) {
+        expect(call).toThrow(`${method} cannot be used after exists`)
+      }
+    }
   })
 })
 
