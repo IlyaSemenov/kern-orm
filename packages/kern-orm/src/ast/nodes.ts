@@ -2,7 +2,7 @@
 // Values of users, such as parameter values and objects of column values, are held by reference and never frozen.
 
 import type { AnyDb } from "../execution/db"
-import type { QueryNode } from "../query/node"
+import type { NestedSelectionNode, QueryNode } from "../query/node"
 import type { ResultField, ResultMode, ScalarField } from "../result/result"
 import type { AnyTable } from "../table/table"
 import type { AnyType } from "../type/type"
@@ -91,6 +91,8 @@ export interface NestedQueryNode {
   readonly query: QueryNode
   /** `Db` that the query is bound to, which must be the `Db` that runs the statement. */
   readonly db: AnyDb | undefined
+  /** Selected field of an aggregate or of `exists` whose value the node is, in a reference of the callback of `orderBy`, by which lowering sorts by the projection of the field. */
+  readonly field?: NestedSelectionNode
 }
 
 export interface ComparisonNode {

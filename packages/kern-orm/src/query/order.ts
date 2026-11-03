@@ -1,16 +1,25 @@
-// Sort keys of queries: the arguments of `orderBy`, the functions that give an expression a direction, and the references of its callback to the selected fields.
+// Sort keys of queries: the arguments of `orderBy`, the functions that give an expression or a query of one value a direction, and the references of its callback to the selected fields.
 
-import type { ExpressionNode, OrderNode, ProjectionNode, TableSourceNode } from "../ast/nodes"
+import type {
+  ExpressionNode,
+  OrderNode,
+  ProjectionNode,
+  ScalarProjection,
+  TableSourceNode,
+} from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import type { AnyExpression } from "../expression/expression"
-import { isExpression, toExpression, toNode } from "../expression/expression"
+import { isOperandSource, operandNode, toExpression } from "../expression/expression"
 import type { ScalarField } from "../result/result"
 import type { AnyTable } from "../table/table"
 import { requireColumn } from "../table/table"
 
-import { createColumnRefs } from "./column-refs"
-import type { QueryNode } from "./node"
+import { isSelectedAsValue } from "./aggregate"
+import type { QueryContext } from "./column-refs"
+import { createSelectionRefs } from "./column-refs"
+import type { NestedSelectionNode, QueryNode } from "./node"
 import { isNestedSelection } from "./node"
+import type { ScalarQuery } from "./select"
 
 /**
  * Direction of a sort key, optionally with the placement of `NULL`.
@@ -35,19 +44,19 @@ export type OrderKey<T extends AnyTable> = (keyof T["columns"] & string) | Order
 
 declare const ordering: unique symbol
 
-/** Expression with the direction of its sort key, made by `asc`, `desc`, or `orderBy`. */
+/** Expression or query of one value with the direction of its sort key, made by `asc`, `desc`, or `orderBy`. */
 export interface Ordering {
   readonly [ordering]: true
 }
 
-/** Sort key returned by the callback of `orderBy`: an expression, sorted in ascending order, or an expression with a direction. */
-export type OrderTerm = AnyExpression | Ordering
+/** Sort key returned by the callback of `orderBy`: an expression or a query of one value, such as of an aggregate of related records, sorted in ascending order, or one with a direction. */
+export type OrderTerm = AnyExpression | ScalarQuery | Ordering
 
 // A conditional type of the query state here would keep a query from being assigned to a query of a wider state, such as one that a `Db` executes, so queries of records and of values get their references from overloads of `orderBy`.
 /**
  * References of the callback of `orderBy` to the fields of records `R` selected by a query: their expressions by key.
  *
- * A field of a nested query, such as of nested rows or of an aggregate, is among them in types, but reading it throws.
+ * A field of nested rows is among them in types, but reading it throws; a field of an aggregate or of `exists` sorts by its value.
  */
 export type SelectedRefs<R> = { readonly [K in keyof R & string]: AnyExpression<R[K]> }
 
@@ -79,35 +88,39 @@ class OrderingObject implements Ordering {
   }
 }
 
-/** Sorts by `expression` in ascending order, in the callback of `orderBy`. */
-export function asc(expression: AnyExpression): Ordering {
-  return orderBy(expression, "asc")
+/** Sorts by `value`, an expression or a query of one value, in ascending order, in the callback of `orderBy`. */
+export function asc(value: AnyExpression | ScalarQuery): Ordering {
+  return orderBy(value, "asc")
 }
 
-/** Sorts by `expression` in descending order, in the callback of `orderBy`. */
-export function desc(expression: AnyExpression): Ordering {
-  return orderBy(expression, "desc")
+/** Sorts by `value`, an expression or a query of one value, in descending order, in the callback of `orderBy`. */
+export function desc(value: AnyExpression | ScalarQuery): Ordering {
+  return orderBy(value, "desc")
 }
 
-/** Sorts by `expression` in `direction`, such as `"desc nulls last"`, in the callback of `orderBy`. */
-export function orderBy(expression: AnyExpression, direction: OrderDirection): Ordering {
-  if (!isExpression(expression)) {
-    throw new TypeError("A sort key must be an expression")
+/** Sorts by `value`, an expression or a query of one value, in `direction`, such as `"desc nulls last"`, in the callback of `orderBy`. */
+export function orderBy(value: AnyExpression | ScalarQuery, direction: OrderDirection): Ordering {
+  if (!isOperandSource(value)) {
+    throw new TypeError("A sort key must be an expression or a query of one value")
   }
-  return new OrderingObject(createOrderNode(toNode(expression), direction))
+  return new OrderingObject(createOrderNode(value[operandNode](), direction))
 }
 
 /**
  * Creates the order of `node` with the sort keys of the arguments of `orderBy` after its own.
  *
- * `args` are column keys and objects of columns with directions, or a callback that receives the columns and the selected fields and returns one sort key or an array of them.
+ * `args` are column keys and objects of columns with directions, or a callback that receives the columns with the relations of `context` and the selected fields, and returns one sort key or an array of them.
  */
-export function addOrder(node: QueryNode, args: readonly unknown[]): OrderNode[] {
+export function addOrder(
+  node: QueryNode,
+  context: QueryContext,
+  args: readonly unknown[],
+): OrderNode[] {
   const order = node.orderBy.slice()
   const first = args[0]
   if (typeof first === "function") {
     const terms: unknown = (first as (columns: unknown, selected: unknown) => unknown)(
-      createColumnRefs(node.from),
+      createSelectionRefs(node.from, context),
       createSelectedRefs(node),
     )
     if (Array.isArray(terms)) {
@@ -136,16 +149,20 @@ export function addOrder(node: QueryNode, args: readonly unknown[]): OrderNode[]
   return order
 }
 
-/** Creates the sort key node of a sort key returned by the callback of `orderBy`. */
+/**
+ * Creates the sort key node of a sort key returned by the callback of `orderBy`.
+ *
+ * A query is converted by the method of `operandNode`, which rejects a query other than of one value.
+ */
 function readTerm(term: unknown): OrderNode {
   if (term instanceof OrderingObject) {
     return term[orderingNode]
   }
-  if (isExpression(term)) {
-    return createOrderNode(toNode(term), "asc")
+  if (isOperandSource(term)) {
+    return createOrderNode(term[operandNode](), "asc")
   }
   throw new TypeError(
-    "The callback of orderBy must return expressions, or sort keys of asc, desc, and orderBy",
+    "The callback of orderBy must return expressions, queries of one value, or sort keys of asc, desc, and orderBy",
   )
 }
 
@@ -171,6 +188,7 @@ function createColumnNode(source: TableSourceNode, key: string): ExpressionNode 
  * Creates the references of the callback of `orderBy` to the fields selected by `node`.
  *
  * Each is an expression over the node of its projection, so that a sort key of it is the projection itself.
+ * A field of an aggregate or of `exists` is an expression of its query that holds the field, by which lowering finds the projection of the field.
  */
 function createSelectedRefs(node: QueryNode): unknown {
   const { projections } = node
@@ -182,13 +200,17 @@ function createSelectedRefs(node: QueryNode): unknown {
   for (const projection of projections) {
     const { key } = projection
     if (isNestedSelection(projection)) {
-      // Nested rows are JSON, which PostgreSQL cannot sort by, and only lowering creates the scalar subquery of an aggregate, so no sort key can refer to it.
-      Object.defineProperty(refs, key, {
-        get() {
-          throw new Error(`Field "${key}" holds a nested query and cannot be sorted by`)
-        },
-        enumerable: true,
-      })
+      if (isSelectedAsValue(projection.query)) {
+        refs[key] = toQueryExpression(projection)
+      } else {
+        // Nested rows are JSON, which PostgreSQL cannot sort by.
+        Object.defineProperty(refs, key, {
+          get() {
+            throw new Error(`Field "${key}" holds nested rows and cannot be sorted by`)
+          },
+          enumerable: true,
+        })
+      }
     } else {
       refs[key] = toSelectedExpression(projection)
     }
@@ -199,4 +221,15 @@ function createSelectedRefs(node: QueryNode): unknown {
 /** Creates an expression over the node of a projection of a query, which has a type: only lowering adds projections of nested queries. */
 function toSelectedExpression(projection: ProjectionNode): AnyExpression {
   return toExpression(projection.expression, (projection as ScalarField).type)
+}
+
+// Only lowering creates the scalar subquery of an aggregate and `EXISTS` of a query, so the expression holds the field, by which lowering finds its projection.
+// The field rather than its query: each projection of a query is a subquery of its own, which PostgreSQL evaluates apart, such as one of `random()`.
+/** Creates an expression of the value of `field`, a selected aggregate query or query of `exists`, with the type of its value. */
+function toQueryExpression(field: NestedSelectionNode): AnyExpression {
+  const { query } = field
+  return toExpression(
+    createNode({ kind: "nestedQuery", query, db: field.db, field }),
+    (query.projections[0] as ScalarProjection).type,
+  )
 }

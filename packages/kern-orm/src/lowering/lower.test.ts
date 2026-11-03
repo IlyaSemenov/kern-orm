@@ -73,6 +73,50 @@ describe("lowerStatement", () => {
     )
   })
 
+  it("sorts by the positions of the selected fields of an aggregate and of exists, and by another query of one value as a subquery", () => {
+    const { node } = schema.form
+      .select(form => ({
+        fieldCount: form.fields.count(),
+        hasFields: form.fields.exists(),
+      }))
+      .orderBy((form, selected) => [
+        desc(selected.fieldCount),
+        selected.hasFields,
+        form.fields.max("id"),
+      ])
+
+    expect(compileStatement(lowerStatement(node)).text).toBe(
+      'SELECT (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "fieldCount", EXISTS (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form"."id") AS "hasFields" FROM "form" AS "form" ORDER BY 1 DESC, 2, (SELECT max("form_field_3"."id") AS "max" FROM "form_field" AS "form_field_3" WHERE "form_field_3"."formId" = "form"."id")',
+    )
+  })
+
+  it("sorts by the position of the field that a sort key names, of a query selected under several keys, and by the query held apart as a subquery of its own", () => {
+    const count = schema.form.count()
+    const query = schema.form
+      .select(() => ({
+        count1: count,
+        count2: count,
+      }))
+      .orderBy((_form, selected) => [desc(selected.count2), count])
+
+    expect(compileStatement(lowerStatement(query.node)).text).toBe(
+      'SELECT (SELECT count(*) AS "count" FROM "form" AS "form_2") AS "count1", (SELECT count(*) AS "count" FROM "form" AS "form_3") AS "count2" FROM "form" AS "form" ORDER BY 2 DESC, (SELECT count(*) AS "count" FROM "form" AS "form_4")',
+    )
+    expect(
+      compileStatement(
+        lowerStatement(
+          query
+            .select(form => ({
+              fields: form.fields.pluck("label"),
+            }))
+            .offset(20).node,
+        ),
+      ).text,
+    ).toStartWith(
+      'SELECT (SELECT count(*) AS "count" FROM "form" AS "form_2") AS "count1", "form"."$field2" AS "count2", ',
+    )
+  })
+
   it("reads the page of a query that selects nested queries after an offset from a derived source of the page, sorted again", () => {
     const page = schema.form.orderBy("id").offset(20)
     const { node } = page.select(form => ({
@@ -101,6 +145,30 @@ describe("lowerStatement", () => {
     expect(text).toStartWith('SELECT "form_field"."$field1" AS "upper", (SELECT count(*)')
     expect(text).toEndWith(
       ' FROM (SELECT "form_field_2"."id" AS "id", upper("form_field_2"."label") AS "$field1" FROM "form_field" AS "form_field_2" ORDER BY 2 DESC, 1 OFFSET $1) AS "form_field" ORDER BY 1 DESC, "form_field"."id"',
+    )
+  })
+
+  it("evaluates the fields of an aggregate and of exists that a page after an offset sorts by in the derived source of the page, and keeps a page without other nested queries on its table", () => {
+    const sorted = schema.form
+      .select(form => ({
+        fieldCount: form.fields.count(),
+        hasFields: form.fields.exists(),
+      }))
+      .orderBy((_form, selected) => [desc(selected.fieldCount), selected.hasFields])
+      .offset(20)
+    const nested = sorted.select(form => ({
+      labels: form.fields.pluck("label"),
+    }))
+
+    expect(compileStatement(lowerStatement(sorted.node)).text).toEndWith(
+      ' FROM "form" AS "form" ORDER BY 1 DESC, 2 OFFSET $1',
+    )
+    const text = compileStatement(lowerStatement(nested.node)).text
+    expect(text).toStartWith(
+      'SELECT "form"."$field1" AS "fieldCount", "form"."$field2" AS "hasFields", (SELECT coalesce(json_agg(',
+    )
+    expect(text).toEndWith(
+      ' FROM (SELECT "form_2"."id" AS "id", (SELECT count(*) AS "count" FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form_2"."id") AS "$field1", EXISTS (SELECT FROM "form_field" AS "form_field_3" WHERE "form_field_3"."formId" = "form_2"."id") AS "$field2" FROM "form" AS "form_2" ORDER BY 2 DESC, 3 OFFSET $1) AS "form" ORDER BY 1 DESC, 2',
     )
   })
 
@@ -171,6 +239,25 @@ describe("lowerStatement", () => {
     }))
 
     expect(compileStatement(lowerStatement(node)).text).toContain('ORDER BY "subquery"."label"')
+  })
+
+  it("sorts the rows of a nested query by a selected field of an aggregate through its projection", () => {
+    const { node } = schema.form.select(form => ({
+      fields: form.fields
+        .select("id")
+        .select(field => ({
+          optionCount: field.options.count(),
+        }))
+        .orderBy((_field, selected) => desc(selected.optionCount))
+        .limit(3),
+    }))
+
+    const text = compileStatement(lowerStatement(node)).text
+
+    expect(text).toContain('ORDER BY "subquery"."optionCount" DESC), \'[]\'::json)')
+    expect(text).toContain(
+      'AS "optionCount" FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id" ORDER BY 2 DESC LIMIT $1) AS "subquery"',
+    )
   })
 
   it("lowers a query of $select to a statement of one row without a source, packing its nested queries", () => {
@@ -519,6 +606,49 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
 
     expect(rows.map(row => row.number)).toEqual([10, 9, 8, 7, 6])
     expect(rows.map(row => row.nested).toSorted((a, b) => a - b)).toEqual([1, 2, 3, 4, 5])
+    expect(evaluations).toEqual({ number: 20, nested: 5 })
+  })
+
+  it("sorts by a selected field of an aggregate evaluated once for each row, also of a page after an offset with nested queries", async () => {
+    const sorted = db.form
+      .select(form => ({
+        number: db.form
+          .where(other => other.id.eq(form.id))
+          .max(() => sql(t.integer)`nextval('number_sequence')::integer + ${0}`),
+      }))
+      .orderBy((_form, selected) => desc(selected.number))
+    const page = sorted
+      .select(form => ({
+        nested: db.form
+          .where(other => other.id.eq(form.id))
+          .get(() => sql(t.integer)`nextval('nested_sequence')::integer`),
+      }))
+      .limit(5)
+      .offset(10)
+    const { rows, pageRows, evaluations } = await testTransaction(async () => {
+      await database.script(`
+        SET LOCAL plan_cache_mode = force_generic_plan;
+        CREATE SEQUENCE number_sequence;
+        CREATE SEQUENCE nested_sequence;
+      `)
+      const rows = await db.$execute(sorted)
+      await database.script("ALTER SEQUENCE number_sequence RESTART")
+      const pageRows = await db.$execute(page)
+      const evaluations = await database.query`
+        SELECT currval('number_sequence') AS number, currval('nested_sequence') AS nested
+      `
+        .select({
+          number: t.integer,
+          nested: t.integer,
+        })
+        .take()
+      return { rows, pageRows, evaluations }
+    })
+
+    expect(rows.map(row => row.number)).toEqual(
+      Array.from({ length: 20 }, (_, index) => 20 - index),
+    )
+    expect(pageRows.map(row => row.number)).toEqual([10, 9, 8, 7, 6])
     expect(evaluations).toEqual({ number: 20, nested: 5 })
   })
 

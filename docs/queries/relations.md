@@ -109,6 +109,8 @@ const forms = await db.form.select("id").select(form => ({
 
 Each form gets all its fields in order and the labels of its first three fields.
 
+To sort the rows by their related records, such as forms by the number of their fields, see [Sorting](./sorting#related-records).
+
 ## Helpers
 
 To reuse a selection of related records, define a [helper](./composing#helpers):

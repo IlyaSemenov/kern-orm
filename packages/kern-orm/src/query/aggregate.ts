@@ -5,6 +5,7 @@ import { createNode } from "../ast/nodes"
 import type { AnyType } from "../type/type"
 import { defineType } from "../type/type"
 
+import { isExistsQuery } from "./exists"
 import type { QueryNode, SelectedNode } from "./node"
 
 // PostgreSQL counts in `bigint`, and a number holds every count up to `Number.MAX_SAFE_INTEGER` exactly.
@@ -140,6 +141,11 @@ export function addFallback(
 /** Tells whether `node` is an aggregate query, whose value is the aggregate over the rows that its filters, limit, and offset choose. */
 export function isAggregateQuery(node: QueryNode): boolean {
   return node.value && isAggregateProjection(node.projections[0]!)
+}
+
+/** Tells whether `node`, a nested query, is selected as its value rather than as packed rows: an aggregate query as a scalar subquery of its statement, and a query of `exists` as `EXISTS` of its rows. */
+export function isSelectedAsValue(node: QueryNode): boolean {
+  return isAggregateQuery(node) || isExistsQuery(node)
 }
 
 /** Tells whether a selected field is the projection of an aggregate, which only the aggregate methods select. */

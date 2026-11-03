@@ -207,7 +207,8 @@ function lowerSelect(node: QueryNode, context: LoweringContext, positions: boole
       : undefined
   // PostgreSQL evaluates the select list also for the rows that an offset skips, so the nested queries of a page after an offset read its rows from a derived source.
   const page =
-    node.offset !== undefined && selected.some(isNestedSelection)
+    node.offset !== undefined &&
+    selected.some((field, index) => isPagedField(field, projections[index]!, orderBy))
       ? lowerPage(node, projections, filters, orderBy, positions, guaranteedBy)
       : undefined
   if (page !== undefined) {
@@ -226,6 +227,23 @@ function lowerSelect(node: QueryNode, context: LoweringContext, positions: boole
     value: node.value,
     guaranteedBy,
   })
+}
+
+/**
+ * Tells whether `field`, a field of a query lowered to `projection`, is a nested query that a page after an offset evaluates only over its rows: one that no sort key of `orderBy`, the lowered order, sorts by.
+ *
+ * The query evaluates a field that it sorts by, of an aggregate or of `exists`, for every row anyway.
+ */
+function isPagedField(
+  field: SelectedNode,
+  projection: ProjectionNode,
+  orderBy: readonly OrderNode[],
+): boolean {
+  if (!isNestedSelection(field)) {
+    return false
+  }
+  const { expression } = projection
+  return !orderBy.some(order => order.expression === expression)
 }
 
 /** Rejects a query of a relation outside the definitions of `context`. */
@@ -253,13 +271,14 @@ function checkDb(db: AnyDb | undefined, context: LoweringContext, subject: strin
 }
 
 /**
- * Lowers `node` with `projections`, `filters`, and `orderBy`, the lowered parts of the node, to a statement that evaluates its nested queries over the rows of a derived page.
+ * Lowers `node` with `projections`, `filters`, and `orderBy`, the lowered parts of the node, to a statement that evaluates its nested queries, apart from those that it sorts by, over the rows of a derived page.
  * The derived source applies the filters, the order, the limit, and the offset, and replaces the occurrence of the table.
  *
- * It returns `undefined` when a nested query holds a SQL fragment that refers to a column of the table outside the queries nested in the fragment.
+ * It returns `undefined` when a nested query that it evaluates over the rows of the page holds a SQL fragment that refers to a column of the table outside the queries nested in the fragment.
  * Such a fragment may hold an aggregate of the query, which the limit and the offset apply after.
  *
  * The source selects the columns of the table that the fields and the nested queries of the query read, under their keys, and the other scalar fields of the query, which it evaluates before the limit and the offset as the query would, such as a window function over all its rows.
+ * A field of an aggregate or of `exists` that the query sorts by is such a scalar field: the order needs its value for every row.
  * A column that no field reads stays out of the source, which could not select it beside an aggregate of a SQL fragment, such as `count(*)`.
  * The order of a derived source does not carry into the query that reads it, so the statement sorts the rows of the page again by the sort keys of the source, by positions when `positions` is set.
  */
@@ -279,7 +298,7 @@ function lowerPage(
   for (let index = 0; index < projections.length; index++) {
     const { expression } = projections[index]!
     let key: string | undefined
-    if (isNestedSelection(node.projections[index]!)) {
+    if (isPagedField(node.projections[index]!, projections[index]!, orderBy)) {
       if (holdsFragmentOfSource(expression, from)) {
         return undefined
       }
@@ -631,6 +650,7 @@ function lowerFilters(filters: QueryFilters, context: LoweringContext): QueryFil
  * Lowers the sort keys of a query, replacing the queries in their expressions; without queries, it returns `orderBy` itself.
  *
  * A sort key of a field of `selected`, the fields of the query, takes the expression of its projection among `projections`, the lowered fields, so that the statement still finds the projection that has its value.
+ * A field of an aggregate or of `exists` is identified by the node of its reference, which holds the field.
  */
 function lowerOrder(
   orderBy: readonly OrderNode[],
@@ -646,7 +666,7 @@ function lowerOrder(
     const position =
       selected === undefined || projections === undefined || projections === selected
         ? -1
-        : selected.findIndex(field => !isNestedSelection(field) && field.expression === expression)
+        : selected.findIndex(field => isFieldValue(field, expression))
     const sorted =
       position === -1 ? lowerExpression(expression, context) : projections![position]!.expression
     if (lowered === undefined && sorted === expression) {
@@ -660,6 +680,13 @@ function lowerOrder(
     )
   }
   return lowered ?? orderBy
+}
+
+/** Tells whether the sort expression `expression` is the value of `field`: its expression, or for a field of an aggregate or of `exists`, the node of its reference in the callback of `orderBy`. */
+function isFieldValue(field: SelectedNode, expression: ExpressionNode): boolean {
+  return isNestedSelection(field)
+    ? expression.kind === "nestedQuery" && expression.field === field
+    : field.expression === expression
 }
 
 /**

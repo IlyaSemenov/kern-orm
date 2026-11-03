@@ -20,7 +20,7 @@ export type ColumnRefs<T extends AnyTable> = {
 
 // Without relations for a context of any table, `DbQuery` of a `Db` keeps accepting queries of every schema context.
 /**
- * Queries of the records of the relations of the table of schema context `C`, by relation name, which the callback of `select` receives beside the columns.
+ * Queries of the records of the relations of the table of schema context `C`, by relation name, which the callbacks of `select`, `where`, and `orderBy` receive beside the columns.
  *
  * A relation name is never a column key of its table.
  * A context whose table key is not known, such as one of a query of any schema, has no relations.
@@ -52,7 +52,7 @@ type RelatedQuery<
 
 /** Runtime context of the queries of a table in the schema they start from. */
 export interface QueryContext {
-  /** Getters of the queries of the relations of the table, which the references of `select` have as their own properties and which read the key columns from them. */
+  /** Getters of the queries of the relations of the table, which the references of the callbacks of `select`, `where`, and `orderBy` have as their own properties and which read the key columns from them. */
   readonly relations: PropertyDescriptorMap
 }
 
@@ -67,7 +67,7 @@ export function createColumnRefs<T extends AnyTable>(source: TableSourceNode): C
 }
 
 // The relations are own enumerable properties like the columns, so that the references and a spread of them hold every field their type has.
-/** Creates the references of the callback of `select` over `source`: its columns, and the relations of `context`. */
+/** Creates the references of the callbacks of `select`, `where`, and `orderBy` over `source`: its columns, and the relations of `context`. */
 export function createSelectionRefs(source: TableSourceNode, context: QueryContext): object {
   return Object.defineProperties(addColumns({}, source), context.relations)
 }

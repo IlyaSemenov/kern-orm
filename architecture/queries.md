@@ -80,6 +80,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 ## Queries in expressions
 
 - An expression takes a query of a table of one value, such as of `get`, of an aggregate, or of [`exists`](#exists), wherever it takes an operand: as a condition, an operand of an operator, such as `field.position.lt(form.fields.max("position"))`, a value of an object condition, an item of the list of `in`, the fallback of `coalesce`, and a value of `param` with an expression.
+  A [sort key](#sorting-and-pagination) takes it too.
   A query of `exists` is `EXISTS` of its rows, and another query a scalar subquery of its value.
   - The query keeps its `Db`, which must be the `Db` that runs the statement, as for a nested query of a selection.
   - At runtime, it rejects the queries of a shape that types reject: a query of records or of rows `many`, and a query of `$select`, a mutation, and a query of SQL text.
@@ -125,10 +126,15 @@ Queries come in two kinds that share the query methods and differ only by execut
   - A string names a column, sorted in ascending order, and an object gives columns with their directions in the order of its keys, which JavaScript gives to integer-like keys first.
   - A direction is `asc` or `desc`, optionally followed by `nulls first` or `nulls last`, in lower case.
     The columns and directions of an object are checked at runtime too, since TypeScript accepts a computed key of type `string` as any column.
-  - The callback returns a sort key or an array of them: an expression, sorted in ascending order, or an `Ordering` made by `asc`, `desc`, or `orderBy`, which its class tells apart from an expression.
+  - The callback receives the columns and the relations of the table, as the callbacks of `select` and `where` do ([nested queries and relations](#nested-queries-and-relations)).
+  - The callback returns a sort key or an array of them: an expression or a query of one value, sorted in ascending order, or an `Ordering` made by `asc`, `desc`, or `orderBy` of one, which its class tells apart from them.
     An expression without a type sorts too, since sort keys are never decoded.
+    A query is the sort key that it is as an operand of an expression ([queries in expressions](#queries-in-expressions)): a scalar subquery of its value, or `EXISTS` of its rows, and `asc`, `desc`, `orderBy`, and the callback reject the queries that an expression rejects.
   - The second parameter of the callback holds expressions over the nodes of the projections selected when `orderBy` is called, so a sort key of a selected field is its projection; a later selection that replaces the field leaves the order on the old expression.
-    A field of a nested query, such as of nested rows or of an aggregate, throws when it is read: nested rows are JSON, which PostgreSQL cannot sort by, only lowering creates the scalar subquery of an aggregate, and types do not tell them from expressions.
+    A field of an aggregate or of `exists` is an expression of its query whose node holds the field, by which lowering finds the projection of the field, so that the statement sorts by it and evaluates the query once: only lowering creates the scalar subquery of an aggregate and `EXISTS` of a query.
+    Lowering identifies the selected field rather than its query: each projection of a query is a subquery of its own, which PostgreSQL evaluates apart, so a query selected under several keys has a value under each, such as of `random()`.
+    A sort key of the query held apart, such as in a variable, is a subquery of its own too.
+    A field of nested rows throws when it is read: nested rows are JSON, which PostgreSQL cannot sort by, and types do not tell them from expressions.
     A query of values gets the expression of its value from another overload.
 - `limit` and `offset` apply only to a query of many rows, in types and at runtime, since a query of one row must find a second row to reject it.
   A helper that paginates passes types when it is applied to a query of one row and fails at runtime, since its effect does not record pagination.
@@ -180,8 +186,8 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Nested queries and relations
 
-- The references of the callbacks of `select` and `where` have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them in `select` selects every field their type has; the callbacks of `get`, `pluck`, and the aggregate methods get only the columns.
-  The relations add about 35 instantiations to a call of `where` with a callback on a query of a table with relations, 19% of a query of `where` of a callback and `pluck` ([benchmark](../benchmarks/types/queries.bench.ts)).
+- The references of the callbacks of `select`, `where`, and `orderBy` have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them in `select` selects every field their type has; the callbacks of `get`, `pluck`, and the aggregate methods get only the columns.
+  The relations add about 35 instantiations to a call of `where` with a callback on a query of a table with relations, 19% of a query of `where` of a callback and `pluck`, and about 30 to a call of `orderBy` with a callback, 22% of a query of `orderBy` of a callback and `pluck` ([benchmark](../benchmarks/types/queries.bench.ts)).
   A relation gives an unbound query of its related records over a new occurrence of the target table, in the context of the target table in the same schema, even for a query of a `Db`.
   Its relation filter compares the columns of the keys with SQL `=` in order, built from SQL nodes rather than by calling the `eq` operators of their types.
   In types, a schema context whose table key is `string`, such as that of the queries a `Db` accepts, has no relations, since queries of relations there would keep the queries of a `Db` from being assigned to them.

@@ -675,32 +675,35 @@ export class SelectQuery<
   /**
    * Sorts the rows by the sort keys returned by `callback`, after the sort keys of earlier calls.
    *
-   * `callback` receives the columns and the fields selected so far, and returns an expression, sorted in ascending order, `asc`, `desc`, or `orderBy` of an expression, or an array of them.
-   * A selected field sorts by the value of the field, also when it changes from row to row, such as `random()`.
+   * `callback` receives the columns with the queries of the relations of the table, and the fields selected so far.
+   * It returns an expression or a query of one value, such as of an aggregate of related records, sorted in ascending order, `asc`, `desc`, or `orderBy` of one, or an array of them.
+   * A selected field sorts by the value of the field, also when it changes from row to row, such as `random()`; a field of nested rows cannot be sorted by.
    */
   orderBy<Q extends QueryOf<RecordQueryState>>(
     this: Q,
     callback: (
-      columns: ColumnRefs<Q["types"]["table"]>,
+      // An intersection rather than one alias of both, as for the callback of `select`.
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
       selected: SelectedRefs<Q["types"]["result"]>,
     ) => OrderTerms,
   ): Q
   /**
    * Sorts the values of a query made by `get` or `pluck` by the sort keys returned by `callback`, after the sort keys of earlier calls.
    *
-   * `callback` receives the columns and the expression of the value, and returns an expression, sorted in ascending order, `asc`, `desc`, or `orderBy` of an expression, or an array of them.
+   * `callback` receives the columns with the queries of the relations of the table, and the expression of the value.
+   * It returns an expression or a query of one value, sorted in ascending order, `asc`, `desc`, or `orderBy` of one, or an array of them.
    */
   orderBy<Q extends QueryOf<ValueQueryState>>(
     this: Q,
     callback: (
-      columns: ColumnRefs<Q["types"]["table"]>,
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
       value: AnyExpression<Q["types"]["result"]>,
     ) => OrderTerms,
   ): Q
   /** Sorts the rows by the listed columns in ascending order, or in the directions of objects of columns, after the sort keys of earlier calls. */
   orderBy<Q extends AnySelectQuery>(this: Q, ...keys: OrderKey<Q["types"]["table"]>[]): Q
   orderBy(...args: unknown[]): unknown {
-    return this.derive({ orderBy: addOrder(this.node, args) })
+    return this.derive({ orderBy: addOrder(this.node, this.context, args) })
   }
 
   /** Returns at most `count` rows of a query of many rows, replacing an earlier limit. */

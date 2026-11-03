@@ -9,6 +9,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
+import { asc, desc } from "./order"
 import type { QueryResult } from "./rows"
 import type { AnySelectQuery, SelectQuery } from "./select"
 import { from } from "./select"
@@ -389,5 +390,29 @@ describe("where", () => {
   test("gives no relations to a query of from", () => {
     // @ts-expect-error A query of from has no relations.
     from(form).where(form => form.fields.exists())
+  })
+})
+
+describe("orderBy", () => {
+  test("sorts by queries of one value of the relations of the table, also of a query of values", () => {
+    const query = tenant.form
+      .orderBy(form => [desc(form.fields.count()), form.fields.exists()])
+      .select("id")
+    const labels = tenant.field.pluck("label").orderBy(field => asc(field.form.get("name")))
+
+    expectTypeOf<Executed<typeof query>>().toEqualTypeOf<{ id: string }[]>()
+    expectTypeOf<Executed<typeof labels>>().toEqualTypeOf<(string | null)[]>()
+  })
+
+  test("rejects a query of the records or the values of a relation many", () => {
+    // @ts-expect-error A sort key is a query of one value, not of an array.
+    tenant.form.orderBy(form => form.fields.pluck("id"))
+    // @ts-expect-error A sort key is a query of one value, not of records.
+    tenant.form.orderBy(form => desc(form.fields.select("id")))
+  })
+
+  test("gives no relations to a query of from", () => {
+    // @ts-expect-error A query of from has no relations.
+    from(form).orderBy(form => form.fields.count())
   })
 })

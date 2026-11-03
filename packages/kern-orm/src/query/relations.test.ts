@@ -13,6 +13,7 @@ import * as t from "../types"
 
 import { defineHelper } from "./helper"
 import type { NestedSelectionNode } from "./node"
+import { desc } from "./order"
 import { from, SelectQuery } from "./select"
 
 /** Integer of a rating in stars, decoded into an object, as a custom scalar of nested records. */
@@ -703,6 +704,31 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       { id: 1, fieldCount: 3, labeledCount: 2, pageCount: 2 },
       { id: 2, fieldCount: 1, labeledCount: 1, pageCount: 0 },
       { id: 3, fieldCount: 0, labeledCount: 0, pageCount: 0 },
+    ])
+  })
+
+  it("sorts by an aggregate of related records, by whether they exist, and by a value of a related record, also by a selected field of an aggregate of a page", async () => {
+    const results = await testTransaction(async () => [
+      await db.form.orderBy(form => form.fields.count()).pluck("id"),
+      await db.form.orderBy(form => [desc(form.fields.exists()), desc(form.id)]).pluck("id"),
+      await db.field.orderBy(field => [field.form.get("name"), field.id]).pluck("id"),
+      await db.form
+        .select(form => ({
+          id: form.id,
+          fieldCount: form.fields.count(),
+        }))
+        .orderBy((_form, selected) => desc(selected.fieldCount))
+        .offset(1),
+    ])
+
+    expect(results).toEqual([
+      [3, 2, 1],
+      [2, 1, 3],
+      [4, 1, 2, 3],
+      [
+        { id: 2, fieldCount: 1 },
+        { id: 3, fieldCount: 0 },
+      ],
     ])
   })
 

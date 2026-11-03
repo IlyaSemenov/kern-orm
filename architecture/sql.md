@@ -23,7 +23,7 @@
     - for `in` of 1000 values, 22% (17 to 29%) on Bun and 17% (12 to 23%) on Node.js;
     - for a tree of 256 conditions, 12% (7 to 18%) on Bun and 15% (7 to 18%) on Node.js;
     - for a select of a few conditions, an insert of 1000 records, and nested relations, the medians of 3 to 8% are inconclusive.
-  - A sort key of a selected expression takes the node of the lowered projection, so the statement still finds the projection that has its value.
+  - A sort key of a selected expression, or of the query of a selected field of an aggregate or of `exists`, takes the node of the lowered projection, so the statement still finds the projection that has its value.
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
   Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.
@@ -76,11 +76,12 @@
   On a page of 20 of 1000 parents ordered by a column without an index, the scalar subquery is 38 to 48 times faster, and the two are within 8% for all parents and for a page ordered by an index ([benchmark](../benchmarks/suites/nested-placement.ts)).
 - PostgreSQL also evaluates a scalar subquery of the select list for the rows that an offset skips, so a query that selects nested queries reads a page after an offset from a derived source that replaces its table.
   The source applies the filters, the order, the limit, and the offset of the query, and selects the columns of the table that the fields and the nested queries of the query read at any depth, the other scalar fields of the query, which it evaluates before the limit and the offset as the query would, such as a window function over all its rows, and the value of each other sort expression.
+  A field of an aggregate or of `exists` that the query sorts by is such a scalar field, since the order needs its value for every row.
   It selects no other column, which PostgreSQL would reject beside an aggregate of a SQL fragment, such as `count(*)`.
   The query reads them from the source and evaluates only its nested queries over the rows of the page, which it sorts again by the sort keys of the source, since the order of a derived source does not carry into the query that reads it.
   For a page of 20 of 1000 parents, it is 4 to 6 times faster after an offset of 100 and 26 to 45 times after 900, and within 4% after an offset of 0 ([benchmark](../benchmarks/suites/offset-page.ts)).
-  A query without nested queries, also with queries in the expressions of its fields, which are scalar fields, or without an offset keeps its page on its table.
-  So does a query whose nested queries hold a SQL fragment that refers to a column of its table outside the queries nested in the fragment.
+  A query without nested queries other than such sorted fields, also with queries in the expressions of its fields, which are scalar fields, or without an offset keeps its page on its table.
+  So does a query whose nested queries that the page evaluates over its rows hold a SQL fragment that refers to a column of its table outside the queries nested in the fragment; a sorted field evaluated in the source is not checked, since the source evaluates it as the query would.
   PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, and lowering does not parse SQL fragments to identify their aggregates, so such a fragment, such as `sum` of a column of the parent row, may aggregate the rows of the query before its offset.
 - A nested aggregate query is selected as a scalar subquery of its statement, decoded by the type of the aggregate, rather than packed: it always returns one row of one value.
   For a count of 1000 and 10000 parents of 10 rows each, PostgreSQL evaluates it in 20 to 25% less time than the packed number, and the round trips are within their noise ([benchmark](../benchmarks/suites/nested-count.ts)).

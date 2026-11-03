@@ -59,6 +59,33 @@ The rows are sorted by the same values that the records get.
 
 After `pluck` or `get`, the second parameter is the expression of the value.
 
+## Related records
+
+To sort by an aggregate of related records, such as forms by the number of their fields, call it on the [relation](../schemas#relations) in the callback:
+
+```ts
+import { desc } from "kern-orm"
+
+const forms = await db.form.orderBy(form => desc(form.fields.count())).select("id", "name")
+```
+
+The callback receives the relations of the table beside its columns.
+Sort the same way by whether related records exist, such as `desc(form.fields.exists())`, by a value of a related record, such as `field.form.get("name")`, or by the value of any other [query of one value](./filtering#values-of-other-queries).
+
+To also get the number, select it and sort by the selected field, so that the statement counts the fields once:
+
+```ts
+import { desc } from "kern-orm"
+
+const forms = await db.form
+  .select("id", "name")
+  .select(form => ({
+    fieldCount: form.fields.count(),
+  }))
+  .orderBy((form, selected) => desc(selected.fieldCount))
+// forms: { id: string; name: string; fieldCount: number }[]
+```
+
 ## Pagination
 
 To get one page of rows, call `limit` and `offset` after sorting:

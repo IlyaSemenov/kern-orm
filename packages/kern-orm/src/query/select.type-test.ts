@@ -739,15 +739,22 @@ describe("orderBy", () => {
       .select(columns => ({
         heading: columns.title,
         others: from(post).select("id"),
+        otherCount: from(post).count(),
       }))
       .orderBy((columns, selected) => {
-        expectTypeOf(columns).toEqualTypeOf<ColumnRefs<typeof post>>()
+        expectTypeOf(columns).toEqualTypeOf<ColumnRefs<typeof post> & EmptyRecord>()
         expectTypeOf(selected).toEqualTypeOf<{
           readonly id: AnyExpression<string>
           readonly heading: AnyExpression<string>
           readonly others: AnyExpression<{ id: string }[]>
+          readonly otherCount: AnyExpression<number>
         }>()
-        return [desc(selected.heading), orderBy(columns.hint, "asc nulls first"), sql`random()`]
+        return [
+          desc(selected.heading),
+          orderBy(columns.hint, "asc nulls first"),
+          selected.otherCount,
+          sql`random()`,
+        ]
       })
   })
 
@@ -760,11 +767,19 @@ describe("orderBy", () => {
       })
   })
 
-  test("accepts only expressions and sort keys from the callback", () => {
-    // @ts-expect-error A sort key is an expression.
+  test("accepts only expressions, queries of one value, and sort keys from the callback", () => {
+    from(post).orderBy(columns => [
+      from(post).count(),
+      desc(from(post).where({ id: columns.id }).get("title")),
+      orderBy(from(post).exists(), "desc nulls last"),
+    ])
+
+    // @ts-expect-error A sort key is an expression or a query of one value, not a column key.
     from(post).orderBy(() => "title")
-    // @ts-expect-error A sort key is an expression, not the rows of a query.
+    // @ts-expect-error A sort key is an expression or a query of one value, not of an array.
     from(post).orderBy(() => [from(post).pluck("title")])
+    // @ts-expect-error A sort key is a query of one value, not of a record.
+    from(post).orderBy(() => desc(from(post).select("id").take()))
   })
 })
 

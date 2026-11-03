@@ -4,12 +4,10 @@ Work not done yet, ideas, and research, roughly from the most important; the ord
 
 ## Queries as expressions
 
-A query as an expression in sort keys and SQL fragments, and as the value of a comparison on the left, beside a query of one value as an [operand](architecture/queries.md#queries-in-expressions) of conditions, operators, object conditions, and `coalesce`, and a query of values as the list of `in`.
+A query as an expression in SQL fragments, and as the value of a comparison on the left, beside a query of one value as an [operand](architecture/queries.md#queries-in-expressions) of conditions, operators, object conditions, `coalesce`, and sort keys, and a query of values as the list of `in`.
 
 Preliminary decisions:
 
-- `asc`, `desc`, `orderBy`, and the callback of `orderBy` take a query of one value as a sort key, and the callback of `orderBy` receives the relations of the table, so that it sorts by an aggregate of related records, such as `desc(form.fields.count())`.
-  - A selected field of an aggregate or of `exists`, which the second parameter of the callback gives, could sort by its projection rather than throw, so that a query that selects and sorts by a count evaluates it once.
 - `sql` interpolates a query with clauses as a subquery in parentheses, `(SELECT ...)`, so that it is an operand anywhere; PostgreSQL 18 parses `EXISTS ((SELECT 1))` and `1 IN ((SELECT 1 UNION SELECT 2))` as subqueries, so both ``sql`EXISTS (${query})` `` and ``sql`EXISTS ${query}` `` work.
   A query of a table without clauses stays the name of its table.
 - A method of a query of one value, `expr()`, returns an expression of its value with the operators of its type, such as `form.fields.count().expr().gt(3)`; until then, the value of a query is an operand on the right or a fragment such as ``sql<boolean>`${form.fields.count()} > ${3}` ``.

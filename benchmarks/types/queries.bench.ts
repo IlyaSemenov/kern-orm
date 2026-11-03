@@ -3,7 +3,7 @@
 
 import { bench } from "@ark/attest"
 import type { DbOf } from "kern-orm"
-import { defineHelper, not } from "kern-orm"
+import { defineHelper, desc, not } from "kern-orm"
 
 import { formsDb, formsSchema, storeDb, tenantDb } from "./fixture.ts"
 
@@ -79,6 +79,8 @@ bench.baseline(async () => {
     .where({ label: tenantDb.answer.where({ value: "baseline" }).get("value") })
     .pluck("id")
   await tenantDb.field.where(field => field.position.lt(field.answers.count())).pluck("id")
+  await storeDb.supplier.orderBy(supplier => desc(supplier.email)).pluck("name")
+  await storeDb.supplier.orderBy(() => desc(storeDb.review.count())).pluck("email")
   await storeDb.supplier.where(supplier => supplier.id.in(["baseline"])).pluck("name")
   await storeDb.review
     .where(review => review.id.in(storeDb.supplier.where({ email: "baseline" }).pluck("id")))
@@ -182,6 +184,14 @@ bench("filter of the values of a query", async () => {
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
 }).types([515, "instantiations"])
+
+bench("order of a callback", async () => {
+  await tenantDb.form.orderBy(form => desc(form.name)).pluck("name")
+}).types([175, "instantiations"])
+
+bench("order by an aggregate of a relation", async () => {
+  await tenantDb.form.orderBy(form => desc(form.fields.count())).pluck("name")
+}).types([302, "instantiations"])
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
