@@ -150,6 +150,7 @@ Describe the user-visible change.
 
 - Briefly describe the user-observable change or new capability in the public contract, without implementation details or rationale.
   Prefer a single sentence.
+- Name a member of a `Db` or a `Database` as users call it, such as `db.$lock()` and `database.lock()`, rather than as a member of its type.
 - For a fix, describe the problem users saw, not how the fix works:
   - Avoid: "Compare cache keys by the normalized path instead of the raw argument."
   - Prefer: "Fix stale results when the same file is passed through different relative paths."
