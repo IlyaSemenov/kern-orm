@@ -89,14 +89,6 @@ Relations through other relations, such as the answers of a form through its fie
 - `EXISTS` of a chain correlates each relation with its own source; Orchid ORM joined the chained table to the outer one by the columns of the chained relation ([orchid-orm#851](https://github.com/romeerez/orchid-orm/issues/851)).
 - Decide whether `$relations` declares a through relation, a query of a relation chains another relation, or both.
 
-## Joining the current transaction
-
-Running a callback in the current transaction, or in a new one outside a transaction, without the savepoint of a nested transaction, as `$ensureTransaction` of Orchid ORM 1.78.47 does ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#ensuretransaction)), such as for a reusable function of several mutations that its callers may already run in a transaction.
-Telling whether a transaction is current, as `$isInTransaction` of Orchid ORM does ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#isintransaction)), such as for a function that requires one.
-
-- A failure of a callback that joined a transaction does not undo its changes, unlike a nested transaction, so the enclosing transaction commits them unless it fails too; document it.
-- Orchid ORM ignores a test transaction in `$isInTransaction`; decide whether a test level counts as a transaction for both, so that code under test starts a transaction of its own, as in production, which kern-orm runs as a savepoint of the test level.
-
 ## Upsert
 
 An insert that updates or skips the record it conflicts with on a key, as `INSERT ... ON CONFLICT ... DO UPDATE` or `DO NOTHING`, such as the row of a singleton table that the [motivation](architecture/README.md#motivation) names.
@@ -208,7 +200,7 @@ A hook belongs to the level that registers it: rolling the level back discards i
 - Decide what a hook registered outside a transaction does; Orchid ORM runs it on the next microtask.
 - Decide how a failure of a hook is reported once the transaction has committed; Orchid ORM leaves it to `uncaughtException` or `unhandledRejection`.
 - The outermost transaction of code under test is a nested level of the test level, which never commits: decide whether its hooks run when it is released, as in production, and whether the rollback of the test level waits for them, as in Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#after-commit-hooks-in-tests), [orchid-orm#822](https://github.com/romeerez/orchid-orm/pull/822)), so that their queries roll back with the test.
-  Decide it together with whether a test level counts as a transaction for [joining the current transaction](#joining-the-current-transaction).
+  A test level does not count as a transaction for [joining](architecture/transactions.md#joining).
 
 ## Type of the fields of a helper
 

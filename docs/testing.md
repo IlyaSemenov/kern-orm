@@ -51,6 +51,9 @@ aroundEach(runTest => testTransaction(runTest))
 
 Transactions of the tested code run as [nested transactions](./transactions#nested-transactions) of the test transaction.
 
+A test transaction does not count as a transaction for [`$isInTransaction()` and `$ensureTransaction`](./transactions#joining-the-current-transaction), so that the tested code behaves as in production.
+To test how the code behaves inside a transaction, wrap the call in `$transaction` in the test.
+
 Such a database rejects queries and transactions outside test transactions and the seeds of [fixtures](#fixtures).
 Queries of a test that keep running after it times out never run in the transaction of another test.
 

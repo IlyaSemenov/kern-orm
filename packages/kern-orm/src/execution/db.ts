@@ -128,6 +128,15 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
     callback: () => Promise<Result>,
     options?: TransactionOptions,
   ): Promise<Result>
+  /**
+   * Runs `callback` in the current transaction without a nested transaction, or in a new transaction of the database outside of one.
+   *
+   * A rejection of a callback that joined a transaction does not undo its changes: the enclosing transaction commits them unless it fails too.
+   * A test transaction is not a transaction to join: there, it starts a nested transaction where it starts a transaction in production.
+   */
+  $ensureTransaction<Result>(callback: () => Promise<Result>): Promise<Result>
+  /** Tells whether the code runs in a transaction of the database, not counting test transactions, so that code under test sees what it sees in production. */
+  $isInTransaction(): boolean
 }
 
 /**
@@ -195,6 +204,8 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
       return database.script(text)
     },
     $transaction: (callback, options) => database.transaction(callback, options),
+    $ensureTransaction: callback => database.ensureTransaction(callback),
+    $isInTransaction: () => database.isInTransaction(),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
   const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>

@@ -37,6 +37,27 @@ await db.$transaction(async () => {
 })
 ```
 
+## Joining the current transaction
+
+To write a function of several queries that must run in a transaction, while its callers may already run one, pass its body to `$ensureTransaction`: inside a transaction, the callback joins it without a nested transaction; outside of one, it starts a transaction.
+
+```ts
+export function clearForm(formId: string) {
+  return db.$ensureTransaction(async () => {
+    await db.field.where({ formId }).delete()
+    await db.form.find(formId).update({ published: false })
+  })
+}
+```
+
+A failed callback that joined a transaction does not roll back its own changes: the enclosing transaction commits them unless it fails too.
+To roll back only the changes of the callback, use a [nested transaction](#nested-transactions) instead.
+
+To check whether the code runs in a transaction, call `$isInTransaction()`.
+For example, enqueue a job that reads the written data only outside a transaction: a job enqueued in one can start before the transaction commits, or after it rolls back, and miss the data.
+
+A [test transaction](./testing) does not itself count as a transaction for `$isInTransaction` or `$ensureTransaction`, so that the tested code runs as in production: outside a `$transaction` of the test, `$isInTransaction()` returns `false`, and `$ensureTransaction` starts a nested transaction.
+
 ## Search path
 
 To run SQL whose unqualified names resolve in a PostgreSQL schema of your choice, such as SQL that creates tables in the schema of a new tenant, pass the schemas as `searchPath`:

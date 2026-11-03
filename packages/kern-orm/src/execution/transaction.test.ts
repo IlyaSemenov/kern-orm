@@ -602,6 +602,137 @@ describe("TransactionCoordinator", () => {
     })
   })
 
+  describe("joining the current transaction", () => {
+    it("starts a transaction outside of one and joins the current one without a savepoint", async () => {
+      const { driver, statements } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+
+      const outside = coordinator.isInTransaction()
+      await coordinator.ensureTransaction(run(coordinator, "started"))
+      await coordinator.transaction(async () => {
+        await coordinator.ensureTransaction(run(coordinator, "joined"))
+      })
+
+      expect(outside).toBe(false)
+      expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
+        "1: BEGIN",
+        "1: started",
+        "1: COMMIT",
+        "2: BEGIN",
+        "2: joined",
+        "2: COMMIT",
+      ])
+    })
+
+    it("keeps the changes of a joined callback that rejects, which the transaction commits", async () => {
+      const { driver, statements } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+
+      const failure = new Error("failure")
+      await coordinator.transaction(async () => {
+        await expect(
+          coordinator.ensureTransaction(async () => {
+            await run(coordinator, "joined")()
+            throw failure
+          }),
+        ).rejects.toBe(failure)
+      })
+
+      expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "joined", "COMMIT"])
+    })
+
+    it("rejects without calling the callback when the transaction accepts no statements", async () => {
+      const releaseError = new Error("release failed")
+      const { driver } = createRecordingDriver({
+        respond: failOn("RELEASE SAVEPOINT kern_1", releaseError),
+      })
+      const coordinator = new TransactionCoordinator(driver)
+      const calls: string[] = []
+      const join = (name: string) =>
+        markHandled(
+          coordinator.ensureTransaction(async () => {
+            calls.push(name)
+          }),
+        )
+
+      const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+      let late: Promise<unknown> | undefined
+      await coordinator.transaction(async () => {
+        late = finished.then(() => join("late"))
+      })
+      finish()
+      await expect(late!).rejects.toThrow(
+        "Cannot join the transaction: its transaction is already finished",
+      )
+
+      const { promise: held, resolve: release } = Promise.withResolvers<void>()
+      const transaction = markHandled(
+        coordinator.transaction(async () => {
+          const nested = markHandled(coordinator.transaction(() => held))
+          await expect(join("beside a nested transaction")).rejects.toThrow(
+            "Cannot join the transaction: a nested transaction is running",
+          )
+          release()
+          // Its RELEASE fails, so the transaction can only roll back.
+          await expect(nested).rejects.toBe(releaseError)
+          await expect(join("after a failed release")).rejects.toThrow(
+            "Cannot join the transaction: a nested transaction failed to end",
+          )
+        }),
+      )
+      await expect(transaction).rejects.toThrow("Transaction was rolled back")
+      expect(calls).toEqual([])
+    })
+
+    it("reports true in a transaction and its nested test levels, and false in a test transaction or seed alone", async () => {
+      const { coordinator } = createTestCoordinator()
+      const seen: Record<string, boolean> = {}
+
+      await using _fixture = await coordinator.createTestFixture(async () => {
+        seen.seed = coordinator.isInTransaction()
+      })
+      await coordinator.testTransaction(async () => {
+        seen.testTransaction = coordinator.isInTransaction()
+        await coordinator.transaction(async () => {
+          seen.transaction = coordinator.isInTransaction()
+          await coordinator.testTransaction(async () => {
+            seen.testTransactionInTransaction = coordinator.isInTransaction()
+          })
+        })
+      })
+
+      expect(seen).toEqual({
+        seed: false,
+        testTransaction: false,
+        transaction: true,
+        testTransactionInTransaction: true,
+      })
+    })
+
+    it("starts a nested transaction in a test transaction, as it starts a transaction in production", async () => {
+      const { coordinator, statements } = createTestCoordinator()
+
+      const failure = new Error("failure")
+      await coordinator.testTransaction(async () => {
+        await expect(
+          coordinator.ensureTransaction(async () => {
+            await run(coordinator, "rolled back")()
+            throw failure
+          }),
+        ).rejects.toBe(failure)
+      })
+
+      expect(statements.map(({ text }) => text)).toEqual([
+        "BEGIN",
+        "SAVEPOINT kern_1",
+        "rolled back",
+        "ROLLBACK TO SAVEPOINT kern_1",
+        "RELEASE SAVEPOINT kern_1",
+        "ROLLBACK",
+      ])
+    })
+  })
+
   describe("settings", () => {
     const readSetting = "SELECT current_setting($1)"
     const setSetting = "SELECT set_config($1, $2, true)"

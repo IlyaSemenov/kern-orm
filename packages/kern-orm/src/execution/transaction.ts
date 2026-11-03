@@ -14,6 +14,12 @@ interface TransactionLevel {
   readonly parent: TransactionLevel | undefined
   /** Number of enclosing levels, which names the savepoint of a nested level. */
   readonly depth: number
+  /**
+   * Whether the level or an enclosing one is a transaction of `transaction` rather than a test transaction, the seed of a test fixture, or a test fixture.
+   *
+   * Code under test then starts a transaction of its own where it does in production, which runs as a savepoint of the test level.
+   */
+  readonly inTransaction: boolean
   /** A level accepts statements only while `open`; it is `starting` until its `BEGIN` or `SAVEPOINT` and its settings complete. */
   state: "starting" | "open" | "closing" | "closed"
   /** Active nested level, reserved before its `SAVEPOINT` is sent. */
@@ -126,6 +132,34 @@ export class TransactionCoordinator {
     return this.test
       ? Promise.reject(new Error(describeOutsideTest("start a transaction")))
       : this.#runRoot(callback, true, undefined, settings)
+  }
+
+  /**
+   * Runs `callback` in the current transaction, or in a new transaction outside of one.
+   *
+   * Joining starts no savepoint, so a rejection of `callback` does not undo its changes.
+   * It rejects without calling `callback` when the current level accepts no statements, as a nested transaction would.
+   */
+  async ensureTransaction<T>(callback: () => Promise<T>): Promise<T> {
+    const level = this.#storage.getStore()
+    if (!level?.inTransaction) {
+      return this.transaction(callback)
+    }
+    // Late code of a finished level must not run its side effects as if in the transaction.
+    const unavailable = createUnavailableError(level, "join the transaction")
+    if (unavailable) {
+      throw unavailable
+    }
+    return callback()
+  }
+
+  /**
+   * Tells whether the current async context runs in a transaction of `transaction`.
+   *
+   * A test transaction and the seed of a test fixture are not transactions, unless they run inside one, so that code under test behaves as in production.
+   */
+  isInTransaction(): boolean {
+    return this.#storage.getStore()?.inTransaction ?? false
   }
 
   /**
@@ -395,7 +429,7 @@ export class TransactionCoordinator {
    */
   async #seedFixture<T>(fixture: TransactionLevel, seed: () => Promise<T>): Promise<Outcome<T>> {
     try {
-      return await this.#run(await this.#startNested(fixture), seed, true)
+      return await this.#run(await this.#startNested(fixture, false), seed, true)
     } catch (error) {
       return { rejection: { error } }
     }
@@ -464,7 +498,7 @@ export class TransactionCoordinator {
       const rejection = await releaseConnection(connection, { error }, { error })
       throw rejection!.error
     }
-    return createLevel(connection, undefined)
+    return createLevel(connection, undefined, false)
   }
 
   /**
@@ -494,7 +528,7 @@ export class TransactionCoordinator {
       throw suppressAbortReason(unavailable, signal)
     }
     signal?.throwIfAborted()
-    return this.#startNested(fixture, signal)
+    return this.#startNested(fixture, false, signal)
   }
 
   async #runRoot<T>(
@@ -510,7 +544,8 @@ export class TransactionCoordinator {
     if (signal?.aborted) {
       throw (await releaseConnection(connection, undefined, { error: signal.reason }))!.error
     }
-    const level = createLevel(connection, undefined)
+    // A level that commits is a transaction of `transaction`; test transactions roll back.
+    const level = createLevel(connection, undefined, commits)
     let outcome: Outcome<T> | undefined
     try {
       await connection.execute(beginStatement)
@@ -545,7 +580,7 @@ export class TransactionCoordinator {
       throw unavailable
     }
     return this.#runStarted(
-      await this.#startNested(parent, signal, settings),
+      await this.#startNested(parent, commits, signal, settings),
       callback,
       commits,
       signal,
@@ -555,16 +590,18 @@ export class TransactionCoordinator {
   /**
    * Reserves a nested level of `parent`, sends its `SAVEPOINT`, and applies its `settings`, rejecting when one of them fails.
    *
+   * `transaction` tells whether the level is a transaction of `transaction` rather than a level of the test helpers.
    * A level whose settings fail rolls back to its savepoint first.
    * The failure suppresses the reason of `signal` when the signal aborted before it.
    */
   async #startNested(
     parent: TransactionLevel,
+    transaction: boolean,
     signal?: AbortSignal,
     settings?: readonly LevelSetting[],
   ): Promise<TransactionLevel> {
     // Reserving the level before SAVEPOINT is sent keeps statements of the parent from running inside it.
-    const level = createLevel(parent.connection, parent)
+    const level = createLevel(parent.connection, parent, transaction)
     parent.child = level
     try {
       await level.connection.execute(createStatement(`SAVEPOINT ${getSavepointName(level)}`))
@@ -721,11 +758,13 @@ const rollbackStatement = createStatement("ROLLBACK")
 function createLevel(
   connection: Connection,
   parent: TransactionLevel | undefined,
+  transaction: boolean,
 ): TransactionLevel {
   return {
     connection,
     parent,
     depth: parent ? parent.depth + 1 : 0,
+    inTransaction: transaction || (parent?.inTransaction ?? false),
     state: "starting",
     child: undefined,
     rollbackOnly: undefined,

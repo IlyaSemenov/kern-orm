@@ -16,6 +16,15 @@
 - Starting a level rejects when its `BEGIN` or `SAVEPOINT` fails, and rolls the level back and rejects when its settings fail.
 - A cleanup error of a transaction never replaces an earlier error: it suppresses it in a `SuppressedError`.
 
+## Joining
+
+- `ensureTransaction` of a `Database` and `$ensureTransaction` of a `Db` run their callback in the context of the current level without a savepoint when the code runs in a transaction, and start a transaction otherwise, as `$ensureTransaction` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#ensuretransaction)).
+  A rejection of a joined callback undoes nothing; the enclosing level commits its changes unless it fails too.
+- `isInTransaction` of a `Database` and `$isInTransaction` of a `Db` tell whether the current level or an enclosing one is a level of `transaction`, as `$isInTransaction` of Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#isintransaction)).
+  A test transaction and the seed of a test fixture are not such levels, so code under test starts a transaction of its own where it does in production, which runs as a savepoint of the test level.
+  Orchid ORM ignores a test transaction in `$isInTransaction`.
+- Joining a level that accepts no statements, such as of late code of a finished transaction or beside a running nested level, rejects without calling the callback, as starting a nested level does; whether the level accepts statements does not affect `isInTransaction`.
+
 ## Settings
 
 - Settings of a level, such as its search path, are statements on its connection, `set_config(..., true)` after its `BEGIN` or `SAVEPOINT`, completed before its callback starts.

@@ -156,6 +156,22 @@ it("runs a transaction of the database with the options of $transaction", async 
   ])
 })
 
+it("joins a transaction of the database with $ensureTransaction and reports it through $isInTransaction", async () => {
+  const { db, statements } = connectRecorded()
+
+  let inTransaction: boolean | undefined
+  await db.$database.transaction(() =>
+    db.$ensureTransaction(async () => {
+      inTransaction = db.$isInTransaction()
+      await db.$script("SELECT 1")
+    }),
+  )
+
+  expect(db.$isInTransaction()).toBe(false)
+  expect(inTransaction).toBe(true)
+  expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT"])
+})
+
 it("leaves unbound queries unexecuted when returned from async functions", async () => {
   const { db, statements } = connectRecorded()
   const buildQuery = async () => db.$schema.post.where({ title: "Draft" })

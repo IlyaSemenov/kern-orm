@@ -48,6 +48,15 @@ export interface Database extends AsyncDisposable {
    * Inside an existing transaction, it starts a nested transaction.
    */
   transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T>
+  /**
+   * Runs `callback` in the current transaction without a nested transaction, or in a new transaction outside of one.
+   *
+   * A rejection of a callback that joined a transaction does not undo its changes: the enclosing transaction commits them unless it fails too.
+   * A test transaction is not a transaction to join: there, it starts a nested transaction where it starts a transaction in production.
+   */
+  ensureTransaction<T>(callback: () => Promise<T>): Promise<T>
+  /** Tells whether the code runs in a transaction, not counting test transactions, so that code under test sees what it sees in production. */
+  isInTransaction(): boolean
   /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions end. */
   close(): Promise<void>
 }
@@ -85,6 +94,8 @@ export function createDatabase({ driver, test }: DatabaseOptions): Database {
         : getTablelessDb().$script(script, ...values),
     execute: statement => coordinator.execute(statement),
     transaction: (callback, options) => coordinator.transaction(callback, options),
+    ensureTransaction: callback => coordinator.ensureTransaction(callback),
+    isInTransaction: () => coordinator.isInTransaction(),
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }
