@@ -334,6 +334,13 @@ function compileExpression(
       }
       return `${text})`
     }
+    case "inQuery": {
+      const { query } = node
+      if (query.kind === "nestedQuery") {
+        throw new Error("A query in an expression must be lowered before compilation")
+      }
+      return `${compileOperand(context, scope, node.operand, "value")} IN ${compileSubquery(context, scope, query, "A subquery of IN")}`
+    }
     case "isNull":
       return `${compileOperand(context, scope, node.operand, "value")} IS NULL`
     case "raw": {
@@ -347,13 +354,8 @@ function compileExpression(
     }
     case "tableName":
       return compileInterpolatedTable(context, node)
-    case "subquery": {
-      const { length } = node.query.projections
-      if (length !== 1) {
-        throw new Error(`A scalar subquery must select one field, not ${length}`)
-      }
-      return `(${compileQuery(context, scope, node.query)})`
-    }
+    case "subquery":
+      return compileSubquery(context, scope, node.query, "A scalar subquery")
     case "exists":
       return `EXISTS (${compileQuery(context, scope, node.query)})`
     case "aggregate": {
@@ -370,6 +372,20 @@ function compileExpression(
     default:
       return node satisfies never
   }
+}
+
+/** Compiles `query` in parentheses as a subquery of one field, and rejects a query of another number of fields, naming the subquery as `subject`. */
+function compileSubquery(
+  context: CompileContext,
+  scope: Scope | undefined,
+  query: SelectNode,
+  subject: string,
+): string {
+  const { length } = query.projections
+  if (length !== 1) {
+    throw new Error(`${subject} must select one field, not ${length}`)
+  }
+  return `(${compileQuery(context, scope, query)})`
 }
 
 /** Encodes the value of a parameter node with its type, or by its JavaScript type without one. */

@@ -73,6 +73,12 @@ function visitNodes(
         visitNodes(item, deep, visit)
       }
       return
+    case "inQuery":
+      visitNodes(node.operand, deep, visit)
+      if (deep && node.query.kind === "select") {
+        visitQuery(node.query, visit)
+      }
+      return
     case "raw":
       for (const value of node.values) {
         visitNodes(value, deep, visit)

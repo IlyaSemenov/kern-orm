@@ -632,6 +632,41 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
   })
 
+  it("filters by the values of a query with in, NULL among them matching no record", async () => {
+    const results = await testTransaction(async () => [
+      // The forms that have a field with options.
+      await db.form
+        .where(form => form.id.in(db.field.where(field => field.options.exists()).pluck("formId")))
+        .orderBy("id")
+        .pluck("id"),
+      await db.field
+        .where(field => field.label.in(db.field.where({ formId: 1 }).pluck("label")))
+        .orderBy("id")
+        .pluck("id"),
+      // The fields of the first 2 forms by name.
+      await db.field
+        .where(field => field.formId.in(db.form.orderBy("name").limit(2).pluck("id")))
+        .pluck("id"),
+      await db.form.orderBy("id").select(form => ({
+        withOptions: form.fields
+          .where(field => field.id.in(db.option.pluck("fieldId")))
+          .pluck("id"),
+      })),
+      await db.field
+        .where(field => field.formId.in(db.form.where({ name: "Feedback" }).pluck("id")))
+        .update({ label: "Note" })
+        .pluck("label"),
+    ])
+
+    expect(results).toEqual([
+      [1, 2],
+      [1, 2],
+      [4],
+      [{ withOptions: [1] }, { withOptions: [4] }, { withOptions: [] }],
+      ["Note"],
+    ])
+  })
+
   it("selects whether related records exist for each row, also of a page after an offset, and a condition of get, null without its row", async () => {
     const labeled = defineHelper(schema.field, (field, label: string) => field.where({ label }))
     const query = db.form

@@ -1,6 +1,7 @@
 import { expect, it } from "bun:test"
 
 import { toNode } from "../expression/expression"
+import { and } from "../expression/predicates"
 import { from } from "../query/select"
 import { defineTable } from "../table/table"
 import * as t from "../types"
@@ -11,6 +12,7 @@ import { collectColumnKeys, holdsFragmentOfSource } from "./references"
 import {
   createDerivedSource,
   createExists,
+  createInQuery,
   createLeftJoin,
   createOrder,
   createRef,
@@ -22,9 +24,10 @@ const form = defineTable("form", {
   name: t.text,
   ownerId: t.integer,
   position: t.integer,
+  rank: t.integer,
 })
 
-it("collects the keys of the columns of a source at any depth of the queries nested in an expression", () => {
+it("collects the keys of the columns of a source at any depth of the queries nested in an expression, also of IN", () => {
   const outer = from(form).node.from
   const inner = from(form).node.from
   const joined = from(form).node.from
@@ -46,10 +49,18 @@ it("collects the keys of the columns of a source at any depth of the queries nes
     ],
     filters: {
       user: toNode(
-        createExists(
-          createSelectNode(inner, [
-            { key: "name", expression: createRef(outer, "name"), type: t.text },
-          ]),
+        and(
+          createExists(
+            createSelectNode(inner, [
+              { key: "name", expression: createRef(outer, "name"), type: t.text },
+            ]),
+          ),
+          createInQuery(
+            createRef(inner, "id"),
+            createSelectNode(from(form).node.from, [
+              { key: "rank", expression: createRef(outer, "rank"), type: t.integer },
+            ]),
+          ),
         ),
       ),
     },
@@ -59,7 +70,7 @@ it("collects the keys of the columns of a source at any depth of the queries nes
 
   collectColumnKeys(toNode(createSubquery(nested, t.integer)), outer, keys)
 
-  expect([...keys]).toEqual(["id", "ownerId", "name", "position"])
+  expect([...keys]).toEqual(["id", "ownerId", "name", "rank", "position"])
 })
 
 it("detects a SQL fragment at any depth that refers to a column of a source outside the queries nested in it", () => {

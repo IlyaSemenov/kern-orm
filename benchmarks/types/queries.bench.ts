@@ -79,6 +79,10 @@ bench.baseline(async () => {
     .where({ label: tenantDb.answer.where({ value: "baseline" }).get("value") })
     .pluck("id")
   await tenantDb.field.where(field => field.position.lt(field.answers.count())).pluck("id")
+  await storeDb.supplier.where(supplier => supplier.id.in(["baseline"])).pluck("name")
+  await storeDb.review
+    .where(review => review.id.in(storeDb.supplier.where({ email: "baseline" }).pluck("id")))
+    .pluck("productId")
   await tenantDb.$execute(
     formsSchema.field
       .where({ label: "baseline" })
@@ -165,17 +169,27 @@ bench("filter of a value of a query", async () => {
     .pluck("label")
 }).types([753, "instantiations"])
 
+bench("filter of a list", async () => {
+  await tenantDb.form.where(form => form.id.in(["x", "y"])).pluck("name")
+}).types([280, "instantiations"])
+
+bench("filter of the values of a query", async () => {
+  await tenantDb.field
+    .where(field => field.formId.in(tenantDb.form.where({ name: "x" }).pluck("id")))
+    .pluck("label")
+}).types([255, "instantiations"])
+
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
 }).types([515, "instantiations"])
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1064, "instantiations"])
+}).types([1067, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1150, "instantiations"])
+}).types([1153, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(

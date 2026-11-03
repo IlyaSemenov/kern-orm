@@ -13,7 +13,9 @@
   A mutation keeps its statement and packs the nested queries of the fields of its `RETURNING` as a select list does.
   For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
   An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
-  Lowering replaces it in every expression of a statement, of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text, with `EXISTS` of the rows of a query of `exists` or a scalar subquery of the statement of another query, and checks the query as a nested query of a field; the compiler rejects it.
+  Lowering replaces it in every expression of a statement: of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text.
+  A query of `exists` becomes `EXISTS` of its rows, another query of one value a scalar subquery of its statement, and the query of the values of `IN` its statement.
+  Lowering checks each such query as a nested query of a field, and the compiler rejects a query that lowering has not replaced.
   - It keeps every expression node, filter, and array of nodes without a query, and creates only the nodes that hold one, so that an expression without a query allocates nothing.
     It visits every node rather than tracking which subtrees hold a query, which keeps lowering simple.
     Tracking it would let lowering pass the filters, the values of a mutation, and `set` that hold no query through without visiting them.

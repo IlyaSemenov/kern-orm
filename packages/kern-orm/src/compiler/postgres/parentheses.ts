@@ -34,6 +34,7 @@ export function needsParentheses(kind: ExpressionNode["kind"], position: Operand
     case "not":
     case "comparison":
     case "in":
+    case "inQuery":
     case "isNull":
       // A condition operand cannot regroup with the `AND`, `OR`, or `NOT` around it.
       return position !== "condition"

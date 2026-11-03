@@ -1,4 +1,4 @@
-import type { ExpressionNode, ScalarProjection } from "../ast/nodes"
+import type { ExpressionNode, NestedQueryNode, ScalarProjection } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
@@ -6,6 +6,7 @@ import type { SqlStatement } from "../execution/driver"
 import type { AnyExpression, TypedExpression } from "../expression/expression"
 import { operandNode } from "../expression/expression"
 import type { Operand, OperandValue } from "../expression/operators/comparison"
+import { valuesQueryNode } from "../expression/operators/equality"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext } from "../schema/relation"
 import type { AnyTable, ColumnValues, Selectable } from "../table/table"
@@ -106,6 +107,23 @@ export type ScalarQueryValue<Q extends ScalarQuery> = Q[typeof scalarValue]
 /** State of a query of one value, which an expression takes. */
 interface ScalarQueryState extends SelectQueryState {
   readonly rows: "one" | "optional"
+  readonly value: true
+}
+
+/** Query of values of a table of any rows, such as of `pluck`, whose value is `T`, which `in` takes as a subquery of its values. */
+// An interface rather than an intersection with `QueryOf`, as `ScalarQuery` is.
+export interface ValuesQuery<T = unknown> {
+  readonly types: ValuesQueryState<T>
+  // A method of a query, which TypeScript drops from the type of a spread copy of a query, so that such a copy is rejected.
+  readonly exists: unknown
+}
+
+/** Value of query `Q` of values, of each of its rows. */
+export type ValuesQueryValue<Q extends ValuesQuery> = Q["types"]["result"]
+
+/** State of a query of values whose value is `T`. */
+interface ValuesQueryState<T> extends SelectQueryState {
+  readonly result: T
   readonly value: true
 }
 
@@ -849,6 +867,19 @@ export class SelectQuery<
       throw new TypeError(
         "An expression takes a query of one value, such as of get, an aggregate, or exists, not a query of records or of an array",
       )
+    }
+    return createNode({ kind: "nestedQuery", query: node, db: this.db as AnyDb | undefined })
+  }
+
+  /**
+   * Returns the node of the query as the values of `in`, which lowering replaces with its statement.
+   *
+   * It rejects a query of records, which `ValuesQuery` rejects in types.
+   */
+  [valuesQueryNode](): NestedQueryNode {
+    const { node } = this
+    if (!node.value) {
+      throw new TypeError("in takes a query of values, such as of pluck, not a query of records")
     }
     return createNode({ kind: "nestedQuery", query: node, db: this.db as AnyDb | undefined })
   }

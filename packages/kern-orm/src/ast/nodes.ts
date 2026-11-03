@@ -107,6 +107,14 @@ export interface InNode {
   readonly list: readonly ExpressionNode[]
 }
 
+/** `IN` of the values of a query, such as of `pluck`, whatever its rows. */
+export interface InQueryNode {
+  readonly kind: "inQuery"
+  readonly operand: ExpressionNode
+  /** Query of the values: a query in an expression, which lowering replaces with its statement of one projection. */
+  readonly query: NestedQueryNode | SelectNode
+}
+
 export interface IsNullNode {
   readonly kind: "isNull"
   readonly operand: ExpressionNode
@@ -162,6 +170,7 @@ export type ExpressionNode =
   | NestedQueryNode
   | ComparisonNode
   | InNode
+  | InQueryNode
   | IsNullNode
   | RawSqlNode
   | TableNameNode

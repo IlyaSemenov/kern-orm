@@ -69,6 +69,7 @@ export type {
   ResultOf,
   ScalarQuery,
   SelectQuery,
+  ValuesQuery,
 } from "./query/select"
 export { from } from "./query/select"
 export type {

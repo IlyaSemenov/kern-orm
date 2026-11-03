@@ -98,3 +98,27 @@ test("in is nullable when the expression or a list item is, except for an empty 
   const dynamic: number[] = []
   expectTypeOf(nullable.in(dynamic)).toEqualTypeOf<Expression<boolean | null>>()
 })
+
+test("in takes a query of values of its type, nullable as the expression or the values", () => {
+  const account = defineTable("account", {
+    rank: t.integer,
+    score: t.integer.nullable(),
+    email: t.text,
+  })
+  const value = param(t.integer, 1)
+  const nullable = param(t.integer.nullable(), null)
+
+  expectTypeOf(value.in(from(account).pluck("rank"))).toEqualTypeOf<Expression<boolean>>()
+  expectTypeOf(value.in(from(account).get("rank"))).toEqualTypeOf<Expression<boolean>>()
+  expectTypeOf(value.in(from(account).count())).toEqualTypeOf<Expression<boolean>>()
+  expectTypeOf(value.in(from(account).pluck("score"))).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(value.in(from(account).max("rank"))).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(nullable.in(from(account).pluck("rank"))).toEqualTypeOf<Expression<boolean | null>>()
+
+  // @ts-expect-error A query of records has no values to compare.
+  value.in(from(account).select("rank"))
+  // @ts-expect-error The values of the query are of another type.
+  value.in(from(account).pluck("email"))
+  // @ts-expect-error A copy of a query is not a query.
+  value.in({ ...from(account).pluck("rank") })
+})

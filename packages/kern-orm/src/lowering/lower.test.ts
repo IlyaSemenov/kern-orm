@@ -401,6 +401,7 @@ describe("lowerQuery", () => {
         })),
       })),
       schema.form.where(form => form.fields.where(field => field.options.exists()).exists()),
+      schema.field.where(field => field.id.in(field.options.pluck("fieldId"))),
     ]) {
       expect(() => lowerQuery(node, collectDefinitions(forms[schemaRelations]))).toThrow(
         'Relation "field.options" is not part of the schema',
@@ -429,20 +430,21 @@ describe("lowerQuery", () => {
     )
   })
 
-  it("rejects a query in an expression bound to another Db than the one given, or to any Db without one", () => {
+  it("rejects a query in an expression, also of the values of in, bound to another Db than the one given, or to any Db without one", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
     const db = database.bind(schema)
-    const { node } = schema.form.where(form =>
-      db.field.where(field => field.formId.eq(form.id)).exists(),
-    )
-
-    expect(() => lowerQuery(node, undefined, database.bind(schema))).toThrow(
-      "A query in an expression is bound to another Db",
-    )
-    expect(() => lowerQuery(node, undefined, db)).not.toThrow()
-    expect(() => lowerQuery(node)).toThrow(
-      "A query in an expression is bound to a Db, so only that Db can compile the query",
-    )
+    for (const { node } of [
+      schema.form.where(form => db.field.where(field => field.formId.eq(form.id)).exists()),
+      schema.form.where(form => form.id.in(db.field.pluck("formId"))),
+    ]) {
+      expect(() => lowerQuery(node, undefined, database.bind(schema))).toThrow(
+        "A query in an expression is bound to another Db",
+      )
+      expect(() => lowerQuery(node, undefined, db)).not.toThrow()
+      expect(() => lowerQuery(node)).toThrow(
+        "A query in an expression is bound to a Db, so only that Db can compile the query",
+      )
+    }
   })
 })
 

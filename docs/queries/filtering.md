@@ -98,6 +98,14 @@ await db.field
   .select("id")
 ```
 
+To find records whose column equals any of the values of another query, such as the forms that a user submitted, pass a query of `pluck` to `in`:
+
+```ts
+await db.form
+  .where(form => form.id.in(db.submission.where({ userId }).pluck("formId")))
+  .select("id")
+```
+
 Start the query from the same `Db` as the query that it filters.
 
 ## SQL fragments

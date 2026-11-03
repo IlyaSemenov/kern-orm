@@ -26,6 +26,11 @@ export function createExists(query: SelectNode) {
   return toBooleanExpression(createNode({ kind: "exists", query }))
 }
 
+/** Creates `IN` of the values of a query as a Boolean expression. */
+export function createInQuery(operand: ExpressionNode, query: SelectNode) {
+  return toBooleanExpression(createNode({ kind: "inQuery", operand, query }))
+}
+
 /** Options of a derived source of `createDerivedSource`. */
 export interface DerivedSourceOptions {
   /** Whether the source is `LATERAL`. */

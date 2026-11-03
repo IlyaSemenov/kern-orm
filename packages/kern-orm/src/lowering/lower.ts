@@ -467,6 +467,7 @@ function refersToSource(node: ExpressionNode, source: SourceNode): boolean {
     case "cast":
     case "not":
     case "isNull":
+    case "inQuery":
       return refersToSource(node.operand, source)
     case "and":
     case "or":
@@ -662,7 +663,8 @@ function lowerOrder(
 }
 
 /**
- * Lowers an expression, replacing each query in it, such as of `exists` in a condition, with `EXISTS` of the rows of a query of `exists`, or with a scalar subquery of the value of another query, and checking the query as a nested query.
+ * Lowers an expression, replacing each query in it and checking the query as a nested query.
+ * A query of `exists`, such as in a condition, becomes `EXISTS` of its rows, another query of one value a scalar subquery of its value, and the query of the values of `IN` its statement.
  *
  * It returns `node` itself when it holds no query, and creates only the nodes that hold one.
  */
@@ -712,6 +714,14 @@ function lowerExpression(node: ExpressionNode, context: LoweringContext): Expres
         ? node
         : createNode({ kind: "in", operand, list })
     }
+    case "inQuery": {
+      const operand = lowerExpression(node.operand, context)
+      const query =
+        node.query.kind === "nestedQuery" ? lowerQueryOfValues(node.query, context) : node.query
+      return operand === node.operand && query === node.query
+        ? node
+        : createNode({ kind: "inQuery", operand, query })
+    }
     case "raw": {
       const values = lowerEach(node.values, context, lowerExpression)
       return values === node.values
@@ -744,6 +754,12 @@ function lowerNestedQuery(node: NestedQueryNode, context: LoweringContext): Expr
     return lowerExists(query, context)
   }
   return createNode({ kind: "subquery", query: lowerSelect(query, context, false) })
+}
+
+/** Lowers the query of the values of `IN` to its statement, whatever its rows. */
+function lowerQueryOfValues(node: NestedQueryNode, context: LoweringContext): SelectNode {
+  checkDb(node.db, context, "A query in an expression")
+  return lowerSelect(node.query, context, false)
 }
 
 /** Lowers each of `items` with `lower`; when none changes, it returns `items` itself. */

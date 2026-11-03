@@ -1,5 +1,6 @@
-import type { ExpressionNode } from "../../ast/nodes"
+import type { ExpressionNode, NestedQueryNode } from "../../ast/nodes"
 import { createNode, falseNode } from "../../ast/nodes"
+import type { ValuesQuery, ValuesQueryValue } from "../../query/select"
 import type { AnyType } from "../../type/type"
 import type { Expression } from "../expression"
 import { getType, toBooleanExpression, toNode, toValueNode } from "../expression"
@@ -18,12 +19,30 @@ export interface EqualityOperator<S extends OperatorSignature> extends GenericOp
   readonly [equalityBrand]: true
 }
 
-/** Signature of `in`: membership in a list of operands of the expression type; an empty list yields `FALSE`. */
+// Queries import the modules of expressions, so `in` recognizes a query by this method rather than by its class.
+/** Key of the method of a query of a table that returns its node as the values of `in`, or rejects a query of records. */
+export const valuesQueryNode = Symbol("kern-orm.valuesQueryNode")
+
+/** Query that converts itself into the node of the values of `in`, or rejects itself. */
+interface ValuesQuerySource {
+  [valuesQueryNode](): NestedQueryNode
+}
+
+// One signature of a union rather than overloads, which make the error of a wrong list name the overload of a query when it comes last, and add about 8% to a filter of a list when it comes first.
+/** Signature of `in`: membership in a list of operands of the expression type, or in the values of a query, such as of `pluck`; an empty list or query yields `FALSE`. */
 export interface InSignature extends OperatorSignature {
-  readonly method: <const L extends readonly Operand<this["T"], this["I"]>[]>(
+  readonly method: <
+    const L extends
+      | readonly Operand<this["T"], this["I"]>[]
+      | ValuesQuery<NonNullable<this["T"]> | null>,
+  >(
     list: L,
   ) => Expression<
-    L extends readonly [] ? boolean : BooleanResult<this["T"] | OperandValue<L[number]>>
+    L extends readonly unknown[]
+      ? L extends readonly []
+        ? boolean
+        : BooleanResult<this["T"] | OperandValue<L[number]>>
+      : BooleanResult<this["T"] | (L extends ValuesQuery ? ValuesQueryValue<L> : never)>
   >
 }
 
@@ -50,6 +69,11 @@ export const equalityOperators: EqualityOperators = {
   eq: defineEqualityOperator<ComparisonSignature>((self, value) => compare(self, "=", value)),
   ne: defineEqualityOperator<ComparisonSignature>((self, value) => compare(self, "<>", value)),
   in: defineEqualityOperator<InSignature>((self, list) => {
+    if (!Array.isArray(list)) {
+      return toBooleanExpression(
+        createNode({ kind: "inQuery", operand: toNode(self), query: toValuesQueryNode(list) }),
+      )
+    }
     if (list.length === 0) {
       return toBooleanExpression(falseNode)
     }
@@ -60,6 +84,14 @@ export const equalityOperators: EqualityOperators = {
     }
     return toBooleanExpression(createNode({ kind: "in", operand: toNode(self), list: nodes }))
   }),
+}
+
+/** Converts a query of values of a table, such as of `pluck`, into the node of the values of `in`, and rejects any other value. */
+function toValuesQueryNode(value: unknown): NestedQueryNode {
+  if (typeof value === "object" && value !== null && valuesQueryNode in value) {
+    return (value as ValuesQuerySource)[valuesQueryNode]()
+  }
+  throw new TypeError("in takes an array or a query of values of a table, such as of pluck")
 }
 
 /** Tells whether a type has SQL `=`, given by an operator of `equalityOperators`. */

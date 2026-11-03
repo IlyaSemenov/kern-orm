@@ -15,6 +15,7 @@ import { createNode, createSelectNode, noFilters } from "../../ast/nodes"
 import {
   createDerivedSource,
   createExists,
+  createInQuery,
   createLeftJoin,
   createOrder,
   createParameter,
@@ -101,17 +102,27 @@ describe("compileStatement", () => {
     expect(compiled.fields).toBe(node.projections)
   })
 
-  it("rejects a query in an expression, which lowering replaces", () => {
-    const node: SelectNode = {
-      ...lower(from(post)),
-      filters: {
-        user: createNode({ kind: "nestedQuery", query: from(post).exists().node, db: undefined }),
-      },
-    }
+  it("rejects a query in an expression, also of the values of IN, which lowering replaces", () => {
+    const exists = createNode({
+      kind: "nestedQuery",
+      query: from(post).exists().node,
+      db: undefined,
+    })
+    const values = createNode({
+      kind: "nestedQuery",
+      query: from(post).pluck("id").node,
+      db: undefined,
+    })
+    for (const user of [
+      exists,
+      createNode({ kind: "inQuery", operand: createParameter("post-id"), query: values }),
+    ]) {
+      const node: SelectNode = { ...lower(from(post)), filters: { user } }
 
-    expect(() => compileStatement(node)).toThrow(
-      "A query in an expression must be lowered before compilation",
-    )
+      expect(() => compileStatement(node)).toThrow(
+        "A query in an expression must be lowered before compilation",
+      )
+    }
   })
 
   it("takes each distinct value of the arguments of an aggregate once", () => {
@@ -491,19 +502,25 @@ describe("nested queries", () => {
     )
   })
 
-  it("rejects a scalar subquery that does not select one field", () => {
+  it("rejects a scalar subquery or a subquery of IN that does not select one field", () => {
     const none = forms.select(() => ({
       value: createSubquery(lower(formFields), t.text),
     }))
     const two = forms.select(() => ({
       value: createSubquery(lower(formFields.select("id", "label")), t.text),
     }))
+    const twoOfIn = forms.where(() =>
+      createInQuery(toNode(formColumns.id), lower(formFields.select("id", "label"))),
+    )
 
     expect(() => compileStatement(lower(none))).toThrow(
       "A scalar subquery must select one field, not 0",
     )
     expect(() => compileStatement(lower(two))).toThrow(
       "A scalar subquery must select one field, not 2",
+    )
+    expect(() => compileStatement(lower(twoOfIn))).toThrow(
+      "A subquery of IN must select one field, not 2",
     )
   })
 })

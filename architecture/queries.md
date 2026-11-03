@@ -98,6 +98,12 @@ Queries come in two kinds that share the query methods and differ only by execut
 - `Operand`, the operand of the built-in operators, includes `ScalarQuery`, and `OperandValue` reads the value of a query without inferring it from `ScalarQuery`, which would add instantiations to each call of an operator.
   An object condition reads the operand of the `eq` of `equalityOperators` from the type of its column, rather than inferring it from the method of the column with a check that its result is a predicate, which adds about 165 instantiations, 42%, to a query of an object condition of a column used for the first time ([benchmark](../benchmarks/types/queries.bench.ts)).
   For another `eq`, such as one of `withOperators`, it infers the operand from the method and requires a predicate as its result.
+- `in` takes a query of values of a table of any rows, such as of `pluck`, beside a list, as `IN` of the statement of the query, which keeps its order, limit, and offset; the statement of a query of `exists` or of an aggregate has one row.
+  - The query keeps its `Db`, as a query in an expression does.
+  - At runtime, `in` rejects a query of records, and a value other than an array or a query of a table, such as an expression or a query of `$select`.
+    It recognizes a query by the method of the symbol key `valuesQueryNode` of `expression/operators/equality.ts`, as an expression recognizes an operand by `operandNode`; only `SelectQuery` has the method, since `in` rejects every value other than an array and a query of a table, so the other classes need no method that rejects them.
+  - Types take the query as `ValuesQuery` of `query/select.ts`, an interface of the state and the method `exists`, as `ScalarQuery` is, and type its values by the result of its state, without `NULL` of a missing row, since `IN` of no rows is `FALSE`.
+  - `in` has one signature of a union of a list and a query rather than overloads: an overload of a query after that of a list makes the error of a wrong list name the overload of the query, and before it adds about 8% to the instantiations of a filter of a list ([benchmark](../benchmarks/types/queries.bench.ts)).
 
 ## Finding by a key
 
