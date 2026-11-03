@@ -5,6 +5,8 @@ import type { DriverResult } from "kern-orm"
 import { createDatabase, createStatement } from "kern-orm"
 import postgres from "postgres"
 
+import { findMedian } from "./statistics"
+
 /** Number of timed runs of a measurement, after a run that warms up caches. */
 const runs = 7
 
@@ -77,9 +79,4 @@ export function measure(callback: () => unknown): number {
     times.push(performance.now() - start)
   }
   return findMedian(times)
-}
-
-function findMedian(values: number[]): number {
-  const sorted = values.toSorted((a, b) => a - b)
-  return sorted[Math.floor(sorted.length / 2)]!
 }

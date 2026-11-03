@@ -21,6 +21,7 @@ export default defineConfig({
       "packages/*/src/**/*.test.ts",
       "packages/*/tests/**/*.test.ts",
       "examples/*/tests/**/*.test.ts",
+      "benchmarks/**/*.test.ts",
     ],
     setupFiles: ["./vitest.setup.ts"],
     // Fixtures of several test files create the same tables and PostgreSQL schemas, so the files run one after another, as under `bun test`.

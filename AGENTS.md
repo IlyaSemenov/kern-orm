@@ -93,6 +93,13 @@ Do not catalog files or restate information evident from their names and locatio
 - Keep data and SQL shared by several benchmarks in a module beside the harness, such as `benchmarks/nested-rows.ts`.
 - Run a benchmark with `bun run --cwd benchmarks bench <topic>`, which reads `DATABASE_URL` from `.env.test.local`.
 - Generate the data of a benchmark deterministically, in SQL or from an explicit seed, inside the transaction of `runBenchmark`, which rolls back.
+- Write a benchmark of the time of the JavaScript of a hot path, without PostgreSQL, as a runtime benchmark `benchmarks/runtime/<topic>.bench.ts`, which mitata runs on Bun and Node.js against the built package.
+  - Export from it by default a `Topic` of `benchmarks/runtime/scenario.ts`, a function of the modules of a build of `kern-orm` that returns the scenarios, and import only types from `kern-orm` in it, so that it also runs against the build of another commit.
+    Write its relative imports with their `.ts` extensions, since Node.js runs it.
+  - Return `unsupported(reason)` from a scenario that needs an API that the build lacks, after checking the API.
+  - Measure through the public API; attribute time to an internal step with a CPU profile rather than by importing internals.
+  - Run it with `bun run --cwd benchmarks bench:runtime <topic>`, and compare the current build with another commit with `--base <ref>`, such as `--base HEAD` for uncommitted changes.
+  - Treat a change whose confidence interval includes no change as inconclusive, and rerun it with more pairs through `--runs` before relying on it.
 - Measure the type-check cost of the API with the Attest benchmarks `benchmarks/types/*.bench.ts`: `bench(...).types()` counts the instantiations that its callback adds to its file, checked against the declarations of the built packages.
   - Warm up a benchmark of a repeated call, such as a query, with a call of the same kind on other columns in `bench.baseline`, so that it counts each further call rather than the first.
   - Run them with `bun run --cwd benchmarks bench:types`, which prints the change of each count from the one written in its file, and write the measured counts with `-u`.

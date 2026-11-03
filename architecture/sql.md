@@ -15,6 +15,12 @@
   An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
   Lowering replaces it in every expression of a statement, of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text, with `EXISTS` of the rows of a query of `exists` or a scalar subquery of the statement of another query, and checks the query as a nested query of a field; the compiler rejects it.
   - It keeps every expression node, filter, and array of nodes without a query, and creates only the nodes that hold one, so that an expression without a query allocates nothing.
+    It visits every node rather than tracking which subtrees hold a query, which keeps lowering simple.
+    Visiting takes longer than passing the filters, the values of a mutation, and `set` through, as lowering could if it tracked that they hold no query, to prepare a built statement without queries in its expressions through `db.$compile` on Bun 1.4.4 and Node.js 24.18 ([benchmark](../benchmarks/runtime/preparation.bench.ts)).
+    The medians of 10 pairs of processes, with their intervals of 97.9% confidence, are:
+    - for `in` of 1000 values, 22% (17 to 29%) on Bun and 17% (12 to 23%) on Node.js;
+    - for a tree of 256 conditions, 12% (7 to 18%) on Bun and 15% (7 to 18%) on Node.js;
+    - for a select of a few conditions, an insert of 1000 records, and nested relations, the medians of 3 to 8% are inconclusive.
   - A sort key of a selected expression takes the node of the lowered projection, so the statement still finds the projection that has its value.
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
