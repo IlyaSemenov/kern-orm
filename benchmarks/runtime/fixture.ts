@@ -2,12 +2,15 @@
 // - Forms with fields with answers, for filters and nested relations.
 // - Events of 10 columns of several types, for wide records.
 
-import type { Driver } from "kern-orm"
+import type { Driver, DriverResult } from "kern-orm"
 
 import type { Build } from "./scenario.ts"
 
-/** Creates the tables, the schema, and a `Db` of them with the modules of `build`; the `Db` cannot execute statements. */
-export function createFixture({ orm, types: t }: Build) {
+/** Result without rows, which the driver of a fixture answers with by default. */
+const noRows: DriverResult = { command: "SELECT", count: 0, columns: [], rows: [] }
+
+/** Creates the tables, the schema, and a `Db` of them with the modules of `build`, whose driver answers every statement with `result`. */
+export function createFixture({ orm, types: t }: Build, result: DriverResult = noRows) {
   const form = orm.defineTable("form", {
     id: t.uuid.primaryKey(),
     name: t.text,
@@ -44,8 +47,20 @@ export function createFixture({ orm, types: t }: Build) {
       answers: orm.many(answer, { from: "id", to: "fieldId" }),
     },
   })
-  const db = orm.createDatabase({ driver: {} as Driver }).bind(schema)
+  const db = orm.createDatabase({ driver: createDriver(result) }).bind(schema)
   return { db }
+}
+
+/** Driver that answers every statement with `result` and rejects scripts and transactions. */
+function createDriver(result: DriverResult): Driver {
+  const reject = () =>
+    Promise.reject(new Error("The driver of the runtime benchmarks only executes statements"))
+  return {
+    execute: () => Promise.resolve(result),
+    executeScript: reject,
+    acquire: reject,
+    close: () => Promise.resolve(),
+  }
 }
 
 /** UUID of number `index`, distinct for every index. */
