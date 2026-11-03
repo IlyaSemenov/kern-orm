@@ -100,6 +100,7 @@ function profile(count: number, env: Record<string, string>): Map<string, number
       include: [],
     }),
   )
+  let errors: string
   try {
     const result = spawnSync("node", [tsc, "-p", config], {
       env: { ...process.env, ...env, INST_OUT: output },
@@ -107,16 +108,18 @@ function profile(count: number, env: Record<string, string>): Map<string, number
       stdio: ["ignore", "pipe", "inherit"],
     })
     // Type errors add instantiations of their elaboration, so the profile of a failing file misleads.
-    if (result.status !== 0) {
-      console.error(result.stdout)
-      process.exit(1)
+    if (result.status === 0) {
+      return readProfile(output)
     }
-    return readProfile(output)
+    errors = result.stdout
   } finally {
     rmSync(variant, { force: true })
     rmSync(config, { force: true })
     rmSync(output, { force: true })
   }
+  // `process.exit` skips `finally`, so the script exits only after removing the files.
+  console.error(errors)
+  process.exit(1)
 }
 
 /** Reads the lines `<count>\t<label>` of a profile. */
