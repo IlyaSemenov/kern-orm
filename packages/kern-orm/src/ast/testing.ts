@@ -26,6 +26,11 @@ export function createExists(query: SelectNode) {
   return toBooleanExpression(createNode({ kind: "exists", query }))
 }
 
+/** Creates a subquery interpolated into SQL text as an expression without a type. */
+export function createTextSubquery(query: SelectNode) {
+  return toExpression(createNode({ kind: "textSubquery", query }))
+}
+
 /** Creates `IN` of the values of a query as a Boolean expression. */
 export function createInQuery(operand: ExpressionNode, query: SelectNode) {
   return toBooleanExpression(createNode({ kind: "inQuery", operand, query }))

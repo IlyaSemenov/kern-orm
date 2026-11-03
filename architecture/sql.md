@@ -14,7 +14,7 @@
   For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
   An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
   Lowering replaces it in every expression of a statement: of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text.
-  A query of `exists` becomes `EXISTS` of its rows, another query of one value a scalar subquery of its statement, and the query of the values of `IN` its statement.
+  A query of `exists` becomes `EXISTS` of its rows, another query of one value a scalar subquery of its statement, the query of the values of `IN` its statement, and a query of records or of rows `many` in SQL text its statement in parentheses.
   Lowering checks each such query as a nested query of a field, and the compiler rejects a query that lowering has not replaced.
   - It keeps every expression node, filter, and array of nodes without a query, and creates only the nodes that hold one, so that an expression without a query allocates nothing.
     It visits every node rather than tracking which subtrees hold a query, which keeps lowering simple.
@@ -53,7 +53,7 @@
 - A statement takes at most 65535 parameters, which the protocol of PostgreSQL counts in 16 bits, so the compiler rejects a further parameter.
 - Every place of a source in a statement is its own occurrence: a query inserted twice declares its sources twice under different aliases.
   A source that appears where it is already visible, such as a query nested in itself or a source joined twice, is rejected, since its column references would be ambiguous; a nested query over the same table starts from its own `from`.
-- A scalar subquery selects exactly one field.
+- A scalar subquery selects exactly one field, and a subquery interpolated into SQL text any number of fields, which the text reads.
 - An executed query sorts by the position of the projection that has the value of a sort expression, such as `ORDER BY 2`, and by other expressions as they are; a nested query sorts by its sort keys as packing describes, with the same rule of which projection has the value.
   Only a projection of the same column or of the same expression node is guaranteed to have the value of a sort expression.
   A selected expression repeated in `ORDER BY` would get parameters of its own: the statement would send their values twice, and PostgreSQL would evaluate it again unless it finds the two expressions equal, which it does once a custom plan folds the parameters into constants but not in a generic plan, such as of a prepared statement.

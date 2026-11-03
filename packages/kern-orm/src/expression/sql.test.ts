@@ -34,15 +34,28 @@ it("interpolates a query of a table without clauses as the name of the table of 
   })
 })
 
-it("rejects a query with clauses and other queries, which a parameter would encode as text", () => {
+it("interpolates another query of a table, of any rows and value, as a query in an expression of its Db", () => {
+  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+  const records = schema.form.where({ id: 1 })
+  const values = db.form.pluck("id")
+
+  expect(toNode(sql`EXISTS ${records} AND ${1} IN ${values}`)).toEqual({
+    kind: "raw",
+    fragments: ["EXISTS ", " AND ", " IN ", ""],
+    values: [
+      { kind: "nestedQuery", query: records.node, db: undefined },
+      { kind: "param", value: 1, type: undefined },
+      { kind: "nestedQuery", query: values.node, db },
+    ],
+  })
+})
+
+it("rejects a query of $select, a mutation, and a query of SQL text, which a parameter would encode as text", () => {
   const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
 
-  expect(() => sql`SELECT FROM ${schema.form.where({ id: 1 })}`).toThrow(
-    "sql takes a query of a table without clauses, such as db.form, as the name of the table, not a query with clauses",
-  )
   for (const query of [schema.$select({}), schema.form.find(1).delete(), db.$query`SELECT 1`]) {
     expect(() => sql`SELECT ${query}`).toThrow(
-      "sql takes a query of a table without clauses, such as db.form, as the name of the table, not another query",
+      "sql takes a query of a table, such as db.form or a query of its records, not a query of $select, a mutation, or a query of SQL text",
     )
   }
 })

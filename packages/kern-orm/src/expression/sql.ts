@@ -25,6 +25,7 @@ export type SqlTemplate<T, O extends OperatorDefinitions, I = T> = (
  * Builds a SQL fragment.
  *
  * Interpolated expressions such as column references stay structured, a query of a table without clauses, such as `db.form`, becomes the name of the table, and other values become query parameters.
+ * Another query of a table becomes a subquery in parentheses, and a query of one value, such as of an aggregate or of `exists`, its value, as in a condition.
  * The type argument declares the TypeScript type of the fragment and does not convert values at runtime, so the fragment cannot be selected; the fragment has `isNull` and the operators of `equalityOperators` only.
  */
 export function sql<T = unknown>(
@@ -128,9 +129,12 @@ function createFragment(
 }
 
 /**
- * Creates the node of the SQL of a template: interpolated expressions keep their nodes, a query of a table without clauses becomes the name of the table, qualified by the PostgreSQL schema of the statement, and other values become query parameters.
+ * Creates the node of the SQL of a template, whose interpolations stay structured nodes.
  *
- * It rejects other queries, which a parameter would encode as text.
+ * An interpolated expression keeps its node, and a query of a table without clauses becomes the name of the table, qualified by the PostgreSQL schema of the statement.
+ * Another query of a table becomes a query in an expression, which lowering replaces with its SQL.
+ * Other values become query parameters.
+ * It rejects the other queries, which a parameter would encode as text.
  */
 export function toRawSqlNode(
   strings: TemplateStringsArray,
@@ -146,16 +150,15 @@ export function toRawSqlNode(
 /** Returns the node of a value interpolated into SQL, as `toRawSqlNode` takes it. */
 function toInterpolatedNode(value: unknown): ExpressionNode {
   if (value instanceof SelectQuery) {
-    if (!isTableQuery(value.node)) {
-      throw new TypeError(
-        "sql takes a query of a table without clauses, such as db.form, as the name of the table, not a query with clauses",
-      )
-    }
-    return createNode({ kind: "tableName", table: value.table, db: value.db })
+    const { node } = value
+    // SQL text also takes a query of records or of rows `many`, which `operandNode` rejects, so the node is created here.
+    return isTableQuery(node)
+      ? createNode({ kind: "tableName", table: value.table, db: value.db })
+      : createNode({ kind: "nestedQuery", query: node, db: value.db })
   }
   if (value instanceof RecordQuery || value instanceof MutationQuery || value instanceof SqlQuery) {
     throw new TypeError(
-      "sql takes a query of a table without clauses, such as db.form, as the name of the table, not another query",
+      "sql takes a query of a table, such as db.form or a query of its records, not a query of $select, a mutation, or a query of SQL text",
     )
   }
   return toValueNode(value)

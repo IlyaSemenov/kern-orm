@@ -13,7 +13,7 @@ const updatedCount = await db.$query`
 It resolves to the number of rows that PostgreSQL reports for the statement, such as the updated rows.
 To require exactly one such row, such as when updating a record by its key, add `take`: it rejects with `NotFoundError` without the row, unless you add `optional`.
 
-Interpolated values become query parameters, [`sql` fragments](./filtering#sql-fragments) stay SQL, and a table of `db`, such as `db.form`, becomes its name in the PostgreSQL schema of `db`.
+Interpolated values become query parameters, [`sql` fragments](./filtering#sql-fragments) stay SQL, a table of `db`, such as `db.form`, becomes its name in the PostgreSQL schema of `db`, and [another query](#queries-in-statements) becomes a subquery.
 The statement runs in the current [transaction](../transactions), like any query.
 
 ## Rows
@@ -51,6 +51,24 @@ const total = await db.$query`SELECT count(*) FROM ${db.form}`.get(t.integer)
 // total: number
 ```
 
+## Queries in statements
+
+To compute what queries cannot, such as the median number of fields of published forms, interpolate a query into the statement.
+It becomes a subquery in parentheses; name its columns after its alias, in the order of the fields of the query:
+
+```ts
+const median = await db.$query`
+  SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY field_count)
+  FROM ${db.form.where({ published: true }).select(form => ({
+    fieldCount: form.fields.count(),
+  }))} AS form (field_count)
+`.get(t.doublePrecision.nullable())
+// median: number | null
+```
+
+A query of one value, such as of [`count`](./selecting#aggregates), becomes its value, as in a [condition](./filtering#values-of-other-queries).
+Start the query from the same `Db` as the statement.
+
 ## Names known at runtime
 
 To name a column or another object known only at runtime, interpolate `identifier` with its name:
@@ -78,7 +96,7 @@ import { readFile } from "node:fs/promises"
 await db.$script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so its template interpolates only tables of `db`, names from `identifier`, and `sql` fragments without values:
+A script has no parameters, so its template interpolates only tables of `db`, names from `identifier`, and queries and `sql` fragments without parameters:
 
 ```ts
 await db.$script`

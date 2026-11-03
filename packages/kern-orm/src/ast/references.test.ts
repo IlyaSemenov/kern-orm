@@ -2,6 +2,7 @@ import { expect, it } from "bun:test"
 
 import { toNode } from "../expression/expression"
 import { and } from "../expression/predicates"
+import { sql } from "../expression/sql"
 import { from } from "../query/select"
 import { defineTable } from "../table/table"
 import * as t from "../types"
@@ -17,6 +18,7 @@ import {
   createOrder,
   createRef,
   createSubquery,
+  createTextSubquery,
 } from "./testing"
 
 const form = defineTable("form", {
@@ -25,9 +27,10 @@ const form = defineTable("form", {
   ownerId: t.integer,
   position: t.integer,
   rank: t.integer,
+  status: t.text,
 })
 
-it("collects the keys of the columns of a source at any depth of the queries nested in an expression, also of IN", () => {
+it("collects the keys of the columns of a source at any depth of the queries nested in an expression, also of IN and of SQL text", () => {
   const outer = from(form).node.from
   const inner = from(form).node.from
   const joined = from(form).node.from
@@ -61,6 +64,11 @@ it("collects the keys of the columns of a source at any depth of the queries nes
               { key: "rank", expression: createRef(outer, "rank"), type: t.integer },
             ]),
           ),
+          sql<boolean>`EXISTS ${createTextSubquery(
+            createSelectNode(from(form).node.from, [
+              { key: "status", expression: createRef(outer, "status"), type: t.text },
+            ]),
+          )}`,
         ),
       ),
     },
@@ -70,7 +78,7 @@ it("collects the keys of the columns of a source at any depth of the queries nes
 
   collectColumnKeys(toNode(createSubquery(nested, t.integer)), outer, keys)
 
-  expect([...keys]).toEqual(["id", "ownerId", "name", "rank", "position"])
+  expect([...keys]).toEqual(["id", "ownerId", "name", "rank", "status", "position"])
 })
 
 it("detects a SQL fragment at any depth that refers to a column of a source outside the queries nested in it", () => {

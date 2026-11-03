@@ -81,6 +81,7 @@ export function lowerStatement(
 
 /**
  * Lowers a query to a SQL select statement, packing the rows of each nested query into the value of its field, or selecting the value of a nested aggregate query or `EXISTS` of a nested query of `exists`, and replacing each query in an expression, such as in a condition, with `EXISTS` or a scalar subquery.
+ * A query of records or of rows `many` in SQL text becomes its statement in parentheses.
  *
  * The statement of a query other than an aggregate query or a query of `exists` keeps the sort expressions of the query, which packing reads when the query is nested.
  * With `definitions`, such as the relations of the schema of a `Db`, a query of a relation outside them is rejected at any depth.
@@ -482,6 +483,7 @@ function refersToSource(node: ExpressionNode, source: SourceNode): boolean {
     case "tableName":
     case "subquery":
     case "exists":
+    case "textSubquery":
       return false
     case "cast":
     case "not":
@@ -691,7 +693,7 @@ function isFieldValue(field: SelectedNode, expression: ExpressionNode): boolean 
 
 /**
  * Lowers an expression, replacing each query in it and checking the query as a nested query.
- * A query of `exists`, such as in a condition, becomes `EXISTS` of its rows, another query of one value a scalar subquery of its value, and the query of the values of `IN` its statement.
+ * A query of `exists`, such as in a condition, becomes `EXISTS` of its rows, another query of one value a scalar subquery of its value, the query of the values of `IN` its statement, and another query in SQL text its statement in parentheses.
  *
  * It returns `node` itself when it holds no query, and creates only the nodes that hold one.
  */
@@ -702,9 +704,10 @@ function lowerExpression(node: ExpressionNode, context: LoweringContext): Expres
     case "boolean":
     case "values":
     case "tableName":
-    // Only lowering creates the queries of a scalar subquery and of `EXISTS`, which are lowered already.
+    // Only lowering creates the queries of subqueries and of `EXISTS`, which are lowered already.
     case "subquery":
     case "exists":
+    case "textSubquery":
       return node
     case "nestedQuery":
       return lowerNestedQuery(node, context)
@@ -773,14 +776,21 @@ function lowerExpression(node: ExpressionNode, context: LoweringContext): Expres
   }
 }
 
-/** Lowers a query in an expression to `EXISTS` of the rows of a query of `exists`, or to a scalar subquery of the value of another query, which must have one value. */
+/**
+ * Lowers a query in an expression to `EXISTS` of the rows of a query of `exists`, to a scalar subquery of the value of another query of one value, or to its statement in parentheses for a query of records or of rows `many`, which only SQL text holds.
+ *
+ * In SQL text, a query of `exists` stays `EXISTS` rather than a subquery of its value, so that PostgreSQL can join its rows in a condition, as a semi-join.
+ */
 function lowerNestedQuery(node: NestedQueryNode, context: LoweringContext): ExpressionNode {
   checkDb(node.db, context, "A query in an expression")
   const { query } = node
   if (isExistsQuery(query)) {
     return lowerExists(query, context)
   }
-  return createNode({ kind: "subquery", query: lowerSelect(query, context, false) })
+  return createNode({
+    kind: query.value && query.rows !== "many" ? "subquery" : "textSubquery",
+    query: lowerSelect(query, context, false),
+  })
 }
 
 /** Lowers the query of the values of `IN` to its statement, whatever its rows. */

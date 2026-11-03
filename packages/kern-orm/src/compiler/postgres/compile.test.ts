@@ -21,6 +21,7 @@ import {
   createParameter,
   createRef,
   createSubquery,
+  createTextSubquery,
 } from "../../ast/testing"
 import { createDatabase } from "../../execution/database"
 import type { AnyExpression, Expression } from "../../expression/expression"
@@ -371,6 +372,19 @@ describe("nested queries", () => {
 
     expect(compileStatement(lower(query)).text).toBe(
       'SELECT "form"."id" AS "id" FROM "form" AS "form" WHERE NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id" AND "form_field"."label" IS NULL)',
+    )
+  })
+
+  it("compiles a subquery interpolated into SQL text in parentheses, of any number of fields", () => {
+    const query = forms
+      .select("id")
+      .where(
+        () =>
+          sql<boolean>`EXISTS ${createTextSubquery(lower(formFields))} AND (${formColumns.id}, ${formColumns.name}) IN ${createTextSubquery(lower(fields.select("formId", "label")))}`,
+      )
+
+    expect(compileStatement(lower(query)).text).toBe(
+      'SELECT "form"."id" AS "id" FROM "form" AS "form" WHERE EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id") AND ("form"."id", "form"."name") IN (SELECT "form_field_2"."form_id" AS "formId", "form_field_2"."label" AS "label" FROM "form_field" AS "form_field_2")',
     )
   })
 

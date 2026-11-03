@@ -4,6 +4,7 @@ import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
 import { and, not, or } from "../expression/predicates"
+import { sql } from "../expression/sql"
 import { NotFoundError, RequiredRelationError } from "../result/result"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -666,6 +667,26 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       [{ withOptions: [1] }, { withOptions: [4] }, { withOptions: [] }],
       ["Note"],
     ])
+  })
+
+  it("filters by queries in SQL fragments, as subqueries or as their values, also in a statement of SQL text", async () => {
+    const results = await testTransaction(async () => [
+      await db.form.where(form => sql`EXISTS ${form.fields.where({ label: null })}`).pluck("id"),
+      await db.form.where(form => sql`NOT EXISTS (${form.fields})`).pluck("id"),
+      await db.field
+        .where(
+          field => sql`${field.formId} = ANY ${db.form.where({ name: "Feedback" }).pluck("id")}`,
+        )
+        .pluck("id"),
+      await db.form.where(form => sql`${form.fields.count()} > ${1}`).pluck("id"),
+      await db.form.where(form => sql`NOT ${form.fields.exists()}`).pluck("id"),
+      await db.$query`
+        SELECT count(*) FROM ${db.field.where({ formId: 1 }).select("id", "label")} AS field (id, label)
+        WHERE label IS NOT NULL
+      `.get(t.integer),
+    ])
+
+    expect(results).toEqual([[1], [3], [4], [1], [3], 2])
   })
 
   it("selects whether related records exist for each row, also of a page after an offset, and a condition of get, null without its row", async () => {

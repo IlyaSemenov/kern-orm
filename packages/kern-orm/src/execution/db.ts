@@ -104,7 +104,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   /**
    * Starts a query of the SQL statement of the template, which resolves to the number of the rows of its command tag when awaited, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of its rows instead.
    *
-   * Interpolated values become query parameters, `sql` fragments and expressions stay SQL, and a table of the `Db`, such as `db.form`, becomes its name, qualified by the PostgreSQL schema of the `Db`.
+   * Interpolated values become query parameters, `sql` fragments and expressions stay SQL, a table of the `Db`, such as `db.form`, becomes its name, qualified by the PostgreSQL schema of the `Db`, and another query becomes a subquery, as in `sql`.
    */
   $query(strings: TemplateStringsArray, ...values: unknown[]): SqlQuery<InitialSqlQueryState>
   /**
@@ -116,7 +116,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   /**
    * Executes the script of the template as `$script` of its text does.
    *
-   * It interpolates tables of the `Db`, such as `db.form`, and `sql` fragments without values; it rejects values, since a script has no parameters.
+   * It interpolates tables of the `Db`, such as `db.form`, and queries and `sql` fragments without parameters; it rejects values, since a script has no parameters.
    */
   $script(strings: TemplateStringsArray, ...values: unknown[]): Promise<void>
   /**
@@ -205,7 +205,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
       const { text, parameters } = compile(startSqlQuery(toRawSqlNode(script, values), db))
       if (parameters.length > 0) {
         throw new Error(
-          "A script takes no values, since it has no parameters; interpolate only tables and sql fragments without values",
+          "A script has no parameters, so it takes no values, also in the queries and sql fragments that it interpolates",
         )
       }
       return database.script(text)

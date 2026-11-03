@@ -126,11 +126,16 @@ const longName = sql<boolean>`length(name) > 10`
 
 A type argument exists only in TypeScript, so such a fragment has only `eq`, `ne`, `in`, and `isNull`.
 
-To refer to another table in a fragment, such as in a subquery, interpolate its table of `db`, which becomes its name:
+A query interpolated into a fragment becomes a subquery in parentheses, or its value for a query of one value, such as of an [aggregate](./selecting#aggregates), as in [SQL statements](./sql#queries-in-statements).
+
+To write SQL that reads a table directly, such as to pick a random sample of about 1% of the submissions, interpolate its table of `db`, which becomes its name:
 
 ```ts
-await db.form
-  .where(form => sql`${form.id} IN (SELECT form_id FROM ${db.field} WHERE label = ${"Email"})`)
+await db.submission
+  .where(
+    submission =>
+      sql`${submission.id} IN (SELECT id FROM ${db.submission} TABLESAMPLE BERNOULLI (1))`,
+  )
   .select("id")
 ```
 

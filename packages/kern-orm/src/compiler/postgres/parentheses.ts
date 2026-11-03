@@ -20,6 +20,7 @@ export function needsParentheses(kind: ExpressionNode["kind"], position: Operand
     case "tableName":
     case "subquery":
     case "exists":
+    case "textSubquery":
     case "aggregate":
       return false
     case "cast":

@@ -85,7 +85,11 @@ export interface ValuesNode {
   readonly values: Readonly<Record<string, unknown>>
 }
 
-/** Query of a table in an expression, such as of `exists` in a condition, which lowering replaces with the SQL of its value before compilation. */
+/**
+ * Query of a table in an expression, such as of `exists` in a condition, which lowering replaces with the SQL of its value before compilation.
+ *
+ * A query interpolated into SQL text may be of records or of rows `many`, which lowering replaces with its statement.
+ */
 export interface NestedQueryNode {
   readonly kind: "nestedQuery"
   readonly query: QueryNode
@@ -149,6 +153,12 @@ export interface ExistsNode {
   readonly query: SelectNode
 }
 
+/** Subquery interpolated into SQL text: its query in parentheses, of any fields and rows, which the text reads, such as with `EXISTS` or in `FROM`. */
+export interface TextSubqueryNode {
+  readonly kind: "textSubquery"
+  readonly query: SelectNode
+}
+
 /** Call of an aggregate function over the rows of its query, with the order of its input rows. */
 export interface AggregateNode {
   readonly kind: "aggregate"
@@ -178,6 +188,7 @@ export type ExpressionNode =
   | TableNameNode
   | SubqueryNode
   | ExistsNode
+  | TextSubqueryNode
   | AggregateNode
 
 /**

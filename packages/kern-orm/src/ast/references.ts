@@ -86,6 +86,7 @@ function visitNodes(
       return
     case "subquery":
     case "exists":
+    case "textSubquery":
       if (deep) {
         visitQuery(node.query, visit)
       }

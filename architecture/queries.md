@@ -67,7 +67,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - `pluck` replaces the projections with one and makes the rows values, keeping the rows of the query apart from rows `nullable`; `get` is `pluck` followed by `take`.
   - `select` and `clearSelect` reject a query of values, at runtime as well as in types; `get` and `pluck` replace its projection, unless it is an aggregate query or a query of [`exists`](#exists).
   - The rows do not imply a limit: only `take` adds `LIMIT 1`, when it changes rows `many` to `one`, since a relation `one` and a query of `find` must detect several matches.
-  - The result mode applies to an executed query and to packed nested rows; a query nested in a scalar subquery, `EXISTS`, or a derived source keeps only its SQL.
+  - The result mode applies to an executed query and to packed nested rows; a query nested in a scalar subquery, `EXISTS`, a derived source, or SQL text keeps only its SQL.
   - The result type of a query state is the union of the results of every mode it allows, such as of a union of rows modes or of states; `$execute` infers the whole query, so a union of queries gives the union of their results.
 
 ## Filters
@@ -105,6 +105,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     It recognizes a query by the method of the symbol key `valuesQueryNode` of `expression/operators/equality.ts`, as an expression recognizes an operand by `operandNode`; only `SelectQuery` has the method, since `in` rejects every value other than an array and a query of a table, so the other classes need no method that rejects them.
   - Types take the query as `ValuesQuery` of `query/select.ts`, an interface of the state and the method `exists`, as `ScalarQuery` is, and type its values by the result of its state, without `NULL` of a missing row, since `IN` of no rows is `FALSE`.
   - `in` has one signature of a union of a list and a query rather than overloads: an overload of a query after that of a list makes the error of a wrong list name the overload of the query, and before it adds about 8% to the instantiations of a filter of a list ([benchmark](../benchmarks/types/queries.bench.ts)).
+- `sql` takes a query of a table of any rows and value, also of records or of rows `many`, as a subquery in SQL text, as [types](types.md#parameters-and-sql-fragments) describe; a query of one value there is the operand that it is in an expression.
 
 ## Finding by a key
 

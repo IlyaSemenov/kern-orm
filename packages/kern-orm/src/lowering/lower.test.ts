@@ -400,6 +400,20 @@ describe("lowerQuery", () => {
     })
   })
 
+  it("replaces a query of records or of rows many in SQL text with its statement in parentheses, and a query of one value with its value, as in a condition", () => {
+    const { node } = schema.form
+      .where(form => sql`EXISTS ${form.fields.where({ label: "Email" })}`)
+      .where(
+        form => sql`${form.id} = ANY ${schema.field.orderBy("label").limit(2).pluck("formId")}`,
+      )
+      .where(form => sql`${form.fields.count()} > ${1} OR ${form.fields.exists()}`)
+
+    expect(compileStatement(lowerQuery(node))).toMatchObject({
+      text: 'SELECT FROM "form" AS "form" WHERE (EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id" AND "form_field"."label" = $1)) AND ("form"."id" = ANY (SELECT "form_field_2"."formId" AS "formId" FROM "form_field" AS "form_field_2" ORDER BY "form_field_2"."label" LIMIT $2)) AND ((SELECT count(*) AS "count" FROM "form_field" AS "form_field_3" WHERE "form_field_3"."formId" = "form"."id") > $3 OR EXISTS (SELECT FROM "form_field" AS "form_field_4" WHERE "form_field_4"."formId" = "form"."id"))',
+      parameters: ["Email", "2", "1"],
+    })
+  })
+
   it("selects EXISTS of a nested query of exists in place of its field, decoded as a Boolean", () => {
     const { node } = schema.form.select(form => ({
       hasFields: form.fields.exists(),
@@ -517,12 +531,13 @@ describe("lowerQuery", () => {
     )
   })
 
-  it("rejects a query in an expression, also of the values of in, bound to another Db than the one given, or to any Db without one", () => {
+  it("rejects a query in an expression, also of the values of in and in SQL text, bound to another Db than the one given, or to any Db without one", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
     const db = database.bind(schema)
     for (const { node } of [
       schema.form.where(form => db.field.where(field => field.formId.eq(form.id)).exists()),
       schema.form.where(form => form.id.in(db.field.pluck("formId"))),
+      schema.form.where(form => sql`${form.id} = ANY ${db.field.pluck("formId")}`),
     ]) {
       expect(() => lowerQuery(node, undefined, database.bind(schema))).toThrow(
         "A query in an expression is bound to another Db",

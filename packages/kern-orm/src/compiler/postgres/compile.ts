@@ -358,6 +358,8 @@ function compileExpression(
       return compileSubquery(context, scope, node.query, "A scalar subquery")
     case "exists":
       return `EXISTS (${compileQuery(context, scope, node.query)})`
+    case "textSubquery":
+      return `(${compileQuery(context, scope, node.query)})`
     case "aggregate": {
       // Arguments precede the order in the text, so their parameters are numbered first.
       let text = `${node.name}(${node.distinct ? "DISTINCT " : ""}`

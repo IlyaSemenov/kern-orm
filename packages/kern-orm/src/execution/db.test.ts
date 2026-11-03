@@ -142,12 +142,29 @@ it("executes a script of a template that interpolates a name from identifier", a
   expect(scripts).toEqual([{ connection: "pool", script: 'ANALYZE "comment"' }])
 })
 
-it("rejects values in the template of a script, also in a sql fragment", async () => {
+it("executes a script of a template that interpolates a query without values as a subquery", async () => {
+  const { db, scripts } = connectRecorded()
+
+  await db.$script`CREATE VIEW titled AS ${db.post.select("id", "title")}`
+
+  expect(scripts).toEqual([
+    {
+      connection: "pool",
+      script:
+        'CREATE VIEW titled AS (SELECT "post"."id" AS "id", "post"."title" AS "title" FROM "app"."post" AS "post")',
+    },
+  ])
+})
+
+it("rejects values in the template of a script, also in a query and a sql fragment", async () => {
   const { db, scripts } = connectRecorded()
   const message =
-    "A script takes no values, since it has no parameters; interpolate only tables and sql fragments without values"
+    "A script has no parameters, so it takes no values, also in the queries and sql fragments that it interpolates"
 
   await expect(db.$script`SELECT ${1}`).rejects.toThrow(message)
+  await expect(db.$script`SELECT ${db.post.where({ title: "x" }).pluck("id")}`).rejects.toThrow(
+    message,
+  )
   await expect(db.$script`SELECT ${sql`upper(${"x"})`}`).rejects.toThrow(message)
   expect(scripts).toEqual([])
 })
