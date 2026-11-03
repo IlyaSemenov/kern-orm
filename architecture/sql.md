@@ -2,8 +2,8 @@
 
 - **AST** (`ast/`): the SQL AST, structural expression and statement nodes, and their pure transformations, such as Boolean simplification.
   A select statement nests queries in scalar subqueries, `EXISTS`, and derived sources of `FROM`, plain or `LATERAL`; nodes store no lexical scopes, which the compiler derives from the position of a query in the tree.
-- **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps a statement of SQL text as it is; the compiler knows no relation definitions or semantic query nodes.
-  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query, of its statement, or `EXISTS` of its rows for a query of `exists`, and a query other than an aggregate query or a query of `exists` without nested queries keeps its projections.
+- **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps a statement of SQL text as it is, except that it lowers the queries in its interpolated expressions; the compiler knows no relation definitions or semantic query nodes.
+  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query, of its statement, or `EXISTS` of its rows for a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries in its fields keeps its projections.
   A query of `$select` has no source and becomes a statement without `FROM` of rows `one`, which PostgreSQL returns as exactly one row.
   A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, and has no order.
   An aggregate query becomes a statement of its aggregate without an order, which PostgreSQL rejects beside an aggregate unless it sorts by aggregates; `string_agg` takes the order of the query inside its call, and `coalesce` of the fallbacks of the query wraps the call.
@@ -11,7 +11,11 @@
   PostgreSQL assigns an aggregate to the innermost query whose sources its arguments refer to, so an argument that does not refer to the source of its query outside nested queries, such as a column of the parent row, is read from such a derived source too.
   The statement of an executed query sorts by the positions of its projections, while the statement of a packed nested query keeps its sort expressions, which packing reads.
   A mutation keeps its statement and packs the nested queries of the fields of its `RETURNING` as a select list does.
-  For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
+  For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
+  An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
+  Lowering replaces it in every expression of a statement, of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text, with `EXISTS` of the rows of a query of `exists` or a scalar subquery of the statement of another query, and checks the query as a nested query of a field; the compiler rejects it.
+  - It keeps every expression node, filter, and array of nodes without a query, and creates only the nodes that hold one, so that an expression without a query allocates nothing.
+  - A sort key of a selected expression takes the node of the lowered projection, so the statement still finds the projection that has its value.
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
   Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.
@@ -67,7 +71,7 @@
   It selects no other column, which PostgreSQL would reject beside an aggregate of a SQL fragment, such as `count(*)`.
   The query reads them from the source and evaluates only its nested queries over the rows of the page, which it sorts again by the sort keys of the source, since the order of a derived source does not carry into the query that reads it.
   For a page of 20 of 1000 parents, it is 4 to 6 times faster after an offset of 100 and 26 to 45 times after 900, and within 4% after an offset of 0 ([benchmark](../benchmarks/suites/offset-page.ts)).
-  A query without nested queries or without an offset keeps its page on its table.
+  A query without nested queries, also with queries in the expressions of its fields, which are scalar fields, or without an offset keeps its page on its table.
   So does a query whose nested queries hold a SQL fragment that refers to a column of its table outside the queries nested in the fragment.
   PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, and lowering does not parse SQL fragments to identify their aggregates, so such a fragment, such as `sum` of a column of the parent row, may aggregate the rows of the query before its offset.
 - A nested aggregate query is selected as a scalar subquery of its statement, decoded by the type of the aggregate, rather than packed: it always returns one row of one value.

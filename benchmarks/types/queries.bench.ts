@@ -3,7 +3,7 @@
 
 import { bench } from "@ark/attest"
 import type { DbOf } from "kern-orm"
-import { defineHelper } from "kern-orm"
+import { defineHelper, not } from "kern-orm"
 
 import { formsDb, formsSchema, storeDb, tenantDb } from "./fixture.ts"
 
@@ -25,6 +25,7 @@ const withFieldIds = defineHelper(formsSchema.form, form =>
 
 bench.baseline(async () => {
   await tenantDb.form.where({ name: "baseline" }).pluck("id")
+  await tenantDb.field.where(field => field.label.eq("baseline")).pluck("id")
   await formsDb.$execute(
     formsSchema.form
       .where({ name: "baseline" })
@@ -73,6 +74,7 @@ bench.baseline(async () => {
   await tenantDb.field.where({ label: "baseline" }).max("position")
   await tenantDb.field.where({ label: "baseline" }).min("label").coalesce("baseline")
   await tenantDb.field.where({ label: "baseline" }).exists()
+  await tenantDb.field.where(field => not(field.answers.exists())).pluck("id")
   await tenantDb.$execute(
     formsSchema.field
       .where({ label: "baseline" })
@@ -121,6 +123,10 @@ bench("bound query", async () => {
   await tenantDb.form.where({ published: true }).pluck("name")
 }).types([528, "instantiations"])
 
+bench("filter of a callback", async () => {
+  await tenantDb.form.where(form => form.name.eq("x")).pluck("name")
+}).types([222, "instantiations"])
+
 bench("find", async () => {
   await tenantDb.form.find("x").select("name")
 }).types([287, "instantiations"])
@@ -145,13 +151,17 @@ bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
 }).types([141, "instantiations"])
 
+bench("filter of exists of a relation", async () => {
+  await tenantDb.form.where(form => not(form.fields.exists())).pluck("name")
+}).types([377, "instantiations"])
+
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1048, "instantiations"])
+}).types([1061, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1134, "instantiations"])
+}).types([1147, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(

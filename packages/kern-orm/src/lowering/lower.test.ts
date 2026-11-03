@@ -5,6 +5,7 @@ import { createRecordingDriver } from "../../testing/recording-driver"
 import { compileStatement } from "../compiler/postgres/compile"
 import { createDatabase } from "../execution/database"
 import type { AnyExpression } from "../expression/expression"
+import { and, not } from "../expression/predicates"
 import { sql } from "../expression/sql"
 import { countType } from "../query/aggregate"
 import { desc } from "../query/order"
@@ -60,6 +61,18 @@ describe("lowerStatement", () => {
     expect(lowerQuery(node).orderBy).toBe(node.orderBy)
   })
 
+  it("sorts by the position of a selected expression that holds a query, lowered once", () => {
+    const { node } = schema.form
+      .select(form => ({
+        empty: not(form.fields.exists()),
+      }))
+      .orderBy((_form, selected) => desc(selected.empty))
+
+    expect(compileStatement(lowerStatement(node)).text).toBe(
+      'SELECT NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "empty" FROM "form" AS "form" ORDER BY 1 DESC',
+    )
+  })
+
   it("reads the page of a query that selects nested queries after an offset from a derived source of the page, sorted again", () => {
     const page = schema.form.orderBy("id").offset(20)
     const { node } = page.select(form => ({
@@ -104,12 +117,18 @@ describe("lowerStatement", () => {
     )
   })
 
-  it("keeps the page of a query on its table without an offset, without nested queries, or with a SQL fragment of its columns in a nested query", () => {
+  it("keeps the page of a query on its table without an offset, without nested queries, also with queries in the expressions of its fields, or with a SQL fragment of its columns in a nested query", () => {
     const limited = schema.form.orderBy("id").limit(20)
     const nested = limited.select(form => ({
       fields: form.fields.pluck("label"),
     }))
     const offset = schema.form.orderBy("id").offset(20).select("id")
+    const condition = schema.form
+      .orderBy("id")
+      .offset(20)
+      .select(form => ({
+        empty: not(form.fields.exists()),
+      }))
     const fragment = schema.form
       .orderBy("id")
       .offset(20)
@@ -124,6 +143,9 @@ describe("lowerStatement", () => {
     )
     expect(compileStatement(lowerStatement(offset.node)).text).toBe(
       'SELECT "form"."id" AS "id" FROM "form" AS "form" ORDER BY 1 OFFSET $1',
+    )
+    expect(compileStatement(lowerStatement(condition.node)).text).toEndWith(
+      ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
     )
     expect(compileStatement(lowerStatement(fragment.node)).text).toEndWith(
       ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
@@ -165,6 +187,17 @@ describe("lowerStatement", () => {
     ])
   })
 
+  it("replaces the queries in the fields of a query of $select", () => {
+    const { node } = schema.$select({
+      hasForms: schema.form.exists(),
+      empty: not(schema.form.exists()),
+    })
+
+    expect(compileStatement(lowerStatement(node)).text).toBe(
+      'SELECT EXISTS (SELECT FROM "form" AS "form") AS "hasForms", NOT EXISTS (SELECT FROM "form" AS "form_2") AS "empty"',
+    )
+  })
+
   it("checks the relations and the Db of the nested queries of a query of $select", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
     const db = database.bind(schema)
@@ -200,6 +233,25 @@ describe("lowerStatement", () => {
     ])
   })
 
+  it("replaces the queries in the filters, the values, and the returned fields of a mutation", () => {
+    const hasForms = sql(t.integer)`CASE WHEN ${and(schema.form.exists())} THEN 1 ELSE 0 END`
+    const remove = schema.form.where(form => not(form.fields.exists())).delete()
+    const update = schema.field.where({ id: 1 }).update({ formId: hasForms })
+    const insert = schema.option.insert({ fieldId: hasForms }).select(option => ({
+      orphan: not(schema.field.where(field => field.id.eq(option.fieldId)).exists()),
+    }))
+
+    expect(compileStatement(lowerStatement(remove.node)).text).toBe(
+      'DELETE FROM "form" AS "form" WHERE NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id")',
+    )
+    expect(compileStatement(lowerStatement(update.node)).text).toBe(
+      'UPDATE "form_field" AS "form_field" SET "formId" = CASE WHEN EXISTS (SELECT FROM "form" AS "form") THEN 1 ELSE 0 END WHERE "form_field"."id" = $1',
+    )
+    expect(compileStatement(lowerStatement(insert.node)).text).toBe(
+      'INSERT INTO "field_option" AS "field_option" ("fieldId") VALUES (CASE WHEN EXISTS (SELECT FROM "form" AS "form") THEN 1 ELSE 0 END) RETURNING NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."id" = "field_option"."fieldId") AS "orphan"',
+    )
+  })
+
   it("checks the relations and the Db of the nested queries of a mutation", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
     const db = database.bind(schema)
@@ -218,26 +270,72 @@ describe("lowerStatement", () => {
       lowerStatement(node, collectDefinitions(schema[schemaRelations]), db),
     ).not.toThrow()
   })
+
+  it("replaces the queries in the expressions interpolated into a statement of SQL text", () => {
+    const database = createDatabase({ driver: createRecordingDriver().driver })
+    const db = database.bind(schema)
+    const query = db.$query`SELECT ${not(db.form.exists())} AS "empty"`
+    const plain = db.$query`SELECT ${1}`
+
+    expect(compileStatement(lowerStatement(query.node, undefined, db)).text).toBe(
+      'SELECT (NOT EXISTS (SELECT FROM "form" AS "form")) AS "empty"',
+    )
+    expect<unknown>(lowerStatement(plain.node, undefined, db)).toBe(plain.node)
+  })
 })
 
 describe("lowerQuery", () => {
-  it("keeps the projections of a query without nested queries", () => {
-    const { node } = schema.form.select("id")
+  it("keeps the nodes of a query without queries in its fields, filters, and order", () => {
+    const { node } = schema.form
+      .where(form => form.id.gt(1))
+      .select(form => ({
+        id: form.id,
+        positive: form.id.gt(0),
+      }))
+      .orderBy(form => form.id)
+    const statement = lowerQuery(node)
 
-    expect<readonly unknown[]>(lowerQuery(node).projections).toBe(node.projections)
+    expect<readonly unknown[]>(statement.projections).toBe(node.projections)
+    expect(statement.filters).toBe(node.filters)
+    expect(statement.orderBy).toBe(node.orderBy)
+  })
+
+  it("replaces a query of exists in a condition with EXISTS of its rows, and another query of one value with a scalar subquery of its statement", () => {
+    const { node } = schema.form
+      .where(form => form.fields.exists())
+      .where(form => not(form.fields.where({ label: "Email" }).exists()))
+      .where(() => schema.field.get(field => field.label.eq("Name")))
+      .where(form => form.fields.some(field => field.label.eq("Phone")))
+
+    expect(compileStatement(lowerQuery(node))).toMatchObject({
+      text: 'SELECT FROM "form" AS "form" WHERE EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AND NOT EXISTS (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form"."id" AND "form_field_2"."label" = $1) AND (SELECT "form_field_3"."label" = $2 AS "value" FROM "form_field" AS "form_field_3" LIMIT 1) AND (SELECT bool_or("form_field_4"."label" = $3) AS "some" FROM "form_field" AS "form_field_4" WHERE "form_field_4"."formId" = "form"."id")',
+      parameters: ["Email", "Name", "Phone"],
+    })
   })
 
   it("selects EXISTS of a nested query of exists in place of its field, decoded as a Boolean", () => {
     const { node } = schema.form.select(form => ({
       hasFields: form.fields.exists(),
+      empty: not(form.fields.exists()),
     }))
     const statement = lowerQuery(node)
 
     expect(statement.projections).toMatchObject([
       { key: "hasFields", expression: { kind: "exists" }, type: t.boolean },
+      { key: "empty", expression: { kind: "not", operand: { kind: "exists" } } },
     ])
     expect(compileStatement(statement).text).toBe(
-      'SELECT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "hasFields" FROM "form" AS "form"',
+      'SELECT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "hasFields", NOT EXISTS (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form"."id") AS "empty" FROM "form" AS "form"',
+    )
+  })
+
+  it("replaces the queries in the argument and the fallbacks of an aggregate", () => {
+    const { node } = schema.form
+      .every(form => and(schema.field.where(field => field.formId.eq(form.id)).exists()))
+      .coalesce(and(schema.field.exists()))
+
+    expect(compileStatement(lowerQuery(node)).text).toBe(
+      'SELECT coalesce(bool_and("subquery"."value"), EXISTS (SELECT FROM "form_field" AS "form_field")) AS "every" FROM (SELECT EXISTS (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form"."id") AS "value" FROM "form" AS "form") AS "subquery"',
     )
   })
 
@@ -285,7 +383,7 @@ describe("lowerQuery", () => {
     ])
   })
 
-  it("rejects a relation outside the definitions at any depth, also of a query of count or of exists", () => {
+  it("rejects a relation outside the definitions at any depth, also of a query of count, of exists, or in a condition", () => {
     for (const { node } of [
       schema.form.select(form => ({
         fields: form.fields.select(field => ({
@@ -302,6 +400,7 @@ describe("lowerQuery", () => {
           hasOptions: field.options.exists(),
         })),
       })),
+      schema.form.where(form => form.fields.where(field => field.options.exists()).exists()),
     ]) {
       expect(() => lowerQuery(node, collectDefinitions(forms[schemaRelations]))).toThrow(
         'Relation "field.options" is not part of the schema',
@@ -327,6 +426,22 @@ describe("lowerQuery", () => {
     expect(() => lowerQuery(node, undefined, db)).not.toThrow()
     expect(() => lowerQuery(node)).toThrow(
       'Selected field "options" is bound to a Db, so only that Db can compile the query',
+    )
+  })
+
+  it("rejects a query in an expression bound to another Db than the one given, or to any Db without one", () => {
+    const database = createDatabase({ driver: createRecordingDriver().driver })
+    const db = database.bind(schema)
+    const { node } = schema.form.where(form =>
+      db.field.where(field => field.formId.eq(form.id)).exists(),
+    )
+
+    expect(() => lowerQuery(node, undefined, database.bind(schema))).toThrow(
+      "A query in an expression is bound to another Db",
+    )
+    expect(() => lowerQuery(node, undefined, db)).not.toThrow()
+    expect(() => lowerQuery(node)).toThrow(
+      "A query in an expression is bound to a Db, so only that Db can compile the query",
     )
   })
 })

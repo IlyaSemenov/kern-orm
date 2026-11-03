@@ -48,8 +48,9 @@ function visitNodes(
     case "param":
     case "boolean":
     case "tableName":
-    // `where` resolves an object of column values before a statement compiles it.
+    // `where` resolves an object of column values, and lowering replaces a query in an expression, before a statement compiles them.
     case "values":
+    case "nestedQuery":
       return
     case "cast":
     case "not":

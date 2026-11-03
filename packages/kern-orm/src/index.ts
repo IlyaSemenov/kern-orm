@@ -38,6 +38,7 @@ export type {
   CombinedCondition,
   Condition,
   ConditionOperand,
+  ConditionQuery,
   Predicate,
 } from "./expression/predicates"
 export { and, not, or } from "./expression/predicates"
@@ -103,7 +104,13 @@ export type {
   ValueRows,
 } from "./query/rows"
 export type { ColumnRefs, QueryContext, RelationRefs } from "./query/column-refs"
-export type { EqValue, WhereCondition, WhereFilter, WhereValues } from "./query/filters"
+export type {
+  EqValue,
+  WhereCallback,
+  WhereCondition,
+  WhereFilter,
+  WhereValues,
+} from "./query/filters"
 export { defineFilter } from "./query/filters"
 export type { KeyCheck, NotAKey, PrimaryKeyValues } from "./query/find"
 export type {

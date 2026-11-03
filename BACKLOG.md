@@ -2,22 +2,9 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
-## `exists` of queries
-
-[`exists`](architecture/queries.md#exists) of a query as a condition, such as the forms that have submissions or the submissions without comments, so that conditions such as access checks are built of typed queries rather than of SQL text that names tables and aliases.
-It takes a query of a relation, a query of a table without correlation, and a query that a helper prepares.
-
-Preliminary decisions:
-
-- `where`, `and`, `or`, and `not` take a query of one `boolean` value as a predicate, such as `where(form => not(form.fields.exists()))` for `NOT EXISTS (...)`; a query of `get` of a `boolean` value is a scalar subquery there, and other queries are rejected at runtime too.
-- The callbacks of `where` and `defineFilter` receive the relations of the table, as that of `select` does; `defineFilter` with a query of a schema or a `Db` gives the relations of its schema context.
-  Measure the cost of the relations of the callback of `where` with `bench:types`.
-- A semantic expression node holds a query and its `Db`, as the `values` node is a semantic node in the shared union of expression nodes; lowering replaces it in every place of expressions, the filters, the order, the projections, the arguments and fallbacks of aggregates, and the parts of mutations, checking the `Db` and the relation definitions as for a nested selection, so that the compiler knows no semantic queries.
-- Types do not check the relations of the queries of a condition against a `Db`, since the condition does not carry `uses`; lowering checks them at runtime.
-
 ## Queries as expressions
 
-A query as an expression in operands, sort keys, and SQL fragments, beside a field of a selection and [`exists`](#exists-of-queries) as a condition, built on the semantic node of a query that `exists` adds.
+A query as an expression in operands, sort keys, and SQL fragments, beside a field of a selection and a query of one Boolean value as a [condition](architecture/queries.md#filters), such as of [`exists`](architecture/queries.md#exists), built on the semantic node of a query in an expression that lowering replaces ([architecture/sql.md](architecture/sql.md)).
 
 Preliminary decisions:
 
@@ -25,6 +12,7 @@ Preliminary decisions:
 - A query of one value, such as of `get`, of an aggregate, or of `exists`, is a scalar subquery wherever an operand is taken: of operators, such as `field.position.lt(form.fields.max("position"))`, as a value of an object condition, as the fallback of `coalesce`, and as a sort key of `orderBy`, `asc`, and `desc`.
   - Types reject a query of many rows, which PostgreSQL rejects with a second row.
   - A query of `get` without its row gives `NULL`, so its value is `T | null` there; an aggregate query and `exists` always have their row.
+    A condition types a query by this rule with `ConditionValue` of `query/select.ts`, which also keeps the value of a query whose row a required relation guarantees ([architecture/queries.md](architecture/queries.md#filters)).
 - The callback of `orderBy` receives the relations of the table, so that it sorts by an aggregate of related records, such as `desc(form.fields.count())`.
 - `sql` interpolates a query with clauses as a subquery in parentheses, `(SELECT ...)`, so that it is an operand anywhere; PostgreSQL 18 parses `EXISTS ((SELECT 1))` and `1 IN ((SELECT 1 UNION SELECT 2))` as subqueries, so both ``sql`EXISTS (${query})` `` and ``sql`EXISTS ${query}` `` work.
   A query of a table without clauses stays the name of its table.
@@ -319,6 +307,16 @@ Helper effects that record the calls of their callbacks rather than only the row
 - a query of values rejects a helper that calls `nullable` before `optional` or `required`, also when the call is in a helper that it applies.
 
 It needs a new part of the query state, so measure its cost with `bench:types` before choosing a design.
+
+## Relations of conditions in types
+
+Research whether types should check the relations that the queries of a condition read, such as `survey.questions` in `where(survey => survey.questions.exists())`, and decide whether to check them at all: lowering rejects a relation that the `Db` lacks at runtime ([architecture/queries.md](architecture/queries.md#queries-of-a-db)), and the cost in types may outweigh the cases it catches.
+A condition carries no relations in types, unlike a selection, which carries them in `uses`, so types accept:
+
+- a helper of a schema whose callback filters by a relation, such as `defineHelper(schema.survey, query => query.where(survey => survey.questions.exists()))`, on a query without the relation, such as `from(survey)`, where the callback fails to read the relation, while types reject a helper that selects the relation there ([architecture/queries.md](architecture/queries.md#helpers));
+- a query of a `Db` whose condition reads a relation that the relations of the `Db` lack, which only lowering rejects.
+
+Checking them needs the relations in the types of expressions and conditions, so measure its cost with `bench:types` before choosing a design.
 
 ## Aggregates by the type of their argument
 

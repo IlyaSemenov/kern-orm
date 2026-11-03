@@ -74,6 +74,21 @@ type FoundState<S extends SelectQueryState> = ChangeState<
 /** Query of state `S`, bound or unbound. */
 export type QueryOf<S extends SelectQueryState> = SelectQuery<S, SelectQueryKind>
 
+declare const conditionValue: unique symbol
+
+// An aggregate query and a query of `exists` always have their row, and a required relation guarantees the row of a query that keeps the guarantee, such as of `field.form`.
+/** Value of a query of state `S` in a condition: its value, or `NULL` without its row unless the query always has it. */
+export type ConditionValue<S extends SelectQueryState> = S["aggregate"] extends true
+  ? S["result"]
+  : S["guaranteed"] extends true
+    ? S["result"]
+    : S["result"] | null
+
+/** Query whose value in a condition is `T`, from which a condition infers `T`. */
+export interface ConditionValueOf<T> {
+  readonly [conditionValue]: T
+}
+
 /** State of a query whose rows are records, which `select` and `clearSelect` change. */
 type RecordQueryState = SelectQueryState & { readonly value: false }
 
@@ -127,6 +142,8 @@ export class SelectQuery<
   out Kind extends SelectQueryKind = "unbound",
 > {
   declare readonly types: S
+  /** Value of the query in a condition, for types only. */
+  declare readonly [conditionValue]: ConditionValue<S>
   /** `Db` that executes the query when it is awaited; `undefined` for an unbound query. */
   readonly db: QueryDb<Kind>
   /** Executes a bound query on its `Db`; `undefined` for an unbound query, so that it is not thenable. */
@@ -147,19 +164,19 @@ export class SelectQuery<
   }
 
   // A query whose row no relation guarantees keeps its state, so that a union of such queries takes `where`.
-  /** Adds a filter combined with `AND` with the previous ones. */
+  /** Adds a filter combined with `AND` with the previous ones; a callback receives the columns and the queries of the relations of the table. */
   where<Q extends QueryOf<UnguaranteedQueryState>>(
     this: Q,
-    filter: WhereFilter<Q["types"]["table"]>,
+    filter: WhereFilter<Q["types"]["table"], Q["types"]["schema"]>,
   ): Q
   /**
-   * Adds a filter combined with `AND` with the previous ones.
+   * Adds a filter combined with `AND` with the previous ones; a callback receives the columns and the queries of the relations of the table.
    *
    * A query of the record of a required relation, such as `field.form`, resolves to `null` without a record that passes the filter, or to `undefined` after `get` or `pluck`.
    */
   where<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
-    filter: WhereFilter<S["table"]>,
+    filter: WhereFilter<S["table"], S["schema"]>,
   ): SelectQuery<FilteredState<S>, Kind>
   where(filter: WhereFilter<AnyTable>): unknown {
     return this.derive(this.addFilter(filter))
@@ -581,7 +598,7 @@ export class SelectQuery<
 
   // Like an aggregate query, it always has its row, so no relation needs to guarantee it, and a filter keeps its rows mode.
   /**
-   * Replaces the selected fields with whether the query has a row and returns it instead of the rows.
+   * Replaces the selected fields with whether the query has a row and returns it instead of the rows, such as to filter by related records in `where`.
    *
    * It keeps the filters, the limit, and the offset, and ignores the order.
    */
@@ -843,7 +860,7 @@ export class SelectQuery<
   private addFilter(filter: WhereFilter<AnyTable>): NodeChanges {
     const { node } = this
     return {
-      filters: addUserFilter(node.filters, filter, node.from),
+      filters: addUserFilter(node.filters, filter, node.from, this.context),
       rows: toFilteredRows(node.rows, node.value, node.guaranteed),
       guaranteed: false,
     }

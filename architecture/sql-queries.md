@@ -1,6 +1,6 @@
 # Queries of SQL text
 
-- **Query of SQL text** (`query/sql-query.ts`): immutable statement of a template, which `$query` of a `Db` and `query` of a `Database` start, as a `SqlQuery` over a text statement node (`TextStatementNode` of `ast/nodes.ts`), which lowering keeps as it is.
+- **Query of SQL text** (`query/sql-query.ts`): immutable statement of a template, which `$query` of a `Db` and `query` of a `Database` start, as a `SqlQuery` over a text statement node (`TextStatementNode` of `ast/nodes.ts`), which lowering keeps as it is, except that it lowers the queries in the expressions interpolated into it, such as of `exists` in a condition.
   It is a class apart from `SelectQuery`, like `MutationQuery`, with the methods that return the rows of its statement, since no table describes them.
   It is always bound and executes on its `Db` when awaited, so that its interpolated tables are named in the PostgreSQL schema of the `Db`.
   `query` of a `Database` starts it on a `Db` of no tables, so it names no tables.

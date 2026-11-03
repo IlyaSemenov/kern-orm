@@ -2,6 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
+import { not } from "../expression/predicates"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -227,10 +228,22 @@ describe("select", () => {
     const checked = tenant.field.select(field => ({
       hasYes: field.answers.where({ value: "Yes" }).exists(),
       hasForm: field.form.exists(),
+      unanswered: not(field.answers.exists()),
     }))
 
     expectTypeOf<Executed<typeof checked>>().toEqualTypeOf<
-      { hasYes: boolean; hasForm: boolean }[]
+      { hasYes: boolean; hasForm: boolean; unanswered: boolean }[]
+    >()
+  })
+
+  test("gives a condition of get of a related record, or null without a record that the relation does not guarantee", () => {
+    const checked = tenant.field.select(field => ({
+      notOfSurvey: not(field.form.get(form => form.name.eq("Survey"))),
+      ofSurvey: not(field.form.where({ name: "Survey" }).get(form => form.id.isNull())),
+    }))
+
+    expectTypeOf<Executed<typeof checked>>().toEqualTypeOf<
+      { notOfSurvey: boolean; ofSurvey: boolean | null }[]
     >()
   })
 
@@ -351,5 +364,30 @@ describe("select", () => {
       // @ts-expect-error A copy of a query is not a query.
       fields: { ...form.fields },
     }))
+  })
+})
+
+describe("where", () => {
+  test("filters by queries of the relations of the table at any depth", () => {
+    const answered = tenant.form.where(form =>
+      form.fields.where(field => field.answers.exists()).exists(),
+    )
+    const query = tenant.field.select(field => ({
+      emptyForm: field.form.where(form => not(form.fields.exists())).select("name"),
+    }))
+
+    expectTypeOf<Executed<typeof answered>>().toEqualTypeOf<EmptyRecord[]>()
+    expectTypeOf<Executed<typeof query>>().toEqualTypeOf<{ emptyForm: { name: string } | null }[]>()
+  })
+
+  test("keeps the relations of a condition out of the state, which a Db checks when it runs the query", () => {
+    const query = tenant.form.where(form => form.fields.exists())
+
+    expectTypeOf<(typeof query)["types"]["uses"]>().toBeNever()
+  })
+
+  test("gives no relations to a query of from", () => {
+    // @ts-expect-error A query of from has no relations.
+    from(form).where(form => form.fields.exists())
   })
 })

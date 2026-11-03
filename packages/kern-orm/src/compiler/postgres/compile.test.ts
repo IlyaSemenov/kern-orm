@@ -101,6 +101,19 @@ describe("compileStatement", () => {
     expect(compiled.fields).toBe(node.projections)
   })
 
+  it("rejects a query in an expression, which lowering replaces", () => {
+    const node: SelectNode = {
+      ...lower(from(post)),
+      filters: {
+        user: createNode({ kind: "nestedQuery", query: from(post).exists().node, db: undefined }),
+      },
+    }
+
+    expect(() => compileStatement(node)).toThrow(
+      "A query in an expression must be lowered before compilation",
+    )
+  })
+
   it("takes each distinct value of the arguments of an aggregate once", () => {
     const posts = from(post)
     const node: SelectNode = {

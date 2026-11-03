@@ -206,6 +206,8 @@ const hasPublished = await db.form.where({ published: true }).exists()
 
 `exists` keeps the filters of the query and ignores its selected fields; with [`limit` and `offset`](./sorting#pagination), it checks the rows of the page.
 
+To filter records by whether related records exist, see [Filtering](./filtering#related-records).
+
 ## Several queries at once
 
 To load the results of independent queries in one round trip, such as the forms of a page and the number of users, pass the queries to `db.$select` under keys of your choice:

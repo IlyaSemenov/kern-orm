@@ -2,6 +2,7 @@
 // Values of users, such as parameter values and objects of column values, are held by reference and never frozen.
 
 import type { AnyDb } from "../execution/db"
+import type { QueryNode } from "../query/node"
 import type { ResultField, ResultMode, ScalarField } from "../result/result"
 import type { AnyTable } from "../table/table"
 import type { AnyType } from "../type/type"
@@ -84,6 +85,14 @@ export interface ValuesNode {
   readonly values: Readonly<Record<string, unknown>>
 }
 
+/** Query of a table in an expression, such as of `exists` in a condition, which lowering replaces with the SQL of its value before compilation. */
+export interface NestedQueryNode {
+  readonly kind: "nestedQuery"
+  readonly query: QueryNode
+  /** `Db` that the query is bound to, which must be the `Db` that runs the statement. */
+  readonly db: AnyDb | undefined
+}
+
 export interface ComparisonNode {
   readonly kind: "comparison"
   readonly operator: "=" | "<>" | "<" | "<=" | ">" | ">=" | "LIKE" | "ILIKE"
@@ -150,6 +159,7 @@ export type ExpressionNode =
   | OrNode
   | NotNode
   | ValuesNode
+  | NestedQueryNode
   | ComparisonNode
   | InNode
   | IsNullNode

@@ -74,6 +74,14 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 - Objects of column values in `and`/`or`/`not` stay unresolved `values` nodes until `where` resolves them against its source; the compiler rejects an unresolved one.
 - Query filters are kept as separate `relation`, `scope`, and `user` predicates combined with `AND` at compilation; `where` adds only to `user`, so a user `OR` never bypasses the relation filter ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
+- `where`, `and`, `or`, and `not` take a query of a table of one Boolean value as a condition, such as `not(form.fields.exists())`: a query of [`exists`](#exists) is `EXISTS` of its rows, and another query, such as of `get` or of an aggregate, a scalar subquery of its value.
+  - The query keeps its `Db`, which must be the `Db` that runs the statement, as for a nested query of a selection.
+  - At runtime, they reject the queries of a shape that types reject: a query of records or of rows `many`, and a query of `$select`, a mutation, and a query of SQL text.
+    Only types check that the value is Boolean: at runtime, as for an expression, PostgreSQL rejects a predicate of another type, such as in `WHERE` or `NOT`.
+  - Types type the condition by the value of the query in it, `ConditionValue` of `query/select.ts`: the value of an aggregate query, such as `boolean` of `exists` and `boolean | null` of `some`, and of a query whose row a required relation guarantees, such as of `field.form`; the value or `null` of another query, such as of `get`, which is `NULL` without its row whatever its rows mode.
+    A query has this value as a member for types only, from which `and`, `or`, and `not` infer it for each operand.
+  - Types take a query of a condition as `ConditionQuery`, an interface of the state, the value, and the method `exists` of a query, rather than as a query, which would compare every method of the query.
+    So they reject a copy of a query, whose type lacks its methods, but not a copy of a value of type `ConditionQuery`, whose type has `exists`; the compiler rejects the keys of such a copy as unknown columns.
 
 ## Finding by a key
 
@@ -131,7 +139,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 - `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of `exists`: it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
   - It checks the rows that the filters, the limit, and the offset of the query choose, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
-  - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`, and selected as a field, `EXISTS (...)` in the select list rather than a packed row.
+  - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`; selected as a field, `EXISTS (...)` in the select list rather than a packed row; and in a condition, `EXISTS (...)`.
   - The methods that keep the rows apply to it as they apply before it, as to an aggregate query: `where`, `find`, and `findBy` restrict the rows that it checks, and `coalesce` keeps it as it is, since `EXISTS` is never `NULL`.
   - In types, it is marked as an aggregate query, `aggregate: true`, so that `get`, `pluck`, the aggregate methods, and `exists` reject it, as does the callback of a helper.
   - At runtime, the methods and lowering recognize a query of `exists` by the projection of `exists`, which only `exists` selects and `coalesce` keeps, as they recognize an aggregate query.
@@ -150,7 +158,8 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Nested queries and relations
 
-- The references of the callback of `select` have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them selects every field their type has; the callbacks of `where`, `get`, and `pluck` get only the columns.
+- The references of the callbacks of `select` and `where` have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them in `select` selects every field their type has; the callbacks of `get`, `pluck`, and the aggregate methods get only the columns.
+  The relations add about 35 instantiations to a call of `where` with a callback on a query of a table with relations, 19% of a query of `where` of a callback and `pluck` ([benchmark](../benchmarks/types/queries.bench.ts)).
   A relation gives an unbound query of its related records over a new occurrence of the target table, in the context of the target table in the same schema, even for a query of a `Db`.
   Its relation filter compares the columns of the keys with SQL `=` in order, built from SQL nodes rather than by calling the `eq` operators of their types.
   In types, a schema context whose table key is `string`, such as that of the queries a `Db` accepts, has no relations, since queries of relations there would keep the queries of a `Db` from being assigned to them.
@@ -180,7 +189,8 @@ Queries come in two kinds that share the query methods and differ only by execut
 - A `Db` compiles a statement with the tables of its schema, and the compiler rejects an occurrence of any other table at any depth of the statement, such as in a scalar subquery, `EXISTS`, a join, or a derived source, when it compiles the occurrence.
 - A `Db` compiles a query with the relation definitions of its schema, and lowering rejects a query of any other definition at any depth, by identity rather than by name, so a relation that another schema declares with the same name and keys is rejected, while a tenant schema adds relations of its own and keeps the shared ones.
   In types, `$compile` and `$execute` reject a query whose state selects a relation that the relations of the `Db` lack by table key, name, kind, target, and `required`; types cannot tell two definitions of the same shape apart.
-  The relations of a query only accumulate in its state: `clearSelect`, `get`, `pluck`, the aggregate methods, and replacing a field keep them in types after the runtime drops their nested queries, which never under-approximates the relations a query needs.
+  A condition does not carry the relations of its queries, so they stay out of the state, and only lowering rejects a relation of a condition that the `Db` lacks, at runtime.
+  The relations of a query only accumulate in its state: `clearSelect`, `get`, `pluck`, the aggregate methods, and replacing a field keep them in types after the runtime drops their nested queries, which never under-approximates the relations that its selections need.
   An awaited query of a `Db` is checked only at runtime: the references of its `select` give the relations of the `Db`, but a nested query of another schema can select others.
 
 ## Helpers
@@ -200,7 +210,9 @@ Queries come in two kinds that share the query methods and differ only by execut
     The returned query keeps the kind and the `Db` of the input query.
 - The callback of a helper defined with a query of a schema or a `Db` receives a query of its schema context in types, and at runtime the query it is applied to, whose schema shares the definitions of the relations by identity when it includes that schema.
   The callback reads relations by name from the query it is applied to, so applying a helper that selects relations of its schema context requires a query of its table under the same key with those relations, also when it is called directly.
-  Relations of other schemas, such as of an independent query that the helper nests, stay in the state of the result for the `Db` to check; a helper defined with a table reads no relations.
+  Relations of other schemas that the helper selects, such as of an independent query that it nests in a field, stay in the state of the result for the `Db` to check; a helper defined with a table reads no relations.
+  The effect does not record the relations that a condition of the callback reads, which stay out of the state, so types accept a helper that filters by a relation of its schema context on a query without the relation, where the callback fails to read it.
+- The callback of a filter of `defineFilter` defined with a query of a schema or a `Db` receives the relations of its schema context in types, and at runtime those of the query of `where`, so a query whose schema context lacks them rejects the filter in types.
 - A helper checks the query it is applied to by the constraint of its state rather than by a conditional type: TypeScript defers a conditional type of a generic state and accepts a query for it only when the query fits both branches, one of which is the error.
   So a function generic over the state applies every helper that the constraint of its state allows: one that selects fields or ends with `nullable` when the constraint has `value: false`, and one that reads relations when the constraint has a schema context with them.
   The constraint of `value` is `false` or the error that names what the helper cannot do, so that the error of a query of values names it; for a missing relation, TypeScript names the relation itself.

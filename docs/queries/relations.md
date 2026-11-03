@@ -93,6 +93,8 @@ const forms = await db.form.select("id").select(form => ({
 // forms: { id: string; hasFields: boolean; hasEmail: boolean }[]
 ```
 
+To load only the rows that have related records, pass `exists` to `where`, as [Filtering](./filtering#related-records) describes.
+
 ## Sorting and pagination
 
 To load related records in order, such as the fields of each form by position, call [`orderBy`](./sorting) on the relation; `limit` and `offset` then apply to the records of each row:

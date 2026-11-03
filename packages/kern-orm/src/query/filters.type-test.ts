@@ -1,8 +1,9 @@
-import { test } from "bun:test"
+import { describe, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
 import { and, not, or } from "../expression/predicates"
+import { many } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
@@ -60,4 +61,50 @@ test("an annotation checks objects against its table", () => {
   // @ts-expect-error Object keys are columns of the annotated table.
   const misspelled: WhereCondition<typeof form> = or({ published: true, nmae: "Draft" })
   void misspelled
+})
+
+describe("relations", () => {
+  const survey = defineTable("survey", {
+    id: t.uuid.primaryKey(),
+    name: t.text,
+  })
+  const question = defineTable("question", {
+    id: t.uuid.primaryKey(),
+    surveyId: t.uuid,
+    text: t.text,
+  })
+  const option = defineTable("option", {
+    questionId: t.uuid,
+  })
+  const surveys = defineSchema({ survey, question }).$relations({
+    survey: {
+      questions: many(question, { from: "id", to: "surveyId" }),
+    },
+  })
+  const tenant = defineSchema(surveys, { option }).$relations({
+    question: {
+      options: many(option, { from: "id", to: "questionId" }),
+    },
+  })
+  const tenantDb = createDatabase({ driver: createRecordingDriver().driver }).bind(tenant)
+
+  test("defineFilter with a query of a schema or a Db gives the relations of its schema", () => {
+    const hasQuestions = defineFilter(surveys.survey, columns => columns.questions.exists())
+    const hasNoOptions = defineFilter(tenantDb.survey, columns =>
+      not(columns.questions.where(question => question.options.exists()).exists()),
+    )
+    surveys.survey.where(hasQuestions)
+    tenantDb.survey.where(hasQuestions).where(hasNoOptions)
+    tenant.survey.where(columns => or(hasQuestions(columns), hasNoOptions(columns)))
+  })
+
+  test("a filter that reads relations needs a query with them", () => {
+    const hasQuestions = defineFilter(surveys.survey, columns => columns.questions.exists())
+
+    // @ts-expect-error A query of from has no relations.
+    from(survey).where(hasQuestions)
+
+    // @ts-expect-error A filter of a table has no relations.
+    defineFilter(survey, columns => columns.questions.exists())
+  })
 })

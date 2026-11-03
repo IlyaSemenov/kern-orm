@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test"
 
+import { createRecordingDriver } from "../../testing/recording-driver"
 import { falseNode, trueNode } from "../ast/nodes"
+import { createDatabase } from "../execution/database"
 import { from } from "../query/select"
+import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
@@ -61,6 +64,48 @@ describe("not", () => {
   it("cancels a double negation", () => {
     const condition = predicate("Alice")
     expect(toNode(not(not(condition)))).toBe(toNode(condition))
+  })
+})
+
+describe("queries", () => {
+  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ user }))
+
+  it("nest a query of one value, such as of exists", () => {
+    const exists = db.user.exists()
+    const value = from(user).get(columns => columns.name.eq("Ann"))
+    const optional = value.optional()
+
+    expect(toNode(and(exists))).toEqual({ kind: "nestedQuery", query: exists.node, db })
+    expect(toNode(not(value))).toEqual({
+      kind: "not",
+      operand: { kind: "nestedQuery", query: value.node, db: undefined },
+    })
+    expect(toNode(or(optional))).toEqual({
+      kind: "nestedQuery",
+      query: optional.node,
+      db: undefined,
+    })
+  })
+
+  it("reject a query of records or of an array, and a query of another class", () => {
+    for (const query of [
+      from(user),
+      from(user).take(),
+      from(user).pluck(columns => columns.name.eq("Ann")),
+    ]) {
+      expect(() => and(query as never)).toThrow(
+        "A condition takes a query of one Boolean value, such as of exists, not a query of records or of an array",
+      )
+    }
+    for (const query of [
+      db.$select({}),
+      db.user.insert({ id: "user-id", name: "Ann" }),
+      db.$query`SELECT TRUE`,
+    ]) {
+      expect(() => or(query as never)).toThrow(
+        "A condition takes a query of one Boolean value of a table, such as of exists, not a query of $select, insert, update, delete, or $query",
+      )
+    }
   })
 })
 

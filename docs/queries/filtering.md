@@ -46,6 +46,41 @@ await db.form.where(or({ published: true }, { name: "Survey" })).select("id")
 
 They also take objects of column values, which match the columns of the query like an object passed to `where`.
 
+## Related records
+
+To find records that have related records, such as the forms that have fields, call `exists` on the [relation](../schemas#relations) in the callback of `where`:
+
+```ts
+await db.form.where(form => form.fields.exists()).select("id")
+```
+
+The callback receives the relations of the table beside its columns.
+Refine the query of a relation to check only some of its records, and negate the condition with `not` to find records without them:
+
+```ts
+import { not } from "kern-orm"
+
+const formsWithEmail = await db.form
+  .where(form => form.fields.where({ label: "Email" }).exists())
+  .select("id")
+
+const emptyForms = await db.form.where(form => not(form.fields.exists())).select("id")
+```
+
+Combine such a condition with others in `and`, `or`, and `not`, such as `or({ published: true }, form.fields.exists())`.
+
+`exists` also checks the rows of any other query, such as one that a [helper](./composing#helpers) prepares, or one of a table that the schema does not relate:
+
+```ts
+await db.form
+  .where(form => db.submission.where(submission => submission.formId.eq(form.id)).exists())
+  .select("id")
+```
+
+Start such a query from the same `Db` as the query that it filters.
+
+A condition can also be another query of one Boolean value, such as [`some`](./selecting#aggregates) of the related records, or `get` of a column of a related record, such as `field => field.form.get("published")`.
+
 ## SQL fragments
 
 For a condition that operators do not cover, write it with the `sql` template; interpolated values become query parameters:
@@ -97,3 +132,13 @@ await db.form.where(publishedOrSurvey).select("id")
 ```
 
 When the code that defines a filter has no `Db`, define it with a table of the schema, such as `schema.form`, or with `form` itself as returned by `defineTable`.
+
+The callback of a filter defined with a table of a `Db` or a schema receives the [relations](#related-records) of the table in that schema, and the filter applies to the queries of the schemas that have them:
+
+```ts
+const hasFields = defineFilter(schema.form, form => form.fields.exists())
+
+await db.form.where(hasFields).select("id")
+```
+
+Define a filter of related records with a table of a `Db` or a schema rather than with `form` itself, whose callback receives only the columns.

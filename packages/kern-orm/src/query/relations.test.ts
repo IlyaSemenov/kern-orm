@@ -268,21 +268,38 @@ describe("relation queries", () => {
     )
   })
 
-  it("give the relations of a table, and no relations to a query of from", () => {
+  it("give the relations of a table to the callbacks of select and where, and no relations to a query of from", () => {
     let fieldRefs: object | undefined
+    let filterRefs: object | undefined
     let tableRefs: object | undefined
     schema.field.select(columns => {
       fieldRefs = columns
       return {}
     })
-    from(form).select(columns => {
+    schema.field.where(columns => {
+      filterRefs = columns
+      return {}
+    })
+    from(form).where(columns => {
       tableRefs = columns
       return {}
     })
 
     expect(Reflect.get(fieldRefs!, "options")).toBeInstanceOf(SelectQuery)
     expect(Reflect.get(fieldRefs!, "form")).toBeInstanceOf(SelectQuery)
+    expect(Reflect.get(filterRefs!, "options")).toBeInstanceOf(SelectQuery)
     expect(Reflect.get(tableRefs!, "fields")).toBeUndefined()
+  })
+
+  it("filter the parent by whether records of a relation exist, correlated with its row", () => {
+    const query = schema.form.where(form =>
+      or(form.fields.where({ label: "Email" }).exists(), not(form.fields.exists())),
+    )
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT FROM "form" AS "form" WHERE EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id" AND "form_field"."label" = $1) OR NOT EXISTS (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."form_id" = "form"."id")',
+      parameters: ["Email"],
+    })
   })
 
   it("are selected with the columns when the references are returned or spread", () => {
@@ -572,7 +589,23 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
   })
 
-  it("selects whether related records exist for each row, also of a page after an offset", async () => {
+  it("filters records by whether related records exist, also negated, of a query that a helper prepares, and of an independent query", async () => {
+    const labeled = defineHelper(schema.field, (field, label: string) => field.where({ label }))
+    const ids = (query: typeof db.form) => query.orderBy("id").pluck("id")
+
+    const results = await testTransaction(async () => [
+      await ids(db.form.where(form => form.fields.exists())),
+      await ids(db.form.where(form => not(form.fields.exists()))),
+      await ids(db.form.where(form => form.fields.use(labeled, "Comment").exists())),
+      await ids(db.form.where(() => db.option.where({ value: "Short" }).exists())),
+      await ids(db.form.where(() => db.option.where({ value: "Long" }).exists())),
+      await db.field.where(field => field.form.get(form => form.name.eq("Feedback"))).pluck("id"),
+    ])
+
+    expect(results).toEqual([[1, 2], [3], [2], [1, 2, 3], [], [4]])
+  })
+
+  it("selects whether related records exist for each row, also of a page after an offset, and a condition of get, null without its row", async () => {
     const labeled = defineHelper(schema.field, (field, label: string) => field.where({ label }))
     const query = db.form
       .orderBy("id")
@@ -580,17 +613,19 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       .select(form => ({
         hasFields: form.fields.exists(),
         hasEmail: form.fields.use(labeled, "Email").exists(),
+        empty: not(form.fields.exists()),
+        emailLabeled: not(form.fields.use(labeled, "Email").get(field => field.label.isNull())),
       }))
 
     const results = await testTransaction(async () => [await query, await query.limit(1).offset(1)])
 
     expect(results).toEqual([
       [
-        { id: 1, hasFields: true, hasEmail: true },
-        { id: 2, hasFields: true, hasEmail: false },
-        { id: 3, hasFields: false, hasEmail: false },
+        { id: 1, hasFields: true, hasEmail: true, empty: false, emailLabeled: true },
+        { id: 2, hasFields: true, hasEmail: false, empty: false, emailLabeled: null },
+        { id: 3, hasFields: false, hasEmail: false, empty: true, emailLabeled: null },
       ],
-      [{ id: 2, hasFields: true, hasEmail: false }],
+      [{ id: 2, hasFields: true, hasEmail: false, empty: false, emailLabeled: null }],
     ])
   })
 

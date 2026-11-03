@@ -16,6 +16,7 @@ export function needsParentheses(kind: ExpressionNode["kind"], position: Operand
     case "param":
     case "boolean":
     case "values":
+    case "nestedQuery":
     case "tableName":
     case "subquery":
     case "exists":

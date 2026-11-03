@@ -323,6 +323,8 @@ function compileExpression(
       return `NOT ${compileOperand(context, scope, node.operand, "condition")}`
     case "values":
       throw new Error("An object condition can only be used in `where`")
+    case "nestedQuery":
+      throw new Error("A query in an expression must be lowered before compilation")
     case "comparison":
       return `${compileOperand(context, scope, node.left, "value")} ${node.operator} ${compileOperand(context, scope, node.right, "value")}`
     case "in": {

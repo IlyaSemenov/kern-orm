@@ -84,6 +84,31 @@ test("and, or, and not are nullable when any operand is", () => {
   void result
 })
 
+test("and, or, and not take a query of one Boolean value, nullable as its value or without its row", () => {
+  const exists = from(form).exists()
+  const some = from(form).some("published")
+  expectTypeOf(not(exists)).toEqualTypeOf<Expression<boolean>>()
+  expectTypeOf(and(exists, some)).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(or(from(form).get("published"))).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(not(from(form).get("published").optional())).toEqualTypeOf<
+    Expression<boolean | null>
+  >()
+  from(form).where(exists)
+  from(form).where(columns => or({ published: true }, not(exists), columns.name.eq("Survey")))
+  from(form).where(and(exists, { hint: null }))
+
+  // @ts-expect-error A query of records is not a condition.
+  not(from(form))
+  // @ts-expect-error A query of an array of values is not a condition.
+  from(form).where(from(form).pluck("published"))
+  // @ts-expect-error A query of a value other than a Boolean is not a condition.
+  or(from(form).get("name"))
+  // @ts-expect-error A copy of a query is not a query.
+  and({ ...exists })
+  // @ts-expect-error A copy of a query is not a query.
+  from(form).where({ ...exists })
+})
+
 test("nullable predicates remain valid with an explicit table condition type", () => {
   const nullable = param(t.integer.nullable(), null)
   and<{ id?: number }>({ id: 1 }, nullable.eq(1))

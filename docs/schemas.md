@@ -121,9 +121,9 @@ Include a [key](#keys) of the target in the columns `to` of `one`, such as its p
 Without the record, a query of a relation `one` gives `null`, and a query of a required relation rejects with `RequiredRelationError` unless it [filters the record](./queries/relations).
 Set `required: true` when the database guarantees the record, such as by a foreign key, and the columns `from` are not nullable.
 
-Name a relation differently from the columns of its table, and do not start its name with `$`: the callback of `select` gets both columns and relations.
+Name a relation differently from the columns of its table, and do not start its name with `$`: the callbacks of `select` and `where` get both columns and relations.
 
-To load related records in queries, see [Related Records](./queries/relations).
+To load related records in queries, see [Related Records](./queries/relations), and to filter by them, see [Filtering](./queries/filtering#related-records).
 
 For a composite key, list its columns in arrays of the same length:
 

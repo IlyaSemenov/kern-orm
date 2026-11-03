@@ -30,7 +30,7 @@
 - `and`/`or`/`not` simplify constants only with identities valid in three-valued logic.
   An empty `IN` list is `FALSE`, an empty `and` is `TRUE`, and an empty `or` is `FALSE`.
 - Built-in Boolean expressions carry the Boolean runtime type for encoding and decoding.
-  Their nullability is tracked only in TypeScript: results include `null` when the expression an operator is called on or an operand expression is nullable; `isNull` and `in` with an empty list never do, and `and`/`or` include `null` when any operand does.
+  Their nullability is tracked only in TypeScript: results include `null` when the expression an operator is called on or an operand expression is nullable; `isNull` and `in` with an empty list never do, and `and`/`or` include `null` when any operand does, such as a query of a condition whose value can be `NULL` ([queries](queries.md#filters)).
   The shared runtime type does not describe whether an expression can evaluate to `NULL`; result decoding preserves `NULL` independently of it.
 
 ## Parameters and SQL fragments
