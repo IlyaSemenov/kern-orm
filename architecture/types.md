@@ -46,3 +46,10 @@
 - `sql` interpolates a query of a table without clauses, such as `db.form`, as the name of its table, which the compiler qualifies with the PostgreSQL schema of the statement and checks against the tables of a `Db`, as an occurrence of the table.
   - The name of a table of a query bound to a `Db` compiles only in a statement of that `Db`, as a nested query does.
   - It rejects a query with clauses, so that such a query can later interpolate as a subquery, and other queries, which a parameter would encode as text.
+- `identifier` creates a fragment of a quoted name without parameters, so that the template of a script takes it.
+  - Several names make a qualified name, such as of a schema and a table, each quoted and joined by dots.
+  - It quotes each name whole and never splits it at dots, which a quoted name may contain.
+  - It does not qualify the name with the PostgreSQL schema of the statement, since the name may be of any object, such as a column; a table of a `Db` interpolates as the table.
+  - It requires at least one name, and every name must be a non-empty string, since PostgreSQL rejects an empty name; it checks them when it is called.
+  - It takes no `undefined` for a missing schema, such as `$schemaName` of a `Db` without one, so that a name never loses its schema silently.
+  - It is a function of its own, as `sql` and `param` are; Drizzle ([source](https://github.com/drizzle-team/drizzle-orm/blob/main/drizzle-orm/src/sql/sql.ts)) and Slonik ([docs](https://github.com/gajus/slonik#sqlidentifier)) have it as `sql.identifier`, and Kysely as `sql.id` ([docs](https://kysely-org.github.io/kysely-apidoc/interfaces/Sql.html#id)).

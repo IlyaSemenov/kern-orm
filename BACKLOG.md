@@ -50,19 +50,6 @@ A migration whose `down` cannot restore the structure, such as one that adds a v
 - Preliminary decision: an option of `verifyMigrations` lists the keys of such migrations, which it applies without running their `down`, running `setup`, `up`, and `assertUp` of their migration tests.
 - Decide what `rollback` and `redo` do with such a migration, such as reject before they change anything.
 
-## Identifiers in SQL templates
-
-A fragment of a quoted name, such as `sql.identifier(name)`, for the templates of `query`, `script`, and `sql`, so that a statement names a table or a column known only at runtime, such as in a migration that changes several tables in a loop.
-In `query` and `sql`, the values of the statement stay parameters; a script keeps having no parameters:
-
-```ts
-await database.query`UPDATE ${sql.identifier(table)} SET updated_at = ${now}`
-```
-
-- An interpolated string becomes a parameter of `query`, which PostgreSQL rejects in place of a name, so such code builds SQL text with `quoteIdentifier` of `@kern-orm/migrations` and puts values into it with `quoteLiteral`.
-- Decide whether it takes a qualified name, such as of a schema and a table.
-- Steps of SQL text and the helpers of `@kern-orm/migrations` keep `quoteIdentifier`, since a fragment is not text, and the migrator imports only types from `kern-orm`.
-
 ## Row locks
 
 Locking the rows that a query reads, as `SELECT ... FOR UPDATE`, `FOR NO KEY UPDATE`, `FOR SHARE`, or `FOR KEY SHARE`, with `NOWAIT` or `SKIP LOCKED`, such as for a queue of jobs.

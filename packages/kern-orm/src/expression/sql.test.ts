@@ -7,7 +7,7 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import { toNode } from "./expression"
-import { param, sql } from "./sql"
+import { identifier, param, sql } from "./sql"
 
 const form = defineTable("form", {
   id: t.integer.primaryKey(),
@@ -44,6 +44,32 @@ it("rejects a query with clauses and other queries, which a parameter would enco
       "sql takes a query of a table without clauses, such as db.form, as the name of the table, not another query",
     )
   }
+})
+
+it("creates a fragment of a quoted name with identifier, keeping dots and doubling quotes", () => {
+  expect(toNode(sql`SELECT FROM ${identifier('app.form "draft"')}`)).toEqual({
+    kind: "raw",
+    fragments: ["SELECT FROM ", ""],
+    values: [{ kind: "raw", fragments: ['"app.form ""draft"""'], values: [] }],
+  })
+})
+
+it("creates a fragment of a qualified name of several names with identifier", () => {
+  expect(toNode(identifier("app", "form", "name"))).toEqual({
+    kind: "raw",
+    fragments: ['"app"."form"."name"'],
+    values: [],
+  })
+})
+
+it("rejects a call of identifier without names or with an empty or non-string name", () => {
+  const message = "identifier() takes names as non-empty strings"
+
+  // @ts-expect-error A name is required.
+  expect(() => identifier()).toThrow("identifier() takes at least one name")
+  expect(() => identifier("app", "")).toThrow(message)
+  // @ts-expect-error A name is a string.
+  expect(() => identifier("app", undefined)).toThrow(message)
 })
 
 it("returns an expression value of param as it is", () => {

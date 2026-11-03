@@ -51,6 +51,23 @@ const total = await db.$query`SELECT count(*) FROM ${db.form}`.get(t.integer)
 // total: number
 ```
 
+## Names known at runtime
+
+To name a column or another object known only at runtime, interpolate `identifier` with its name:
+
+```ts
+import { identifier } from "kern-orm"
+
+await db.$query`UPDATE ${db.form} SET ${identifier(column)} = ${value}`
+```
+
+`identifier` does not add a PostgreSQL schema to the name.
+To name an object in a schema, pass the schema before the name:
+
+```ts
+await db.$query`ANALYZE ${identifier(schemaName, tableName)}`
+```
+
 ## Scripts
 
 To run several statements at once, such as the SQL of a migration file, pass them to `db.$script`:
@@ -61,7 +78,7 @@ import { readFile } from "node:fs/promises"
 await db.$script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so its template interpolates only tables of `db` and `sql` fragments without values:
+A script has no parameters, so its template interpolates only tables of `db`, names from `identifier`, and `sql` fragments without values:
 
 ```ts
 await db.$script`

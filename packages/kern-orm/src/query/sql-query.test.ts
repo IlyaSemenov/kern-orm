@@ -4,7 +4,7 @@ import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
 import type { DriverResult } from "../execution/driver"
-import { sql } from "../expression/sql"
+import { identifier, sql } from "../expression/sql"
 import { NotFoundError } from "../result/result"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -75,6 +75,14 @@ describe("statements", () => {
     expect(() => db.$query`SELECT FROM ${defineSchema({ other }).other}`.toSQL()).toThrow(
       'Table "other" is not part of the schema',
     )
+  })
+
+  it("name a table by identifier as it is, keeping values as parameters", () => {
+    const { db } = createDb()
+
+    expect(
+      db.$query`UPDATE ${identifier("tenant", "form")} SET name = ${"Survey"}`.toSQL(),
+    ).toEqual({ text: 'UPDATE "tenant"."form" SET name = $1', parameters: ["Survey"] })
   })
 
   it("of the database run without a Db and name no tables of a Db", async () => {
@@ -254,5 +262,14 @@ describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
       ])
       expect(await db.$query`SELECT count(*) FROM ${db.form}`.get(t.integer)).toBe(2)
       expect(await db.$query`DELETE FROM ${db.form} WHERE id = ${2}`.take()).toBe(1)
+    }))
+
+  it("names a table by identifier whose name has a dot and a quote", () =>
+    testTransaction(async () => {
+      const table = identifier('form.v2 "draft"')
+      await database.script`CREATE TABLE ${table} (name text)`
+
+      expect(await database.query`INSERT INTO ${table} (name) VALUES (${"Survey"})`).toBe(1)
+      expect(await database.query`SELECT name FROM ${table}`.pluck(t.text)).toEqual(["Survey"])
     }))
 })

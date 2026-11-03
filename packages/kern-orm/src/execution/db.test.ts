@@ -2,7 +2,7 @@ import { expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createSubquery } from "../ast/testing"
-import { sql } from "../expression/sql"
+import { identifier, sql } from "../expression/sql"
 import { lower } from "../lowering/testing"
 import type { AnySelectQuery } from "../query/select"
 import { from, SelectQuery } from "../query/select"
@@ -132,6 +132,14 @@ it("executes a script of its text or of a template that names its tables, in the
     { connection: 1, text: "BEGIN", parameters: [] },
     { connection: 1, text: "COMMIT", parameters: [] },
   ])
+})
+
+it("executes a script of a template that interpolates a name from identifier", async () => {
+  const { db, scripts } = connectRecorded()
+
+  await db.$script`ANALYZE ${identifier("comment")}`
+
+  expect(scripts).toEqual([{ connection: "pool", script: 'ANALYZE "comment"' }])
 })
 
 it("rejects values in the template of a script, also in a sql fragment", async () => {

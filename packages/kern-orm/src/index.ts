@@ -158,7 +158,7 @@ export type {
 } from "./schema/relation"
 export { many, one } from "./schema/relation"
 export type { SqlTemplate } from "./expression/sql"
-export { param, sql } from "./expression/sql"
+export { identifier, param, sql } from "./expression/sql"
 export type { AnyColumn, Column, ColumnAttributes, KeyKind, ToColumn } from "./table/column"
 export type {
   AnyTable,

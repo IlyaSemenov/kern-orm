@@ -77,6 +77,7 @@
 - The SQL that a helper builds never changes: applied migrations call the same helper on new targets, and a change of its SQL would change what they do there.
   A new behavior requires a new helper or option; the helpers of a project must follow the same rule.
 - Helpers quote the names they take as arguments or keys and never qualify them with a schema, which the search path of the migration gives.
+  They quote with `quoteIdentifier`, since a step is SQL text, which a fragment of `identifier` from `kern-orm` is not.
   They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
 - They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
 - A helper checks its arguments when it is called, that is, when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.

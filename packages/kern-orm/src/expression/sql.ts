@@ -1,5 +1,6 @@
 import type { ExpressionNode, RawSqlNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
+import { quoteIdentifier } from "../compiler/postgres/identifier"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"
 import { RecordQuery } from "../query/record"
@@ -47,6 +48,30 @@ export function sql(first: TemplateStringsArray | AnyType, ...values: unknown[])
   }
   return (strings: TemplateStringsArray, ...values: unknown[]) =>
     createFragment(strings, values, first)
+}
+
+/**
+ * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime, for the templates of `sql`, of `$query` and `$script` of a `Db`, and of `query` and `script` of a `Database`.
+ *
+ * Several names make a qualified name, such as `identifier(schema, table)` for `"schema"."table"`.
+ * The fragment has no parameters, so a script takes it.
+ * The name is not qualified by the PostgreSQL schema of the statement.
+ */
+export function identifier(...names: [string, ...string[]]): UntypedExpression {
+  let text = ""
+  for (const name of names) {
+    if (typeof name !== "string" || name === "") {
+      throw new TypeError("identifier() takes names as non-empty strings")
+    }
+    // Each name is quoted whole and never split at dots, since a quoted name may contain them.
+    text += (text === "" ? "" : ".") + quoteIdentifier(name)
+  }
+  if (text === "") {
+    throw new TypeError("identifier() takes at least one name")
+  }
+  return toExpression(
+    createNode({ kind: "raw", fragments: [text], values: [] }),
+  ) as UntypedExpression
 }
 
 /**
