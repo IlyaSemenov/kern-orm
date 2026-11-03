@@ -50,7 +50,7 @@
 - `migrate` applies the pending migrations of a target, or the first `count` of them, in one transaction and resolves to their keys.
   Inside a transaction, such as one that creates a tenant with its schema, or a test fixture, it runs as a nested level, so that its changes commit or roll back with the enclosing transaction.
 - `migrate` returns after the first read when nothing is pending, so that migrating a tenant that is up to date at the first access of each process costs two statements outside a transaction.
-  Otherwise, it locks the target with `pg_advisory_xact_lock` of `hashtextextended` of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
+  Otherwise, it locks the target with the [advisory lock](transactions.md#locks) of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
 - Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction ([orchid-orm#702](https://github.com/romeerez/orchid-orm/issues/702)).
   Creating only what is missing keeps PostgreSQL from sending a notice of an existing schema, which postgres.js logs by default.
 - The lock belongs to the target, so that different targets, such as tenants, migrate at once.

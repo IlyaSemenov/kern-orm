@@ -180,6 +180,18 @@ it("joins a transaction of the database with $ensureTransaction and reports it t
   expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT"])
 })
 
+it("takes an advisory lock in a transaction of the database with $lock", async () => {
+  const { db, statements } = connectRecorded()
+
+  await db.$transaction(() => db.$lock("import"))
+
+  expect(statements).toMatchObject([
+    { text: "BEGIN" },
+    { text: "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", parameters: ["import"] },
+    { text: "COMMIT" },
+  ])
+})
+
 it("leaves unbound queries unexecuted when returned from async functions", async () => {
   const { db, statements } = connectRecorded()
   const buildQuery = async () => db.$schema.post.where({ title: "Draft" })

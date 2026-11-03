@@ -137,6 +137,13 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   $ensureTransaction<Result>(callback: () => Promise<Result>): Promise<Result>
   /** Tells whether the code runs in a transaction of the database, not counting test transactions, so that code under test sees what it sees in production. */
   $isInTransaction(): boolean
+  /**
+   * Takes the advisory lock of `key` until the transaction of the database ends, waiting while another transaction holds it, such as to keep processes from running the same job at once.
+   *
+   * It rejects where `$isInTransaction()` is `false`, since outside a transaction the lock would end with its statement.
+   * A nested transaction that rolls back releases the locks it took.
+   */
+  $lock(key: string): Promise<void>
 }
 
 /**
@@ -206,6 +213,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     $transaction: (callback, options) => database.transaction(callback, options),
     $ensureTransaction: callback => database.ensureTransaction(callback),
     $isInTransaction: () => database.isInTransaction(),
+    $lock: key => database.lock(key),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
   const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>

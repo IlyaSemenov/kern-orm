@@ -6,6 +6,7 @@ import { defineSchema } from "../schema/schema"
 import type { AnyDb, BindOptions, Db } from "./db"
 import { bindSchema } from "./db"
 import type { Driver, DriverResult, SqlStatement } from "./driver"
+import { createStatement } from "./driver"
 import { TransactionCoordinator } from "./transaction"
 
 /**
@@ -57,6 +58,13 @@ export interface Database extends AsyncDisposable {
   ensureTransaction<T>(callback: () => Promise<T>): Promise<T>
   /** Tells whether the code runs in a transaction, not counting test transactions, so that code under test sees what it sees in production. */
   isInTransaction(): boolean
+  /**
+   * Takes the advisory lock of `key` until the transaction ends, waiting while another transaction holds it, such as to keep processes from running the same job at once.
+   *
+   * It rejects where `isInTransaction()` is `false`, since outside a transaction the lock would end with its statement.
+   * A nested transaction that rolls back releases the locks it took.
+   */
+  lock(key: string): Promise<void>
   /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions end. */
   close(): Promise<void>
 }
@@ -96,8 +104,21 @@ export function createDatabase({ driver, test }: DatabaseOptions): Database {
     transaction: (callback, options) => coordinator.transaction(callback, options),
     ensureTransaction: callback => coordinator.ensureTransaction(callback),
     isInTransaction: () => coordinator.isInTransaction(),
+    async lock(key) {
+      if (!coordinator.isInTransaction()) {
+        throw new Error(
+          "Cannot take an advisory lock outside a transaction, where it would end with its statement; a test transaction alone does not count",
+        )
+      }
+      await coordinator.execute(createLockStatement(key))
+    },
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }
   return database
+}
+
+/** Creates the statement that takes a transaction-level advisory lock on a 64-bit hash of `key`. */
+function createLockStatement(key: string): SqlStatement {
+  return createStatement("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key])
 }

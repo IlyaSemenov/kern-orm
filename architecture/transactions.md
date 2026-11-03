@@ -25,6 +25,13 @@
   Orchid ORM ignores a test transaction in `$isInTransaction`.
 - Joining a level that accepts no statements, such as of late code of a finished transaction or beside a running nested level, rejects without calling the callback, as starting a nested level does; whether the level accepts statements does not affect `isInTransaction`.
 
+## Locks
+
+- `lock` of a `Database` and `$lock` of a `Db` take `pg_advisory_xact_lock` of `hashtextextended` of a string key with seed `0` on the connection of the current level.
+  They reject without a statement where `isInTransaction` is `false`, since a lock taken outside a transaction ends with its statement and one taken in a test transaction would not be held in production.
+- PostgreSQL holds the lock until the transaction ends and releases it at `ROLLBACK TO` of a savepoint taken before it, so a nested level that rolls back releases its locks and one that is released keeps them.
+- The [migrator](migrations.md#applying-and-rolling-back) locks its target with `lock`.
+
 ## Settings
 
 - Settings of a level, such as its search path, are statements on its connection, `set_config(..., true)` after its `BEGIN` or `SAVEPOINT`, completed before its callback starts.

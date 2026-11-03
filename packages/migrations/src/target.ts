@@ -84,9 +84,7 @@ export async function readVersions(target: ResolvedTarget): Promise<TargetVersio
  * The lock belongs to the qualified name of the table of versions, so that different targets migrate at once.
  */
 export async function lockTarget(target: ResolvedTarget): Promise<void> {
-  await execute(target.database, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
-    target.table,
-  ])
+  await target.database.lock(target.table)
 }
 
 /**

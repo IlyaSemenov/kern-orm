@@ -201,12 +201,9 @@ The answers of a submission in the order of their fields need it too: `getSubmis
 
 - A scalar subquery of the relation in `orderBy`, such as of `get` of the name of the form, gives it once [queries are expressions](#queries-as-expressions); benchmark a join against it, such as with an index of the order.
 
-## Advisory locks
+## Non-waiting advisory locks and integer keys
 
-A lock of `pg_advisory_xact_lock` held by the current transaction, such as `db.$lock(key)`, which hashes a string key with `hashtextextended(key, 0)` and rejects outside a transaction, where the lock would end with its statement.
-
-- Decide whether it also takes the integer keys of PostgreSQL, and a variant that returns instead of waiting, `pg_try_advisory_xact_lock`.
-- Decide whether `Database` has it too, as it has `transaction`, so that the [migrator](architecture/migrations.md#applying-and-rolling-back), which locks its target the same way, uses it.
+A variant of [`$lock`](architecture/transactions.md#locks) that returns whether it took the lock instead of waiting, `pg_try_advisory_xact_lock`, such as for a job that only one process runs and others skip, and integer keys of PostgreSQL beside string keys, such as to share locks with code outside kern-orm.
 
 ## Migrating every tenant
 

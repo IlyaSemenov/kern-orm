@@ -1,4 +1,4 @@
-import { expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
@@ -60,6 +60,54 @@ it("executes a script without a Db, rejecting tables of a Db", async () => {
     { connection: "pool", script: "SET lock_timeout = '1s'; SELECT 1" },
     { connection: "pool", script: "SET lock_timeout = '2s'; SELECT 2" },
   ])
+})
+
+describe("advisory locks", () => {
+  it("rejects a lock outside a transaction, also in a test transaction, without a statement", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const database = createDatabase({ driver, test: true })
+    const message =
+      "Cannot take an advisory lock outside a transaction, where it would end with its statement; a test transaction alone does not count"
+
+    await expect(database.lock("import")).rejects.toThrow(message)
+    await database.coordinator.testTransaction(async () => {
+      await expect(database.lock("import")).rejects.toThrow(message)
+    })
+
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "ROLLBACK"])
+  })
+
+  describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
+    const countLocks = async (key: string) =>
+      await database.query`
+        SELECT count(*)::integer FROM pg_locks
+        WHERE locktype = 'advisory' AND pid = pg_backend_pid() AND granted
+          AND (classid::bigint << 32) + objid::bigint = hashtextextended(${key}, 0)
+      `.get(t.integer)
+
+    it("keeps the locks of the transaction and of a released nested transaction, and releases those of a nested transaction that rolls back", async () => {
+      const failure = new Error("failure")
+
+      const counts = await testTransaction(() =>
+        database.transaction(async () => {
+          await database.lock("import")
+          const released = database.transaction(async () => {
+            await database.lock("export")
+            throw failure
+          })
+          await expect(released).rejects.toBe(failure)
+          await database.transaction(() => database.lock("report"))
+          return {
+            import: await countLocks("import"),
+            export: await countLocks("export"),
+            report: await countLocks("report"),
+          }
+        }),
+      )
+
+      expect(counts).toEqual({ import: 1, export: 0, report: 1 })
+    })
+  })
 })
 
 describePostgres("search path in PostgreSQL", ({ database, testTransaction }) => {

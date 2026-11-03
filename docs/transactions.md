@@ -58,6 +58,21 @@ For example, enqueue a job that reads the written data only outside a transactio
 
 A [test transaction](./testing) does not itself count as a transaction for `$isInTransaction` or `$ensureTransaction`, so that the tested code runs as in production: outside a `$transaction` of the test, `$isInTransaction()` returns `false`, and `$ensureTransaction` starts a nested transaction.
 
+## Locks
+
+To keep processes from running the same work at once, such as an import of one file, take a lock of a key in a transaction with `$lock`: the call waits while another transaction holds the lock of the key, and the lock is released when the transaction ends.
+
+```ts
+await db.$transaction(async () => {
+  await db.$lock(`import:${fileId}`)
+  // ...
+})
+```
+
+A [nested transaction](#nested-transactions) that rolls back releases the locks it took.
+
+Call `$lock` in `$transaction` or `$ensureTransaction`, also in code under test: outside a transaction, the lock would end with its own statement, and a [test transaction](./testing) alone does not count as one.
+
 ## Search path
 
 To run SQL whose unqualified names resolve in a PostgreSQL schema of your choice, such as SQL that creates tables in the schema of a new tenant, pass the schemas as `searchPath`:
