@@ -11,7 +11,7 @@
         "@tsconfig/bun": "^1.0.11",
         "@types/bun": "^1.4.4",
         "@types/node": "^24",
-        "changesets-local": "^1.2.1",
+        "changesets-local": "^1.3.0",
         "esbuild": "^0.28.2",
         "jest-extended": "^7.0.0",
         "oxfmt": "^0.74.0",
@@ -704,7 +704,7 @@
 
     "chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
-    "changesets-local": ["changesets-local@1.2.1", "", { "bin": { "changesets-local": "dist/cli.mjs" } }, "sha512-PpSgOpzFaVg5xC1CJ9JqqunryjTHkM0OuaO36+OYc3Qb97HsknuY5DzUNE/zZ/amx+OnYer+5KMX8OZZpeYyww=="],
+    "changesets-local": ["changesets-local@1.3.0", "", { "bin": { "changesets-local": "dist/cli.mjs" } }, "sha512-GgNHBAMjRsto/QCS/4t1bzBdefVRR8MecQEzBPG0lAIwloDIcIEv9jbLnta36BmqzqmkM7bwks1gN8BKHWOGuw=="],
 
     "character-entities-html4": ["character-entities-html4@2.1.0", "", {}, "sha512-1v7fgQRj6hnSwFpq1Eu0ynr/CDEw0rXo2B61qXrLNdHZmPKgb7fqS1a2JwF0rISo9q77jDI8VMEHoApn8qDoZA=="],
 
