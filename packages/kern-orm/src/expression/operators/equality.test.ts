@@ -16,6 +16,17 @@ it("in yields FALSE for an empty list", () => {
   expect(from(user).where(columns => columns.id.in([])).node.filters.user).toBe(falseNode)
 })
 
+it("in takes queries of one value in its list as scalar subqueries", () => {
+  expect(
+    from(user)
+      .where(columns => columns.id.in([from(user).where({ id: "user-id" }).get("id"), "other-id"]))
+      .toSQL(),
+  ).toEqual({
+    text: 'SELECT FROM "user" AS "user" WHERE "user"."id" IN ((SELECT "user_2"."id" AS "id" FROM "user" AS "user_2" WHERE "user_2"."id" = $1 LIMIT 1), $2)',
+    parameters: ["user-id", "other-id"],
+  })
+})
+
 describe("isEqualityCompatible", () => {
   it("accepts types of one SQL type, whatever their type parameters and representation", () => {
     const userId = t.uuid.transform({ decode: value => ({ userId: value }) })

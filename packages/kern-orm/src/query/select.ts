@@ -1,9 +1,11 @@
-import type { ScalarProjection } from "../ast/nodes"
+import type { ExpressionNode, ScalarProjection } from "../ast/nodes"
+import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
 import type { AnyExpression, TypedExpression } from "../expression/expression"
-import type { Operand } from "../expression/operators/comparison"
+import { operandNode } from "../expression/expression"
+import type { Operand, OperandValue } from "../expression/operators/comparison"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext } from "../schema/relation"
 import type { AnyTable, ColumnValues, Selectable } from "../table/table"
@@ -74,19 +76,37 @@ type FoundState<S extends SelectQueryState> = ChangeState<
 /** Query of state `S`, bound or unbound. */
 export type QueryOf<S extends SelectQueryState> = SelectQuery<S, SelectQueryKind>
 
-declare const conditionValue: unique symbol
+declare const scalarValue: unique symbol
 
 // An aggregate query and a query of `exists` always have their row, and a required relation guarantees the row of a query that keeps the guarantee, such as of `field.form`.
-/** Value of a query of state `S` in a condition: its value, or `NULL` without its row unless the query always has it. */
-export type ConditionValue<S extends SelectQueryState> = S["aggregate"] extends true
+/** Value of a query of state `S` in an expression: its value, or `NULL` without its row unless the query always has it. */
+export type ScalarValue<S extends SelectQueryState> = S["aggregate"] extends true
   ? S["result"]
   : S["guaranteed"] extends true
     ? S["result"]
     : S["result"] | null
 
-/** Query whose value in a condition is `T`, from which a condition infers `T`. */
-export interface ConditionValueOf<T> {
-  readonly [conditionValue]: T
+/**
+ * Query of one value of a table, such as of `get`, of an aggregate, or of `exists`, which an expression takes as a scalar subquery of its value, or as `EXISTS` of the rows of a query of `exists`.
+ *
+ * `T` is its value there: without its row, a query of `get` is `NULL`, unless a required relation guarantees the row, such as of `field.form`.
+ */
+// An interface rather than an intersection with `QueryOf`, which TypeScript would compare with every method of the query.
+export interface ScalarQuery<T = unknown> {
+  /** Value of the query in an expression, from which an expression infers `T`. */
+  readonly [scalarValue]: T
+  readonly types: ScalarQueryState
+  // A method of a query, which TypeScript drops from the type of a spread copy of a query, so that such a copy is rejected.
+  readonly exists: unknown
+}
+
+/** Value of query `Q` of one value in an expression. */
+export type ScalarQueryValue<Q extends ScalarQuery> = Q[typeof scalarValue]
+
+/** State of a query of one value, which an expression takes. */
+interface ScalarQueryState extends SelectQueryState {
+  readonly rows: "one" | "optional"
+  readonly value: true
 }
 
 /** State of a query whose rows are records, which `select` and `clearSelect` change. */
@@ -108,11 +128,9 @@ type AggregateState<S extends SelectQueryState, V, I> = ChangeState<
 >
 
 // `null` among the values of a type stands for `NULL`, so `coalesce` removes only `null`: `undefined` that a decoder returns stays, and so does `unknown` of a JSON type.
-// An expression of the fallback that can be `NULL` keeps `null`, while its other values are decoded by the type of the value.
+// A fallback expression or query whose value can be `NULL` keeps `null`, while its other values are decoded by the type of the value.
 /** Value `V` of a query of values whose `NULL` `coalesce` replaces with fallback `F`. */
-type CoalescedValue<V, F> =
-  | Exclude<V, null>
-  | (F extends AnyExpression<infer T> ? Extract<T, null> : never)
+type CoalescedValue<V, F> = Exclude<V, null> | Extract<OperandValue<F>, null>
 
 /** State of a query of many rows, which `limit` and `offset` apply to. */
 type ManyRowsQueryState = SelectQueryState & { readonly rows: "many" }
@@ -142,8 +160,8 @@ export class SelectQuery<
   out Kind extends SelectQueryKind = "unbound",
 > {
   declare readonly types: S
-  /** Value of the query in a condition, for types only. */
-  declare readonly [conditionValue]: ConditionValue<S>
+  /** Value of the query in an expression, for types only. */
+  declare readonly [scalarValue]: ScalarValue<S>
   /** `Db` that executes the query when it is awaited; `undefined` for an unbound query. */
   readonly db: QueryDb<Kind>
   /** Executes a bound query on its `Db`; `undefined` for an unbound query, so that it is not thenable. */
@@ -613,7 +631,7 @@ export class SelectQuery<
   /**
    * Replaces a `NULL` value of a query of values, such as one made by `get`, `pluck`, or an aggregate, with `fallback`, such as `0` for a sum without rows.
    *
-   * `fallback` is a value that the type of the value accepts or an expression of its values, such as a column of the row of a parent query.
+   * `fallback` is a value that the type of the value accepts, an expression of its values, such as a column of the row of a parent query, or a query of one such value.
    * A missing row stays missing: an optional query still resolves to `undefined` without a row.
    */
   coalesce<
@@ -818,6 +836,21 @@ export class SelectQuery<
   toSQL(...args: ToSQLArgs<Kind>): SqlStatement
   toSQL(options?: CompileOptions): SqlStatement {
     return compileToSQL(this, options)
+  }
+
+  /**
+   * Returns the node of the query as an operand of an expression, which lowering replaces with a scalar subquery of its value, or with `EXISTS` of its rows for a query of `exists`.
+   *
+   * It rejects a query of records or of rows `many`, which `ScalarQuery` rejects in types.
+   */
+  [operandNode](): ExpressionNode {
+    const { node } = this
+    if (!node.value || node.rows === "many") {
+      throw new TypeError(
+        "An expression takes a query of one value, such as of get, an aggregate, or exists, not a query of records or of an array",
+      )
+    }
+    return createNode({ kind: "nestedQuery", query: node, db: this.db as AnyDb | undefined })
   }
 
   /** Creates a query of the same kind and `Db` with the node changes applied. */

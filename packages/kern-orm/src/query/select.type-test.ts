@@ -676,6 +676,20 @@ describe("coalesce", () => {
     expectTypeOf<Executed<typeof expression>>().toEqualTypeOf<string>()
   })
 
+  test("takes a query of one value, keeping null when its value can be NULL", () => {
+    const named = from(stat).max("page").coalesce(from(stat).min("page").coalesce("none"))
+    expectTypeOf<Executed<typeof named>>().toEqualTypeOf<string>()
+    const nullable = from(stat).max("page").coalesce(from(stat).min("page"))
+    expectTypeOf<Executed<typeof nullable>>().toEqualTypeOf<string | null>()
+    const missing = from(stat).max("page").coalesce(from(stat).get("page"))
+    expectTypeOf<Executed<typeof missing>>().toEqualTypeOf<string | null>()
+
+    // @ts-expect-error The value of the query is of another type.
+    from(stat).max("page").coalesce(from(stat).count())
+    // @ts-expect-error A query of an array of values has no value to take.
+    from(stat).max("page").coalesce(from(stat).pluck("page"))
+  })
+
   test("keeps undefined that a decoder returns and null among the values of JSON", () => {
     const item = defineTable("item", {
       label: t.text.transform({ decode: text => (text === "" ? undefined : text) }).nullable(),

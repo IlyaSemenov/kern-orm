@@ -81,6 +81,25 @@ Start such a query from the same `Db` as the query that it filters.
 
 A condition can also be another query of one Boolean value, such as [`some`](./selecting#aggregates) of the related records, or `get` of a column of a related record, such as `field => field.form.get("published")`.
 
+## Values of other queries
+
+To compare a column with a value that another query gives, such as to find the fields of the form named "Feedback" in one statement, pass the query in place of the value:
+
+```ts
+await db.field.where({ formId: db.form.where({ name: "Feedback" }).get("id") }).select("id")
+```
+
+The query gives one value, such as of `get` or of an [aggregate](./selecting#aggregates); without a row, it gives `NULL`, which matches no record.
+Operators take such a query too, such as to find the last field of each form:
+
+```ts
+await db.field
+  .where(field => field.position.eq(db.field.where({ formId: field.formId }).max("position")))
+  .select("id")
+```
+
+Start the query from the same `Db` as the query that it filters.
+
 ## SQL fragments
 
 For a condition that operators do not cover, write it with the `sql` template; interpolated values become query parameters:

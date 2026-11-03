@@ -1,15 +1,18 @@
 import { describe, expect, it } from "bun:test"
 
+import { createRecordingDriver } from "../../testing/recording-driver"
 import { compileStatement } from "../compiler/postgres/compile"
+import { createDatabase } from "../execution/database"
 import { lower } from "../lowering/testing"
 import { from } from "../query/select"
 import { decodeResult } from "../result/result"
+import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import { text } from "../type/builtins"
 import { defineType } from "../type/type"
 import * as t from "../types"
 
-import { getType } from "./expression"
+import { getType, toValueNode } from "./expression"
 import { equalityOperators } from "./operators/equality"
 import { and, not, or } from "./predicates"
 import { param, sql } from "./sql"
@@ -183,5 +186,42 @@ describe("operators of a type", () => {
         .where(columns => sql(text)`lower(${columns.name})`.ilike("a%"))
         .toSQL().text,
     ).toEndWith('WHERE (lower("user"."name")) ILIKE $1')
+  })
+})
+
+describe("toValueNode", () => {
+  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ user }))
+
+  it("takes a query of one value as a query in an expression, with its Db", () => {
+    const name = db.user.where({ id: "user-id" }).get("name")
+    const count = from(user).count()
+
+    expect(toValueNode(name)).toEqual({ kind: "nestedQuery", query: name.node, db })
+    expect(toValueNode(count, t.integer)).toEqual({
+      kind: "nestedQuery",
+      query: count.node,
+      db: undefined,
+    })
+  })
+
+  it("rejects a query of records or of an array, and a query of another class", () => {
+    for (const query of [
+      from(user),
+      from(user).take(),
+      from(user).pluck(columns => columns.name.eq("Ann")),
+    ]) {
+      expect(() => toValueNode(query)).toThrow(
+        "An expression takes a query of one value, such as of get, an aggregate, or exists, not a query of records or of an array",
+      )
+    }
+    for (const [query, subject] of [
+      [db.$select({}), "$select"],
+      [db.user.insert({ id: "user-id", name: "Ann" }), "insert, update, or delete"],
+      [db.$query`SELECT TRUE`, "$query"],
+    ] as const) {
+      expect(() => toValueNode(query)).toThrow(
+        `An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of ${subject}`,
+      )
+    }
   })
 })

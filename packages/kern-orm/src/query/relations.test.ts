@@ -605,6 +605,33 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     expect(results).toEqual([[1, 2], [3], [2], [1, 2, 3], [], [4]])
   })
 
+  it("compares with the value of a query of one value, NULL without its row, and replaces NULL with it", async () => {
+    const results = await testTransaction(async () => [
+      // The last field of each form.
+      await db.field
+        .where(field => field.id.eq(db.field.where({ formId: field.formId }).max("id")))
+        .orderBy("id")
+        .pluck("id"),
+      await db.field.where({ formId: db.form.where({ name: "Feedback" }).get("id") }).pluck("id"),
+      await db.field.where({ formId: db.form.where({ name: "Missing" }).get("id") }).pluck("id"),
+      await db.form
+        .where(form => form.id.in([db.field.find(4).get("formId"), 3]))
+        .orderBy("id")
+        .pluck("id"),
+      await db.form.orderBy("id").select(form => ({
+        label: form.fields.min("label").coalesce(db.form.find(form.id).get("name")),
+      })),
+    ])
+
+    expect(results).toEqual([
+      [3, 4],
+      [4],
+      [],
+      [2, 3],
+      [{ label: "Email" }, { label: "Comment" }, { label: "Empty" }],
+    ])
+  })
+
   it("selects whether related records exist for each row, also of a page after an offset, and a condition of get, null without its row", async () => {
     const labeled = defineHelper(schema.field, (field, label: string) => field.where({ label }))
     const query = db.form

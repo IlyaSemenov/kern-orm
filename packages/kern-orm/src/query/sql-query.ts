@@ -3,6 +3,7 @@
 import type { RawSqlNode, TextStatementNode } from "../ast/nodes"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
+import { operandNode } from "../expression/expression"
 import type { ResultRows, ScalarField } from "../result/result"
 import { isRecordKey } from "../result/result"
 import type { AnyType, TypeOutput } from "../type/type"
@@ -219,6 +220,13 @@ export class SqlQuery<out S extends SqlQueryState> {
   /** Compiles the query into SQL text and parameters, as its `Db` executes it. */
   toSQL(): SqlStatement {
     return this.db.$compile(this)
+  }
+
+  /** Rejects the query as an operand of an expression, which takes a query of one value of a table. */
+  [operandNode](): never {
+    throw new TypeError(
+      "An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of $query",
+    )
   }
 
   /** Creates a query of the same `Db` with the node changes applied. */

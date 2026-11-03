@@ -4,28 +4,22 @@ Work not done yet, ideas, and research, roughly from the most important; the ord
 
 ## Queries as expressions
 
-A query as an expression in operands, sort keys, and SQL fragments, beside a field of a selection and a query of one Boolean value as a [condition](architecture/queries.md#filters), such as of [`exists`](architecture/queries.md#exists), built on the semantic node of a query in an expression that lowering replaces ([architecture/sql.md](architecture/sql.md)).
+A query as an expression in sort keys and SQL fragments, as a list of `in`, and as the value of a comparison on the left, beside a query of one value as an [operand](architecture/queries.md#queries-in-expressions) of conditions, operators, object conditions, and `coalesce`.
 
 Preliminary decisions:
 
 - `in` takes a query of values of any rows, such as of `pluck` of the groups of a user, beside a list of values, as `IN (SELECT ...)`.
-- A query of one value, such as of `get`, of an aggregate, or of `exists`, is a scalar subquery wherever an operand is taken: of operators, such as `field.position.lt(form.fields.max("position"))`, as a value of an object condition, as the fallback of `coalesce`, and as a sort key of `orderBy`, `asc`, and `desc`.
-  - Types reject a query of many rows, which PostgreSQL rejects with a second row.
-  - A query of `get` without its row gives `NULL`, so its value is `T | null` there; an aggregate query and `exists` always have their row.
-    A condition types a query by this rule with `ConditionValue` of `query/select.ts`, which also keeps the value of a query whose row a required relation guarantees ([architecture/queries.md](architecture/queries.md#filters)).
-- The callback of `orderBy` receives the relations of the table, so that it sorts by an aggregate of related records, such as `desc(form.fields.count())`.
+- `asc`, `desc`, `orderBy`, and the callback of `orderBy` take a query of one value as a sort key, and the callback of `orderBy` receives the relations of the table, so that it sorts by an aggregate of related records, such as `desc(form.fields.count())`.
+  - A selected field of an aggregate or of `exists`, which the second parameter of the callback gives, could sort by its projection rather than throw, so that a query that selects and sorts by a count evaluates it once.
 - `sql` interpolates a query with clauses as a subquery in parentheses, `(SELECT ...)`, so that it is an operand anywhere; PostgreSQL 18 parses `EXISTS ((SELECT 1))` and `1 IN ((SELECT 1 UNION SELECT 2))` as subqueries, so both ``sql`EXISTS (${query})` `` and ``sql`EXISTS ${query}` `` work.
   A query of a table without clauses stays the name of its table.
-- Then `coalesce` could also be a function of expressions, beside the method of queries of values.
-- A condition on the columns of the record of a relation `one`, such as of the fields of published forms, shorter than `EXISTS` of the relation.
-
-Open question: comparing the value of a query of one value on the left, such as `form.fields.count().gt(3)`; until then, it is an operand on the right or a fragment such as ``sql<boolean>`${form.fields.count()} > ${3}` ``.
-
-- Preliminary decision: a method of a query of one value, such as `expr()`, returns an expression of its value with the operators of its type, `form.fields.count().expr().gt(3)`.
-- A query is not an expression: it executes, keeps its `Db` and the relations it uses, and takes `where`, `orderBy`, and `coalesce` after an aggregate.
-- Either way the state of a query needs the operators of the type of its value, which `get`, `pluck`, and the aggregate methods set; measure its cost with `bench:types`.
-- The type of a count needs the operators of `orderingOperators`, which it lacks.
-- Rejected: the operators of the type of the value as methods of the query, as in Orchid ORM: a custom operator could take the name of a method of a query, so `withOperators` would reject those names, and every new method of a query would break the custom types that have an operator of its name; the query would also need a prototype for each type of its value.
+- A method of a query of one value, `expr()`, returns an expression of its value with the operators of its type, such as `form.fields.count().expr().gt(3)`; until then, the value of a query is an operand on the right or a fragment such as ``sql<boolean>`${form.fields.count()} > ${3}` ``.
+  - A query is not an expression: it executes, keeps its `Db` and the relations it uses, and takes `where`, `orderBy`, and `coalesce` after an aggregate.
+  - `expr()` takes the query from `this`, as the other methods do: a getter, such as `ops`, would type its result by the state of the class and break the covariance of a query, and a callback, such as `expr(value => value.gt(3))`, adds nesting without a gain.
+  - The state of a query needs the operators of the type of its value, which `get`, `pluck`, and the aggregate methods set; measure its cost with `bench:types`.
+  - The type of a count needs the operators of `orderingOperators`, which it lacks.
+  - Rejected: the operators of the type of the value as methods of the query, as in Orchid ORM: a custom operator could take the name of a method of a query, so `withOperators` would reject those names, and every new method of a query would break the custom types that have an operator of its name; the query would also need a prototype for each type of its value.
+  - Rejected: functions of operators, such as `gt(form.fields.count(), 3)`: the operators belong to types, including custom ones, which would each need a function too.
 
 ## Functions of expressions
 
@@ -136,7 +130,7 @@ Orchid ORM 1.78.47 narrows a column with `narrowType` ([docs](https://github.com
 
 ## Queries as values of inserts and updates
 
-Values of an insert or an update that a query of one value gives in the same statement, such as the record that an inserted one belongs to, locked by a [row lock](#row-locks), or the position after the last record of an ordered collection, `max("position")` plus one, rather than a read before the statement; a value takes such a query as a scalar subquery once [queries are expressions](#queries-as-expressions).
+Values of an insert or an update that a query of one value gives in the same statement, such as the record that an inserted one belongs to, locked by a [row lock](#row-locks), or the position after the last record of an ordered collection, `max("position")` plus one, rather than a read before the statement; a value could take such a query as a scalar subquery, as an operand of an expression takes it ([architecture/queries.md](architecture/queries.md#queries-in-expressions)).
 Orchid ORM 1.78.47 takes a query of one value as the value of a column, such as `() => db.other.find(id).get("name")` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#sub-queries)), and inserts the records of a query with `createOneFrom` and `createForEachFrom` (`INSERT ... SELECT`, [docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#createonefrom-insertfrom)); kern-orm takes values and expressions only, and rejects a query as a value.
 
 ## Empty changes and `none()`

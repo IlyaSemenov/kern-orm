@@ -3,6 +3,7 @@
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
+import { operandNode } from "../expression/expression"
 import type { UsedRelation } from "../schema/relation"
 
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
@@ -65,6 +66,13 @@ export class RecordQuery<
   toSQL(...args: ToSQLArgs<Kind>): SqlStatement
   toSQL(options?: CompileOptions): SqlStatement {
     return compileToSQL(this, options)
+  }
+
+  /** Rejects the query as an operand of an expression, which takes a query of one value of a table. */
+  [operandNode](): never {
+    throw new TypeError(
+      "An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of $select",
+    )
   }
 }
 

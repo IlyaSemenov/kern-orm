@@ -4,6 +4,7 @@ import { quoteIdentifier } from "../compiler/postgres/identifier"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"
 import { RecordQuery } from "../query/record"
+import type { ScalarQuery, ScalarQueryValue } from "../query/select"
 import { SelectQuery } from "../query/select"
 import { SqlQuery } from "../query/sql-query"
 import type { AnyType, Type } from "../type/type"
@@ -82,6 +83,7 @@ export function identifier(...names: [string, ...string[]]): UntypedExpression {
  *
  * With an expression, such as `param(self, other)` in an operator definition, the type of the expression encodes the value, and the parameter is not cast: PostgreSQL types it by the expression it is used with.
  * `value` may then also be an expression, such as an operand of a generic operator, which is returned as it is, with its own type and nullability.
+ * A query of one value becomes an expression with the runtime type of the first argument and the nullability of the query, typed as an `AnyExpression` of its value.
  */
 export function param<Output, Input, O extends OperatorDefinitions>(
   // oxlint-disable-next-line typescript/no-explicit-any -- type parameters do not matter here
@@ -91,7 +93,10 @@ export function param<Output, Input, O extends OperatorDefinitions>(
 export function param<
   E extends AnyExpression,
   V extends (E extends AnyExpression<infer T, infer I> ? Operand<T, I> : never),
->(type: E, value: V): V extends AnyExpression ? V : E
+>(
+  type: E,
+  value: V,
+): V extends AnyExpression ? V : V extends ScalarQuery ? AnyExpression<ScalarQueryValue<V>> : E
 export function param(type: AnyType | AnyExpression, value: unknown): AnyExpression {
   if (!isType(type) && !isExpression(type)) {
     throw new TypeError("param() accepts a type or an expression, not a column")

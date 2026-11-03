@@ -23,7 +23,8 @@
 - A value is what the type of its column encodes, `null` for `NULL`, or an expression of the values of the column, whose node it keeps; a parameter is encoded by the type of its column without a cast, since the column types it, as for a compared value.
   Types take an expression of the output values of the column, so a column that is not nullable rejects an expression that may be `NULL`.
 - A key of `undefined` is omitted, as a key that an object lacks, so that an optional property of TypeScript, which may hold `undefined` without `exactOptionalPropertyTypes`, omits its column.
-- Mutations read the keys and values of their objects when they are called, and reject a key that is not a column and a query as a value, which encoding would turn into text of its fields.
+- Mutations read the keys and values of their objects when they are called, and reject a key that is not a column and a query as a value, rather than take a query of one value as a scalar subquery, as an operand of an expression takes it ([queries](queries.md#queries-in-expressions)).
+  Types reject a query as a value too, except for a column whose type takes any value, such as `jsonb`.
 - An insert may omit a column marked with `hasDefault` and a nullable column, which get their defaults, `NULL` for a nullable column without one; types require the other columns, and the database rejects a record that misses one.
   - The columns of the statement are those that some record gives a value other than `undefined`, in the order that the records first give them, and a record that lacks one inserts `DEFAULT`.
   - One record without values inserts `DEFAULT VALUES`, and several insert the `DEFAULT` of the first column of the table, since `DEFAULT VALUES` inserts one row.

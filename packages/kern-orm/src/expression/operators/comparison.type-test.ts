@@ -42,6 +42,37 @@ test("comparisons are nullable when either side is", () => {
   void result
 })
 
+test("comparisons take a query of one value, nullable as its value or without its row", () => {
+  const account = defineTable("account", {
+    rank: t.integer,
+    score: t.integer.nullable(),
+    email: t.text,
+  })
+  const count = from(account).count()
+  const max = from(account).max("rank")
+  const rank = from(account).get("rank")
+
+  expectTypeOf(value.lt(count)).toEqualTypeOf<Expression<boolean>>()
+  expectTypeOf(value.lt(max)).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(value.eq(rank)).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(value.in([count, 1])).toEqualTypeOf<Expression<boolean>>()
+  expectTypeOf(value.in([rank])).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(compare(value, "=", count)).toEqualTypeOf<Expression<boolean>>()
+  from(account).where({ score: max })
+  from(account).where({ rank: from(account).get("score") })
+
+  // @ts-expect-error A query of records has no value to compare.
+  value.eq(from(account).take())
+  // @ts-expect-error A query of an array of values has no value to compare.
+  value.eq(from(account).pluck("rank"))
+  // @ts-expect-error The value of the query is of another type.
+  value.eq(from(account).get("email"))
+  // @ts-expect-error The value of the query is of another type.
+  from(account).where({ email: count })
+  // @ts-expect-error A copy of a query is not a query.
+  value.eq({ ...count })
+})
+
 test("Boolean results can be compared again", () => {
   expectTypeOf(nullable.eq(1).eq(true)).toEqualTypeOf<Expression<boolean | null>>()
   expectTypeOf(nullable.isNull().eq(true)).toEqualTypeOf<Expression<boolean>>()

@@ -553,6 +553,17 @@ describe("coalesce", () => {
     })
   })
 
+  it("takes the value of a query of one value as a scalar subquery", () => {
+    const query = from(post)
+      .max("title")
+      .coalesce(from(post).where({ id: "post-id" }).get("title"))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT coalesce(max("post"."title"), (SELECT "post_2"."title" AS "title" FROM "post" AS "post_2" WHERE "post_2"."id" = $1 LIMIT 1)) AS "max" FROM "post" AS "post"',
+      parameters: ["post-id"],
+    })
+  })
+
   it("rejects a query of records and a fallback of null", () => {
     // Types reject these calls, which a query held as any query can still make.
     const records: AnySelectQuery = from(post)

@@ -70,7 +70,7 @@ describe("not", () => {
 describe("queries", () => {
   const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ user }))
 
-  it("nest a query of one value, such as of exists", () => {
+  it("nest a query of one value, such as of exists, and reject another query rather than take it as column values", () => {
     const exists = db.user.exists()
     const value = from(user).get(columns => columns.name.eq("Ann"))
     const optional = value.optional()
@@ -85,27 +85,7 @@ describe("queries", () => {
       query: optional.node,
       db: undefined,
     })
-  })
-
-  it("reject a query of records or of an array, and a query of another class", () => {
-    for (const query of [
-      from(user),
-      from(user).take(),
-      from(user).pluck(columns => columns.name.eq("Ann")),
-    ]) {
-      expect(() => and(query as never)).toThrow(
-        "A condition takes a query of one Boolean value, such as of exists, not a query of records or of an array",
-      )
-    }
-    for (const query of [
-      db.$select({}),
-      db.user.insert({ id: "user-id", name: "Ann" }),
-      db.$query`SELECT TRUE`,
-    ]) {
-      expect(() => or(query as never)).toThrow(
-        "A condition takes a query of one Boolean value of a table, such as of exists, not a query of $select, insert, update, delete, or $query",
-      )
-    }
+    expect(() => and(db.$select({}) as never)).toThrow("not a query of $select")
   })
 })
 
@@ -146,6 +126,17 @@ describe("object conditions", () => {
     expect(from(account).where({ email: "a@example.com", aliases: [] }).toSQL().text).toEndWith(
       'WHERE (lower("account"."email") = lower($1)) AND "account"."aliases" = $2',
     )
+  })
+
+  it("match a column with the value of a query of one value as a scalar subquery", () => {
+    expect(
+      from(user)
+        .where({ name: from(user).where({ id: "user-id" }).get("name") })
+        .toSQL(),
+    ).toEqual({
+      text: 'SELECT FROM "user" AS "user" WHERE "user"."name" = (SELECT "user_2"."name" AS "name" FROM "user" AS "user_2" WHERE "user_2"."id" = $1 LIMIT 1)',
+      parameters: ["user-id"],
+    })
   })
 
   it("match a column with an eq of a type without SQL equality, and null with IS NULL", () => {

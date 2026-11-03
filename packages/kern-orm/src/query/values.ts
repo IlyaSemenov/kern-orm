@@ -139,7 +139,7 @@ export function toAssignments(source: TableSourceNode, set: unknown): Assignment
 /** Returns the node of `value` of the column of `table` under `key`: an expression, or a parameter encoded with the type of the column. */
 function resolveValue(table: AnyTable, key: string, value: unknown): ExpressionNode {
   const column = requireColumn(table, key)
-  // Encoding would turn a query into text, such as JSON of its fields, rather than its value.
+  // Checked before `toValueNode`, which would take a query of one value as a subquery: types reject a query only where the column does not take any value, unlike `jsonb`.
   if (
     value instanceof SelectQuery ||
     value instanceof RecordQuery ||

@@ -71,6 +71,26 @@ describe("custom operators", () => {
     from(account).where({ settings: "dark" })
   })
 
+  test("named eq that returns no predicate limits object conditions to null", () => {
+    const joined = t.text.withOperators({
+      eq: (self, value: string) => sql(t.text)`${self} || ${value}`,
+    })
+    const blank = t.text.withOperators({
+      eq: (_self, value: string) => value === "",
+    })
+    const account = defineTable("account", {
+      email: joined.nullable(),
+      name: blank,
+    })
+
+    from(account).where({ email: null })
+
+    // @ts-expect-error A column whose eq returns no predicate matches only null.
+    from(account).where({ email: "a@example.com" })
+    // @ts-expect-error A column whose eq returns no predicate matches only null.
+    from(account).where({ name: "Ann" })
+  })
+
   test("named eq with several operands limit object conditions to null", () => {
     const text = t.text.withOperators({
       eq: (self, value: string, other: string) => sql<boolean>`${self} IN (${value}, ${other})`,

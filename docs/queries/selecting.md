@@ -190,7 +190,7 @@ const lastPosition = await db.field.where({ formId }).max("position").coalesce(0
 // lastPosition: number
 ```
 
-`coalesce` also takes an expression of the values of the aggregate, such as a column of the parent row of [related records](./relations#aggregates-of-related-records).
+`coalesce` also takes an expression of the values of the aggregate, such as a column of the parent row of [related records](./relations#aggregates-of-related-records), or a query of one such value.
 
 An aggregate keeps the filters of the query and ignores its selected fields.
 With [`limit` and `offset`](./sorting#pagination), it aggregates the rows of the page, which the order of the query chooses.

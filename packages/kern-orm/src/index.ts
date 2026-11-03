@@ -38,7 +38,6 @@ export type {
   CombinedCondition,
   Condition,
   ConditionOperand,
-  ConditionQuery,
   Predicate,
 } from "./expression/predicates"
 export { and, not, or } from "./expression/predicates"
@@ -68,6 +67,7 @@ export type {
   BoundSelectQuery,
   FilteredStateRows,
   ResultOf,
+  ScalarQuery,
   SelectQuery,
 } from "./query/select"
 export { from } from "./query/select"

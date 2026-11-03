@@ -74,14 +74,30 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 - Objects of column values in `and`/`or`/`not` stay unresolved `values` nodes until `where` resolves them against its source; the compiler rejects an unresolved one.
 - Query filters are kept as separate `relation`, `scope`, and `user` predicates combined with `AND` at compilation; `where` adds only to `user`, so a user `OR` never bypasses the relation filter ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
-- `where`, `and`, `or`, and `not` take a query of a table of one Boolean value as a condition, such as `not(form.fields.exists())`: a query of [`exists`](#exists) is `EXISTS` of its rows, and another query, such as of `get` or of an aggregate, a scalar subquery of its value.
+- `where`, `and`, `or`, and `not` take a query of a table of one Boolean value as a condition, such as `not(form.fields.exists())`, as an expression takes it as an operand ([queries in expressions](#queries-in-expressions)).
+  Only types check that the value is Boolean: at runtime, as for an expression, PostgreSQL rejects a predicate of another type, such as in `WHERE` or `NOT`.
+
+## Queries in expressions
+
+- An expression takes a query of a table of one value, such as of `get`, of an aggregate, or of [`exists`](#exists), wherever it takes an operand: as a condition, an operand of an operator, such as `field.position.lt(form.fields.max("position"))`, a value of an object condition, an item of the list of `in`, the fallback of `coalesce`, and a value of `param` with an expression.
+  A query of `exists` is `EXISTS` of its rows, and another query a scalar subquery of its value.
   - The query keeps its `Db`, which must be the `Db` that runs the statement, as for a nested query of a selection.
-  - At runtime, they reject the queries of a shape that types reject: a query of records or of rows `many`, and a query of `$select`, a mutation, and a query of SQL text.
-    Only types check that the value is Boolean: at runtime, as for an expression, PostgreSQL rejects a predicate of another type, such as in `WHERE` or `NOT`.
-  - Types type the condition by the value of the query in it, `ConditionValue` of `query/select.ts`: the value of an aggregate query, such as `boolean` of `exists` and `boolean | null` of `some`, and of a query whose row a required relation guarantees, such as of `field.form`; the value or `null` of another query, such as of `get`, which is `NULL` without its row whatever its rows mode.
-    A query has this value as a member for types only, from which `and`, `or`, and `not` infer it for each operand.
-  - Types take a query of a condition as `ConditionQuery`, an interface of the state, the value, and the method `exists` of a query, rather than as a query, which would compare every method of the query.
-    So they reject a copy of a query, whose type lacks its methods, but not a copy of a value of type `ConditionQuery`, whose type has `exists`; the compiler rejects the keys of such a copy as unknown columns.
+  - At runtime, it rejects the queries of a shape that types reject: a query of records or of rows `many`, and a query of `$select`, a mutation, and a query of SQL text.
+    The modules of expressions recognize a query by the method of the symbol key `operandNode` of `expression/expression.ts`, which every class of queries has, since the queries import those modules; the method of `SelectQuery` returns the node of the query in an expression, and the others reject the query.
+    An expression has the method too, so that `toValueNode` recognizes either by one lookup of the symbol, which it writes out rather than calling `isOperandSource`.
+    Most values are neither, and the alternatives took longer to build a query of them on Bun 1.4.4 and Node.js 24.18 ([benchmark](../benchmarks/runtime/building.bench.ts)):
+    - recognizing an expression by its class and then a query by the symbol, 4 to 8% longer for `in` of 1000 dates, and up to 3% for `in` of 1000 strings and an insert of 1000 records on Node.js;
+    - calling `isOperandSource`, 6 to 8% longer for the dates and 2 to 3% for the others on Bun.
+      Recognizing only an expression by its class, as without queries in expressions, is at most 2% faster, for the dates on Bun.
+  - Types check the value of the query, as they check the values of an expression operand, rather than its SQL type.
+  - The values of inserts and updates reject a query at runtime, and in types except for a column whose type takes any value, such as `jsonb` ([mutations](mutations.md#values)).
+- Types type a query by its value in an expression, `ScalarValue` of `query/select.ts`: the value of an aggregate query, such as `boolean` of `exists` and `boolean | null` of `some`, and of a query whose row a required relation guarantees, such as of `field.form`; the value or `null` of another query, such as of `get`, which is `NULL` without its row whatever its rows mode.
+  A query has this value as a member for types only, from which `and`, `or`, `not`, and the operators infer it for each operand.
+- Types take a query in an expression as `ScalarQuery`, an interface of the state, the value, and the method `exists` of a query, rather than as a query, which would compare every method of the query.
+  So they reject a copy of a query, whose type lacks its methods, but not a copy of a value of type `ScalarQuery`, whose type has `exists`; at runtime, such a copy is a value of a parameter, or an object of column values in a condition, whose keys the compiler rejects as unknown columns.
+- `Operand`, the operand of the built-in operators, includes `ScalarQuery`, and `OperandValue` reads the value of a query without inferring it from `ScalarQuery`, which would add instantiations to each call of an operator.
+  An object condition reads the operand of the `eq` of `equalityOperators` from the type of its column, rather than inferring it from the method of the column with a check that its result is a predicate, which adds about 165 instantiations, 42%, to a query of an object condition of a column used for the first time ([benchmark](../benchmarks/types/queries.bench.ts)).
+  For another `eq`, such as one of `withOperators`, it infers the operand from the method and requires a predicate as its result.
 
 ## Finding by a key
 

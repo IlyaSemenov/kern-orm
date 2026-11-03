@@ -16,8 +16,8 @@
   Lowering replaces it in every expression of a statement, of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text, with `EXISTS` of the rows of a query of `exists` or a scalar subquery of the statement of another query, and checks the query as a nested query of a field; the compiler rejects it.
   - It keeps every expression node, filter, and array of nodes without a query, and creates only the nodes that hold one, so that an expression without a query allocates nothing.
     It visits every node rather than tracking which subtrees hold a query, which keeps lowering simple.
-    Visiting takes longer than passing the filters, the values of a mutation, and `set` through, as lowering could if it tracked that they hold no query, to prepare a built statement without queries in its expressions through `db.$compile` on Bun 1.4.4 and Node.js 24.18 ([benchmark](../benchmarks/runtime/preparation.bench.ts)).
-    The medians of 10 pairs of processes, with their intervals of 97.9% confidence, are:
+    Tracking it would let lowering pass the filters, the values of a mutation, and `set` that hold no query through without visiting them.
+    Visiting them makes `db.$compile` of a built statement without queries in its expressions take longer on Bun 1.4.4 and Node.js 24.18 ([benchmark](../benchmarks/runtime/preparation.bench.ts)); the medians of 10 pairs of processes, with their intervals of 97.9% confidence, are:
     - for `in` of 1000 values, 22% (17 to 29%) on Bun and 17% (12 to 23%) on Node.js;
     - for a tree of 256 conditions, 12% (7 to 18%) on Bun and 15% (7 to 18%) on Node.js;
     - for a select of a few conditions, an insert of 1000 records, and nested relations, the medians of 3 to 8% are inconclusive.

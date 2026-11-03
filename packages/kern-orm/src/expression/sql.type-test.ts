@@ -1,5 +1,6 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
+import type { ResultOf } from "../query/select"
 import { from } from "../query/select"
 import type { ExpressionValue } from "../query/selection"
 import { defineTable } from "../table/table"
@@ -7,6 +8,7 @@ import { text } from "../type/builtins"
 import { defineType } from "../type/type"
 import * as t from "../types"
 
+import type { AnyExpression } from "./expression"
 import type { Operand } from "./operators/comparison"
 import { param, sql } from "./sql"
 
@@ -55,6 +57,20 @@ describe("param", () => {
   test("returns an expression value with its own type", () => {
     const nullable = param(t.integer.nullable(), null)
     expectTypeOf(param(param(t.integer, 1), nullable)).toEqualTypeOf(nullable)
+  })
+
+  test("takes a query of one value as an expression of its value, nullable without its row", () => {
+    const item = defineTable("item", {
+      id: t.integer,
+    })
+    const value = param(t.integer, 1)
+
+    expectTypeOf(param(value, from(item).get("id"))).toEqualTypeOf<AnyExpression<number | null>>()
+    expectTypeOf(param(value, from(item).count())).toEqualTypeOf<AnyExpression<number>>()
+    const fallback = from(item)
+      .max("id")
+      .coalesce(param(value, from(item).get("id")))
+    expectTypeOf<ResultOf<typeof fallback>>().toEqualTypeOf<number | null>()
   })
 
   test("keeps null of an operand that may be an expression", () => {

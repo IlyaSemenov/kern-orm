@@ -2,11 +2,12 @@ import { expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
+import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { toNode } from "./expression"
+import { getType, toNode } from "./expression"
 import { identifier, param, sql } from "./sql"
 
 const form = defineTable("form", {
@@ -75,6 +76,15 @@ it("rejects a call of identifier without names or with an empty or non-string na
 it("returns an expression value of param as it is", () => {
   const nullable = param(t.integer.nullable(), null)
   expect(param(param(t.integer, 1), nullable)).toBe(nullable)
+})
+
+it("gives a query operand of param the runtime type of the expression", () => {
+  const value = param(t.integer, 1)
+  const query = from(form).count()
+  const expression = param(value, query)
+
+  expect(toNode(expression)).toEqual({ kind: "nestedQuery", query: query.node, db: undefined })
+  expect(getType(expression)).toBe(t.integer)
 })
 
 it("rejects a column passed to param as a type", () => {

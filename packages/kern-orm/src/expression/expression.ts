@@ -15,6 +15,15 @@ declare const typed: unique symbol
 const expressionNode = Symbol("kern-orm.expression.node")
 const expressionType = Symbol("kern-orm.expression.type")
 
+// Queries import the modules of expressions, so `toValueNode` recognizes a query by this method rather than by its class; an expression has the method too, so that recognizing either takes one lookup.
+/** Key of the method of an expression and of every class of queries that returns its node as an operand of an expression, or rejects a query that cannot be one. */
+export const operandNode = Symbol("kern-orm.operandNode")
+
+/** Expression or query, which converts itself into the node of an operand of an expression, or rejects itself. */
+export interface OperandSource {
+  [operandNode](): ExpressionNode
+}
+
 /** Expression of TypeScript type `T` accepting compared values of type `I`, whatever its operators. */
 export interface AnyExpression<T = unknown, I = unknown> {
   readonly [valueType]: T
@@ -71,6 +80,11 @@ class ExpressionObject {
 
   isNull() {
     return toBooleanExpression(createIsNullNode(this[expressionNode]))
+  }
+
+  /** Returns the node of the expression as an operand of another expression. */
+  [operandNode](): ExpressionNode {
+    return this[expressionNode]
   }
 }
 
@@ -137,11 +151,22 @@ export function toBooleanExpression(node: ExpressionNode): Expression<boolean | 
   return toExpression(node, getBooleanType())
 }
 
-/** Converts an expression or a plain value into a node, binding the value as a parameter encoded with `type`. */
+/** Tells whether `value` is an expression or a query, which has the method of `operandNode`, whether or not that method takes it as an operand. */
+export function isOperandSource(value: unknown): value is OperandSource {
+  return typeof value === "object" && value !== null && operandNode in value
+}
+
+/**
+ * Converts an operand into a node: an expression or a query by the method of `operandNode`, or a plain value, bound as a parameter encoded with `type`.
+ *
+ * The method of a query takes a query of one value of a table, which lowering replaces with a scalar subquery, or with `EXISTS` for a query of `exists`, and rejects another query, such as of records or of `$query`.
+ */
 export function toValueNode(value: unknown, type?: AnyType): ExpressionNode {
-  return value instanceof ExpressionObject
-    ? value[expressionNode]
-    : createNode({ kind: "param", value, type })
+  // The check of `isOperandSource` is written out, since calling it takes longer on Bun 1.4.4 for every value of a query.
+  if (typeof value === "object" && value !== null && operandNode in value) {
+    return (value as OperandSource)[operandNode]()
+  }
+  return createNode({ kind: "param", value, type })
 }
 
 /** Creates an `IS NULL` node directly, so that resolving an object condition never calls an `isNull` operator replaced by a type. */

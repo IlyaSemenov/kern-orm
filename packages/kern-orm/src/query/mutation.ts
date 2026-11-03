@@ -5,6 +5,7 @@ import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
 import type { TypedExpression } from "../expression/expression"
+import { operandNode } from "../expression/expression"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable, Selectable } from "../table/table"
@@ -230,6 +231,13 @@ export class MutationQuery<
   toSQL(...args: ToSQLArgs<Kind>): SqlStatement
   toSQL(options?: CompileOptions): SqlStatement {
     return compileToSQL(this, options)
+  }
+
+  /** Rejects the query as an operand of an expression, which takes a query of one value of a table. */
+  [operandNode](): never {
+    throw new TypeError(
+      "An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of insert, update, or delete",
+    )
   }
 
   /** Creates a mutation of the same kind and `Db` with the node changes applied. */

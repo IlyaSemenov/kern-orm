@@ -88,7 +88,7 @@ export function projectValue(
 
 // The fallback is encoded by the type of the value without a cast, so PostgreSQL types it by the value, such as `bigint` for the sum of `integer` values.
 /**
- * Creates the projection of the value of `field`, the only projection of a query of values, whose `NULL` `fallback` replaces: a value that the type of the field encodes, or an expression.
+ * Creates the projection of the value of `field`, the only projection of a query of values, whose `NULL` `fallback` replaces: a value that the type of the field encodes, an expression, or a query of one value.
  *
  * The projection of an aggregate keeps its call, which lowering builds, and adds the fallback after its earlier ones.
  * The projection of `exists` stays as it is, since `EXISTS` is never `NULL`.

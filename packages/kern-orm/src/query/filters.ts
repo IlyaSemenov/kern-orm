@@ -1,9 +1,12 @@
 import { combineNodes } from "../ast/boolean"
 import type { QueryFilters, TableSourceNode } from "../ast/nodes"
+import type { ComparisonSignature, Operand } from "../expression/operators/comparison"
+import type { EqualityOperator } from "../expression/operators/equality"
 import type { ConditionOperand, Predicate } from "../expression/predicates"
 import { toConditionNode } from "../expression/predicates"
 import type { NoRelations, SchemaContext } from "../schema/relation"
 import type { AnyTable, ColumnOperators, ColumnValues } from "../table/table"
+import type { TypeInput, TypeOutput } from "../type/type"
 import type { IsAny } from "../utils/type-helpers"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
@@ -23,9 +26,14 @@ export type WhereValues<T extends AnyTable> = {
 /** Operand of the `eq` operator of column `K` of table `T` in an object passed to `where`, such as an expression. */
 export type EqValue<T extends AnyTable, K extends keyof T["columns"]> =
   // Operators of a table of any columns are `any`, and its values accept any value, so that a query over a specific table is a query over any table.
-  IsAny<ColumnOperators<T, K>> extends true ? ColumnValues<T>[K] : EqOperand<ColumnRefs<T>[K]>
+  IsAny<ColumnOperators<T, K>> extends true
+    ? ColumnValues<T>[K]
+    : // The operand of the `eq` of `equalityOperators` is read from the type of the column: inferring it from the method with the check of `EqOperand` evaluates the result type of the operator, which adds about 165 instantiations to the first object condition of each column.
+      ColumnOperators<T, K> extends { readonly eq: EqualityOperator<ComparisonSignature> }
+      ? Operand<TypeOutput<T["columns"][K]["type"]>, TypeInput<T["columns"][K]["type"]>>
+      : EqOperand<ColumnRefs<T>[K]>
 
-/** Operand of the `eq` operator of an expression, if it has one taking a single operand. */
+/** Operand of the `eq` operator of an expression, if it has one taking a single operand and returning a predicate. */
 type EqOperand<E> = E extends { eq: (value: infer V) => Predicate } ? V : never
 
 /** Filter of `where`: a Boolean expression, a query of one Boolean value, such as of `exists`, an object of column values, or their combination with `and`, `or`, and `not`. */
