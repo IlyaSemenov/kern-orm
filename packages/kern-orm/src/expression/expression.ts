@@ -176,6 +176,14 @@ export function toValueNode(value: unknown, type?: AnyType): ExpressionNode {
   return createNode({ kind: "param", value, type })
 }
 
+/** Converts an operand of the function `name` that skips `NULL`, such as the fallback of `coalesce`, into a node as `toValueNode` does, rejecting a plain `null` and `undefined`, which would have no effect or no value. */
+export function toFunctionOperandNode(value: unknown, type: AnyType, name: string): ExpressionNode {
+  if (value === null || value === undefined) {
+    throw new TypeError(`${name} takes a value other than ${String(value)}`)
+  }
+  return toValueNode(value, type)
+}
+
 /** Creates an `IS NULL` node directly, so that resolving an object condition never calls an `isNull` operator replaced by a type. */
 export function createIsNullNode(operand: ExpressionNode): ExpressionNode {
   return createNode({ kind: "isNull", operand })

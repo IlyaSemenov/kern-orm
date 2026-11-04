@@ -1,7 +1,7 @@
 import type { ScalarProjection, TableSourceNode } from "../ast/nodes"
 import { createList, createNode } from "../ast/nodes"
 import type { AnyExpression } from "../expression/expression"
-import { getType, isExpression, toNode, toValueNode } from "../expression/expression"
+import { getType, isExpression, toFunctionOperandNode, toNode } from "../expression/expression"
 import { isRecordKey } from "../result/result"
 import { requireColumn } from "../table/table"
 import type { AnyType } from "../type/type"
@@ -94,13 +94,10 @@ export function projectValue(
  * The projection of `exists` stays as it is, since `EXISTS` is never `NULL`.
  */
 export function coalesceValue(field: ScalarProjection, fallback: unknown): ScalarProjection {
-  if (fallback === null || fallback === undefined) {
-    throw new TypeError(`coalesce takes a value other than ${String(fallback)}`)
-  }
+  const value = toFunctionOperandNode(fallback, field.type, "coalesce")
   if (isExistsProjection(field)) {
     return field
   }
-  const value = toValueNode(fallback, field.type)
   if (isAggregateProjection(field)) {
     return addFallback(field, value)
   }

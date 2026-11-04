@@ -5,7 +5,7 @@
   `null` among the values of a type stands for `NULL`, which `nullable` adds, as `primaryKey`, object conditions, and `coalesce` read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
   A JSON `null` value decodes to `null`, which kern-orm does not tell from `NULL`.
   Consumers require `strictNullChecks`, without which `null` belongs to every type; `primaryKey` then rejects every type and column with an error that names the option.
-- **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, and `sql`/`param` fragments.
+- **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, `sql`/`param` fragments, and functions such as `coalesce`.
   Every expression has `isNull`; the operators of its type are added to it and replace `isNull` if one has its name, in types and at runtime alike.
   SQL `=` is a capability of a type given only by the operators of `equalityOperators`, which `orderingOperators` include; these operators are marked, so that another operator named `eq` does not give it, and an array type has them only when its element type has the capability.
   Two types are compared with `=` as they are, as the keys of a relation, when both have the capability and they are one SQL type by their cast types, whatever their type parameters and the representation of their values, or both belong to an explicit family of one B-tree operator family: `smallint`, `integer`, and `bigint`, or `text` and `varchar`.
@@ -33,6 +33,26 @@
   Their nullability is tracked only in TypeScript: results include `null` when the value of the expression an operator is called on or of an operand can be `NULL`, such as of a nullable column, of a query of `get` without its row, or among the values of a query of `in`.
   `isNull` and `in` with an empty list never include it, and `and`/`or` include it when any operand does, such as a query of a condition whose value can be `NULL` ([queries](queries.md#queries-in-expressions)).
   The shared runtime type does not describe whether an expression can evaluate to `NULL`; result decoding preserves `NULL` independently of it.
+
+## Functions of expressions
+
+- `coalesce`, `greatest`, and `least` (`expression/functions.ts`) are functions of their operands rather than operators of a type, since each type has them and their first operand may be a query, which has no operators.
+- The first operand gives the result its type, which decodes its values and gives it its operators; it requires an expression with a type or a query of one value, whose projection has the type, in types and at runtime.
+  The type encodes the plain values among the following operands.
+  They take no cast, since PostgreSQL types a parameter by the other operands, and a first operand always types them.
+- A following operand is what an operand of an operator is ([queries](queries.md#queries-in-expressions)): a value that the type encodes, or an expression or a query of one value of the values of the first operand.
+  - It rejects a plain `null` and `undefined`, in types and at runtime, as the method `coalesce` of a query does, since a function skips `NULL` and a parameter has no `undefined`.
+- Types check the values of the operands rather than their SQL types, as for the operands of operators.
+  PostgreSQL resolves the common type of the operands ([PostgreSQL](https://www.postgresql.org/docs/current/typeconv-union-case.html)) and rejects operands without one, such as `text` and `uuid`.
+  - No runtime check compares the cast types of the operands, as it would reject operands whose common type the first operand reads, such as a count, a `bigint` decoded as a number, beside an `integer`, which is the common case of aggregates beside columns.
+  - The type of the first operand reads the value in the common type, so it fails to decode with `ResultDecodeError` where the formats differ, such as a `timestamp` before a `timestamptz`, so the wider type must come first.
+  - For the same reason, an `integer` before a count reads a value outside the safe integer range of numbers without the error of a count.
+- The result is `NULL` only when every operand can be, as PostgreSQL gives for each of them, which types follow.
+  An array of following operands may be empty, so it does not make a nullable first operand a value other than `NULL`.
+  The following operands are `const`, since TypeScript otherwise widens a literal of a union of literals, such as of an enum, which fails the constraint and leaves the constraint itself, whose operands can be `NULL`; a plain array, which the mutable values of an array type do not take as `const`, keeps `null` in the same way, unlike the expression of `param`.
+- Unlike the method `coalesce` of a query, which keeps a missing row missing, a query among the operands of `coalesce` is `NULL` without its row, as in any expression, so the function replaces a missing row too.
+- A call is a raw node of `createList`, so lowering takes it for a SQL fragment in a page after an offset ([SQL generation](sql.md#nested-rows)), which only costs the speed of the page.
+- A call of a function adds about 90 instantiations to a query of a column and about 140 to one of an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
 
 ## Parameters and SQL fragments
 

@@ -42,6 +42,8 @@ export type {
   Predicate,
 } from "./expression/predicates"
 export { and, not, or } from "./expression/predicates"
+export type { FollowingOperand, NullSkippingResult, TypedOperand } from "./expression/functions"
+export { coalesce, greatest, least } from "./expression/functions"
 export type {
   AnyType,
   BaseType,
@@ -70,6 +72,7 @@ export type {
   ResultOf,
   ScalarQuery,
   SelectQuery,
+  TypedScalarQuery,
   ValuesQuery,
 } from "./query/select"
 export { from } from "./query/select"

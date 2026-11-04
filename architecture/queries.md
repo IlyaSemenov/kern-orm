@@ -79,7 +79,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Queries in expressions
 
-- An expression takes a query of a table of one value, such as of `get`, of an aggregate, or of [`exists`](#exists), wherever it takes an operand: as a condition, an operand of an operator, such as `field.position.lt(form.fields.max("position"))`, a value of an object condition, an item of the list of `in`, the fallback of `coalesce`, and a value of `param` with an expression.
+- An expression takes a query of a table of one value, such as of `get`, of an aggregate, or of [`exists`](#exists), wherever it takes an operand: as a condition, an operand of an operator, such as `field.position.lt(form.fields.max("position"))`, a value of an object condition, an item of the list of `in`, the fallback of `coalesce`, an operand of a [function of expressions](types.md#functions-of-expressions), and a value of `param` with an expression.
   A [sort key](#sorting-and-pagination) takes it too.
   A query of `exists` is `EXISTS` of its rows, and another query a scalar subquery of its value.
   - The query keeps its `Db`, which must be the `Db` that runs the statement, as for a nested query of a selection.

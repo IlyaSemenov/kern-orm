@@ -127,6 +127,12 @@ interface ExpressionQueryState extends ScalarQueryState {
   readonly valueType: QueryValueType
 }
 
+/** Query of one value of a table with the type of its value, such as of `get` or of an aggregate, which gives the expression of a function the decoding and the operators of its value. */
+// An interface rather than an intersection with `QueryOf`, as `ScalarQuery` is.
+export interface TypedScalarQuery extends ScalarQuery {
+  readonly types: ExpressionQueryState
+}
+
 /** Query of values of a table of any rows, such as of `pluck`, whose value is `T`, which `in` takes as a subquery of its values. */
 // An interface rather than an intersection with `QueryOf`, as `ScalarQuery` is.
 export interface ValuesQuery<T = unknown> {

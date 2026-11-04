@@ -4,10 +4,10 @@ Work not done yet, ideas, and research, roughly from the most important; the ord
 
 ## Functions of expressions
 
-Functions of expressions typed by their operands, for values and conditions that operators do not cover, such as the weight of the role of a user from several sources, `GREATEST(COALESCE((SELECT max(CASE ... END) ...), 0), ...)`:
+`CASE` and constants, beside [`coalesce`, `greatest`, and `least`](architecture/types.md#functions-of-expressions), for values and conditions that operators do not cover, such as the weight of the role of a user, `max(CASE ... END)`:
 
-- `coalesce`, `greatest`, `least`, and `CASE`, such as functions exported by `kern-orm` beside `and`, `or`, and `not`.
-- Their result is `NULL` by rules of their own, which types follow, as for `and` and `or`: `coalesce` only when every operand is, `greatest` and `least` ignore `NULL` operands, and `CASE` without `ELSE` is `NULL` when no branch matches.
+- Preliminary decision: `caseWhen(t.integer, [[role.name.eq("owner"), 100], [role.name.eq("editor"), 50]], 0)`, of a type given first, since its branches are often plain values, whose parameters PostgreSQL resolves as `text`, so that `max` of them compares strings; so plain values take a cast to the type.
+- `CASE` without `ELSE` is `NULL` when no branch matches, which types follow.
 - Constants serve as the neutral branch of a condition built in code, such as `FALSE` in `condition ? check : FALSE`, and as fallbacks, such as `0`: an empty `or()` is `FALSE`, an empty `and()` is `TRUE`, and `param(t.integer, 0)` is a typed value, but the user documentation shows none of them as such; decide whether documenting them is enough.
 
 ## Reusable expressions with arguments
@@ -316,7 +316,7 @@ A query of `$select` as a field of a selection, such as of `select` or of anothe
 ## Scalar fragments of kern-orm in pages after an offset
 
 A page after an offset keeps the nested queries on its table when a nested query holds a SQL fragment that refers to a column of the table, as [architecture/sql.md](architecture/sql.md#nested-rows) states, since a fragment may aggregate the rows of the query.
-Fragments that kern-orm builds are known to be scalar, such as the `coalesce` of the fallbacks of an aggregate in `form.fields.max("id").coalesce(form.id)`, yet they keep the page on its table too.
+Fragments that kern-orm builds are known to be scalar, such as the `coalesce` of the fallbacks of an aggregate in `form.fields.max("id").coalesce(form.id)` and the [functions of expressions](architecture/types.md#functions-of-expressions), yet they keep the page on its table too.
 
 - Mark such fragments, such as by a flag of a raw node or a node kind of a function call, so that the check skips them.
 - Research first which fragments refer to the columns of a parent row: the fallbacks of aggregates, and possibly generic operators and the operators of custom types.

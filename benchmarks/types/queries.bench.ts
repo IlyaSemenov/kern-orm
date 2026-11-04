@@ -3,7 +3,7 @@
 
 import { bench } from "@ark/attest"
 import type { DbOf } from "kern-orm"
-import { defineHelper, desc, not } from "kern-orm"
+import { coalesce, defineHelper, desc, greatest, not } from "kern-orm"
 
 import { formsDb, formsSchema, storeDb, tenantDb } from "./fixture.ts"
 
@@ -73,6 +73,10 @@ bench.baseline(async () => {
   await tenantDb.field.where({ label: "baseline" }).count()
   await tenantDb.field.where({ label: "baseline" }).max("position")
   await tenantDb.field.where({ label: "baseline" }).min("label").coalesce("baseline")
+  await tenantDb.field.pluck(field => coalesce(field.position, 1))
+  await tenantDb.field.select(field => ({
+    value: greatest(field.answers.count(), field.position),
+  }))
   await tenantDb.field.where({ label: "baseline" }).exists()
   await tenantDb.field.where(field => not(field.answers.exists())).pluck("id")
   await tenantDb.field
@@ -157,6 +161,16 @@ bench("aggregate of a column", async () => {
 bench("aggregate with a fallback", async () => {
   await tenantDb.form.where({ name: "x" }).max("name").coalesce("x")
 }).types([273, "instantiations"])
+
+bench("function of a column", async () => {
+  await tenantDb.form.pluck(form => coalesce(form.name, "x"))
+}).types([255, "instantiations"])
+
+bench("function of an aggregate of a relation and a value", async () => {
+  await tenantDb.form.select(form => ({
+    value: greatest(form.fields.count(), 1),
+  }))
+}).types([608, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()

@@ -23,6 +23,7 @@ export default defineConfig({
           { text: "Filtering", link: "/queries/filtering" },
           { text: "Sorting and Pagination", link: "/queries/sorting" },
           { text: "Related Records", link: "/queries/relations" },
+          { text: "Computed Values", link: "/queries/computed-values" },
           { text: "Inserting, Updating, and Deleting", link: "/queries/mutations" },
           { text: "Composing Queries", link: "/queries/composing" },
           { text: "Reusable Queries", link: "/queries/reusable" },
