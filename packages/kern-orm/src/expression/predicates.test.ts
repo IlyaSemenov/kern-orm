@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { runInNewContext } from "node:vm"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { falseNode, trueNode } from "../ast/nodes"
@@ -64,6 +65,69 @@ describe("not", () => {
   it("cancels a double negation", () => {
     const condition = predicate("Alice")
     expect(toNode(not(not(condition)))).toBe(toNode(condition))
+  })
+})
+
+describe("a condition that is not one", () => {
+  const message = "A condition must be an expression"
+  class ComputedFilter {
+    get name() {
+      return "Alice"
+    }
+  }
+  const values = [
+    false,
+    true,
+    0,
+    "",
+    null,
+    undefined,
+    [],
+    [{ name: "Alice" }],
+    new Date(),
+    new Boolean(false),
+    new Map(),
+    new ComputedFilter(),
+  ]
+
+  it("rejects a value other than an object of column values in and, or, and not", () => {
+    for (const value of values) {
+      expect(() => and(value as never)).toThrow(message)
+      expect(() => or(value as never)).toThrow(message)
+      expect(() => not(value as never)).toThrow(message)
+    }
+  })
+
+  // Keyless values such as false or a Date must not become an empty object condition that selects every row.
+  it("rejects it in where, also from a callback, rather than selecting every row", () => {
+    const query = from(user).select("id")
+
+    for (const value of values) {
+      expect(() => query.where(value as never)).toThrow(message)
+      expect(() => query.where((() => value) as never)).toThrow(message)
+    }
+  })
+
+  it("keeps an empty plain object, also without a prototype or of another realm, which is TRUE", () => {
+    const query = from(user).select("id")
+    const unfiltered = 'SELECT "user"."id" AS "id" FROM "user" AS "user"'
+
+    expect(query.where({}).toSQL().text).toBe(unfiltered)
+    expect(query.where(Object.create(null) as object).toSQL().text).toBe(unfiltered)
+    expect(query.where(runInNewContext("({})") as object).toSQL().text).toBe(unfiltered)
+  })
+
+  it("keeps an instance of a class with fields, whose keys the compiler checks against the columns", () => {
+    class NameFilter {
+      name = "Alice"
+    }
+    class UnknownFilter {
+      nickname = "Alice"
+    }
+    const query = from(user).select("id")
+
+    expect(query.where(new NameFilter()).toSQL().text).toEndWith('WHERE "user"."name" = $1')
+    expect(() => query.where(new UnknownFilter() as never).toSQL()).toThrow("nickname")
   })
 })
 

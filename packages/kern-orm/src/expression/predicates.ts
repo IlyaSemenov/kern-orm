@@ -32,12 +32,30 @@ export type ConditionOperand<V, T extends boolean | null = boolean | null> =
   | Condition<V>
   | NoInfer<V>
 
-/** Converts a condition operand into a node: a query nests in it, and an object of column values stays unresolved until `where`. */
+/** Converts a condition operand into a node: a query nests in it, and an object of column values stays unresolved until `where`; it rejects any other value. */
 export function toConditionNode(operand: unknown): ExpressionNode {
   if (isOperandSource(operand)) {
     return operand[operandNode]()
   }
+  if (!isColumnValues(operand)) {
+    throw new TypeError(
+      "A condition must be an expression, such as TRUE or FALSE, a query of one Boolean value, or an object of column values",
+    )
+  }
   return createNode({ kind: "values", values: operand as Record<string, unknown> })
+}
+
+// A value without keys reads as an empty object, which is `TRUE`, such as `where(false)` selecting every row, so only an empty plain object may lack them.
+// An instance of a class with fields is an object of column values, as types take it, since the compiler checks its keys against the columns.
+/** Tells whether `value` can be an object of column values: a plain object, of this or another realm, or an object that has keys. */
+function isColumnValues(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false
+  }
+  const prototype: unknown = Object.getPrototypeOf(value)
+  return (
+    prototype === null || Object.getPrototypeOf(prototype) === null || Object.keys(value).length > 0
+  )
 }
 
 // TypeScript takes the column values `V` from condition operands, or from the table of the enclosing `where`, `defineFilter`, or annotated variable.

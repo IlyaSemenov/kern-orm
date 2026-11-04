@@ -40,6 +40,16 @@ test("and, or, and not are Boolean expressions without objects outside `where`",
   from(form).where(sql<boolean>`${prebuilt} OR TRUE`)
 })
 
+test("an instance of a class is an object of column values by its fields", () => {
+  class PublishedFilter {
+    published = true
+  }
+
+  from(form).where(new PublishedFilter())
+  // @ts-expect-error A date has none of the columns of the table.
+  from(form).where(new Date())
+})
+
 test("objects of column values need a table", () => {
   // @ts-expect-error An object of column values outside `where` needs the table.
   or({ anything: 1 })
