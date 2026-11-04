@@ -48,6 +48,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Register every workspace package and its subpath exports in `paths` of the root `tsconfig.json`; tests, examples, and typecheck resolve packages to their sources through it.
 - Declare the dependency of a published package on `kern-orm` in `peerDependencies`, so that an application has one copy of it, and in `devDependencies` as `workspace:*`, which links the workspace package.
   - Give a driver a range of the whole 0.x series, such as `>=0.2.0 <1`, under the contract in [architecture/drivers.md](architecture/drivers.md#compatibility).
+    Keep `kern-orm-minimum` in `devDependencies` of `kern-orm` at that minimum, as the URL of its tarball: the package test runs the drivers with it, and Bun links an `npm:` alias of a version that the workspace package has to the workspace package.
   - Give any other package a caret range that matches the local version, such as `^0.2.0`; changesets releases the package with a new range for each minor version of `kern-orm`.
   - Do not use the `workspace:` protocol in `peerDependencies` or `dependencies`: `changeset publish` publishes with npm, which does not rewrite it.
   - Changesets keeps a peer range that contains the new version, by `onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`.

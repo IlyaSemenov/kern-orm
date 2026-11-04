@@ -42,6 +42,7 @@
   },
   "devDependencies": {
     "@kern-orm/postgres-js": "workspace:*",
+    "kern-orm-minimum": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
     "postgres": "catalog:",
     "typescript-6": "catalog:"
   },

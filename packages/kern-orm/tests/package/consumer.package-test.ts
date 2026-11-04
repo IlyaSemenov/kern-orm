@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, dirname, join } from "node:path"
 
 import { build } from "esbuild"
 import { rolldown } from "rolldown"
@@ -11,10 +11,13 @@ const root = join(import.meta.dir, "../../../..")
 // Each packed package with the consumer project that installs it: the postgres.js 3 driver has a project of its own, whose `postgres` is postgres.js 3.
 const packages = [
   { dir: "packages/kern-orm", project: "." },
-  { dir: "packages/postgres-js", project: "." },
-  { dir: "packages/postgres-js-v3", project: "postgres-js-v3" },
+  { dir: "packages/postgres-js", project: ".", driver: true },
+  { dir: "packages/postgres-js-v3", project: "postgres-js-v3", driver: true },
   { dir: "packages/migrations", project: "." },
 ]
+
+const drivers = packages.filter(({ driver }) => driver)
+const minimumKernOrm = dirname(Bun.resolveSync("kern-orm-minimum/package.json", import.meta.dir))
 
 const compileOnlyOutput = {
   text: 'SELECT "form"."name" AS "name" FROM "form" AS "form" WHERE "form"."name" = $1',
@@ -30,6 +33,11 @@ const consumerOutput = {
 }
 
 let consumer: string
+
+/** Returns the project of a driver that has the minimum version of `kern-orm` in its range. */
+function getMinimumKernOrmProject(dir: string): string {
+  return join(consumer, "minimum-kern-orm", basename(dir))
+}
 
 beforeAll(async () => {
   consumer = await mkdtemp(join(tmpdir(), "kern-orm-consumer-"))
@@ -56,6 +64,30 @@ beforeAll(async () => {
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
+  for (const { dir, project: driverProject } of drivers) {
+    const { name } = await Bun.file(join(root, dir, "package.json")).json()
+    const project = getMinimumKernOrmProject(dir)
+    await cp(
+      join(consumer, driverProject, "node_modules", name),
+      join(project, "node_modules", name),
+      {
+        recursive: true,
+      },
+    )
+    await cp(minimumKernOrm, join(project, "node_modules/kern-orm"), { recursive: true })
+    await symlink(join(root, dir, "node_modules/postgres"), join(project, "node_modules/postgres"))
+    await writeFile(
+      join(project, "tsconfig.json"),
+      JSON.stringify({
+        extends: "../../tsconfig.json",
+        compilerOptions: {
+          noEmit: true,
+          emitDeclarationOnly: false,
+        },
+        include: ["*.ts"],
+      }),
+    )
+  }
   await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
   await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }))
   await writeFile(
@@ -251,6 +283,25 @@ describe.each(["node", "bun"])("%s", runtime => {
   test("runs a consumer of the postgres.js 3 driver", () => {
     expect(JSON.parse(run([runtime, "postgres-js-v3/consumer.ts"], consumer))).toEqual({
       acquireAfterClose: "Cannot acquire a connection: the driver is closed",
+    })
+  })
+})
+
+describe.each(drivers)("$dir with the minimum version of kern-orm", ({ dir }) => {
+  test("declares the version as the minimum of its range", async () => {
+    const { version } = await Bun.file(join(minimumKernOrm, "package.json")).json()
+    const { peerDependencies } = await Bun.file(join(root, dir, "package.json")).json()
+    expect(peerDependencies["kern-orm"]).toBe(`>=${version} <1`)
+  })
+
+  test("type-checks a consumer", () => {
+    run([join(root, "node_modules/.bin/tsc"), "-p", getMinimumKernOrmProject(dir)], consumer)
+  }, 60_000)
+
+  describe.each(["node", "bun"])("%s", runtime => {
+    test.skipIf(!process.env.DATABASE_URL)("runs statements in PostgreSQL", () => {
+      const output = run([runtime, "consumer.ts"], getMinimumKernOrmProject(dir))
+      expect(JSON.parse(output)).toEqual({ pooled: [["1"]], reserved: [["2"]] })
     })
   })
 })

@@ -17,6 +17,7 @@ A published version keeps its range forever, so this contract covers every publi
 
 - A later version of `kern-orm` before 1.0 must keep working with every published driver, so the contract of `execution/driver.ts` must not start to require a new method, parameter, or result field, or change the meaning of an existing one.
 - A driver that starts to rely on a newer version of `kern-orm` must raise the minimum of its range.
+  The package test runs each driver with that version.
 - A change that cannot keep the contract requires a decision about the published drivers before the change.
 
 ## postgres.js
