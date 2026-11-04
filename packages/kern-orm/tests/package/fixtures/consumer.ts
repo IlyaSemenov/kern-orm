@@ -1,7 +1,7 @@
 // Uses every entry point of `kern-orm` and `@kern-orm/postgres-js` without connecting to a database.
 import { postgresJsDriver } from "@kern-orm/postgres-js"
 import type { ResultOf } from "kern-orm"
-import { createDatabase, defineSchema, defineTable } from "kern-orm"
+import { createDatabase, defineSchema, defineTable, FALSE, or } from "kern-orm"
 import type { TestFixture } from "kern-orm/testing"
 import { createTestHelpers } from "kern-orm/testing"
 import * as t from "kern-orm/types"
@@ -30,5 +30,17 @@ const { useTestFixture } = createTestHelpers(createDatabase({ driver, test: true
 useTestFixture(async () => ({ formId: "form-id" })) satisfies TestFixture<{ formId: string }>
 
 const { text, parameters } = query.toSQL()
-console.log(JSON.stringify({ text, parameters, record, pageText: page.toSQL().text }))
+console.log(
+  JSON.stringify({
+    text,
+    parameters,
+    record,
+    pageText: page.toSQL().text,
+    // A constant, created when the package loads.
+    conditionText: db.form
+      .where(or({ name: "Survey" }, FALSE))
+      .select("id")
+      .toSQL().text,
+  }),
+)
 await database.close()

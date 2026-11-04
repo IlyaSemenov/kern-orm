@@ -47,6 +47,14 @@ describe("param", () => {
     code: numericCode,
   })
 
+  test("of a type is a constant that a query selects", () => {
+    const query = from(coded).select(() => ({
+      source: param(t.text, "form"),
+    }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ source: string }>()
+  })
+
   test("of an expression and a plain value has the operators of the expression", () => {
     from(coded).where(columns => param(columns.code, "a").eq(1))
 

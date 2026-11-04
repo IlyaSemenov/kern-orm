@@ -103,3 +103,23 @@ const forms = await db.form.select(form => ({
 }))
 // forms: { name: string; weight: number }[]
 ```
+
+## Constant values
+
+To select a constant, such as a label identifying the source of each record, pass its type and the value to `param`:
+
+```ts
+import { param } from "kern-orm"
+import * as t from "kern-orm/types"
+
+const forms = await db.form.select(form => ({
+  id: form.id,
+  source: param(t.text, "form"),
+}))
+// forms: { id: string; source: string }[]
+```
+
+The functions take plain values without it, but a plain array leaves `null` in the type of the result.
+Pass the array through `param` when the result must not be `null`, such as `coalesce(form.tags, param(t.array(t.text), []))`.
+
+For a constant condition, use [`TRUE` and `FALSE`](./filtering#combining-conditions).

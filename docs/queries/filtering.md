@@ -46,6 +46,19 @@ await db.form.where(or({ published: true }, { name: "Survey" })).select("id")
 
 They also take objects of column values, which match the columns of the query like an object passed to `where`.
 
+To include a condition only in some cases, such as to also show drafts to an administrator, pass `FALSE` in the other case:
+
+```ts
+import { FALSE, or } from "kern-orm"
+
+await db.form
+  .where(form => or({ published: true }, isAdmin ? form.name.ilike("draft%") : FALSE))
+  .select("id")
+```
+
+Pass `TRUE` in the same way for a branch of `and`.
+To add a whole clause only in some cases, use [`use`](./composing).
+
 ## Related records
 
 To find records that have related records, such as the forms that have fields, call `exists` on the [relation](../schemas#relations) in the callback of `where`:

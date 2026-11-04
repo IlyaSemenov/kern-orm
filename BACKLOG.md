@@ -2,10 +2,6 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
-## Constants of expressions
-
-Constants serve as the neutral branch of a condition built in code, such as `FALSE` in `condition ? check : FALSE`, and as fallbacks, such as `0`: an empty `or()` is `FALSE`, an empty `and()` is `TRUE`, and `param(t.integer, 0)` is a typed value, but the user documentation shows none of them as such; decide whether documenting them is enough.
-
 ## Reusable expressions with arguments
 
 An expression over the columns and relations of a table that queries of the table reuse with arguments, such as whether a user can moderate a record, which a query both selects and filters by, while `defineFilter` reuses only a condition without arguments.

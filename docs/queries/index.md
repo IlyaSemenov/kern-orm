@@ -15,7 +15,7 @@ A method never changes the query it is called on, so a query can be extended in 
 - [Filtering](./filtering): find records by column values, operators, related records, values of other queries, and SQL conditions.
 - [Sorting and Pagination](./sorting): sort rows by columns, expressions, and related records, and get them page by page.
 - [Related Records](./relations): load the related records of each row in the same query.
-- [Computed Values](./computed-values): replace `NULL`, take the largest or the smallest of several values, or choose a value by conditions.
+- [Computed Values](./computed-values): replace `NULL`, take the largest or the smallest of several values, choose a value by conditions, or select a constant.
 - [Inserting, Updating, and Deleting](./mutations): change records and get the fields of the changed ones.
 - [Composing Queries](./composing): add clauses conditionally, or define them once and reuse them across queries of a table.
 - [Reusable Queries](./reusable): define a query once and execute it in several places, also with a `Db` known only at runtime.

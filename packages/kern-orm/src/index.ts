@@ -42,6 +42,7 @@ export type {
   Predicate,
 } from "./expression/predicates"
 export { and, not, or } from "./expression/predicates"
+export { FALSE, TRUE } from "./expression/constants"
 export type {
   CaseBranch,
   CaseCondition,

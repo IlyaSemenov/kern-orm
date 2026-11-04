@@ -29,6 +29,9 @@
 - Boolean logic is an expression tree; the compiler parenthesizes by tree structure, not by call order.
 - `and`/`or`/`not` simplify constants only with identities valid in three-valued logic.
   An empty `IN` list is `FALSE`, an empty `and` is `TRUE`, and an empty `or` is `FALSE`.
+- `TRUE` and `FALSE` (`expression/constants.ts`) are Boolean expressions of the constant nodes, so every position of a condition or an expression takes them, and `or` drops `FALSE` and `and` drops `TRUE`, as the neutral branch of a condition built in code.
+  - A condition takes no plain Boolean value, since TypeScript types the negation of an expression, such as `!form.published`, as `false`, so that types would accept it and the condition would silently lose its branch.
+  - Creating them reads the Boolean type, so they have a module of their own, which no module of the import cycle of expressions imports.
 - Built-in Boolean expressions carry the Boolean runtime type for encoding and decoding.
   Their nullability is tracked only in TypeScript: results include `null` when the value of the expression an operator is called on or of an operand can be `NULL`, such as of a nullable column, of a query of `get` without its row, or among the values of a query of `in`.
   `isNull` and `in` with an empty list never include it, and `and`/`or` include it when any operand does, such as a query of a condition whose value can be `NULL` ([queries](queries.md#queries-in-expressions)).
@@ -70,6 +73,7 @@
 
 - PostgreSQL infers the type of every parameter from the statement text.
   `param` with a type casts its parameter to the cast type of the type, which omits type parameters such as the scale of `numeric(10,2)`, so that the operators of the type apply even where nothing else types the parameter, and type parameters do not constrain its value.
+  `param(type, value)` creates a typed constant expression that queries can select; kern-orm exports no constants of other types than the Boolean `TRUE` and `FALSE`.
   `param` with an expression adds no cast, since operator definitions use it beside that expression, which types it.
   It returns a value that is already an expression, such as an operand of a generic operator, as it is, keeping its type, if it has one, and the nullability of its TypeScript type.
   A query of one value, such as an operand of a generic operator, becomes an expression with the runtime type of the first argument; types give it as an `AnyExpression` of the value of the query, which is `NULL` without its row whatever that type ([queries](queries.md#queries-in-expressions)).

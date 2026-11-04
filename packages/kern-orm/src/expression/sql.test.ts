@@ -100,6 +100,17 @@ it("gives a query operand of param the runtime type of the expression", () => {
   expect(getType(expression)).toBe(t.integer)
 })
 
+it("selects a constant through param with a type", () => {
+  const query = from(form).select(() => ({
+    source: param(t.text, "form"),
+  }))
+
+  expect(query.toSQL()).toEqual({
+    text: 'SELECT $1::text AS "source" FROM "form" AS "form"',
+    parameters: ["form"],
+  })
+})
+
 it("rejects a column passed to param as a type", () => {
   // @ts-expect-error A column is not a type.
   expect(() => param(t.uuid.primaryKey(), "id")).toThrow(
