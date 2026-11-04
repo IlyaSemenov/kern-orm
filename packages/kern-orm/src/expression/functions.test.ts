@@ -12,7 +12,7 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import { getType, toNode } from "./expression"
-import { coalesce, greatest, least } from "./functions"
+import { caseWhen, coalesce, greatest, least } from "./functions"
 import { and } from "./predicates"
 import { sql } from "./sql"
 
@@ -172,6 +172,136 @@ describe("a query of a Db among the operands", () => {
         })),
       ),
     ).not.toThrow()
+  })
+})
+
+describe("caseWhen", () => {
+  it("compiles CASE of its branches in order, casting plain values to its type", () => {
+    const query = from(form).select(form => ({
+      value: caseWhen(
+        t.integer,
+        [
+          [form.name.eq("x"), 1],
+          [form.hint.isNull(), 2],
+        ],
+        0,
+      ),
+    }))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT CASE WHEN ("form"."name" = $1) THEN ($2::integer) WHEN ("form"."hint" IS NULL) THEN ($3::integer) ELSE ($4::integer) END AS "value" FROM "form" AS "form"',
+      parameters: ["x", "1", "2", "0"],
+    })
+  })
+
+  it("has no ELSE without a fallback", () => {
+    const query = from(form).select(form => ({
+      value: caseWhen(t.integer, [[form.name.eq("x"), 1]]),
+    }))
+
+    expect(query.toSQL().text).toContain("THEN ($2::integer) END")
+  })
+
+  it("takes a plain null as the value of a branch and as the fallback", () => {
+    const query = from(form).select(form => ({
+      value: caseWhen(t.integer, [[form.name.eq("x"), null]], null),
+    }))
+
+    expect(query.toSQL()).toMatchObject({ parameters: ["x", null, null] })
+    expect(query.toSQL().text).toContain("THEN ($2::integer) ELSE ($3::integer) END")
+  })
+
+  it("casts neither an expression nor a query, which have their own SQL types", () => {
+    const query = from(form).select(form => ({
+      value: caseWhen(t.integer, [[form.name.eq("x"), form.limit]], from(field).max("position")),
+    }))
+
+    const { text } = query.toSQL()
+    expect(text).toContain('THEN "form"."limit" ELSE (SELECT max(')
+    expect(text).not.toContain("::integer")
+  })
+
+  it("encodes a plain value with its type and casts it without type parameters", () => {
+    const query = from(form).select(form => ({
+      score: caseWhen(scoreType, [[form.name.eq("x"), { value: 7 }]], { value: 0 }),
+      price: caseWhen(t.numeric.with(10, 2), [[form.name.eq("y"), 1.5]]),
+    }))
+
+    const { text, parameters } = query.toSQL()
+    expect(parameters).toEqual(["x", "7", "0", "y", "1.5"])
+    expect(text).toContain("THEN ($5::numeric) END")
+  })
+
+  it("takes a query of one Boolean value as a condition", () => {
+    const query = schema.form.select(form => ({
+      value: caseWhen(t.integer, [[form.fields.exists(), 1]], 0),
+    }))
+
+    expect(query.toSQL().text).toContain('CASE WHEN EXISTS (SELECT FROM "field" AS "field"')
+  })
+
+  it("gives the fallback, or NULL of its type, without branches", () => {
+    const query = from(form).select(() => ({
+      fallback: caseWhen(t.integer, [], 5),
+      missing: caseWhen(t.integer, []),
+    }))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT $1::integer AS "fallback", $2::integer AS "missing" FROM "form" AS "form"',
+      parameters: ["5", null],
+    })
+  })
+
+  it("has its type, which gives its operators", () => {
+    const value = caseWhen(t.text, [[sql<boolean>`TRUE`, "a"]], "b")
+
+    expect(getType(value)).toBe(t.text)
+    expect(toNode(value.like("a%")).kind).toBe("comparison")
+  })
+
+  it("rejects a value other than a type, such as a column", () => {
+    const message = "caseWhen() accepts a type, not a column"
+
+    expect(() => caseWhen(t.integer.primaryKey() as never, [])).toThrow(message)
+    expect(() => caseWhen(sql(t.integer)`1` as never, [])).toThrow(message)
+  })
+
+  it("rejects a condition other than an expression or a query", () => {
+    const message = "A condition of caseWhen must be an expression or a query of one value"
+
+    expect(() => caseWhen(t.integer, [[true as never, 1]])).toThrow(message)
+    expect(() => caseWhen(t.integer, [[{ name: "x" } as never, 1]])).toThrow(message)
+    expect(() => caseWhen(t.integer, [[null as never, 1]])).toThrow(message)
+  })
+
+  it("rejects the queries that an expression rejects", () => {
+    const message = "An expression takes a query of one value"
+    const positions = from(field).pluck("position") as never
+
+    expect(() => caseWhen(t.integer, [[positions, 1]])).toThrow(message)
+    expect(() => caseWhen(t.integer, [[sql<boolean>`TRUE`, positions]])).toThrow(message)
+    expect(() => caseWhen(t.integer, [], positions)).toThrow(message)
+  })
+
+  it("runs a query of a Db only in a statement of the same Db", () => {
+    const database = createDatabase({ driver: createRecordingDriver().driver })
+    const db = database.bind(schema)
+    const otherDb = database.bind(schema)
+
+    expect(() =>
+      db.$compile(
+        db.form.select(form => ({
+          value: caseWhen(t.integer, [[otherDb.field.exists(), 1]], form.limit),
+        })),
+      ),
+    ).toThrow("bound to another Db")
+    expect(() =>
+      db.$compile(
+        db.form.select(form => ({
+          value: caseWhen(t.integer, [[form.name.eq("x"), otherDb.field.max("position")]]),
+        })),
+      ),
+    ).toThrow("bound to another Db")
   })
 })
 
@@ -337,6 +467,125 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       { weight: 2 },
       { weight: 0 },
     ])
+  })
+
+  describe("caseWhen", () => {
+    const weight = (name: string) =>
+      db.form.where({ name }).get(form =>
+        caseWhen(
+          t.integer,
+          [
+            [form.name.eq("form 1"), 100],
+            [form.name.eq("form 2"), 50],
+          ],
+          0,
+        ),
+      )
+
+    it("gives the value of the first branch whose condition holds, or the fallback", async () => {
+      expect(await testTransaction(async () => await weight("form 1"))).toBe(100)
+      expect(await testTransaction(async () => await weight("form 2"))).toBe(50)
+      expect(await testTransaction(async () => await weight("form 3"))).toBe(0)
+    })
+
+    it("is NULL when no condition holds without a fallback", async () => {
+      const query = byName.select(form => ({
+        value: caseWhen(t.integer, [[form.name.eq("form 2"), 5]]),
+        empty: caseWhen(t.integer, []),
+      }))
+
+      expect(await testTransaction(async () => await query)).toEqual([
+        { value: null, empty: null },
+        { value: 5, empty: null },
+        { value: null, empty: null },
+      ])
+    })
+
+    // PostgreSQL resolves `CASE` of parameters alone as `text`, whose maximum of `100` and `50` is `50`.
+    it("compares plain values by its type rather than as text", async () => {
+      const query = db.form.max(form => caseWhen(t.integer, [[form.name.eq("form 1"), 100]], 50))
+
+      expect(await testTransaction(async () => await query)).toBe(100)
+    })
+
+    it("decodes the result with its type", async () => {
+      const query = byName.select(form => ({
+        score: caseWhen(scoreType, [[form.name.eq("form 2"), { value: 7 }]], form.score),
+        time: caseWhen(t.timestamptz, [[form.name.eq("form 1"), new Date(0)]]),
+      }))
+
+      expect(await testTransaction(async () => await query)).toEqual([
+        { score: { value: 3 }, time: "1970-01-01T00:00:00.000000Z" },
+        { score: { value: 7 }, time: null },
+        { score: null, time: null },
+      ])
+    })
+
+    it("takes correlated queries as conditions and values", async () => {
+      const query = byName.select(form => ({
+        value: caseWhen(t.integer, [[form.fields.exists(), form.fields.max("position")]], -1),
+      }))
+
+      expect(await testTransaction(async () => await query)).toEqual([
+        { value: 12 },
+        { value: -1 },
+        { value: -1 },
+      ])
+    })
+
+    it("is a condition, an operand of an operator, a sort key, and the value of an update", async () => {
+      const condition = db.form
+        .where(form => caseWhen(t.boolean, [[form.name.eq("form 1"), true]], false))
+        .pluck("name")
+      const compared = db.form
+        .where(form => caseWhen(t.integer, [[form.name.eq("form 2"), 5]], 0).gt(1))
+        .pluck("name")
+      const sorted = db.form
+        .orderBy(form => [desc(caseWhen(t.integer, [[form.name.eq("form 2"), 1]], 0)), form.name])
+        .pluck("name")
+      const updated = db.form
+        .where({ name: "form 3" })
+        .update(form => ({
+          limit: caseWhen(t.integer, [[form.name.eq("form 3"), 8]], 0),
+        }))
+        .pluck("limit")
+
+      expect(await testTransaction(async () => await condition)).toEqual(["form 1"])
+      expect(await testTransaction(async () => await compared)).toEqual(["form 2"])
+      expect(await testTransaction(async () => await sorted)).toEqual([
+        "form 2",
+        "form 1",
+        "form 3",
+      ])
+      expect(await testTransaction(async () => await updated)).toEqual([8])
+    })
+
+    it("computes a weight from several sources through an aggregate and functions", async () => {
+      const query = byName.select(form => ({
+        weight: greatest(
+          coalesce(
+            form.fields.max(field =>
+              caseWhen(
+                t.integer,
+                [
+                  [field.label.eq("a"), 100],
+                  [field.label.eq("b"), 50],
+                ],
+                0,
+              ),
+            ),
+            0,
+          ),
+          coalesce(form.bonus, 0),
+        ),
+      }))
+
+      expect(await testTransaction(async () => await query)).toEqual([
+        { weight: 100 },
+        { weight: 2 },
+        { weight: 0 },
+      ])
+    })
   })
 
   // A function is a SQL fragment, so lowering keeps a page of a query whose nested queries hold one that refers to its table on the table.

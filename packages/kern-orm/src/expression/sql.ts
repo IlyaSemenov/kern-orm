@@ -11,7 +11,7 @@ import type { AnyType, Type } from "../type/type"
 import { isType } from "../type/type"
 
 import type { AnyExpression, Expression, UntypedExpression } from "./expression"
-import { getType, isExpression, toExpression, toValueNode } from "./expression"
+import { getType, isExpression, toCastValueNode, toExpression, toValueNode } from "./expression"
 import type { Operand } from "./operators/comparison"
 import type { OperatorDefinitions } from "./operators/definitions"
 
@@ -109,11 +109,7 @@ export function param(type: AnyType | AnyExpression, value: unknown): AnyExpress
     const valueType = getType(type)
     return toExpression(toValueNode(value, valueType), valueType)
   }
-  const node = toValueNode(value, type)
-  return toExpression(
-    node.kind === "param" ? createNode({ kind: "cast", operand: node, type }) : node,
-    type,
-  )
+  return toExpression(toCastValueNode(value, type), type)
 }
 
 function isTemplateStrings(value: TemplateStringsArray | AnyType): value is TemplateStringsArray {

@@ -2,7 +2,16 @@
 // The package test emits their declarations, which fail, such as with TS4023 or TS4058, when they name a type that the package does not export.
 // Each export covers a kind of such code; the type tests of `declaration-consumer/` import some of them to check the emitted types, and nothing uses the others.
 import type { DbOf, QueryStateOf, SelectQuery, SelectQueryKind } from "kern-orm"
-import { coalesce, defineHelper, defineSchema, defineTable, greatest, many, one } from "kern-orm"
+import {
+  caseWhen,
+  coalesce,
+  defineHelper,
+  defineSchema,
+  defineTable,
+  greatest,
+  many,
+  one,
+} from "kern-orm"
 import * as t from "kern-orm/types"
 
 const form = defineTable("form", {
@@ -44,10 +53,11 @@ export function getSelect(db: DbOf<typeof schema>) {
   return db.$select
 }
 
-/** Selects the values of functions of expressions, of a column and of an aggregate of a relation; see the file header. */
+/** Selects computed values from a column, a relation aggregate, and a condition; see the file header. */
 export const selectComputedValues = schema.form.select(form => ({
   name: coalesce(form.name, ""),
   fieldCount: greatest(form.fields.count(), 1),
+  weight: caseWhen(t.integer, [[form.fields.exists(), 1]], 0),
 }))
 
 /** Value of a function of a query, as an expression; see the file header. */

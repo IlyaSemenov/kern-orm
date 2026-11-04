@@ -1,14 +1,27 @@
-// Functions of expressions: SQL functions of several operands, whose results are `NULL` by rules of their own, which their types follow.
+// Functions of expressions: SQL functions of several operands and `CASE`, whose results are `NULL` by rules of their own, which their types follow.
 
 import type { ExpressionNode } from "../ast/nodes"
-import { createList } from "../ast/nodes"
-import type { TypedScalarQuery } from "../query/select"
+import { createList, createNode } from "../ast/nodes"
+import type { ScalarQuery, TypedScalarQuery } from "../query/select"
 import { SelectQuery } from "../query/select"
 import type { ExpressionInput } from "../query/selection"
+import type { AnyType, Type } from "../type/type"
+import { isType } from "../type/type"
 
 import type { AnyExpression, Expression, ExpressionOperators, TypedExpression } from "./expression"
-import { getType, isExpression, toExpression, toFunctionOperandNode, toNode } from "./expression"
+import {
+  getType,
+  isExpression,
+  isOperandSource,
+  operandNode,
+  toCastValueNode,
+  toExpression,
+  toFunctionOperandNode,
+  toNode,
+} from "./expression"
 import type { Operand, OperandValue } from "./operators/comparison"
+import type { OperatorDefinitions } from "./operators/definitions"
+import type { Predicate } from "./predicates"
 
 /** First operand of `coalesce`, `greatest`, and `least`: an expression with a type, or a query of one value, such as of an aggregate, whose type decodes the result and gives it its operators. */
 export type TypedOperand = TypedExpression | TypedScalarQuery
@@ -86,6 +99,80 @@ export function least<F extends TypedOperand, const R extends readonly Following
 ): NullSkippingResult<F, R>
 export function least(first: unknown, ...rest: unknown[]): unknown {
   return callFunction("least", first, rest)
+}
+
+/** Condition of a branch of `caseWhen`: a predicate, or a query of one Boolean value, such as of `exists`. */
+export type CaseCondition = Predicate | ScalarQuery<boolean | null>
+
+/** Value of a branch of `caseWhen` of a type of values `T` that encodes values `I`: an operand of the type, or a plain `null`. */
+export type CaseValue<T, I> = Operand<T, I> | null
+
+/** Branch of `caseWhen`: a condition and the value of the result when it holds. */
+export type CaseBranch<T, I> = readonly [condition: CaseCondition, value: CaseValue<T, I>]
+
+// `null` among the values of a type stands for `NULL`, so only `null` is removed, and the values of the branches tell whether the result can be `NULL`: a nullable type alone does not make the result nullable.
+/** Value of `caseWhen` of a type of values `T` whose branches and fallback have the values `V`, of which one gives the result. */
+type CaseResult<T, V> = Exclude<T, null> | Extract<OperandValue<V>, null>
+
+/**
+ * Returns the value of the first branch whose condition holds, as a SQL `CASE` expression, or `NULL` when none holds.
+ *
+ * `type` decodes the result and gives it its operators, and a plain value of a branch is cast to it, so that PostgreSQL does not take plain values for text.
+ */
+export function caseWhen<Output, Input, O extends OperatorDefinitions>(
+  // oxlint-disable-next-line typescript/no-explicit-any -- type parameters do not matter here
+  type: Type<Output, Input, O, any>,
+  branches: NoInfer<readonly CaseBranch<Output, Input>[]>,
+): Expression<Exclude<Output, null> | null, O, Input>
+/**
+ * Returns the value of the first branch whose condition holds, as a SQL `CASE` expression, or `otherwise` when none holds.
+ *
+ * `type` decodes the result and gives it its operators, and a plain value of a branch or of `otherwise` is cast to it, so that PostgreSQL does not take plain values for text.
+ */
+export function caseWhen<
+  Output,
+  Input,
+  O extends OperatorDefinitions,
+  const B extends readonly CaseBranch<Output, Input>[],
+  const E extends CaseValue<Output, Input>,
+>(
+  // oxlint-disable-next-line typescript/no-explicit-any -- type parameters do not matter here
+  type: Type<Output, Input, O, any>,
+  branches: B,
+  otherwise: E,
+): Expression<CaseResult<Output, B[number][1] | E>, O, Input>
+export function caseWhen(
+  type: AnyType,
+  branches: readonly (readonly [unknown, unknown])[],
+  otherwise?: unknown,
+): unknown {
+  if (!isType(type)) {
+    throw new TypeError("caseWhen() accepts a type, not a column")
+  }
+  // PostgreSQL rejects `CASE` without a branch, while a list built in code may be empty, as those of `and` and `or` may.
+  if (branches.length === 0) {
+    return toExpression(toCastValueNode(otherwise === undefined ? null : otherwise, type), type)
+  }
+  const fragments: string[] = []
+  const values: ExpressionNode[] = []
+  for (const branch of branches) {
+    fragments.push(values.length === 0 ? "CASE WHEN " : " WHEN ", " THEN ")
+    values.push(toCaseConditionNode(branch[0]), toCastValueNode(branch[1], type))
+  }
+  if (otherwise !== undefined) {
+    fragments.push(" ELSE ")
+    values.push(toCastValueNode(otherwise, type))
+  }
+  fragments.push(" END")
+  return toExpression(createNode({ kind: "raw", fragments, values }), type)
+}
+
+/** Converts a condition of `caseWhen` into a node, rejecting a value other than an expression or a query, such as an object of column values, which has no table here. */
+function toCaseConditionNode(condition: unknown): ExpressionNode {
+  if (!isOperandSource(condition)) {
+    throw new TypeError("A condition of caseWhen must be an expression or a query of one value")
+  }
+  return condition[operandNode]()
 }
 
 // A plain value takes no cast: PostgreSQL types its parameter by the other operands, and the first operand is never a parameter without a type.

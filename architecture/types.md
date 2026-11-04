@@ -5,7 +5,7 @@
   `null` among the values of a type stands for `NULL`, which `nullable` adds, as `primaryKey`, object conditions, and `coalesce` read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
   A JSON `null` value decodes to `null`, which kern-orm does not tell from `NULL`.
   Consumers require `strictNullChecks`, without which `null` belongs to every type; `primaryKey` then rejects every type and column with an error that names the option.
-- **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, `sql`/`param` fragments, and functions such as `coalesce`.
+- **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, `sql`/`param` fragments, and functions such as `coalesce` and `caseWhen`.
   Every expression has `isNull`; the operators of its type are added to it and replace `isNull` if one has its name, in types and at runtime alike.
   SQL `=` is a capability of a type given only by the operators of `equalityOperators`, which `orderingOperators` include; these operators are marked, so that another operator named `eq` does not give it, and an array type has them only when its element type has the capability.
   Two types are compared with `=` as they are, as the keys of a relation, when both have the capability and they are one SQL type by their cast types, whatever their type parameters and the representation of their values, or both belong to an explicit family of one B-tree operator family: `smallint`, `integer`, and `bigint`, or `text` and `varchar`.
@@ -53,6 +53,18 @@
 - Unlike the method `coalesce` of a query, which keeps a missing row missing, a query among the operands of `coalesce` is `NULL` without its row, as in any expression, so the function replaces a missing row too.
 - A call is a raw node of `createList`, so lowering takes it for a SQL fragment in a page after an offset ([SQL generation](sql.md#nested-rows)), which only costs the speed of the page.
 - A call of a function adds about 90 instantiations to a query of a column and about 140 to one of an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
+- `caseWhen` is a searched SQL `CASE` expression of its branches in order, of a type given as its first argument rather than read from an operand, since its values are often plain values, which have no SQL type.
+  - The type decodes the result and gives it its operators.
+    It casts each plain value to the cast type, as `param` with a type does, since PostgreSQL resolves `CASE` of parameters alone as `text`, whose `max` compares strings, so that `50` is above `100`.
+    An expression or a query keeps its SQL type, and types check its values, so the [common type](#functions-of-expressions) of the values applies as it does for the other functions.
+  - The value of a branch and the fallback also take a plain `null`, which has an effect here, unlike among the operands of `coalesce`.
+  - The result type includes `null` without a fallback or when a branch value or the fallback can be `NULL`; a nullable type alone does not add `null`.
+    The fallback is an overload of its own rather than an optional parameter, so that types reject a fallback that may be `undefined`, which would omit `ELSE`.
+    Its values are `const`, as the following operands of the other functions are, for the same reason.
+  - A condition is a predicate or a query of one Boolean value, at runtime too; an object of column values has no table here, and a plain Boolean value is a matter of the code that builds the branches.
+  - Without branches, which PostgreSQL rejects in `CASE`, it is the fallback, or `NULL` of its type, so that a list built in code may be empty, as those of `and` and `or` may.
+  - Simple `CASE x WHEN ...` is not offered: `x.eq(...)` in each condition writes it.
+  - A call is a raw node, as `createList` makes those of the other functions, and adds about 310 instantiations to a query of a column for two branches with their conditions ([benchmark](../benchmarks/types/queries.bench.ts)).
 
 ## Parameters and SQL fragments
 

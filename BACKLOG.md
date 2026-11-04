@@ -2,13 +2,9 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
-## Functions of expressions
+## Constants of expressions
 
-`CASE` and constants, beside [`coalesce`, `greatest`, and `least`](architecture/types.md#functions-of-expressions), for values and conditions that operators do not cover, such as the weight of the role of a user, `max(CASE ... END)`:
-
-- Preliminary decision: `caseWhen(t.integer, [[role.name.eq("owner"), 100], [role.name.eq("editor"), 50]], 0)`, of a type given first, since its branches are often plain values, whose parameters PostgreSQL resolves as `text`, so that `max` of them compares strings; so plain values take a cast to the type.
-- `CASE` without `ELSE` is `NULL` when no branch matches, which types follow.
-- Constants serve as the neutral branch of a condition built in code, such as `FALSE` in `condition ? check : FALSE`, and as fallbacks, such as `0`: an empty `or()` is `FALSE`, an empty `and()` is `TRUE`, and `param(t.integer, 0)` is a typed value, but the user documentation shows none of them as such; decide whether documenting them is enough.
+Constants serve as the neutral branch of a condition built in code, such as `FALSE` in `condition ? check : FALSE`, and as fallbacks, such as `0`: an empty `or()` is `FALSE`, an empty `and()` is `TRUE`, and `param(t.integer, 0)` is a typed value, but the user documentation shows none of them as such; decide whether documenting them is enough.
 
 ## Reusable expressions with arguments
 

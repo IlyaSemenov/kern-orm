@@ -176,6 +176,12 @@ export function toValueNode(value: unknown, type?: AnyType): ExpressionNode {
   return createNode({ kind: "param", value, type })
 }
 
+/** Converts an operand into a node as `toValueNode` does, casting a plain value to `type`, so that its parameter has the type even where nothing else in the statement determines it. */
+export function toCastValueNode(value: unknown, type: AnyType): ExpressionNode {
+  const node = toValueNode(value, type)
+  return node.kind === "param" ? createNode({ kind: "cast", operand: node, type }) : node
+}
+
 /** Converts an operand of the function `name` that skips `NULL`, such as the fallback of `coalesce`, into a node as `toValueNode` does, rejecting a plain `null` and `undefined`, which would have no effect or no value. */
 export function toFunctionOperandNode(value: unknown, type: AnyType, name: string): ExpressionNode {
   if (value === null || value === undefined) {

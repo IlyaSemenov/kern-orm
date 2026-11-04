@@ -8,7 +8,8 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { coalesce, greatest, least } from "./functions"
+import { caseWhen, coalesce, greatest, least } from "./functions"
+import { and, or } from "./predicates"
 import { param, sql } from "./sql"
 
 const scoreType = t.integer.transform({
@@ -244,5 +245,154 @@ describe("rejected operands", () => {
     coalesce(from(form).select("position").take(), 0)
     // @ts-expect-error A query of rows `many` has no value.
     from(form).select(form => ({ value: coalesce(form.limit, from(form).pluck("position")) }))
+  })
+})
+
+describe("caseWhen", () => {
+  test("is NULL when no branch holds, unless it has a fallback", () => {
+    const query = from(form).select(form => ({
+      fallback: caseWhen(t.integer, [[form.name.eq("x"), 1]], 0),
+      noFallback: caseWhen(t.integer, [[form.name.eq("x"), 1]]),
+      noBranches: caseWhen(t.integer, []),
+      onlyFallback: caseWhen(t.integer, [], 0),
+    }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{
+      fallback: number
+      noFallback: number | null
+      noBranches: number | null
+      onlyFallback: number
+    }>()
+  })
+
+  test("is NULL when the value of a branch or of the fallback can be", () => {
+    const query = from(form).select(form => ({
+      nullBranch: caseWhen(t.integer, [[form.name.eq("x"), null]], 0),
+      nullFallback: caseWhen(t.integer, [[form.name.eq("x"), 1]], null),
+      nullableBranch: caseWhen(t.integer, [[form.name.eq("x"), form.limit]], 0),
+      nullableFallback: caseWhen(t.integer, [[form.name.eq("x"), 1]], form.limit),
+      nullableQuery: caseWhen(t.integer, [[form.name.eq("x"), from(field).max("position")]], 0),
+      everyValue: caseWhen(
+        t.integer,
+        [
+          [form.name.eq("x"), 1],
+          [form.name.eq("y"), form.position],
+        ],
+        form.position,
+      ),
+    }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{
+      nullBranch: number | null
+      nullFallback: number | null
+      nullableBranch: number | null
+      nullableFallback: number | null
+      nullableQuery: number | null
+      everyValue: number
+    }>()
+  })
+
+  test("reads the values of its branches rather than whether the type is nullable", () => {
+    const query = from(form).select(form => ({
+      value: caseWhen(t.integer.nullable(), [[form.name.eq("x"), 1]], 0),
+    }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ value: number }>()
+  })
+
+  test("takes the values that its type encodes and decodes", () => {
+    const query = from(form).select(form => ({
+      score: caseWhen(scoreType, [[form.name.eq("x"), { value: 1 }]], form.score),
+      date: caseWhen(t.timestamptz, [[form.name.eq("x"), new Date()]], "2026-01-01T00:00:00Z"),
+      kind: caseWhen(kindType, [[form.name.eq("x"), "a"]], "b"),
+    }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{
+      score: { value: number } | null
+      date: string
+      kind: "a" | "b"
+    }>()
+  })
+
+  test("takes branches built in code", () => {
+    const weights = [{ name: "x", weight: 1 }]
+    from(form).select(form => ({
+      value: caseWhen(
+        t.integer,
+        weights.map(({ name, weight }) => [form.name.eq(name), weight] as const),
+        0,
+      ),
+    }))
+  })
+
+  test("has the operators of its type", () => {
+    from(form).where(form => caseWhen(t.integer, [[form.name.eq("x"), 1]], 0).gt(0))
+    from(form).where(form => caseWhen(t.text, [[form.name.eq("x"), "a"]], "b").like("a%"))
+
+    // @ts-expect-error `integer` has no `like`.
+    from(form).where(form => caseWhen(t.integer, [[form.name.eq("x"), 1]], 0).like("a%"))
+    // @ts-expect-error `integer` takes a number.
+    from(form).where(form => caseWhen(t.integer, [[form.name.eq("x"), 1]], 0).gt("0"))
+  })
+
+  test("takes a Boolean expression and a query of one Boolean value as a condition", () => {
+    schema.form.select(form => ({
+      exists: caseWhen(t.integer, [[form.fields.exists(), 1]], 0),
+      aggregate: caseWhen(t.integer, [[form.fields.some(field => field.position.gt(1)), 1]], 0),
+      value: caseWhen(t.integer, [[from(field).take().get("position").expr().gt(1), 1]], 0),
+      combined: caseWhen(t.integer, [[and(form.name.eq("x"), or(form.name.eq("y"))), 1]], 0),
+      fragment: caseWhen(t.integer, [[sql<boolean>`TRUE`, 1]], 0),
+    }))
+  })
+
+  test("is a condition, a sort key, an aggregate argument, and an operand of a function", () => {
+    from(form).where(form => caseWhen(t.boolean, [[form.name.eq("x"), true]], false))
+    from(form).orderBy(form => caseWhen(t.integer, [[form.name.eq("x"), 1]], 0))
+    const aggregated = from(form).max(form => caseWhen(t.integer, [[form.name.eq("x"), 1]], 0))
+    const query = schema.form.select(form => ({
+      value: greatest(
+        coalesce(
+          form.fields.max(field =>
+            caseWhen(
+              t.integer,
+              [
+                [field.label.eq("owner"), 100],
+                [field.label.eq("editor"), 50],
+              ],
+              0,
+            ),
+          ),
+          0,
+        ),
+        coalesce(form.limit, 0),
+      ),
+    }))
+
+    expectTypeOf<ResultOf<typeof aggregated>>().toEqualTypeOf<number | null>()
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ value: number }>()
+  })
+
+  test("rejects arguments outside its contract", () => {
+    // @ts-expect-error A column is not a type.
+    from(form).select(form => ({ value: caseWhen(form.position, [], 0) }))
+    // @ts-expect-error The value of a branch has the values of the type.
+    from(form).select(form => ({ value: caseWhen(t.integer, [[form.name.eq("x"), "1"]], 0) }))
+    // @ts-expect-error The fallback has the values of the type.
+    from(form).select(form => ({ value: caseWhen(t.integer, [[form.name.eq("x"), 1]], "0") }))
+    // @ts-expect-error An expression has the values of the type.
+    from(form).select(form => ({ value: caseWhen(t.integer, [[form.name.eq("x"), form.name]]) }))
+    // @ts-expect-error A condition is Boolean.
+    from(form).select(form => ({ value: caseWhen(t.integer, [[form.name, 1]], 0) }))
+    // @ts-expect-error A plain Boolean value is not a condition.
+    from(form).select(() => ({ value: caseWhen(t.integer, [[true, 1]], 0) }))
+    // @ts-expect-error An object of column values has no table here.
+    from(form).select(() => ({ value: caseWhen(t.integer, [[{ name: "x" }, 1]], 0) }))
+    const positions = from(field).pluck("position")
+    // @ts-expect-error A query of many rows is not a value.
+    from(form).select(() => ({ value: caseWhen(t.integer, [[and(), positions]]) }))
+
+    const maybe = undefined as number | undefined
+    // @ts-expect-error A fallback that may be missing would make the result NULL silently.
+    from(form).select(form => ({ value: caseWhen(t.integer, [[form.name.eq("x"), 1]], maybe) }))
   })
 })

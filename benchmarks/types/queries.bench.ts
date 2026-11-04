@@ -3,7 +3,8 @@
 
 import { bench } from "@ark/attest"
 import type { DbOf } from "kern-orm"
-import { coalesce, defineHelper, desc, greatest, not } from "kern-orm"
+import { caseWhen, coalesce, defineHelper, desc, greatest, not } from "kern-orm"
+import * as t from "kern-orm/types"
 
 import { formsDb, formsSchema, storeDb, tenantDb } from "./fixture.ts"
 
@@ -77,6 +78,7 @@ bench.baseline(async () => {
   await tenantDb.field.select(field => ({
     value: greatest(field.answers.count(), field.position),
   }))
+  await tenantDb.field.pluck(field => caseWhen(t.integer, [[field.label.eq("baseline"), 1]], 0))
   await tenantDb.field.where({ label: "baseline" }).exists()
   await tenantDb.field.where(field => not(field.answers.exists())).pluck("id")
   await tenantDb.field
@@ -171,6 +173,19 @@ bench("function of an aggregate of a relation and a value", async () => {
     value: greatest(form.fields.count(), 1),
   }))
 }).types([608, "instantiations"])
+
+bench("case of two branches", async () => {
+  await tenantDb.form.pluck(form =>
+    caseWhen(
+      t.text,
+      [
+        [form.name.eq("x"), "a"],
+        [form.published, form.name],
+      ],
+      "b",
+    ),
+  )
+}).types([473, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()

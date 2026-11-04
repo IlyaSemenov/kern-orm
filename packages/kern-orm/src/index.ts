@@ -42,8 +42,15 @@ export type {
   Predicate,
 } from "./expression/predicates"
 export { and, not, or } from "./expression/predicates"
-export type { FollowingOperand, NullSkippingResult, TypedOperand } from "./expression/functions"
-export { coalesce, greatest, least } from "./expression/functions"
+export type {
+  CaseBranch,
+  CaseCondition,
+  CaseValue,
+  FollowingOperand,
+  NullSkippingResult,
+  TypedOperand,
+} from "./expression/functions"
+export { caseWhen, coalesce, greatest, least } from "./expression/functions"
 export type {
   AnyType,
   BaseType,
