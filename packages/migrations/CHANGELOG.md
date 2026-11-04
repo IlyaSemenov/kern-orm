@@ -1,5 +1,17 @@
 # @kern-orm/migrations
 
+## 0.3.0
+
+### Minor Changes
+
+- df9cf6d: The `new` command creates the first migration from a `createTable` template and later ones from an `addColumn` template.
+
+### Patch Changes
+
+- b4a8418: Fix helpers accepting an empty name, which failed only when the migration ran.
+- 219ef99: Use the `kern-orm` of the application as a peer dependency instead of installing another copy when the versions differ.
+- Updated dependencies: kern-orm@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
