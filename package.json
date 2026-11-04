@@ -37,7 +37,7 @@
     "@tsconfig/bun": "^1.0.11",
     "@types/bun": "^1.4.4",
     "@types/node": "^24",
-    "changesets-local": "^1.3.0",
+    "changesets-local": "^1.4.0",
     "esbuild": "^0.28.2",
     "jest-extended": "^7.0.0",
     "oxfmt": "^0.74.0",
