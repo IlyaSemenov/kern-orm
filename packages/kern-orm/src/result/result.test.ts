@@ -53,6 +53,40 @@ describe("records", () => {
     ])
   })
 
+  it("starts a record from the template of the plan, keeping its keys in order and its values as they are", () => {
+    const value = { nested: true }
+    const [record] = decodeResult(
+      {
+        ...createRecordsPlan(fields),
+        recordTemplate: [
+          { key: "before", value },
+          { key: "id", value: undefined },
+          { key: "after", value: undefined },
+          { key: "title", value: undefined },
+        ],
+      },
+      [["1", "Draft"]],
+    ) as [Record<string, unknown>]
+
+    expect(record).toStrictEqual({ before: value, id: 1, after: undefined, title: "Draft" })
+    expect(record.before).toBe(value)
+    expect(Object.keys(record)).toEqual(["before", "id", "after", "title"])
+  })
+
+  it("does not count the fields of the template in the width of a row", () => {
+    expect(
+      decodeResult({ ...createRecordsPlan([]), recordTemplate: [{ key: "note", value: "none" }] }, [
+        [],
+        [],
+      ]),
+    ).toEqual([{ note: "none" }, { note: "none" }])
+    expect(() =>
+      decodeResult({ ...createRecordsPlan([]), recordTemplate: [{ key: "note", value: "none" }] }, [
+        ["none"],
+      ]),
+    ).toThrow(ResultDecodeError)
+  })
+
   it("rejects a row of another width than the result fields", () => {
     expect(() => decodeResult(createRecordsPlan(fields), [["1"]])).toThrow(ResultDecodeError)
     expect(() => decodeResult(createRecordsPlan(fields), [["1"]])).toThrow(

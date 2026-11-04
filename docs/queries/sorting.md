@@ -59,6 +59,19 @@ The rows are sorted by the same values that the records get.
 
 After `pluck` or `get`, the second parameter is the expression of the value.
 
+When you select a field only under a condition and otherwise fill it with [`literal`](./selecting#values-from-code), sort by it under the same condition:
+
+```ts
+import { literal } from "kern-orm"
+
+const fields = await db.field
+  .select(field => ({
+    id: field.id,
+    hint: withHints ? field.hint : literal(null),
+  }))
+  .orderBy((field, selected) => (withHints ? selected.hint : []))
+```
+
 ## Related records
 
 To sort by an aggregate of related records, such as forms by the number of their fields, call it on the [relation](../schemas#relations) in the callback:

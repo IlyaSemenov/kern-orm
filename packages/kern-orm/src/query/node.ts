@@ -24,8 +24,17 @@ export interface NestedSelectionNode {
   readonly db: AnyDb | undefined
 }
 
-/** Field selected by a query: an expression, or the rows of a nested query. */
-export type SelectedNode = ProjectionNode | NestedSelectionNode
+/** Selection of a value from code as the field `key` of every record, which a statement does not select. */
+export interface LiteralSelectionNode {
+  readonly key: string
+  readonly literal: unknown
+}
+
+/** Field that a statement selects: an expression, or the rows of a nested query. */
+export type SqlSelectedNode = ProjectionNode | NestedSelectionNode
+
+/** Field selected by a query: one that its statement selects, or a literal. */
+export type SelectedNode = SqlSelectedNode | LiteralSelectionNode
 
 /** Select query of a table; its result mode applies when it is executed or its rows are nested. */
 export interface QueryNode extends ResultMode {
@@ -52,7 +61,7 @@ export interface QueryNode extends ResultMode {
  */
 export type MutationNode = MutationStatementNode<SelectedNode>
 
-/** Query of `$select` without a source: one record whose fields are the values of expressions and the rows of independent queries. */
+/** Query of `$select` without a source: one record whose fields are the values of expressions, the rows of independent queries, and literals. */
 export interface RecordQueryNode {
   readonly kind: "record"
   /** Fields in the order of the record, with unique keys. */
@@ -100,4 +109,9 @@ export function isTableQuery(node: QueryNode): boolean {
 /** Tells whether a selected field is the rows of a nested query. */
 export function isNestedSelection(node: SelectedNode): node is NestedSelectionNode {
   return "query" in node
+}
+
+/** Tells whether a selected field is a literal. */
+export function isLiteralSelection(node: SelectedNode): node is LiteralSelectionNode {
+  return "literal" in node
 }

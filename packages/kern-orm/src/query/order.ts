@@ -18,7 +18,7 @@ import { isSelectedAsValue } from "./aggregate"
 import type { QueryContext } from "./column-refs"
 import { createSelectionRefs } from "./column-refs"
 import type { NestedSelectionNode, QueryNode } from "./node"
-import { isNestedSelection } from "./node"
+import { isLiteralSelection, isNestedSelection } from "./node"
 import type { ScalarQuery } from "./select"
 
 /**
@@ -56,7 +56,7 @@ export type OrderTerm = AnyExpression | ScalarQuery | Ordering
 /**
  * References of the callback of `orderBy` to the fields of records `R` selected by a query: their expressions by key.
  *
- * A field of nested rows is among them in types, but reading it throws; a field of an aggregate or of `exists` sorts by its value.
+ * A field of nested rows or of a literal is among them in types, but reading it throws; a field of an aggregate or of `exists` sorts by its value.
  */
 export type SelectedRefs<R> = { readonly [K in keyof R & string]: AnyExpression<R[K]> }
 
@@ -199,7 +199,15 @@ function createSelectedRefs(node: QueryNode): unknown {
   const refs: Record<string, unknown> = {}
   for (const projection of projections) {
     const { key } = projection
-    if (isNestedSelection(projection)) {
+    if (isLiteralSelection(projection)) {
+      // PostgreSQL does not see a literal, and every row has the same value of it.
+      Object.defineProperty(refs, key, {
+        get() {
+          throw new Error(`Field "${key}" holds a literal and cannot be sorted by`)
+        },
+        enumerable: true,
+      })
+    } else if (isNestedSelection(projection)) {
       if (isSelectedAsValue(projection.query)) {
         refs[key] = toQueryExpression(projection)
       } else {

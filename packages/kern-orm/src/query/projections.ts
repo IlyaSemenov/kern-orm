@@ -10,6 +10,7 @@ import { addFallback, isAggregateProjection } from "./aggregate"
 import type { QueryContext } from "./column-refs"
 import { createColumnRefs, createSelectionRefs } from "./column-refs"
 import { isExistsProjection } from "./exists"
+import { Literal } from "./literal"
 import { MutationQuery } from "./mutation"
 import type { SelectedNode } from "./node"
 import { RecordQuery } from "./record"
@@ -45,7 +46,7 @@ export function mergeProjections(
   return result
 }
 
-/** Adds the fields of `selection`, expressions and queries by key, to `projections`, replacing existing keys in place. */
+/** Adds the fields of `selection`, expressions, queries, and literals by key, to `projections`, replacing existing keys in place. */
 export function addSelection(
   projections: SelectedNode[],
   selection: Readonly<Record<PropertyKey, unknown>>,
@@ -108,8 +109,11 @@ export function coalesceValue(field: ScalarProjection, fallback: unknown): Scala
   })
 }
 
-/** Creates the field of a value of a selection under `key`: an expression with a type, or a query whose rows become its value. */
+/** Creates the field of a value of a selection under `key`: an expression with a type, a query whose rows become its value, or a literal. */
 function selectValue(key: string, value: unknown): SelectedNode {
+  if (value instanceof Literal) {
+    return Object.freeze({ key, literal: value.literal })
+  }
   if (value instanceof SelectQuery) {
     return Object.freeze({ key, query: value.node, db: value.db })
   }
@@ -127,7 +131,7 @@ function selectValue(key: string, value: unknown): SelectedNode {
     throw new TypeError(`Selected field "${key}" is a query of $query, which cannot be nested`)
   }
   if (!isExpression(value)) {
-    throw new TypeError(`Selected field "${key}" must be an expression or a query`)
+    throw new TypeError(`Selected field "${key}" must be an expression, a query, or a literal`)
   }
   const type = getType(value)
   if (!type) {

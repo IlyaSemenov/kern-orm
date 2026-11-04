@@ -9,6 +9,7 @@ import {
   defineSchema,
   defineTable,
   greatest,
+  literal,
   many,
   one,
 } from "kern-orm"
@@ -59,6 +60,13 @@ export const selectComputedValues = schema.form.select(form => ({
   fieldCount: greatest(form.fields.count(), 1),
   weight: caseWhen(t.integer, [[form.fields.exists(), 1]], 0),
 }))
+
+/** Selects a column or a literal by a flag; see the file header. */
+export function selectNameOrLiteral(withName: boolean) {
+  return schema.form.select(form => ({
+    name: withName ? form.name : literal(null),
+  }))
+}
 
 /** Value of a function of a query, as an expression; see the file header. */
 export const fallbackName = coalesce(schema.form.take().get("name"), "")

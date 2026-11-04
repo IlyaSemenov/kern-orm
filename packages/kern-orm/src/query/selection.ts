@@ -1,26 +1,31 @@
 import type { AnyExpression, TypedExpression } from "../expression/expression"
 import type { IsAny, Simplify } from "../utils/type-helpers"
 
+import type { Literal } from "./literal"
 import type { QueryResult } from "./rows"
 import type { QueryOf } from "./select"
 import type { SelectQueryState } from "./state"
 
-/** Expressions and nested queries selected under the keys of the result fields; a record has no symbol keys. */
+/** Expressions, nested queries, and literals selected under the keys of the result fields; a record has no symbol keys. */
 export interface Selection {
-  readonly [key: string]: TypedExpression | NestedQuery
+  readonly [key: string]: TypedExpression | NestedQuery | Literal<unknown>
   readonly [key: symbol]: never
 }
 
 /** Query whose rows a selection nests as the value of a field: a query of any state and kind, such as a query of a relation. */
 export type NestedQuery = QueryOf<SelectQueryState>
 
-/** Record of the values of the expressions and of the nested rows of a selection. */
+/** Record of the values of the expressions, of the nested rows, and of the literals of a selection. */
 export type SelectionResult<S extends Selection> = {
   [K in keyof S]: FieldValue<S[K]>
 }
 
-/** Value of a selected field: of an expression, or of the nested rows of a query as the result of executing it, for each member of a union of them. */
-type FieldValue<V> = V extends NestedQuery ? QueryResult<V["types"]> : ExpressionValue<V>
+/** Value of a selected field: of an expression, of the nested rows of a query as the result of executing it, or of a literal, for each member of a union of them. */
+type FieldValue<V> = V extends NestedQuery
+  ? QueryResult<V["types"]>
+  : V extends Literal<infer T>
+    ? T
+    : ExpressionValue<V>
 
 /** Relations whose records the nested queries of a selection select. */
 export type SelectionUses<S extends Selection> = S[keyof S] extends infer V

@@ -63,6 +63,27 @@ The keys of selected fields name only the fields of records: `where` keeps filte
 
 To select the related records of each row, such as the fields of each form, see [Related Records](./relations).
 
+## Values from code
+
+To fill a field from code instead of reading it from the database, such as to skip a column that this call does not need, pass the value to `literal`:
+
+```ts
+import { literal } from "kern-orm"
+
+const fields = await db.field.select(field => ({
+  id: field.id,
+  hint: withHints ? field.hint : literal(null),
+  form: withForms ? field.form.select("name") : literal(null),
+}))
+// fields: { id: string; hint: string | null; form: { name: string } | null }[]
+```
+
+The value stays out of the SQL statement, so the database does not read the skipped column or run the skipped query.
+Every record gets that value itself rather than a copy, whatever it is, such as an object or a `Date`.
+
+`literal` works as a field in the callback of `select`, including of nested rows and mutations, and in `$select`.
+To use a value in a condition or another expression, pass it directly or through [`param`](./computed-values#constant-values).
+
 ## One row
 
 To get one row instead of an array, call `take`:

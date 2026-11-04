@@ -95,6 +95,7 @@ export function packRows(query: SelectNode): SelectNode {
     rows: query.rows,
     value: query.value,
     guaranteedBy: query.guaranteedBy,
+    recordTemplate: query.recordTemplate,
   })
   const projection: ProjectionNode = Object.freeze({
     key: "rows",

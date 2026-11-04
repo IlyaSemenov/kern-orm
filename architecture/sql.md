@@ -3,7 +3,7 @@
 - **AST** (`ast/`): the SQL AST, structural expression and statement nodes, and their pure transformations, such as Boolean simplification.
   A select statement nests queries in scalar subqueries, `EXISTS`, and derived sources of `FROM`, plain or `LATERAL`; nodes store no lexical scopes, which the compiler derives from the position of a query in the tree.
 - **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps a statement of SQL text as it is, except that it lowers the queries in its interpolated expressions; the compiler knows no relation definitions or semantic query nodes.
-  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query, of its statement, or `EXISTS` of its rows for a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries in its fields keeps its projections.
+  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query, of its statement, or `EXISTS` of its rows for a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries or literals in its fields keeps its fields as its projections.
   A query of `$select` has no source and becomes a statement without `FROM` of rows `one`, which PostgreSQL returns as exactly one row.
   A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, and has no order.
   An aggregate query becomes a statement of its aggregate without an order, which PostgreSQL rejects beside an aggregate unless it sorts by aggregates; `string_agg` takes the order of the query inside its call, and `coalesce` of the fallbacks of the query wraps the call.
@@ -54,12 +54,15 @@
 - Every place of a source in a statement is its own occurrence: a query inserted twice declares its sources twice under different aliases.
   A source that appears where it is already visible, such as a query nested in itself or a source joined twice, is rejected, since its column references would be ambiguous; a nested query over the same table starts from its own `from`.
 - A scalar subquery selects exactly one field, and a subquery interpolated into SQL text any number of fields, which the text reads.
+- A literal has no projection: lowering drops it from the fields of a statement before anything else reads them, so the select list, the positions of `ORDER BY`, packing, and the fields of a subquery interpolated into SQL text know only the fields that SQL selects, and a query of only literals selects nothing, or has no `RETURNING`.
 - An executed query sorts by the position of the projection that has the value of a sort expression, such as `ORDER BY 2`, and by other expressions as they are; a nested query sorts by its sort keys as packing describes, with the same rule of which projection has the value.
   Only a projection of the same column or of the same expression node is guaranteed to have the value of a sort expression.
   A selected expression repeated in `ORDER BY` would get parameters of its own: the statement would send their values twice, and PostgreSQL would evaluate it again unless it finds the two expressions equal, which it does once a custom plan folds the parameters into constants but not in a generic plan, such as of a prepared statement.
 
 ## Result decoding
 
+- The result plan of a query with literals has a record template, which gives every field in its order and the value of each literal.
+  Decoding creates each record from the template, so its keys keep the order of the selection, and assigns the values of a row by position among the fields that SQL selects.
 - Result decoding rejects a driver row or a packed row that does not match the result fields instead of reading a missing value as `NULL`.
   A query of one row rejects more than one row, since it may have no limit; a `NULL` value of a query of values is `null`, not a missing row.
 - The class of a decoding error tells which contract the result breaks, wherever its query is nested:

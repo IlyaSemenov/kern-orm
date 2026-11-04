@@ -3,7 +3,7 @@
 
 import type { AnyDb } from "../execution/db"
 import type { NestedSelectionNode, QueryNode } from "../query/node"
-import type { ResultField, ResultMode, ScalarField } from "../result/result"
+import type { RecordTemplateField, ResultField, ResultMode, ScalarField } from "../result/result"
 import type { AnyTable } from "../table/table"
 import type { AnyType } from "../type/type"
 
@@ -247,6 +247,8 @@ export interface SelectNode<
   readonly offset: ExpressionNode | undefined
   /** Required relation that guarantees the row of the query, such as `field.form`; see `ResultPlan`. */
   readonly guaranteedBy: string | undefined
+  /** Template of the records of a query with literals; see `ResultPlan`. */
+  readonly recordTemplate?: readonly RecordTemplateField[] | undefined
 }
 
 /** Assignment of `SET` of an update: the value of the column under `key`. */
@@ -263,6 +265,8 @@ export interface AssignmentNode {
 interface MutationParts<Field> extends ResultMode {
   readonly target: TableSourceNode
   readonly returning: readonly Field[] | undefined
+  /** Template of the records of a mutation with literals; see `ResultPlan`. */
+  readonly recordTemplate?: readonly RecordTemplateField[] | undefined
 }
 
 /** Insert statement of rows of `VALUES`. */

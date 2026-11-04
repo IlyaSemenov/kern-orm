@@ -1,4 +1,4 @@
-// Queries of `$select`: one record of the values of expressions and the results of independent queries, in one statement without a source.
+// Queries of `$select`: one record of the values of expressions and of literals and the results of independent queries, in one statement without a source.
 
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
@@ -24,7 +24,7 @@ export interface RecordQueryState<
   readonly uses: U
 }
 
-/** State of the query of `$select` of `Sel`: the record of the values of its expressions and the results of its queries. */
+/** State of the query of `$select` of `Sel`: the record of the values of its expressions and of its literals and the results of its queries. */
 export type SelectionState<Sel extends Selection> = RecordQueryState<
   MergeSelection<EmptyRecord, SelectionResult<Sel>>,
   SelectionUses<Sel>
@@ -32,7 +32,7 @@ export type SelectionState<Sel extends Selection> = RecordQueryState<
 
 // Like `SelectQuery`, it is covariant in its state and its kind, so that a `Db` executes it whatever its record.
 /**
- * Immutable query of `$select` of state `S`, unbound or bound to a `Db`: one record whose fields are the values of expressions and the results of independent queries, selected in one statement.
+ * Immutable query of `$select` of state `S`, unbound or bound to a `Db`: one record whose fields are the values of expressions and of literals and the results of independent queries, selected in one statement.
  *
  * An unbound query is not thenable, so it can be returned from async functions; it is compiled with `toSQL` or executed by a `Db`.
  * A bound query executes on its `Db` when awaited.
@@ -81,7 +81,7 @@ export class RecordQuery<
 export type AnyRecordQuery = RecordQuery<any, SelectQueryKind>
 
 /**
- * Starts the query of `$select` of `selection`, an object of expressions and queries by key, bound to `db` when given.
+ * Starts the query of `$select` of `selection`, an object of expressions, queries, and literals by key, bound to `db` when given.
  *
  * It reads the keys and values of `selection` when it is called.
  */

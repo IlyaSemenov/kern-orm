@@ -54,7 +54,7 @@ const total = await db.$query`SELECT count(*) FROM ${db.form}`.get(t.integer)
 ## Queries in statements
 
 To compute what queries cannot, such as the median number of fields of published forms, interpolate a query into the statement.
-It becomes a subquery in parentheses; name its columns after its alias, in the order of the fields of the query:
+It becomes a subquery in parentheses; name its columns after its alias, in the order of the fields of the query, leaving out [literals](./selecting#values-from-code):
 
 ```ts
 const median = await db.$query`

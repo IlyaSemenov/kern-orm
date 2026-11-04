@@ -67,7 +67,7 @@ interface SchemaMembers<T extends Tables, R extends SchemaRelations> extends Sch
     MergeRelations<S[typeof schemaRelations] & DeclaredRelations<S["$tables"], D>>
   >
   /**
-   * Starts an unbound query of one record whose fields are the values of the expressions and the results of the queries of `selection`, selected in one statement.
+   * Starts an unbound query of one record whose fields are the values of the expressions and of the literals and the results of the queries of `selection`, selected in one statement.
    *
    * The value of the field of a query is the result it gives when executed, such as an array of records or one value.
    */

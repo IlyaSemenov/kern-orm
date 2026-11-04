@@ -22,8 +22,15 @@ import type { AnyDb } from "../execution/db"
 import type { AggregateProjection } from "../query/aggregate"
 import { countProjection, isAggregateQuery } from "../query/aggregate"
 import { isExistsQuery } from "../query/exists"
-import type { MutationNode, QueryNode, RecordQueryNode, SelectedNode } from "../query/node"
-import { isNestedSelection } from "../query/node"
+import type {
+  MutationNode,
+  QueryNode,
+  RecordQueryNode,
+  SelectedNode,
+  SqlSelectedNode,
+} from "../query/node"
+import { isLiteralSelection, isNestedSelection } from "../query/node"
+import type { RecordTemplateField } from "../result/result"
 import type { RelationDefinition } from "../schema/relation"
 import { formatRelationName } from "../schema/relation"
 import { text } from "../type/builtins/text"
@@ -114,11 +121,13 @@ function lowerText(node: TextStatementNode, context: LoweringContext): TextState
 /** Lowers a mutation to its statement, replacing the queries in its expressions, and packing the rows of each nested query of `RETURNING` into the value of its field, or selecting the value of a nested aggregate query, as a select list does. */
 function lowerMutation(node: MutationNode, context: LoweringContext): MutationStatementNode {
   const { target, returning, rows, value } = node
-  const lowered = returning === undefined ? undefined : lowerProjections(returning, context)
+  const recordTemplate = returning === undefined ? undefined : createRecordTemplate(returning)
+  const lowered =
+    returning === undefined ? undefined : lowerProjections(dropLiterals(returning), context)
   switch (node.kind) {
     case "insert": {
       const values = lowerEach(node.values, context, lowerRow)
-      // Without queries, the fields are already projections and the node is the statement.
+      // Without queries and literals, the fields are already projections and the node is the statement.
       if (lowered === returning && values === node.values) {
         return node as MutationStatementNode
       }
@@ -128,6 +137,7 @@ function lowerMutation(node: MutationNode, context: LoweringContext): MutationSt
         columns: node.columns,
         values,
         returning: lowered,
+        recordTemplate,
         rows,
         value,
       })
@@ -144,6 +154,7 @@ function lowerMutation(node: MutationNode, context: LoweringContext): MutationSt
         set,
         filters,
         returning: lowered,
+        recordTemplate,
         rows,
         value,
       })
@@ -158,6 +169,7 @@ function lowerMutation(node: MutationNode, context: LoweringContext): MutationSt
         target,
         filters,
         returning: lowered,
+        recordTemplate,
         rows,
         value,
       })
@@ -196,7 +208,8 @@ function lowerSelect(node: QueryNode, context: LoweringContext, positions: boole
   if (isAggregateQuery(node)) {
     return lowerAggregate(node, context)
   }
-  const selected = node.projections
+  const recordTemplate = createRecordTemplate(node.projections)
+  const selected = dropLiterals(node.projections)
   const projections = lowerProjections(selected, context)
   const filters = lowerFilters(node.filters, context)
   const orderBy = lowerOrder(node.orderBy, context, selected, projections)
@@ -210,7 +223,16 @@ function lowerSelect(node: QueryNode, context: LoweringContext, positions: boole
   const page =
     node.offset !== undefined &&
     selected.some((field, index) => isPagedField(field, projections[index]!, orderBy))
-      ? lowerPage(node, projections, filters, orderBy, positions, guaranteedBy)
+      ? lowerPage(
+          node,
+          selected,
+          projections,
+          filters,
+          orderBy,
+          positions,
+          guaranteedBy,
+          recordTemplate,
+        )
       : undefined
   if (page !== undefined) {
     return page
@@ -227,7 +249,41 @@ function lowerSelect(node: QueryNode, context: LoweringContext, positions: boole
     rows: node.rows,
     value: node.value,
     guaranteedBy,
+    recordTemplate,
   })
+}
+
+/** Returns the fields of `selected` that a statement selects, or `selected` itself without literals. */
+function dropLiterals(selected: readonly SelectedNode[]): readonly SqlSelectedNode[] {
+  if (!selected.some(isLiteralSelection)) {
+    return selected as readonly SqlSelectedNode[]
+  }
+  const fields: SqlSelectedNode[] = []
+  for (const field of selected) {
+    if (!isLiteralSelection(field)) {
+      fields.push(field)
+    }
+  }
+  return fields
+}
+
+/** Creates the template of the records of `selected`: every field in its order with the value of a literal, or `undefined` without literals. */
+function createRecordTemplate(
+  selected: readonly SelectedNode[],
+): readonly RecordTemplateField[] | undefined {
+  if (!selected.some(isLiteralSelection)) {
+    return undefined
+  }
+  const template: RecordTemplateField[] = []
+  for (const field of selected) {
+    template.push(
+      Object.freeze({
+        key: field.key,
+        value: isLiteralSelection(field) ? field.literal : undefined,
+      }),
+    )
+  }
+  return template
 }
 
 /**
@@ -236,7 +292,7 @@ function lowerSelect(node: QueryNode, context: LoweringContext, positions: boole
  * The query evaluates a field that it sorts by, of an aggregate or of `exists`, for every row anyway.
  */
 function isPagedField(
-  field: SelectedNode,
+  field: SqlSelectedNode,
   projection: ProjectionNode,
   orderBy: readonly OrderNode[],
 ): boolean {
@@ -273,6 +329,7 @@ function checkDb(db: AnyDb | undefined, context: LoweringContext, subject: strin
 
 /**
  * Lowers `node` with `projections`, `filters`, and `orderBy`, the lowered parts of the node, to a statement that evaluates its nested queries, apart from those that it sorts by, over the rows of a derived page.
+ * `queryFields` are the fields of the query without literals, and `projections` their lowered projections in the same order.
  * The derived source applies the filters, the order, the limit, and the offset, and replaces the occurrence of the table.
  *
  * It returns `undefined` when a nested query that it evaluates over the rows of the page holds a SQL fragment that refers to a column of the table outside the queries nested in the fragment.
@@ -285,11 +342,13 @@ function checkDb(db: AnyDb | undefined, context: LoweringContext, subject: strin
  */
 function lowerPage(
   node: QueryNode,
+  queryFields: readonly SqlSelectedNode[],
   projections: readonly ProjectionNode[],
   filters: QueryFilters,
   orderBy: readonly OrderNode[],
   positions: boolean,
   guaranteedBy: string | undefined,
+  recordTemplate: readonly RecordTemplateField[] | undefined,
 ): SelectNode<SourceNode> | undefined {
   const { from } = node
   const columnKeys = new Set<string>()
@@ -299,7 +358,7 @@ function lowerPage(
   for (let index = 0; index < projections.length; index++) {
     const { expression } = projections[index]!
     let key: string | undefined
-    if (isPagedField(node.projections[index]!, projections[index]!, orderBy)) {
+    if (isPagedField(queryFields[index]!, projections[index]!, orderBy)) {
       if (holdsFragmentOfSource(expression, from)) {
         return undefined
       }
@@ -370,6 +429,7 @@ function lowerPage(
     rows: node.rows,
     value: node.value,
     guaranteedBy,
+    recordTemplate,
   })
 }
 
@@ -562,7 +622,7 @@ function lowerRecord(node: RecordQueryNode, context: LoweringContext): SelectNod
     kind: "select",
     from: undefined,
     joins: noJoins,
-    projections: lowerProjections(node.projections, context),
+    projections: lowerProjections(dropLiterals(node.projections), context),
     filters: noFilters,
     orderBy: noOrder,
     limit: undefined,
@@ -570,6 +630,7 @@ function lowerRecord(node: RecordQueryNode, context: LoweringContext): SelectNod
     rows: "one",
     value: false,
     guaranteedBy: undefined,
+    recordTemplate: createRecordTemplate(node.projections),
   })
 }
 
@@ -579,7 +640,7 @@ function lowerRecord(node: RecordQueryNode, context: LoweringContext): SelectNod
  * Without queries, it returns `selected` itself.
  */
 function lowerProjections(
-  selected: readonly SelectedNode[],
+  selected: readonly SqlSelectedNode[],
   context: LoweringContext,
 ): readonly ProjectionNode[] {
   let lowered: ProjectionNode[] | undefined
@@ -657,7 +718,7 @@ function lowerFilters(filters: QueryFilters, context: LoweringContext): QueryFil
 function lowerOrder(
   orderBy: readonly OrderNode[],
   context: LoweringContext,
-  selected?: readonly SelectedNode[],
+  selected?: readonly SqlSelectedNode[],
   projections?: readonly ProjectionNode[],
 ): readonly OrderNode[] {
   let lowered: OrderNode[] | undefined
@@ -685,7 +746,7 @@ function lowerOrder(
 }
 
 /** Tells whether the sort expression `expression` is the value of `field`: its expression, or for a field of an aggregate or of `exists`, the node of its reference in the callback of `orderBy`. */
-function isFieldValue(field: SelectedNode, expression: ExpressionNode): boolean {
+function isFieldValue(field: SqlSelectedNode, expression: ExpressionNode): boolean {
   return isNestedSelection(field)
     ? expression.kind === "nestedQuery" && expression.field === field
     : field.expression === expression

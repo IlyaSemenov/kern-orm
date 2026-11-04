@@ -232,7 +232,7 @@ describe("mergeProjections", () => {
         ],
         noContext,
       ),
-    ).toThrow('Selected field "id" must be an expression or a query')
+    ).toThrow('Selected field "id" must be an expression, a query, or a literal')
   })
 
   it("rejects an expression without a type", () => {

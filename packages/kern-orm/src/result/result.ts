@@ -22,6 +22,12 @@ export interface NestedField {
   readonly nested: ResultPlan
 }
 
+/** Field of a record in the template of a result plan: its key and its value before the values of a row are assigned. */
+export interface RecordTemplateField {
+  readonly key: string
+  readonly value: unknown
+}
+
 /**
  * How a query returns its rows: `many` as an array; `one` as one row, rejecting without it; `nullable` as one row or `null` without it; `optional` as one row or `undefined` without it.
  *
@@ -43,6 +49,12 @@ export interface ResultPlan extends ResultMode {
   readonly fields: readonly ResultField[]
   /** Required relation that guarantees the row of nested rows `one`, such as `field.form`, whose missing row is a `RequiredRelationError` rather than a `NotFoundError`. */
   readonly guaranteedBy?: string | undefined
+  /**
+   * Every field of a record in its order, with the values of its literals, which a row does not hold; `undefined` for a query without literals.
+   *
+   * A record starts from it, so its keys keep their order whichever of them a row holds.
+   */
+  readonly recordTemplate?: readonly RecordTemplateField[] | undefined
 }
 
 /** Result plan of a compiled statement: the plan of its rows, and how a mutation that returns no fields reads the number of the rows it changes. */
@@ -139,13 +151,13 @@ export function decodeStatement(plan: StatementPlan, result: DriverResult): unkn
   if (counted === "number") {
     return count
   }
-  // Records without fields of the changed rows, which PostgreSQL cannot return, since it rejects `RETURNING` without fields.
+  // Records without values of a row for the changed rows, which PostgreSQL cannot return, since it rejects `RETURNING` without fields.
   if (plan.rows !== "many") {
-    return {}
+    return createRecord(plan)
   }
   const records: object[] = []
   for (let index = 0; index < count; index++) {
-    records.push({})
+    records.push(createRecord(plan))
   }
   return records
 }
@@ -313,7 +325,7 @@ function decodeRow(plan: ResultPlan, row: readonly unknown[], packed: boolean): 
     if (plan.value) {
       return packed ? decodePackedValue(fields[0]!, row[0]) : decodeDriverValue(fields[0]!, row[0])
     }
-    const record: Record<string, unknown> = {}
+    const record = createRecord(plan)
     for (; index < fields.length; index++) {
       const field = fields[index]!
       record[field.key] = packed
@@ -326,6 +338,19 @@ function decodeRow(plan: ResultPlan, row: readonly unknown[], packed: boolean): 
     // A query of rows `many` adds the index of the row of the driver before the path.
     throw prefixPath(packed ? `.${key}` : key, error)
   }
+}
+
+/** Creates a record of `plan` before the values of a row are assigned: empty, or with the fields of its template. */
+function createRecord(plan: ResultPlan): Record<string, unknown> {
+  const record: Record<string, unknown> = {}
+  const { recordTemplate } = plan
+  if (recordTemplate !== undefined) {
+    for (let index = 0; index < recordTemplate.length; index++) {
+      const { key, value } = recordTemplate[index]!
+      record[key] = value
+    }
+  }
+  return record
 }
 
 /** Decodes the value of a field in a row of the driver: a scalar from its text, keeping `NULL` as `null`, or nested rows from JSON text. */

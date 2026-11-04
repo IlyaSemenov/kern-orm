@@ -96,7 +96,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   $execute<Q extends DbQuery<T, R>>(query: Q): Promise<QueryResult<Q["types"]>>
   // Independent of `T` and `R`, so that it is the same in every `Db`; like an awaited query, its query is checked when it runs.
   /**
-   * Starts a query of one record whose fields are the values of the expressions and the results of the queries of `selection`, selected in one statement when awaited.
+   * Starts a query of one record whose fields are the values of the expressions and of the literals and the results of the queries of `selection`, selected in one statement when awaited.
    *
    * A query of `selection` is unbound or bound to this `Db`, and the value of its field is the result it gives when executed, such as an array of records or one value.
    */

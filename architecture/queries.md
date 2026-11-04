@@ -1,6 +1,6 @@
 # Queries
 
-- **Query** (`query/`): immutable query object wrapping a semantic query node (`query/node.ts`), whose fields are expressions or the rows of nested queries.
+- **Query** (`query/`): immutable query object wrapping a semantic query node (`query/node.ts`), whose fields are expressions, the rows of nested queries, or literals.
   Its type carries one state object of its table, the schema context of its relations, the record or value of its rows and the type of its value, its result mode, and the relations whose records it and its nested queries select; a method replaces only its own parts, so new state is a new part rather than a new type parameter.
   The schema context is the relations of the schema the query starts from, by table key, and the key of its table there, so the same table queried from schemas of different relations gives different types.
   A query of `from(table)`, and of a table without relations in its schema, has the context without relations, and a query whose table has relations is also a query of the same table without them in types.
@@ -39,17 +39,23 @@ Queries come in two kinds that share the query methods and differ only by execut
 ## Selection
 
 - A query returns only explicitly selected fields: without `select` its records have no fields, and all columns require `select("*")`.
-- A selected field is a projection: an expression, the key of the field, and the type of the expression, which decodes its values; the projections are the result fields of the compiled query.
+- A selected field other than a literal is a projection: an expression, the key of the field, and the type of the expression, which decodes its values; the projections are the result fields of the compiled query.
   A projection of nested rows has the result plan of their query instead of a type.
   An expression without a type, such as `sql<T>`, cannot be selected, since a TypeScript type does not determine how to decode its values; it is rejected at runtime by its missing type and in types by the mark of `TypedExpression`, which selection requires, `Expression` includes, and `AnyExpression`, such as an operand of a generic operator, lacks.
-- Each `select` appends projections under new keys and replaces projections under existing keys without moving them; the same expression can be selected under several keys.
-  The last selection of a key determines both its expression and its decoding type, so each key has one projection and repeating a column is idempotent, within a call as well as across calls.
+- Each `select` appends fields under new keys and replaces fields under existing keys without moving them; the same expression can be selected under several keys.
+  The last selection of a key determines the whole field, such as its expression and its decoding type, so each key has one field and repeating a column is idempotent, within a call as well as across calls.
   Result types merge fields by replacing overlapping keys, independently for each branch of a union of records or selections; a result of `any` stays `any`.
   Numeric keys are normalized to strings before merging, matching JavaScript object keys.
   An optional selection retains the input field's requiredness and allows either its previous value or the selected property value, including `undefined`.
-  `clearSelect` removes all projections and keeps the other clauses.
-  Outside helper callbacks, TypeScript can reduce a union to a query of fewer fields when the shared fields have compatible types and the other state parts match; selecting a key hidden by that reduction replaces its runtime projection.
+  `clearSelect` removes all fields and keeps the other clauses.
+  Outside helper callbacks, TypeScript can reduce a union to a query of fewer fields when the shared fields have compatible types and the other state parts match; selecting a key hidden by that reduction replaces its runtime field.
 - The key of a field names only the field of a record: `where`, `orderBy`, and column references resolve against the columns of their source, never against selected keys.
+- A literal (`query/literal.ts`) is a field whose value comes from code and never reaches PostgreSQL, unlike `param`: it has no projection, and its value is in the result plan ([SQL generation](sql.md#result-decoding)).
+  Orchid ORM 0.73.36 `sql.val` instead sends the value as a parameter and reads back what the driver gives ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/expressions/val-expression.ts)), so its value has to survive the round trip.
+  - It is not an expression: types take it only in a selection, and at runtime it rejects as an operand, also as the value of a column of an unknown type, and `get`, `pluck`, and the aggregate methods reject it as their value.
+  - Types keep the literal type of a primitive, such as `"none"`, so that a branch beside a column gives a union of its values, and leave objects and arrays mutable.
+  - A selection holds it in place among its fields, so a later selection replaces it by key as any other field; reading it among the references of the callback of `orderBy` throws, as reading nested rows does, rather than dropping a sort key silently, and a query that selects a field conditionally must sort by it under the same condition.
+  - Its record holds the value by reference, the same in every row.
 
 ## Result modes
 
@@ -208,7 +214,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   A relation gives an unbound query of its related records over a new occurrence of the target table, in the context of the target table in the same schema, even for a query of a `Db`.
   Its relation filter compares the columns of the keys with SQL `=` in order, built from SQL nodes rather than by calling the `eq` operators of their types.
   In types, a schema context whose table key is `string`, such as that of the queries a `Db` accepts, has no relations, since queries of relations there would keep the queries of a `Db` from being assigned to them.
-- A selected field is an expression with a type or a query of either kind, whose rows become the value of the field.
+- A selected field is an expression with a type, a query of either kind, whose rows become the value of the field, or a literal.
   A nested query bound to a `Db` runs only in a statement of the same `Db`, since the statement takes the options of its `Db`, such as the PostgreSQL schema; lowering checks the `Db` by identity at any depth, and types do not check it.
   So `toSQL` of an unbound query rejects a nested query bound to a `Db`, which `$compile` of that `Db` compiles.
   Nested rows are the result that their query would give when executed; the state of the nested query adds the relations it selects to the state of the parent.
@@ -216,7 +222,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Queries of `$select`
 
-- `$select` of a `Db` and of a schema starts a bound or an unbound query of one record whose fields are the values of expressions and the results of independent queries, selected in one statement without a source.
+- `$select` of a `Db` and of a schema starts a bound or an unbound query of one record whose fields are the values of expressions, the results of independent queries, and literals, with the first two selected in one statement without a source.
   It takes an object of the fields that the callback of `select` returns, under the same rules, and reads its keys and values when it is called.
   - The field of a query has the result that the query gives when it is executed: its rows are nested, so a query of one row without its row rejects with `NotFoundError` whose path is the field.
   - Its state has the record, rows `one`, and the relations that its queries select, as `SelectionState` gives them.
