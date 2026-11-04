@@ -2,9 +2,17 @@
 
 import type { ScalarProjection } from "../ast/nodes"
 import { trueNode } from "../ast/nodes"
+import type { EqualityOperators } from "../expression/operators/equality"
 import { getBooleanType } from "../type/boolean"
 
 import type { QueryNode, SelectedNode } from "./node"
+import type { QueryValueType } from "./state"
+
+/** Type of the value of a query of `exists`. */
+export interface ExistsValueType extends QueryValueType {
+  readonly input: boolean
+  readonly operators: EqualityOperators
+}
 
 // Created on first use: the Boolean type depends on the modules of expressions, which are not initialized while this module loads.
 let existsProjection: ScalarProjection | undefined

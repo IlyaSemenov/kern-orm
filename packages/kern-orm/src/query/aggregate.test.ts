@@ -1,7 +1,7 @@
 import { expect, it } from "bun:test"
 
 import type { ScalarProjection } from "../ast/nodes"
-import { sql } from "../expression/sql"
+import { param, sql } from "../expression/sql"
 import { defineTable } from "../table/table"
 import type { AnyType } from "../type/type"
 import * as t from "../types"
@@ -69,6 +69,22 @@ it("decodes a sum of integer values by their type, rejecting a sum outside the s
   )
   expect(sum.encode(0)).toBe("0")
   expect(typeOf(from(post).sum("stars")).decode("6")).toEqual({ stars: 6 })
+})
+
+it("gives a sum of integer values the operators of their type", () => {
+  const near = t.integer.withOperators({
+    near: (self, value: number) => sql<boolean>`abs(${self} - ${param(self, value)}) < 10`,
+  })
+  const rated = defineTable("rated", {
+    views: near,
+  })
+  const query = from(rated).where(() => from(rated).sum("views").expr().near(5))
+
+  expect(typeOf(from(post).sum("views")).operators).toEqual(t.integer.operators)
+  expect(query.toSQL()).toEqual({
+    text: 'SELECT FROM "rated" AS "rated" WHERE abs((SELECT sum("rated_2"."views") AS "sum" FROM "rated" AS "rated_2") - $1) < 10',
+    parameters: ["5"],
+  })
 })
 
 it("rejects the average of bigint values unless an expression gives it a type that can represent fractional values", () => {

@@ -81,6 +81,15 @@ const forms = await db.form.select("id").select(form => ({
 
 To get a value instead of `null` for a row without related records, pass it to [`coalesce`](./selecting#aggregates), such as `form.fields.max("position").coalesce(0)`; it also takes an expression, such as a column of the row.
 
+To select the result of an operator on such a value, such as whether each form has more than 3 fields, call [`expr`](./filtering#values-of-other-queries) on the query and the operator on its result:
+
+```ts
+const forms = await db.form.select("id").select(form => ({
+  hasManyFields: form.fields.count().expr().gt(3),
+}))
+// forms: { id: string; hasManyFields: boolean }[]
+```
+
 ## Whether related records exist
 
 To tell whether each row has related records, such as whether each form has fields, select [`exists`](./selecting#whether-rows-exist) of the relation:

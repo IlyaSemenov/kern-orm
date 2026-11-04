@@ -579,6 +579,72 @@ describe("coalesce", () => {
   })
 })
 
+describe("expr", () => {
+  it("gives an expression of the value of a query, with the operators of its type that encode a value with it", () => {
+    const later = from(post).where(() => from(post).max("createdAt").expr().lt(new Date(0)))
+    const titled = from(post).where(() => from(post).get("title").expr().ilike("first%"))
+
+    expect(later.toSQL()).toEqual({
+      text: 'SELECT FROM "post" AS "post" WHERE (SELECT max("post_2"."created_at") AS "max" FROM "post" AS "post_2") < $1',
+      parameters: [t.timestamptz.encode(new Date(0))],
+    })
+    expect(titled.toSQL()).toEqual({
+      text: 'SELECT FROM "post" AS "post" WHERE (SELECT "post_2"."title" AS "title" FROM "post" AS "post_2" LIMIT 1) ILIKE $1',
+      parameters: ["first%"],
+    })
+  })
+
+  it("gives a count the operators of ordering", () => {
+    const query = from(post).where(() => from(post).count().expr().gt(3))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT FROM "post" AS "post" WHERE (SELECT count(*) AS "count" FROM "post" AS "post_2") > $1',
+      parameters: ["3"],
+    })
+  })
+
+  it("gives EXISTS of a query of exists, also after coalesce", () => {
+    const query = from(post).where(() => from(post).exists().coalesce(false).expr().eq(true))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT FROM "post" AS "post" WHERE EXISTS (SELECT FROM "post" AS "post_2") = $1',
+      parameters: ["t"],
+    })
+  })
+
+  it("keeps the fallback of coalesce and the operand of an operator", () => {
+    const query = from(post).where(columns =>
+      from(post).max("title").coalesce("none").expr().eq(columns.title),
+    )
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT FROM "post" AS "post" WHERE (SELECT coalesce(max("post_2"."title"), $1) AS "max" FROM "post" AS "post_2") = "post"."title"',
+      parameters: ["none"],
+    })
+  })
+
+  it("selects an expression with the type of the value", () => {
+    const query = compile(
+      from(post).select(() => ({
+        total: from(post).count().expr(),
+      })),
+    )
+
+    expect(query.fields).toMatchObject([{ key: "total", type: countType }])
+  })
+
+  it("rejects a query of records and of an array of values", () => {
+    // Types reject these calls, which a query held as any query can still make.
+    const records: AnySelectQuery = from(post).take()
+    const values: AnySelectQuery = from(post).pluck("title")
+
+    const message =
+      "An expression takes a query of one value, such as of get, an aggregate, or exists, not a query of records or of an array"
+    expect(() => records.expr()).toThrow(message)
+    expect(() => values.expr()).toThrow(message)
+  })
+})
+
 describe("orderBy", () => {
   it("sorts by columns and expressions, adding the sort keys of each call after the previous ones", () => {
     const query = from(post)

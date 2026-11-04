@@ -2,7 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
-import type { AnyExpression, TypedExpression } from "../expression/expression"
+import type { AnyExpression, Expression, TypedExpression } from "../expression/expression"
 import type { Operand } from "../expression/operators/comparison"
 import { param, sql } from "../expression/sql"
 import { defineSchema } from "../schema/schema"
@@ -709,6 +709,87 @@ describe("coalesce", () => {
     from(stat).max("exact").coalesce(null)
     // @ts-expect-error A fallback is a value of the type of the value.
     from(stat).max("page").coalesce(1)
+  })
+})
+
+describe("expr", () => {
+  const stat = defineTable("stat", {
+    page: t.text,
+    hits: t.integer,
+    opened: t.timestamptz,
+    tag: t.uuid.nullable(),
+    near: t.integer.withOperators({
+      near: (self, value: number) => sql(t.boolean)`${self} - ${value} < 10`,
+    }),
+    size: t.jsonb,
+  })
+
+  test("gives an expression of the value with the operators of its type", () => {
+    const text = from(stat).get("page").expr()
+    expectTypeOf(text.ilike("x%")).toEqualTypeOf<Expression<boolean | null>>()
+    const count = from(stat).count().expr()
+    expectTypeOf(count.gt(3)).toEqualTypeOf<Expression<boolean>>()
+    const custom = from(stat).max("near").expr()
+    expectTypeOf(custom.near(1)).toEqualTypeOf<Expression<boolean>>()
+    const callback = from(stat)
+      .take()
+      .pluck(columns => columns.page)
+      .expr()
+    expectTypeOf(callback.like("x%")).toEqualTypeOf<Expression<boolean | null>>()
+    const summed = from(stat)
+      .sum(columns => columns.hits)
+      .expr()
+    expectTypeOf(summed.lte(1)).toEqualTypeOf<Expression<boolean | null>>()
+    const existing = from(stat).exists().expr()
+    expectTypeOf(existing.eq(true)).toEqualTypeOf<Expression<boolean>>()
+    expectTypeOf(from(stat).count().expr().isNull()).toEqualTypeOf<Expression<boolean>>()
+  })
+
+  test("types the value by the query in an expression, keeping the values that its type accepts", () => {
+    expectTypeOf(from(stat).get("hits").expr()).toExtend<AnyExpression<number | null, number>>()
+    expectTypeOf(from(stat).get("opened").expr().gt(new Date())).toEqualTypeOf<
+      Expression<boolean | null>
+    >()
+    expectTypeOf(from(stat).count().expr()).toExtend<AnyExpression<number, number>>()
+    expectTypeOf(from(stat).max("hits").expr()).toExtend<AnyExpression<number | null, number>>()
+    expectTypeOf(from(stat).max("hits").coalesce(0).expr()).toExtend<
+      AnyExpression<number, number>
+    >()
+    expectTypeOf(from(stat).exists().expr()).toExtend<AnyExpression<boolean, boolean>>()
+  })
+
+  test("gives an expression with a type, which selects and takes the place of an operand", () => {
+    const selected = from(stat).select(() => ({
+      total: from(stat).count().expr(),
+      missing: from(stat).get("tag").expr(),
+      several: from(stat).count().expr().gt(1),
+    }))
+    expectTypeOf<Executed<typeof selected>>().toEqualTypeOf<
+      { total: number; missing: string | null; several: boolean }[]
+    >()
+
+    from(stat).where(columns => columns.hits.lt(from(stat).count().expr()))
+    from(stat).where(() => from(stat).get("hits").expr().gt(1))
+    from(stat).orderBy(() => desc(from(stat).count().expr()))
+  })
+
+  test("applies to a union of queries of one value", () => {
+    const flag = Math.random() > 0.5
+    const value = (flag ? from(stat).max("hits") : from(stat).count()).expr()
+    expectTypeOf(value.gt(1)).toEqualTypeOf<Expression<boolean | null>>()
+  })
+
+  test("rejects a query of records, of an array of values, and an operand of another type", () => {
+    // @ts-expect-error A query of records has no value.
+    from(stat).take().expr()
+    // @ts-expect-error A query of an array of values has no value.
+    from(stat).pluck("hits").expr()
+    // @ts-expect-error The operand is of another type.
+    from(stat).count().expr().gt("3")
+    // @ts-expect-error A type of JSON values has no operators of ordering.
+    from(stat).get("size").expr().gt(1)
+    // @ts-expect-error A count has no operators of text.
+    from(stat).count().expr().ilike("x%")
   })
 })
 

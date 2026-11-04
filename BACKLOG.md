@@ -2,20 +2,6 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
-## Queries as expressions
-
-A query of one value as the value of a comparison on the left, beside a query of one value as an [operand](architecture/queries.md#queries-in-expressions) of conditions, operators, object conditions, `coalesce`, and sort keys, a query of values as the list of `in`, and a query as a subquery in SQL fragments.
-
-Preliminary decisions:
-
-- A method of a query of one value, `expr()`, returns an expression of its value with the operators of its type, such as `form.fields.count().expr().gt(3)`; until then, the value of a query is an operand on the right or a fragment such as ``sql<boolean>`${form.fields.count()} > ${3}` ``.
-  - A query is not an expression: it executes, keeps its `Db` and the relations it uses, and takes `where`, `orderBy`, and `coalesce` after an aggregate.
-  - `expr()` takes the query from `this`, as the other methods do: a getter, such as `ops`, would type its result by the state of the class and break the covariance of a query, and a callback, such as `expr(value => value.gt(3))`, adds nesting without a gain.
-  - The state of a query needs the operators of the type of its value, which `get`, `pluck`, and the aggregate methods set; measure its cost with `bench:types`.
-  - The type of a count needs the operators of `orderingOperators`, which it lacks.
-  - Rejected: the operators of the type of the value as methods of the query, as in Orchid ORM: a custom operator could take the name of a method of a query, so `withOperators` would reject those names, and every new method of a query would break the custom types that have an operator of its name; the query would also need a prototype for each type of its value.
-  - Rejected: functions of operators, such as `gt(form.fields.count(), 3)`: the operators belong to types, including custom ones, which would each need a function too.
-
 ## Functions of expressions
 
 Functions of expressions typed by their operands, for values and conditions that operators do not cover, such as the weight of the role of a user from several sources, `GREATEST(COALESCE((SELECT max(CASE ... END) ...), 0), ...)`:
@@ -29,7 +15,7 @@ Functions of expressions typed by their operands, for values and conditions that
 An expression over the columns and relations of a table that queries of the table reuse with arguments, such as whether a user can moderate a record, which a query both selects and filters by, while `defineFilter` reuses only a condition without arguments.
 
 - `where` and `orderBy` resolve columns against the source rather than the selected fields, as [architecture/queries.md](architecture/queries.md#selection) states, so a query that filters by a field it selects calls such an expression in both.
-- A function of `ColumnRefs<T>`, `RelationRefs<T>`, and the arguments may be enough once [queries are expressions](#queries-as-expressions); then document the pattern beside filters and helpers instead of adding an API.
+- A function of the references and the arguments works in `where`, `select`, and `orderBy`, such as of `columns.fields.count().expr().gt(count)`, but its parameter takes `ColumnRefs<typeof form> & RelationRefs<(typeof db.form)["types"]["schema"]>`; decide on a short name of that type and document the pattern beside filters and helpers instead of adding an API.
 - Otherwise, decide whether `defineFilter` takes further arguments, as `defineHelper` does, and whether it defines expressions of types other than `boolean`.
 
 ## Moving from rake-db
@@ -194,13 +180,6 @@ A hook belongs to the level that registers it: rolling the level back discards i
 A type of the fields that a helper selects, such as of the records that a function returns from a query of the helper: `ResultOf` takes a query, while the fields are `E["fields"]` of `Helper<T, E, A>`, which `infer` reads from `typeof helper`.
 Decide between `ResultOf` of a helper and a type of its own.
 
-## Sorting by a field of a related record
-
-Sorting by a field of the related record of a relation `one`, such as fields by the name of their form; keep the design of sorting and relations open to it.
-The answers of a submission in the order of their fields need it too: `getSubmissionReview` of `examples/forms` selects the fields of the form in their order with the answer of each instead.
-
-- A scalar subquery of the relation in `orderBy`, such as of `get` of the name of the form, gives it once [queries are expressions](#queries-as-expressions); benchmark a join against it, such as with an index of the order.
-
 ## Non-waiting advisory locks and integer keys
 
 A variant of [`$lock`](architecture/transactions.md#locks) that returns whether it took the lock instead of waiting, `pg_try_advisory_xact_lock`, such as for a job that only one process runs and others skip, and integer keys of PostgreSQL beside string keys, such as to share locks with code outside kern-orm.
@@ -265,6 +244,7 @@ Queries with joined tables:
 - Decide which sources the column values of `where` resolve against, whether they can address joined tables, and how a callback receives the columns of joined tables.
 - `SelectQuery` is typed by a single table and will need the shape of all query sources.
 - A column of a source joined with `LEFT JOIN` is `NULL` without a match whatever its type, so its result type needs the nullability of the join.
+- Sorting by a field of a related record, such as fields by the name of their form, is a [scalar subquery](architecture/queries.md#sorting-and-pagination) of the relation in `orderBy`; benchmark a join against it, such as with an index of the order.
 
 ## Values before an update
 
@@ -303,7 +283,8 @@ Research whether types should check the relations that the queries of a conditio
 A condition carries no relations in types, unlike a selection, which carries them in `uses`, so types accept:
 
 - a helper of a schema whose callback filters by a relation, such as `defineHelper(schema.survey, query => query.where(survey => survey.questions.exists()))`, on a query without the relation, such as `from(survey)`, where the callback fails to read the relation, while types reject a helper that selects the relation there ([architecture/queries.md](architecture/queries.md#helpers));
-- a query of a `Db` whose condition reads a relation that the relations of the `Db` lack, which only lowering rejects.
+- a query of a `Db` whose condition reads a relation that the relations of the `Db` lack, which only lowering rejects;
+- a selected expression of a query of a relation, such as `form.fields.count().expr()`, in both of these ways, unlike the same query selected as it is.
 
 Checking them needs the relations in the types of expressions and conditions, so measure its cost with `bench:types` before choosing a design.
 

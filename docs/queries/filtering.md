@@ -98,6 +98,14 @@ await db.field
   .select("id")
 ```
 
+To apply an operator to the value of a query, such as to find the forms with more than 3 fields, call `expr` on the query and the operator on its result:
+
+```ts
+await db.form.where(form => form.fields.count().expr().gt(3)).select("id")
+```
+
+You can use any operator of the type of the value, such as `ilike` for text.
+
 To find records whose column equals any of the values of another query, such as the forms that a user submitted, pass a query of `pluck` to `in`:
 
 ```ts

@@ -634,6 +634,63 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
   })
 
+  it("applies operators to the value of a query, NULL without its row, in filters, sort keys, and selected fields", async () => {
+    const results = await testTransaction(async () => [
+      await db.form
+        .where(form => form.fields.count().expr().gt(1))
+        .orderBy("id")
+        .pluck("id"),
+      await db.field
+        .where(field => field.form.get("name").expr().ilike("feed%"))
+        .orderBy("id")
+        .pluck("id"),
+      // A form without fields and a field without a label, whose minimum is NULL.
+      await db.form
+        .where(form => form.fields.min("label").expr().isNull())
+        .orderBy("id")
+        .pluck("id"),
+      // A sum and an average, whose values PostgreSQL types as `bigint` and `numeric`, which type the parameters.
+      await db.form
+        .where(form => form.fields.sum("id").expr().gte(4))
+        .orderBy("id")
+        .pluck("id"),
+      await db.form
+        .where(form => form.fields.avg("id").expr().gt(2.5))
+        .orderBy("id")
+        .pluck("id"),
+      await db.form.orderBy(form => desc(form.fields.count().expr())).pluck("id"),
+      // The sort key of the selected field is its projection.
+      await db.form
+        .select(form => ({
+          total: form.fields.count().expr(),
+        }))
+        .orderBy((_, selected) => desc(selected.total))
+        .limit(1),
+      await db.form.orderBy("id").select(form => ({
+        fieldCount: form.fields.count().expr(),
+        several: form.fields.count().expr().gt(1),
+        firstId: form.fields.min("id").expr(),
+        hasFields: form.fields.exists().expr(),
+        firstLabel: form.fields.orderBy("id").get("label").expr(),
+      })),
+    ])
+
+    expect(results).toEqual([
+      [1],
+      [4],
+      [3],
+      [1, 2],
+      [2],
+      [1, 2, 3],
+      [{ total: 3 }],
+      [
+        { fieldCount: 3, several: true, firstId: 1, hasFields: true, firstLabel: "Name" },
+        { fieldCount: 1, several: false, firstId: 4, hasFields: true, firstLabel: "Comment" },
+        { fieldCount: 0, several: false, firstId: null, hasFields: false, firstLabel: null },
+      ],
+    ])
+  })
+
   it("filters by the values of a query with in, NULL among them matching no record", async () => {
     const results = await testTransaction(async () => [
       // The forms that have a field with options.

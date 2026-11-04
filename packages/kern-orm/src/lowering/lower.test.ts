@@ -484,7 +484,7 @@ describe("lowerQuery", () => {
     ])
   })
 
-  it("rejects a relation outside the definitions at any depth, also of a query of count, of exists, or in a condition", () => {
+  it("rejects a relation outside the definitions at any depth, also of a query of count, of exists, of an expression, or in a condition", () => {
     for (const { node } of [
       schema.form.select(form => ({
         fields: form.fields.select(field => ({
@@ -499,6 +499,11 @@ describe("lowerQuery", () => {
       schema.form.select(form => ({
         fields: form.fields.select(field => ({
           hasOptions: field.options.exists(),
+        })),
+      })),
+      schema.form.select(form => ({
+        fields: form.fields.select(field => ({
+          optionCount: field.options.count().expr(),
         })),
       })),
       schema.form.where(form => form.fields.where(field => field.options.exists()).exists()),

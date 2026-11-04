@@ -22,7 +22,7 @@ import type { QueryStateOf, SelectQueryState } from "./state"
  */
 interface HelperState<T extends AnyTable, C extends SchemaContext> extends QueryStateOf<T, C> {
   readonly result: HelperFields<never>
-  readonly input: never
+  readonly valueType: never
   readonly rows: "many"
   readonly value: false
   readonly uses: never

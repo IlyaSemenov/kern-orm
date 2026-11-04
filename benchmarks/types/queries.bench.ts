@@ -79,6 +79,7 @@ bench.baseline(async () => {
     .where({ label: tenantDb.answer.where({ value: "baseline" }).get("value") })
     .pluck("id")
   await tenantDb.field.where(field => field.position.lt(field.answers.count())).pluck("id")
+  await storeDb.brand.where(brand => brand.products.count().expr().gt(1)).pluck("id")
   await storeDb.supplier.orderBy(supplier => desc(supplier.email)).pluck("name")
   await storeDb.supplier.orderBy(() => desc(storeDb.review.count())).pluck("email")
   await storeDb.supplier.where(supplier => supplier.id.in(["baseline"])).pluck("name")
@@ -135,7 +136,7 @@ bench("bound query", async () => {
 
 bench("filter of a callback", async () => {
   await tenantDb.form.where(form => form.name.eq("x")).pluck("name")
-}).types([224, "instantiations"])
+}).types([223, "instantiations"])
 
 bench("find", async () => {
   await tenantDb.form.find("x").select("name")
@@ -151,11 +152,11 @@ bench("count", async () => {
 
 bench("aggregate of a column", async () => {
   await tenantDb.form.where({ name: "x" }).max("name")
-}).types([155, "instantiations"])
+}).types([159, "instantiations"])
 
 bench("aggregate with a fallback", async () => {
   await tenantDb.form.where({ name: "x" }).max("name").coalesce("x")
-}).types([263, "instantiations"])
+}).types([273, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
@@ -173,17 +174,21 @@ bench("filter of a value of a query", async () => {
 
 bench("filter of a list", async () => {
   await tenantDb.form.where(form => form.id.in(["x", "y"])).pluck("name")
-}).types([280, "instantiations"])
+}).types([279, "instantiations"])
 
 bench("filter of the values of a query", async () => {
   await tenantDb.field
     .where(field => field.formId.in(tenantDb.form.where({ name: "x" }).pluck("id")))
     .pluck("label")
-}).types([255, "instantiations"])
+}).types([254, "instantiations"])
 
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
-}).types([515, "instantiations"])
+}).types([514, "instantiations"])
+
+bench("comparison of an aggregate of a relation", async () => {
+  await tenantDb.form.where(form => form.fields.count().expr().gt(3)).pluck("name")
+}).types([392, "instantiations"])
 
 bench("order of a callback", async () => {
   await tenantDb.form.orderBy(form => desc(form.name)).pluck("name")
@@ -195,11 +200,11 @@ bench("order by an aggregate of a relation", async () => {
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1067, "instantiations"])
+}).types([1070, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1153, "instantiations"])
+}).types([1156, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -234,7 +239,7 @@ bench("relation many", async () => {
         fields: form.fields.select("label", "position"),
       })),
   )
-}).types([1048, "instantiations"])
+}).types([1042, "instantiations"])
 
 bench("relation one", async () => {
   await tenantDb.$execute(
@@ -245,7 +250,7 @@ bench("relation one", async () => {
         form: field.form.select("name", "published"),
       })),
   )
-}).types([863, "instantiations"])
+}).types([857, "instantiations"])
 
 bench("exists of a relation", async () => {
   await tenantDb.$execute(
@@ -256,7 +261,7 @@ bench("exists of a relation", async () => {
         hasFields: form.fields.exists(),
       })),
   )
-}).types([1045, "instantiations"])
+}).types([1039, "instantiations"])
 
 bench("filtered relation one", async () => {
   await tenantDb.$execute(
@@ -267,7 +272,7 @@ bench("filtered relation one", async () => {
         form: field.form.where({ published: true }).select("name", "published"),
       })),
   )
-}).types([1347, "instantiations"])
+}).types([1341, "instantiations"])
 
 bench("root query of a deep relation graph", async () => {
   await storeDb.customer.where({ name: "x" }).select("name")
@@ -298,14 +303,14 @@ bench("query of a deep relation graph", async () => {
         })),
       })),
     }))
-}).types([3704, "instantiations"])
+}).types([3494, "instantiations"])
 
 bench("$select", async () => {
   await tenantDb.$select({
     names: tenantDb.form.pluck("name"),
     labels: tenantDb.field.pluck("label"),
   })
-}).types([593, "instantiations"])
+}).types([581, "instantiations"])
 
 bench("insert", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).get("id")

@@ -46,7 +46,7 @@ export type Expression<
   T = unknown,
   O extends OperatorDefinitions = EqualityOperators,
   I = T,
-> = ExpressionWithOperators<T, O, I> & TypedExpression<T>
+> = ExpressionWithOperators<T, O, I> & TypedExpression<T, O>
 
 /**
  * Expression of TypeScript type `T` without a type, such as a fragment of `sql<T>`, with the operators of `equalityOperators`.
@@ -60,8 +60,15 @@ export type UntypedExpression<T = unknown> = ExpressionWithOperators<
 >
 
 // The mark states that a type exists, so that widening an expression to `AnyExpression`, which may lack a type, loses it.
-/** Expression that has a type to decode its values, which `select`, `get`, and `pluck` require. */
-export type TypedExpression<T = unknown> = AnyExpression<T> & { readonly [typed]: true }
+// It holds the operators of the type, so that a query of the value of an expression reads them; `any` spares comparing them where an expression of any operators is expected.
+/** Expression that has a type to decode its values, which `select`, `get`, and `pluck` require, with the operators `O` of the type. */
+// oxlint-disable-next-line typescript/no-explicit-any -- the operators of any type
+export type TypedExpression<T = unknown, O extends OperatorDefinitions = any> = AnyExpression<T> & {
+  readonly [typed]: O
+}
+
+/** Operators of expression `E`. */
+export type ExpressionOperators<E extends TypedExpression> = E[typeof typed]
 
 /** Operators of expressions of every type. */
 export interface BaseOperators {

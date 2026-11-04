@@ -2,18 +2,28 @@
 
 import type { AggregateNode, ExpressionNode, RawSqlNode, ScalarProjection } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
-import type { AnyType } from "../type/type"
+import { orderingOperators } from "../expression/operators/ordering"
+import type { AnyType, TypeInput, TypeOperators } from "../type/type"
 import { defineType } from "../type/type"
 
 import { isExistsQuery } from "./exists"
 import type { QueryNode, SelectedNode } from "./node"
+import type { QueryValueType } from "./state"
 
 // PostgreSQL counts in `bigint`, and a number holds every count up to `Number.MAX_SAFE_INTEGER` exactly.
 /** Type of a count: a `bigint` of PostgreSQL decoded as a number, rejecting a count that a number cannot hold exactly. */
-export const countType = /* @__PURE__ */ defineType({ sqlType: "bigint" }).transform({
-  decode: text => decodeSafeInteger(text, "Count"),
-  encode: (value: number) => String(value),
-})
+export const countType = /* @__PURE__ */ defineType({ sqlType: "bigint" })
+  .transform({
+    decode: text => decodeSafeInteger(text, "Count"),
+    encode: (value: number) => String(value),
+  })
+  .withOperators(orderingOperators)
+
+/** Type of the value of a query of a count. */
+export interface CountValueType extends QueryValueType {
+  readonly input: TypeInput<typeof countType>
+  readonly operators: TypeOperators<typeof countType>
+}
 
 /** Types of the sums of the values of `smallint` and `integer` types, by the type of the values, created once for each. */
 const sumTypes = /* @__PURE__ */ new WeakMap<AnyType, AnyType>()
@@ -162,7 +172,7 @@ function toArgumentType(argument: AnyType): AnyType {
 }
 
 // PostgreSQL sums `smallint` and `integer` values as a `bigint`, which their `Number` decodes without an error outside the safe integer range.
-/** Returns the type of the sum of the values of type `argument`: for `smallint` and `integer` values, `argument` that rejects a sum that a number cannot hold exactly, and `argument` for others. */
+/** Returns the type of the sum of the values of type `argument`: for `smallint` and `integer` values, a `bigint` with the operators of `argument` that rejects a sum that a number cannot hold exactly, and `argument` for others. */
 function toSumType(argument: AnyType): AnyType {
   if (argument.castType !== "smallint" && argument.castType !== "integer") {
     return argument
@@ -170,13 +180,15 @@ function toSumType(argument: AnyType): AnyType {
   let type = sumTypes.get(argument)
   if (type === undefined) {
     // The check reads the text before `argument` decodes it, so that a type derived with `transform` keeps its values.
-    type = defineType({ sqlType: "bigint" }).transform({
-      decode: text => {
-        decodeSafeInteger(text, "Sum")
-        return argument.decode(text)
-      },
-      encode: (value: unknown) => argument.encode(value as never),
-    })
+    type = defineType({ sqlType: "bigint" })
+      .transform({
+        decode: text => {
+          decodeSafeInteger(text, "Sum")
+          return argument.decode(text)
+        },
+        encode: (value: unknown) => argument.encode(value as never),
+      })
+      .withOperators(argument.operators)
     sumTypes.set(argument, type)
   }
   return type

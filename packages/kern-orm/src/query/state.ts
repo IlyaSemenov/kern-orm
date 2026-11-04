@@ -1,5 +1,6 @@
 // States of queries in types: the parts that a query carries in one type parameter and its methods change.
 
+import type { OperatorDefinitions } from "../expression/operators/definitions"
 import type { ResultMode, ResultRows } from "../result/result"
 import type { NoRelations, SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable } from "../table/table"
@@ -15,16 +16,23 @@ export interface QueryState extends ResultMode {
   readonly uses: UsedRelation
 }
 
+/** Type of the value of a query: the values that it encodes, such as the fallback of `coalesce`, and its operators, which `expr` gives its expression. */
+export interface QueryValueType {
+  readonly input: unknown
+  readonly operators: OperatorDefinitions
+}
+
 /**
- * State of a select query in types: its table, the relations of its schema, the record or value of its rows and the values that its value accepts, how its rows become its result, and the relations it selects records of.
+ * State of a select query in types: its table, the relations of its schema, the record or value of its rows and the type of its value, how its rows become its result, and the relations it selects records of.
  *
  * Methods change only their own parts of the state.
  */
 export interface SelectQueryState extends QueryState {
   readonly table: AnyTable
   readonly schema: SchemaContext
-  /** Values that the type of the value of a query of values encodes, such as the fallback of `coalesce`; `never` for a query of records. */
-  readonly input: unknown
+  // `unknown` rather than `QueryValueType`, and only the states of `expr` and `coalesce` narrow it, so that comparing a query with the state of a nested query or of an operand does not instantiate the operators of its type.
+  /** Type of the value of a query of values, a `QueryValueType`; `never` for a query of records. */
+  readonly valueType: unknown
   /**
    * Whether a required relation guarantees the row of the query, such as of `field.form`.
    *
@@ -59,7 +67,7 @@ export interface InitialQueryState<
   Guaranteed extends boolean = false,
 > extends QueryStateOf<T, C> {
   readonly result: EmptyRecord
-  readonly input: never
+  readonly valueType: never
   readonly rows: Rows
   readonly value: false
   readonly uses: U

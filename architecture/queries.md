@@ -1,7 +1,7 @@
 # Queries
 
 - **Query** (`query/`): immutable query object wrapping a semantic query node (`query/node.ts`), whose fields are expressions or the rows of nested queries.
-  Its type carries one state object of its table, the schema context of its relations, the record or value of its rows and the values that its value accepts, its result mode, and the relations whose records it and its nested queries select; a method replaces only its own parts, so new state is a new part rather than a new type parameter.
+  Its type carries one state object of its table, the schema context of its relations, the record or value of its rows and the type of its value, its result mode, and the relations whose records it and its nested queries select; a method replaces only its own parts, so new state is a new part rather than a new type parameter.
   The schema context is the relations of the schema the query starts from, by table key, and the key of its table there, so the same table queried from schemas of different relations gives different types.
   A query of `from(table)`, and of a table without relations in its schema, has the context without relations, and a query whose table has relations is also a query of the same table without them in types.
   At runtime, a query holds the context of its table in the schema or `Db` it starts from, which each of them creates once for each of its tables, whose relations the references of `select` start; a query of `from(table)` holds the context without relations.
@@ -106,6 +106,19 @@ Queries come in two kinds that share the query methods and differ only by execut
   - Types take the query as `ValuesQuery` of `query/select.ts`, an interface of the state and the method `exists`, as `ScalarQuery` is, and type its values by the result of its state, without `NULL` of a missing row, since `IN` of no rows is `FALSE`.
   - `in` has one signature of a union of a list and a query rather than overloads: an overload of a query after that of a list makes the error of a wrong list name the overload of the query, and before it adds about 8% to the instantiations of a filter of a list ([benchmark](../benchmarks/types/queries.bench.ts)).
 - `sql` takes a query of a table of any rows and value, also of records or of rows `many`, as a subquery in SQL text, as [types](types.md#parameters-and-sql-fragments) describe; a query of one value there is the operand that it is in an expression.
+- `expr` of a query of one value gives an expression of the value with the operators of its type, such as `form.fields.count().expr().gt(3)`, so that the value stands on the left of an operator; the expression has a type, so `select` takes it.
+  - It holds the node of the query in an expression: it keeps the `Db` of the query, is `NULL` without its row whatever the rows mode, and rejects the queries that an expression rejects, at runtime and in types.
+    The type of the projection of the query decodes its value and gives the operators: that of the column or the expression of `get`, `pluck`, and the aggregate methods, the type of a count, of the sum of `smallint` and `integer` values, or the Boolean type of `exists`.
+  - A query is not an expression: it executes, keeps its `Db` and the relations it uses, and takes `where`, `orderBy`, and `coalesce` after an aggregate.
+  - It takes the query from `this`, as the other methods do: a getter, such as `ops`, would type its result by the state of the class and break the covariance of a query, and a callback, such as `expr(value => value.gt(3))`, adds nesting without a gain.
+  - The operators are not methods of the query, as in Orchid ORM 1.78.37, such as `q.sum("points").gt(0)`: a custom operator could take the name of a method of a query, so `withOperators` would reject those names, every new method of a query would break the custom types that have an operator of its name, and the query would need a prototype for each type of its value.
+  - The operators have no functions of their own, such as `gt(form.fields.count(), 3)`: they belong to types, including custom ones, which would each need a function too.
+- The `valueType` part of the state holds what the type of the value gives, its operators and the values that it encodes, which `get`, `pluck`, the aggregate methods, and `exists` set, and which `coalesce` reads too.
+  - `SelectQueryState` types the part as `unknown`, and only the states of `expr` and `coalesce` narrow it, so that a query compared with another state, such as a nested query or an operand, does not instantiate the operators of its type.
+  - The type of a column or an expression gives the part as an object of two members rather than as parameters of an alias of a state, which TypeScript instantiates with each new mapper; those of a count and of `exists` are interfaces, which it does not instantiate.
+  - The mark of `TypedExpression` holds the operators, from which the state of an expression reads them.
+  - These choices limit the cost of a query that does not call `expr`: separate parts of the input and the operators add about 11% to an aggregate of a column and 2.5% to an unbound query, a part narrowed by `SelectQueryState` adds about 3% to `find`, and one narrowed by `ScalarQuery` about 8% to a comparison with an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
+    With them, an aggregate of a column takes about 3% more, and an aggregate with a fallback about 4% more.
 
 ## Finding by a key
 
@@ -148,12 +161,13 @@ Queries come in two kinds that share the query methods and differ only by execut
   - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `null` without values other than `NULL`.
   - The argument is a column key or a callback that returns an expression with a type, as of `get` and `pluck`.
     Types do not check that PostgreSQL has the aggregate for the type of the argument, such as `sum` of `text` or `max` of `uuid`, which PostgreSQL rejects when the statement runs.
-- A count is a `bigint` of PostgreSQL decoded as a number; a count outside the safe integer range of numbers fails to decode with `ResultDecodeError`, and a fragment of `sql(t.bigint)` gives a `bigint`.
+- A count is a `bigint` of PostgreSQL decoded as a number, with the operators of `orderingOperators`; a count outside the safe integer range of numbers fails to decode with `ResultDecodeError`, and a fragment of `sql(t.bigint)` gives a `bigint`.
 - The type of the argument decodes the value of the other aggregates, which PostgreSQL writes as it writes the values of the argument, also where its SQL type differs, such as the `bigint` sum of `integer` values, the `numeric` sum of `bigint` values, or the `text` maximum of `varchar` values; so a type derived with `transform` keeps its values, such as a `Date` of `max`.
   - The average of `smallint` and `integer` values is a `numeric`, which their `Number` decodes with its fractional part; the average of a type whose decoding cannot read a fractional value, such as one that decodes a `numeric` as a `bigint`, fails to decode with `ResultDecodeError`.
   - `avg` rejects a type of the cast type `bigint` when it is called, since PostgreSQL averages its values as a `numeric`, which can have a fractional part that a type of `bigint` values cannot represent; an expression of a type that can represent fractional values, such as `sql(t.doublePrecision)` of the column, averages them.
     Types do not tell it, as they do not tell an aggregate that PostgreSQL lacks for a type.
   - The sum of `smallint` and `integer` values is a `bigint`, which their `Number` decodes, so a sum outside the safe integer range of numbers fails to decode with `ResultDecodeError`, as a count does, before a type derived with `transform` decodes it.
+    Its type has the operators of their type.
 - It aggregates the rows that the filters, the limit, and the offset of the query choose, so a limit or an offset gives the aggregate of the rows of the page, which the order of the query chooses, and the limit of `take` before it gives the aggregate of at most one row, as does the key of `find` or `findBy` unless a value depends on the row.
   - `count()` ignores the order, since the number of the rows of a page does not depend on it.
   - `stringAgg` joins the values in the order of the query; the other aggregates do not depend on the order of their rows.
@@ -177,8 +191,8 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 - `coalesce` replaces a `NULL` value of a query of values, such as of `get`, `pluck`, or an aggregate, with a fallback, keeping the rows mode, so a missing row stays missing.
   It takes a value that the type of the value encodes, without a cast, so that PostgreSQL types the parameter by the value, such as `bigint` for the sum of `integer` values, or an expression; the type of the value decodes the result either way.
-  - Types take the values that the `input` part of the state tells: those that the type of the value encodes, which `get`, `pluck`, and the aggregate methods set, so that the sum of a `numeric` column takes a number; a query of records has `never`.
-    The part adds up to 0.3% to the instantiations of the queries that do not call `coalesce`, and overloads of a value and of an expression would not make a call of `coalesce` cheaper ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - Types take the values that the `valueType` part of the state tells, as [queries in expressions](#queries-in-expressions) describe: those that the type of the value encodes, so that the sum of a `numeric` column takes a number; a query of records has `never`.
+    Overloads of a value and of an expression would not make a call of `coalesce` cheaper ([benchmark](../benchmarks/types/queries.bench.ts)).
   - Types take an expression of the values of the value, since its type decodes them, and keep `null` when the expression can be `NULL`.
     They check the values of the expression rather than its SQL type, as for the operands of operators, so PostgreSQL rejects an expression of a type that it cannot coalesce with the value, such as `text` with `numeric`.
   - Types remove only `null` from the value, which stands for `NULL` among the values of a type, as [types](types.md) state: `undefined` returned by a decoder stays, and so do the `unknown` values of `json` and `jsonb`.
@@ -218,7 +232,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 - A `Db` compiles a statement with the tables of its schema, and the compiler rejects an occurrence of any other table at any depth of the statement, such as in a scalar subquery, `EXISTS`, a join, or a derived source, when it compiles the occurrence.
 - A `Db` compiles a query with the relation definitions of its schema, and lowering rejects a query of any other definition at any depth, by identity rather than by name, so a relation that another schema declares with the same name and keys is rejected, while a tenant schema adds relations of its own and keeps the shared ones.
   In types, `$compile` and `$execute` reject a query whose state selects a relation that the relations of the `Db` lack by table key, name, kind, target, and `required`; types cannot tell two definitions of the same shape apart.
-  A condition does not carry the relations of its queries, so they stay out of the state, and only lowering rejects a relation of a condition that the `Db` lacks, at runtime.
+  A condition or another expression, such as of `expr`, does not carry the relations of its queries, so they stay out of the state, and only lowering rejects a relation of one that the `Db` lacks, at runtime.
   The relations of a query only accumulate in its state: `clearSelect`, `get`, `pluck`, the aggregate methods, and replacing a field keep them in types after the runtime drops their nested queries, which never under-approximates the relations that its selections need.
   An awaited query of a `Db` is checked only at runtime: the references of its `select` give the relations of the `Db`, but a nested query of another schema can select others.
 

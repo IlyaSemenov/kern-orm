@@ -2,6 +2,7 @@ export type {
   AnyExpression,
   BaseOperators,
   Expression,
+  ExpressionOperators,
   TypedExpression,
   UntypedExpression,
 } from "./expression/expression"
@@ -77,8 +78,11 @@ export type {
   InitialQueryState,
   QueryState,
   QueryStateOf,
+  QueryValueType,
   SelectQueryState,
 } from "./query/state"
+export type { CountValueType } from "./query/aggregate"
+export type { ExistsValueType } from "./query/exists"
 export type { AnyQuery, SelectQueryKind } from "./query/kind"
 export type {
   AnyMutationQuery,
