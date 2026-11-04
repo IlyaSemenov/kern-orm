@@ -60,37 +60,36 @@
     "packages/migrations": {
       "name": "@kern-orm/migrations",
       "version": "0.2.0",
-      "dependencies": {
-        "kern-orm": "^0.2.0",
-      },
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
+        "kern-orm": "workspace:*",
         "postgres": "catalog:",
+      },
+      "peerDependencies": {
+        "kern-orm": "^0.2.0",
       },
     },
     "packages/postgres-js": {
       "name": "@kern-orm/postgres-js",
       "version": "0.1.1",
-      "dependencies": {
-        "kern-orm": "^0.2.0",
-      },
       "devDependencies": {
+        "kern-orm": "workspace:*",
         "postgres": "catalog:",
       },
       "peerDependencies": {
+        "kern-orm": ">=0.2.0 <1",
         "postgres": "^4.0.0",
       },
     },
     "packages/postgres-js-v3": {
       "name": "@kern-orm/postgres-js-v3",
       "version": "0.1.1",
-      "dependencies": {
-        "kern-orm": "^0.2.0",
-      },
       "devDependencies": {
+        "kern-orm": "workspace:*",
         "postgres": "^3.4.9",
       },
       "peerDependencies": {
+        "kern-orm": ">=0.2.0 <1",
         "postgres": "^3.4.9",
       },
     },

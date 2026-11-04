@@ -10,6 +10,15 @@
 - A driver package supports one major version of its client: `@kern-orm/postgres-js` the latest major version of postgres.js, and a package named with the suffix of an older major version, such as `@kern-orm/postgres-js-v3`, that version.
   A new major version of a client moves the package without a suffix to it, and a driver for the previous major version moves to a package with its suffix.
 
+## Compatibility
+
+A driver requires `kern-orm` by a range of the whole 0.x series, such as `>=0.2.0 <1`, as a peer dependency, so that a new minor version of `kern-orm` does not release the drivers.
+A published version keeps its range forever, so this contract covers every published driver:
+
+- A later version of `kern-orm` before 1.0 must keep working with every published driver, so the contract of `execution/driver.ts` must not start to require a new method, parameter, or result field, or change the meaning of an existing one.
+- A driver that starts to rely on a newer version of `kern-orm` must raise the minimum of its range.
+- A change that cannot keep the contract requires a decision about the published drivers before the change.
+
 ## postgres.js
 
 `@kern-orm/postgres-js` requires postgres.js 4 and leaves the release and closing contracts to it:

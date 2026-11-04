@@ -36,13 +36,12 @@
     "build": "tsdown",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {
-    "kern-orm": "^0.2.0"
-  },
   "devDependencies": {
+    "kern-orm": "workspace:*",
     "postgres": "catalog:"
   },
   "peerDependencies": {
+    "kern-orm": ">=0.2.0 <1",
     "postgres": "^4.0.0"
   },
   "engines": {

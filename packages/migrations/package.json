@@ -38,12 +38,13 @@
     "build": "tsdown",
     "prepublishOnly": "bun run build"
   },
-  "dependencies": {
-    "kern-orm": "^0.2.0"
-  },
   "devDependencies": {
     "@kern-orm/postgres-js": "workspace:*",
+    "kern-orm": "workspace:*",
     "postgres": "catalog:"
+  },
+  "peerDependencies": {
+    "kern-orm": "^0.2.0"
   },
   "engines": {
     "bun": ">=1.4",

@@ -46,9 +46,12 @@ Do not catalog files or restate information evident from their names and locatio
 ## Workspaces
 
 - Register every workspace package and its subpath exports in `paths` of the root `tsconfig.json`; tests, examples, and typecheck resolve packages to their sources through it.
-- Declare a dependency of a published package on another workspace package in `dependencies` as a caret range that matches the local version, such as `"kern-orm": "^0.1.0"`; Bun links the workspace package, and changesets raises the range on release.
-  - Do not use the `workspace:` protocol there: `changeset publish` publishes with npm, which does not rewrite it.
-  - Do not declare workspace packages in `peerDependencies`: changesets releases a major version of the dependent whenever the peer range falls behind.
+- Declare the dependency of a published package on `kern-orm` in `peerDependencies`, so that an application has one copy of it, and in `devDependencies` as `workspace:*`, which links the workspace package.
+  - Give a driver a range of the whole 0.x series, such as `>=0.2.0 <1`, under the contract in [architecture/drivers.md](architecture/drivers.md#compatibility).
+  - Give any other package a caret range that matches the local version, such as `^0.2.0`; changesets releases the package with a new range for each minor version of `kern-orm`.
+  - Do not use the `workspace:` protocol in `peerDependencies` or `dependencies`: `changeset publish` publishes with npm, which does not rewrite it.
+  - Changesets keeps a peer range that contains the new version, by `onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`.
+    When a package needs a fix from a new patch version of `kern-orm`, raise the minimum of its range by hand and add a changeset of the package in the same change: changesets warns that the range does not fit the local version until the release, and does not release the package by itself.
   - In other published packages, import only types from `kern-orm`, so that a duplicate copy of `kern-orm` cannot change runtime behavior.
     When a package needs runtime identity of `kern-orm`, such as its error classes, symbols, or transaction context, stop and reconsider how it depends on `kern-orm`.
 - Declare a workspace package used only by the tests of a published package in its `devDependencies` as `workspace:*`, such as `@kern-orm/postgres-js` in `kern-orm`: package managers do not install the dev dependencies of an installed package, and changesets neither rewrites the protocol nor releases the package for it.
