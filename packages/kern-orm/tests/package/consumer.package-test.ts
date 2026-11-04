@@ -34,9 +34,37 @@ const consumerOutput = {
 
 let consumer: string
 
-/** Returns the project of a driver that has the minimum version of `kern-orm` in its range. */
-function getMinimumKernOrmProject(dir: string): string {
-  return join(consumer, "minimum-kern-orm", basename(dir))
+/** Returns the project of a driver in a compatibility scenario. */
+function getDriverProject(scenario: string, dir: string): string {
+  return join(consumer, scenario, basename(dir))
+}
+
+/** Creates the project of a driver in a compatibility scenario from the given copies of the driver and `kern-orm`. */
+async function createDriverProject(
+  scenario: string,
+  dir: string,
+  driverPath: string,
+  kernOrmPath: string,
+): Promise<void> {
+  const { name } = await Bun.file(join(root, dir, "package.json")).json()
+  const project = getDriverProject(scenario, dir)
+  await cp(driverPath, join(project, "node_modules", name), { recursive: true })
+  await cp(kernOrmPath, join(project, "node_modules/kern-orm"), { recursive: true })
+  await symlink(join(root, dir, "node_modules/postgres"), join(project, "node_modules/postgres"))
+  await cp(join(import.meta.dir, "fixtures/driver-consumers", basename(dir)), project, {
+    recursive: true,
+  })
+  await writeFile(
+    join(project, "tsconfig.json"),
+    JSON.stringify({
+      extends: "../../tsconfig.json",
+      compilerOptions: {
+        noEmit: true,
+        emitDeclarationOnly: false,
+      },
+      include: ["*.ts"],
+    }),
+  )
 }
 
 beforeAll(async () => {
@@ -64,28 +92,19 @@ beforeAll(async () => {
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
-  for (const { dir, project: driverProject } of drivers) {
+  for (const { dir, project } of drivers) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
-    const project = getMinimumKernOrmProject(dir)
-    await cp(
-      join(consumer, driverProject, "node_modules", name),
-      join(project, "node_modules", name),
-      {
-        recursive: true,
-      },
+    await createDriverProject(
+      "minimum-kern-orm",
+      dir,
+      join(consumer, project, "node_modules", name),
+      minimumKernOrm,
     )
-    await cp(minimumKernOrm, join(project, "node_modules/kern-orm"), { recursive: true })
-    await symlink(join(root, dir, "node_modules/postgres"), join(project, "node_modules/postgres"))
-    await writeFile(
-      join(project, "tsconfig.json"),
-      JSON.stringify({
-        extends: "../../tsconfig.json",
-        compilerOptions: {
-          noEmit: true,
-          emitDeclarationOnly: false,
-        },
-        include: ["*.ts"],
-      }),
+    await createDriverProject(
+      "published-driver",
+      dir,
+      dirname(Bun.resolveSync(`${basename(dir)}-published/package.json`, import.meta.dir)),
+      join(consumer, "node_modules/kern-orm"),
     )
   }
   await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
@@ -287,21 +306,24 @@ describe.each(["node", "bun"])("%s", runtime => {
   })
 })
 
-describe.each(drivers)("$dir with the minimum version of kern-orm", ({ dir }) => {
-  test("declares the version as the minimum of its range", async () => {
+describe.each(drivers)("$dir", ({ dir }) => {
+  test("declares the minimum version of kern-orm as the minimum of its range", async () => {
     const { version } = await Bun.file(join(minimumKernOrm, "package.json")).json()
     const { peerDependencies } = await Bun.file(join(root, dir, "package.json")).json()
     expect(peerDependencies["kern-orm"]).toBe(`>=${version} <1`)
   })
 
-  test("type-checks a consumer", () => {
-    run([join(root, "node_modules/.bin/tsc"), "-p", getMinimumKernOrmProject(dir)], consumer)
-  }, 60_000)
+  // The current driver with the oldest `kern-orm` in its range, and the first published driver with that range with the current `kern-orm`.
+  describe.each(["minimum-kern-orm", "published-driver"])("%s", scenario => {
+    test("type-checks a consumer", () => {
+      run([join(root, "node_modules/.bin/tsc"), "-p", getDriverProject(scenario, dir)], consumer)
+    }, 60_000)
 
-  describe.each(["node", "bun"])("%s", runtime => {
-    test.skipIf(!process.env.DATABASE_URL)("runs statements in PostgreSQL", () => {
-      const output = run([runtime, "consumer.ts"], getMinimumKernOrmProject(dir))
-      expect(JSON.parse(output)).toEqual({ pooled: [["1"]], reserved: [["2"]] })
+    describe.each(["node", "bun"])("%s", runtime => {
+      test.skipIf(!process.env.DATABASE_URL)("runs statements in PostgreSQL", () => {
+        const output = run([runtime, "consumer.ts"], getDriverProject(scenario, dir))
+        expect(JSON.parse(output)).toEqual({ pooled: [["1"]], reserved: [["2"]] })
+      })
     })
   })
 })

@@ -55,6 +55,8 @@
         "@kern-orm/postgres-js": "workspace:*",
         "kern-orm-minimum": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
         "postgres": "catalog:",
+        "postgres-js-published": "https://registry.npmjs.org/@kern-orm/postgres-js/-/postgres-js-0.1.2.tgz",
+        "postgres-js-v3-published": "https://registry.npmjs.org/@kern-orm/postgres-js-v3/-/postgres-js-v3-0.1.2.tgz",
         "typescript-6": "catalog:",
       },
     },
@@ -969,6 +971,10 @@
 
     "postgres": ["postgres@4.0.0", "", {}, "sha512-kBh8qXtcvvIAc00DftQyOxz7M/3Zxww1tRMXZPLzipNXXl5PIzHml+9zB3Mrge2U8ldc0WF1ZdLp1iYQi7Kh3A=="],
 
+    "postgres-js-published": ["@kern-orm/postgres-js@https://registry.npmjs.org/@kern-orm/postgres-js/-/postgres-js-0.1.2.tgz", { "peerDependencies": { "kern-orm": ">=0.2.0 <1", "postgres": "^4.0.0" } }, "sha512-RJOrh7MoEDHjY3m2hAhc4vgA2o/DqIOpD2UWnm3oyAByhODTbS70fes/udoxID8IGiFFpZl8MAQpNNunG9uV6Q=="],
+
+    "postgres-js-v3-published": ["@kern-orm/postgres-js-v3@https://registry.npmjs.org/@kern-orm/postgres-js-v3/-/postgres-js-v3-0.1.2.tgz", { "peerDependencies": { "kern-orm": ">=0.2.0 <1", "postgres": "^3.4.9" } }, "sha512-TeGteQ3ZVsCUzv8bQeT2jming8y/S/08st8P4b2WJ+eLUClY5Bfh/WaPQG59amUiAAx6ia6Al6Ui+aUISvYTyg=="],
+
     "preact": ["preact@10.29.8", "", { "peerDependencies": { "preact-render-to-string": ">=5" }, "optionalPeers": ["preact-render-to-string"] }, "sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q=="],
 
     "prelude-ls": ["prelude-ls@1.2.1", "", {}, "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g=="],
@@ -1152,6 +1158,8 @@
     "@vue/compiler-sfc/magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 
     "@vue/devtools-kit/hookable": ["hookable@5.5.3", "", {}, "sha512-Yc+BQe8SvoXH1643Qez1zqLRmbA5rCL+sSmk6TVos0LWVfNIB7PGncdlId77WzLGSIB5KaWgTaNTs2lNVEI6VQ=="],
+
+    "postgres-js-v3-published/postgres": ["postgres@3.4.9", "", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
 
     "pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
 

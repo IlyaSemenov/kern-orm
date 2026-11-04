@@ -254,11 +254,6 @@ PostgreSQL 18 lets `RETURNING` read a changed row before and after the change as
 - Decide whether `insert` takes them, where `old` is `NULL` without an upsert conflict, and `delete`, where `new` is `NULL`.
 - PostgreSQL before 18 rejects `old` and `new` in `RETURNING`.
 
-## Published drivers in the package test
-
-A scenario of the package test that runs the first published drivers with a range of the whole 0.x series, `@kern-orm/postgres-js@0.1.2` and `@kern-orm/postgres-js-v3@0.1.2`, pinned to these versions, with the current `kern-orm`, to check the contract in [architecture/drivers.md](architecture/drivers.md#compatibility).
-It can be added after the release of these versions.
-
 ## Statement timeout of test transactions
 
 An opt-in option of `createTestHelpers`, such as `statementTimeout` and `lockTimeout`, that sets `statement_timeout` and `lock_timeout` locally in every test level, pipelined with its `BEGIN` or `SAVEPOINT`, so that a statement already sent by an aborted or preempted test delays the next test for a bounded time.

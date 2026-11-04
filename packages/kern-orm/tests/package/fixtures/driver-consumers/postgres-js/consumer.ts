@@ -1,4 +1,4 @@
-// Runs `@kern-orm/postgres-js` with the minimum version of `kern-orm` in its range, in PostgreSQL at DATABASE_URL.
+// Runs `@kern-orm/postgres-js` with a version of `kern-orm` in its range, in PostgreSQL at DATABASE_URL.
 import { postgresJsDriver } from "@kern-orm/postgres-js"
 import { createDatabase, createStatement } from "kern-orm"
 import postgres from "postgres"
