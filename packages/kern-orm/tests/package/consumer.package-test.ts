@@ -8,19 +8,28 @@ import { build } from "esbuild"
 import { rolldown } from "rolldown"
 
 const root = join(import.meta.dir, "../../../..")
-// The companion packages, with the packed packages that their consumer also installs.
+// The companion packages, with the packages of the client that their consumer installs, and the packed packages that it also installs.
 const companionPackages = [
   {
     dir: "packages/postgres-js",
     project: ".",
+    clients: ["postgres"],
   },
   {
     dir: "packages/postgres-js-v3",
     project: "postgres-js-v3",
+    clients: ["postgres"],
+  },
+  {
+    dir: "packages/node-postgres",
+    project: ".",
+    clients: ["pg", "@types/pg"],
+    unpublished: true,
   },
   {
     dir: "packages/migrations",
     project: ".",
+    clients: ["postgres"],
     dependencies: ["@kern-orm/postgres-js"],
   },
 ]
@@ -65,12 +74,20 @@ function getCompanionProject(scenario: string, dir: string): string {
   return join(consumer, scenario, basename(dir))
 }
 
-/** Creates the project of a companion package in a compatibility scenario from the given copies of the package and `kern-orm`, with the packed `dependencies`. */
+/** Links a package installed in a workspace package into the node_modules of a project. */
+async function linkPackage(dir: string, name: string, project: string): Promise<void> {
+  const target = join(project, "node_modules", name)
+  await mkdir(dirname(target), { recursive: true })
+  await symlink(join(root, dir, "node_modules", name), target)
+}
+
+/** Creates the project of a companion package in a compatibility scenario from the given copies of the package and `kern-orm`, with the packages of its client and the packed `dependencies`. */
 async function createCompanionProject(
   scenario: string,
   dir: string,
   packagePath: string,
   kernOrmPath: string,
+  clients: readonly string[],
   dependencies: readonly string[] = [],
 ): Promise<void> {
   const { name } = await Bun.file(join(root, dir, "package.json")).json()
@@ -86,7 +103,9 @@ async function createCompanionProject(
       },
     )
   }
-  await symlink(join(root, dir, "node_modules/postgres"), join(project, "node_modules/postgres"))
+  for (const client of clients) {
+    await linkPackage(dir, client, project)
+  }
   await cp(join(import.meta.dir, "fixtures/companion-consumers", basename(dir)), project, {
     recursive: true,
   })
@@ -117,33 +136,33 @@ beforeAll(async () => {
     run(["tar", "-xzf", filename, "-C", target, "--strip-components=1"], consumer)
   }
   await mkdir(join(consumer, "node_modules/@types"))
-  await symlink(
-    join(root, "packages/postgres-js/node_modules/postgres"),
-    join(consumer, "node_modules/postgres"),
-  )
-  await symlink(
-    join(root, "packages/postgres-js-v3/node_modules/postgres"),
-    join(consumer, "postgres-js-v3/node_modules/postgres"),
-  )
+  await linkPackage("packages/postgres-js", "postgres", consumer)
+  await linkPackage("packages/postgres-js-v3", "postgres", join(consumer, "postgres-js-v3"))
+  await linkPackage("packages/node-postgres", "pg", consumer)
+  await linkPackage("packages/node-postgres", "@types/pg", consumer)
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
-  for (const { dir, project, dependencies } of companionPackages) {
+  for (const { dir, project, clients, dependencies, unpublished } of companionPackages) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
     await createCompanionProject(
       "minimum-kern-orm",
       dir,
       join(consumer, project, "node_modules", name),
       await resolveMinimumKernOrm(dir),
+      clients,
       dependencies,
     )
-    await createCompanionProject(
-      "published-package",
-      dir,
-      resolveAlias(`${basename(dir)}-published`),
-      join(consumer, "node_modules/kern-orm"),
-      dependencies,
-    )
+    if (!unpublished) {
+      await createCompanionProject(
+        "published-package",
+        dir,
+        resolveAlias(`${basename(dir)}-published`),
+        join(consumer, "node_modules/kern-orm"),
+        clients,
+        dependencies,
+      )
+    }
   }
   await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
   await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }))
@@ -342,9 +361,15 @@ describe.each(["node", "bun"])("%s", runtime => {
       acquireAfterClose: "Cannot acquire a connection: the driver is closed",
     })
   })
+
+  test("runs a consumer of the node-postgres driver", () => {
+    expect(JSON.parse(run([runtime, "node-postgres.ts"], consumer))).toEqual({
+      acquireAfterClose: "Cannot acquire a connection: the driver is closed",
+    })
+  })
 })
 
-describe.each(companionPackages)("$dir", ({ dir }) => {
+describe.each(companionPackages)("$dir", ({ dir, unpublished }) => {
   test("declares the minimum version of kern-orm as the minimum of its range", async () => {
     const { version } = await Bun.file(
       join(await resolveMinimumKernOrm(dir), "package.json"),
@@ -354,7 +379,8 @@ describe.each(companionPackages)("$dir", ({ dir }) => {
   })
 
   // The current companion package with the oldest `kern-orm` in its range, and its oldest published version that must keep working with the current `kern-orm`.
-  describe.each(["minimum-kern-orm", "published-package"])("%s", scenario => {
+  const scenarios = unpublished ? ["minimum-kern-orm"] : ["minimum-kern-orm", "published-package"]
+  describe.each(scenarios)("%s", scenario => {
     test("type-checks a consumer", () => {
       run([join(root, "node_modules/.bin/tsc"), "-p", getCompanionProject(scenario, dir)], consumer)
     }, 60_000)

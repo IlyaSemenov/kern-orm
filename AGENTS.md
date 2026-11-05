@@ -50,6 +50,7 @@ Do not catalog files or restate information evident from their names and locatio
   - Give it a range of the whole 0.x series, such as `>=0.2.0 <1`, under the contract in [architecture/compatibility.md](architecture/compatibility.md).
     Keep `kern-orm-<version>` in `devDependencies` of `kern-orm` for the minimum of each such range, as the URL of its tarball: the package test runs each companion package with the minimum version of `kern-orm` in its range, and Bun links an `npm:` alias of a version that the workspace package has to the workspace package.
     Keep `<package>-published` beside them at the oldest published version of the companion package that must keep working, also as the URL of its tarball: the package test runs it with the current `kern-orm`.
+    Until the first release of a new companion package, mark it `unpublished` in `companionPackages` of the package test and add an item of BACKLOG.md to add its `<package>-published`.
   - Do not use the `workspace:` protocol in `peerDependencies` or `dependencies`: `changeset publish` publishes with npm, which does not rewrite it.
   - Changesets keeps a peer range that contains the new version, by `onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`.
     When a companion package needs a fix from a new patch version of `kern-orm`, raise the minimum of its range by hand and add a changeset of the package in the same change: changesets warns that the range does not fit the local version until the release, and does not release the package by itself.

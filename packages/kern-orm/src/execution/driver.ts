@@ -14,7 +14,7 @@ export function createStatement(text: string, parameters: readonly TextValue[] =
 
 /** Result of a statement. */
 export interface DriverResult {
-  /** Command tag that PostgreSQL completed the statement with, such as `SELECT` or `ROLLBACK` for a `COMMIT` of a failed transaction. */
+  /** Command of the tag that PostgreSQL completed the statement with, such as `SELECT` or `ROLLBACK` for a `COMMIT` of a failed transaction; a driver may give only the first word of a tag of several words, such as `CREATE` of `CREATE TABLE`. */
   readonly command: string
   /** Number of rows that the command tag reports, such as the rows that an `UPDATE` changes, also without `RETURNING`; `0` for a command without one, such as `BEGIN`. */
   readonly count: number

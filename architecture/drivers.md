@@ -7,7 +7,7 @@
   A connection runs its statements and scripts one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
   The coordinator releases a transaction connection whatever the outcome, passing the failure of `BEGIN`, `COMMIT`, or `ROLLBACK`; the driver returns such a connection to its pool only once it is idle, and never returns a lost one.
   Closing a driver waits for the transactions on its reserved connections to end, including those still waiting for a connection, and then closes the connections.
-- A driver package supports one major version of its client: `@kern-orm/postgres-js` the latest major version of postgres.js, and a package named with the suffix of an older major version, such as `@kern-orm/postgres-js-v3`, that version.
+- A driver package supports one major version of its client: a package without a suffix, such as `@kern-orm/postgres-js` or `@kern-orm/node-postgres`, the latest major version, and a package named with the suffix of an older major version, such as `@kern-orm/postgres-js-v3`, that version.
   A new major version of a client moves the package without a suffix to it, and a driver for the previous major version moves to a package with its suffix.
 
 ## Compatibility
@@ -48,3 +48,32 @@ postgres.js 3.4.9 has bugs that postgres.js 4 fixes, and the driver works around
   - waits for the reserved connections the driver will release, and for the transactions waiting for a connection; once no running transaction of the driver holds a connection, those transactions get `closeTimeout` to get one;
   - ends the client with `closeTimeout` when a connection is kept reserved or a transaction still waits, which terminates an alive kept connection and rejects the waiting transaction.
 - With `fetch_types: false`, the first `sql.reserve()` on a pool without an open connection never settles, so the first transaction waits until the driver closes ([#1219](https://github.com/porsager/postgres/issues/1219)); users must not disable `fetch_types`.
+
+## node-postgres
+
+`@kern-orm/node-postgres` requires `pg` 8 and takes its `Pool`.
+It imports only types from `pg`, which `@types/pg`, an optional peer dependency, gives consumers.
+
+It rejects a client that cannot give values as text whenever it gets one from the pool:
+
+- a client of `pg.native`, which ignores `types` of a query, so it parses values;
+- a client with `binary`, from the options of the pool or `pg.defaults`: it requests binary results of the statements of the extended protocol, which a query cannot turn off, and `pg` reads them as UTF-8 strings, which corrupts them.
+
+`pg` leaves the release and closing contracts to its users, so the driver keeps them:
+
+- It runs a statement or a script on the pool on a client of its own rather than through `pool.query`, which closes the connection of any failed statement, such as a violated constraint.
+  It keeps the connection of a statement rejected with the severity `ERROR`, and closes it after any other failure: after `query_timeout`, the statement still runs on the connection.
+- It closes the connection of a transaction released with a failure, without inspecting the failure, so a failed `COMMIT` costs a reconnect; `pg` returns a client released without a failure to the pool unless its connection is lost.
+- It runs the statements and scripts of a reserved connection one at a time by itself: `pg` queues the queries of a client, but deprecates calling `client.query` while a query runs and removes it in `pg` 9.
+- It listens to `error` of the pool, and of each client from the `acquire` event of the pool to its `release` event: a connection that breaks emits `error`, also without a running query, and an `EventEmitter` throws an `error` event without a listener, which terminates the process.
+  The pool emits these events while its own listener of the client is in place, so a client has no moment without a listener, also while the pool verifies it and when the messages that open a connection and report its failure come in one read.
+  The pool has already removed an idle connection that breaks, and the next query on a held client rejects, so the listeners do nothing.
+- Closing it rejects a new statement or connection at once and calls `pool.end()` once every statement on the pool and reserved connection has returned, including those waiting for a connection: `pool.end()` never serves the `pool.connect()` calls waiting for one.
+
+It sends statements and reads results as follows:
+
+- It sends a statement with the extended protocol also without parameters, `queryMode: "extended"`, since `pg` would send it with the simple protocol, which runs several statements of one text, such as of `$query`; the extended protocol rejects them before running any.
+- It sends parameters as strings and `null`, which `pg` binds as text without declared types.
+- It reads rows as arrays with `types` of a query whose parser keeps every value as text, whatever parsers the client has.
+- It executes a script as a query without `values`, which `pg` sends with the simple protocol, with the same `types`, so that the parsers of the client never run on its ignored results.
+- It gives only the first word of a command tag as `command`, such as `CREATE` of `CREATE TABLE`, as `pg` parses it.

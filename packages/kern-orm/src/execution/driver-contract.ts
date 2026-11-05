@@ -5,6 +5,7 @@ import { and } from "../expression/predicates"
 import { param, sql } from "../expression/sql"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
+import type { TextValue } from "../type/type"
 import * as t from "../types"
 
 import type { Database } from "./database"
@@ -40,7 +41,7 @@ function createStatementRunners(database: Database) {
     async runStatement(text: string) {
       await database.execute(createStatement(text))
     },
-    async selectValue(text: string, parameters: string[] = []) {
+    async selectValue(text: string, parameters: readonly TextValue[] = []) {
       const { rows } = await database.execute(createStatement(text, parameters))
       return rows[0]![0]
     },
@@ -110,6 +111,18 @@ export function describeDriverContract(
       }
     })
 
+    it("keeps the values of a statement as text without the parsers of the client", async () => {
+      const parsed = createDatabase({ driver: createDriverWithFailingParsers() })
+
+      try {
+        const { rows } = await parsed.execute(createStatement("SELECT 1"))
+
+        assert.deepEqual(rows, [["1"]])
+      } finally {
+        await parsed.close()
+      }
+    })
+
     it("executes a script without the parsers of the client", async () => {
       const parsed = createDatabase({ driver: createDriverWithFailingParsers() })
 
@@ -165,6 +178,25 @@ export function describeDriverContract(
       assert.deepEqual(created.columns, [])
       assert.deepEqual(selected.columns, ["id", "label"])
       assert.deepEqual(selected.rows, [])
+    })
+
+    it("infers the types of parameters from the statement", async () => {
+      assert.equal(await selectValue("SELECT $1::integer + $2", ["1", "2"]), "3")
+      assert.equal(await selectValue("SELECT $1", ["text"]), "text")
+      assert.equal(await selectValue("SELECT $1::text IS NULL", [null]), "t")
+    })
+
+    it("runs concurrent statements of a transaction in the order of calls", async () => {
+      const values = await database.transaction(() =>
+        Promise.all([
+          selectValue("SELECT set_config('kern.test', '1', true) FROM pg_sleep(0.05)"),
+          selectValue("SELECT current_setting('kern.test')"),
+          selectValue("SELECT set_config('kern.test', '2', true)"),
+          selectValue("SELECT current_setting('kern.test')"),
+        ]),
+      )
+
+      assert.deepEqual(values, ["1", "1", "2", "2"])
     })
 
     it("decodes selected expressions with their types", async () => {
@@ -366,6 +398,26 @@ export function describeDriverContract(
         requestClose()
 
         assert.equal(await running, "running")
+        assert.equal(await waiting, "waiting")
+        await closing
+      })
+
+      it("waits for a statement on the pool waiting for a connection", async () => {
+        const database = createClosableDatabase()
+        const { promise: started, resolve: start } = Promise.withResolvers<void>()
+        const { promise: closeRequested, resolve: requestClose } = Promise.withResolvers<void>()
+        const { selectValue } = createStatementRunners(database)
+
+        const running = database.transaction(async () => {
+          start()
+          await closeRequested
+        })
+        await started
+        const waiting = selectValue("SELECT 'waiting'")
+        const closing = database.close()
+        requestClose()
+
+        await running
         assert.equal(await waiting, "waiting")
         await closing
       })

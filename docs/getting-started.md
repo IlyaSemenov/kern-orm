@@ -22,7 +22,7 @@ bun add kern-orm @kern-orm/postgres-js postgres
 
 :::
 
-If your application uses postgres.js 3, see [Drivers](./drivers#postgres-js-3).
+If your application uses [node-postgres](./drivers#node-postgres) or [postgres.js 3](./drivers#postgres-js-3), see Drivers.
 
 To create and change tables with migrations, also install `@kern-orm/migrations`; see [Migrations](./migrations).
 
