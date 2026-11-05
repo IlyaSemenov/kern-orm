@@ -13,17 +13,14 @@ const companionPackages = [
   {
     dir: "packages/postgres-js",
     project: ".",
-    scenarios: ["minimum-kern-orm", "published-package"],
   },
   {
     dir: "packages/postgres-js-v3",
     project: "postgres-js-v3",
-    scenarios: ["minimum-kern-orm", "published-package"],
   },
   {
     dir: "packages/migrations",
     project: ".",
-    scenarios: ["minimum-kern-orm"],
     dependencies: ["@kern-orm/postgres-js"],
   },
 ]
@@ -131,7 +128,7 @@ beforeAll(async () => {
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
-  for (const { dir, project, scenarios, dependencies } of companionPackages) {
+  for (const { dir, project, dependencies } of companionPackages) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
     await createCompanionProject(
       "minimum-kern-orm",
@@ -140,15 +137,13 @@ beforeAll(async () => {
       await resolveMinimumKernOrm(dir),
       dependencies,
     )
-    if (scenarios.includes("published-package")) {
-      await createCompanionProject(
-        "published-package",
-        dir,
-        resolveAlias(`${basename(dir)}-published`),
-        join(consumer, "node_modules/kern-orm"),
-        dependencies,
-      )
-    }
+    await createCompanionProject(
+      "published-package",
+      dir,
+      resolveAlias(`${basename(dir)}-published`),
+      join(consumer, "node_modules/kern-orm"),
+      dependencies,
+    )
   }
   await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
   await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }))
@@ -349,7 +344,7 @@ describe.each(["node", "bun"])("%s", runtime => {
   })
 })
 
-describe.each(companionPackages)("$dir", ({ dir, scenarios }) => {
+describe.each(companionPackages)("$dir", ({ dir }) => {
   test("declares the minimum version of kern-orm as the minimum of its range", async () => {
     const { version } = await Bun.file(
       join(await resolveMinimumKernOrm(dir), "package.json"),
@@ -359,7 +354,7 @@ describe.each(companionPackages)("$dir", ({ dir, scenarios }) => {
   })
 
   // The current companion package with the oldest `kern-orm` in its range, and its oldest published version that must keep working with the current `kern-orm`.
-  describe.each(scenarios)("%s", scenario => {
+  describe.each(["minimum-kern-orm", "published-package"])("%s", scenario => {
     test("type-checks a consumer", () => {
       run([join(root, "node_modules/.bin/tsc"), "-p", getCompanionProject(scenario, dir)], consumer)
     }, 60_000)
