@@ -1,16 +1,8 @@
-// Instantiations that one more table definition, schema with relations, or the first filter, expression, or helper of a table adds to a consumer that already defines one of each kind.
+// Instantiations that one more table definition, schema with relations, or the first expression or helper of a table adds to a consumer that already defines one of each kind.
 // The count in `.types([...])` is the one that `bun run --cwd benchmarks bench:types -u` wrote; a run prints the change from it.
 
 import { bench } from "@ark/attest"
-import {
-  defineExpression,
-  defineFilter,
-  defineHelper,
-  defineSchema,
-  defineTable,
-  many,
-  one,
-} from "kern-orm"
+import { defineExpression, defineHelper, defineSchema, defineTable, many, one } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { formsSchema } from "./fixture.ts"
@@ -49,7 +41,6 @@ bench.baseline(() => {
       children: many(baselineNode, { from: "id", to: "parentId" }),
     },
   })
-  defineFilter(formsSchema.field, { label: "baseline" })
   defineExpression(formsSchema.field, (field, label: string) => field.label.eq(label))
   defineHelper(formsSchema.field, query => query.where({ label: "baseline" }))
 })
@@ -86,10 +77,6 @@ bench("schema with relations", () => {
     },
   })
 }).types([1187, "instantiations"])
-
-bench("first filter of a table", () => {
-  defineFilter(formsSchema.form, { name: "x" })
-}).types([313, "instantiations"])
 
 bench("first expression of a table", () => {
   defineExpression(formsSchema.form, (form, name: string) => form.name.eq(name))

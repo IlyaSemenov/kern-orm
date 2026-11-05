@@ -1,6 +1,6 @@
 import { expectTypeOf, test } from "bun:test"
 
-import { defineFilter } from "../query/filters"
+import type { WhereCallback, WhereCondition } from "../query/filters"
 import { from } from "../query/select"
 import { defineTable } from "../table/table"
 import * as t from "../types"
@@ -55,9 +55,9 @@ test("objects of column values need a table", () => {
   or({ anything: 1 })
 })
 
-test("filters of `defineFilter` compose", () => {
-  const condition = defineFilter(form, or({ published: true }, { hint: null }))
-  const filter = defineFilter(form, columns => columns.name.eq("Draft"))
+test("annotated conditions compose", () => {
+  const condition: WhereCondition<typeof form> = or({ published: true }, { hint: null })
+  const filter: WhereCallback<typeof form> = columns => columns.name.eq("Draft")
   const negated = not(condition)
   const combined = and(condition, { name: "Draft" })
   from(form)

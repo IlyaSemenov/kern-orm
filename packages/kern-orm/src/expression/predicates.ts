@@ -58,7 +58,7 @@ export function isColumnValues(value: unknown): boolean {
   )
 }
 
-// TypeScript takes the column values `V` from condition operands, or from the table of the enclosing `where`, `defineFilter`, or annotated variable.
+// TypeScript takes the column values `V` from condition operands, or from the table of the enclosing `where` or annotated variable.
 // Without them, `V` is `never`: object operands are rejected, and the result is a Boolean expression.
 // Each function has a single signature: TypeScript checks a nested call once against the first overload of the enclosing call and keeps the result, so a nested call would lose the table.
 

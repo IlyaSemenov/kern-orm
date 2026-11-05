@@ -1040,7 +1040,7 @@ export function bindQuery<S extends SelectQueryState>(
   return new SelectQuery<S, "bound">(query.table, query.node, query.context, db)
 }
 
-/** Table of a definition such as `defineFilter`: the table itself or a query over it with schema context `C`, such as `schema.form`. */
+/** Table of a definition such as `defineExpression`: the table itself or a query over it with schema context `C`, such as `schema.form`. */
 export type TableOrQuery<T extends AnyTable, C extends SchemaContext = SchemaContext> =
   | T
   | QueryOf<QueryStateOf<T, C>>

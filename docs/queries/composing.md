@@ -53,5 +53,4 @@ A helper can also select [related records](./relations#helpers).
 When the code that defines a helper has no `Db`, such as with dependency injection or in code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
 Pass the table returned by `defineTable`, such as `form`, when the helper does not need the relations of the table.
 
-For a reusable condition alone, use [`defineFilter`](./filtering#reusable-filters), which also combines with `and`, `or`, and `not`.
-For an expression that queries filter by and select, use [`defineExpression`](./computed-values#reusable-expressions).
+For a reusable condition or value, use [`defineExpression`](./computed-values#reusable-expressions).

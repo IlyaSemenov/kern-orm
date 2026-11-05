@@ -176,30 +176,16 @@ await db.field
   .select("id")
 ```
 
-## Reusable filters
+## Reusable conditions
 
-To reuse a condition in queries of a table, define it with `defineFilter`:
+To reuse a condition in queries of a table, define it with [`defineExpression`](./computed-values#reusable-expressions), which also takes arguments and can be selected:
 
 ```ts
-import { defineFilter, or } from "kern-orm"
+import { defineExpression, matches, or } from "kern-orm"
 
-const publishedOrSurvey = defineFilter(db.form, form =>
-  or({ published: true }, form.name.ilike("%survey%")),
+const publishedOrSurvey = defineExpression(db.form, form =>
+  or(matches(form, { published: true }), form.name.ilike("%survey%")),
 )
 
 await db.form.where(publishedOrSurvey).select("id")
 ```
-
-When the code that defines a filter has no `Db`, define it with a table of the schema, such as `schema.form`, or with `form` itself as returned by `defineTable`.
-
-The callback of a filter defined with a table of a `Db` or a schema receives the [relations](#related-records) of the table in that schema, and the filter applies to the queries of the schemas that have them:
-
-```ts
-const hasFields = defineFilter(schema.form, form => form.fields.exists())
-
-await db.form.where(hasFields).select("id")
-```
-
-Define a filter of related records with a table of a `Db` or a schema rather than with `form` itself, whose callback receives only the columns.
-
-To select a reusable condition too, or to pass it arguments, define it with [`defineExpression`](./computed-values#reusable-expressions).

@@ -10,7 +10,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { defineFilter } from "./filters"
+import { matches } from "./matches"
 import { desc } from "./order"
 import { defineExpression } from "./reusable-expression"
 import type { ResultOf } from "./select"
@@ -164,15 +164,16 @@ describe("calls", () => {
     db.form.where(hasFields)
   })
 
-  test("combine with other expressions and with filters", () => {
+  test("combine with other expressions and with objects of column values", () => {
     const isPublic = defineExpression(db.form, (form, label: string) =>
       and(form.published.eq(true), hasField(form, label)),
     )
-    const isListed = defineFilter(db.form, form =>
-      or({ published: true }, hasField(form, "Email"), isPublic(form, "Name")),
+    const isListed = defineExpression(db.form, form =>
+      or(matches(form, { published: true }), hasField(form, "Email"), isPublic(form, "Name")),
     )
 
     db.form.where(isListed)
+    db.form.where(form => or({ published: true }, isPublic(form, "Name")))
   })
 
   test("apply to the query of a relation", () => {

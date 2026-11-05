@@ -12,7 +12,6 @@ import type { IsAny } from "../utils/type-helpers"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { createSelectionRefs } from "./column-refs"
 import { resolveValues } from "./resolve-values"
-import type { TableOrQuery } from "./select"
 
 /**
  * Filter by column values, each matched by the `eq` operator of its column; `null` matches `IS NULL`.
@@ -67,32 +66,4 @@ export function addUserFilter(
     ...filters,
     user: user ? combineNodes("and", [user, predicate]) : predicate,
   })
-}
-
-/**
- * Defines a reusable condition of `where` for queries over a table, checking its objects of column values against the columns.
- *
- * The condition can be combined further with `and`, `or`, and `not`.
- */
-export function defineFilter<T extends AnyTable, C extends SchemaContext = NoRelations>(
-  table: TableOrQuery<T, C>,
-  filter: NoInfer<WhereCondition<T>>,
-): WhereCondition<T>
-/**
- * Defines a reusable callback of `where` for queries over a table, checking its objects of column values against the columns.
- *
- * Defined with a query of a schema or a `Db`, such as `schema.form`, it receives the queries of the relations of the table in that schema, and applies to queries whose schema has them.
- * Another callback of `where` can call it with the columns and the relations it receives.
- */
-export function defineFilter<T extends AnyTable, C extends SchemaContext = NoRelations>(
-  table: TableOrQuery<T, C>,
-  filter: NoInfer<WhereCallback<T, C>>,
-): WhereCallback<T, C>
-/** Defines a reusable filter of `where` for queries over a table, either a condition or a callback. */
-export function defineFilter<T extends AnyTable, C extends SchemaContext = NoRelations>(
-  table: TableOrQuery<T, C>,
-  filter: NoInfer<WhereFilter<T, C>>,
-): WhereFilter<T, C>
-export function defineFilter(_table: unknown, filter: unknown): unknown {
-  return filter
 }

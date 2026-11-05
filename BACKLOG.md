@@ -2,15 +2,14 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
-## Objects of column values in reusable filters
+## Conditions of another table
 
-`defineFilter` leaves the objects of column values of its condition unresolved until `where` resolves them against its own source, so a filter that another `where` calls with the references of its table applies them to the table of that `where`.
+An object of column values in a condition resolves against the source of the `where` that receives it, so a condition of one table that reaches `where` of another applies its objects there, and types accept it when the tables share a column:
 
-- A filter of a form called in the `where` of its fields, such as `form.fields.where(() => filter(form))`, compares `{ id }` with the column of the field, and types accept it when the tables share a column; `defineExpression` takes no such objects, so it refers to the columns it is called with.
-- A condition defined without a callback, such as `defineFilter(form, { id })`, also passes types in `where` of another table that shares a column.
-- A filter with objects of column values is not an expression, so `select`, `caseWhen`, and `defineExpression` reject it, while a filter can call an expression.
-- Preliminary decision: remove `defineFilter`, so that reusable conditions are written as expressions of `defineExpression`, with operators or `matches`.
-- No signature of one function was found that both keeps the type of an expression and takes objects of column values in `or`, which reads its table from the contextual return type: a type parameter of the result gives none, and an overload is not retried for a nested call.
+- a variable annotated as a condition, such as `db.field.where(condition)` with `condition: WhereCondition<typeof form>`;
+- a callback annotated as a filter and called with the references of its table in `where` of another, such as `form.fields.where(() => filter(form))` with `filter: WhereFilter<typeof form>`.
+
+Decide how types tell the tables of conditions apart: every key of `WhereValues` is optional, so a type of another table that shares a key is assignable to it.
 
 ## Relations in the callbacks of values
 
@@ -337,7 +336,7 @@ Research and a decision: whether a SQL fragment of a user in a nested query can 
 Optional, research: a function that types a union of queries of several tables or kinds, such as `cond ? db.foo : db.bar`, as one query whose overloaded methods TypeScript can call, while a query of one table keeps its plain types.
 
 - At runtime it returns its argument: methods resolve columns by name in the table of the chosen query.
-- Its table has the columns that every table has with the same type; a column of the same name and another type, a filter of `defineFilter`, and a relation of one table are unavailable.
+- Its table has the columns that every table has with the same type; a column of the same name and another type and a relation of one table are unavailable.
 - Its result and rows mode are the unions of those of the queries, and its kind is bound or unbound when every query is, and either kind otherwise.
 - The state keeps the source tables as a new part, so that a `Db` still checks them against its schema.
 - Check first whether a union of tables in the state, `SelectQuery<InitialQueryState<typeof foo | typeof bar>, Kind>`, already gives the common columns.
