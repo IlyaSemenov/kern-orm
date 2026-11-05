@@ -58,6 +58,7 @@ export default defineConfig({
         items: [
           { text: "Custom Types", link: "/custom-types" },
           { text: "Custom Migration Helpers", link: "/migration-helpers" },
+          { text: "Custom Drivers", link: "/custom-drivers" },
         ],
       },
     ],

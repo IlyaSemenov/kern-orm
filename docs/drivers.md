@@ -6,6 +6,8 @@ Install the driver for your client, and pass it to `createDatabase`:
 - postgres.js 4: `@kern-orm/postgres-js`, as in [Getting Started](./getting-started#connect).
 - postgres.js 3: `@kern-orm/postgres-js-v3`, described below.
 
+For another client, [write a driver](./custom-drivers).
+
 ## postgres.js 3
 
 If your application uses postgres.js 3, install `@kern-orm/postgres-js-v3` instead of `@kern-orm/postgres-js`:

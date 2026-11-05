@@ -14,6 +14,15 @@
 
 A driver follows the [contract of package compatibility](compatibility.md), and relies on the contract of `execution/driver.ts`.
 
+## Tests of the contract
+
+`describeDriverContract` of `kern-orm/testing` declares the tests of the contract in PostgreSQL, for the driver packages and custom drivers:
+
+- It takes the functions of a test runner, as `createTestHelpers` takes its hooks, and asserts with `node:assert/strict`, so that it runs with `node:test`, `bun:test`, and Vitest.
+  The driver packages run it with `bun:test` and Vitest from the sources, and the package test with `node:test` against the packed packages.
+- It has no check of `DATABASE_URL`: the caller declares it in a block that skips it, in the way of its test runner.
+- `closesReservedConnections` leaves out the tests of a connection left in a transaction or lost for a client that cannot close a reserved connection, such as postgres.js 3.
+
 ## postgres.js
 
 `@kern-orm/postgres-js` requires postgres.js 4 and leaves the release and closing contracts to it:

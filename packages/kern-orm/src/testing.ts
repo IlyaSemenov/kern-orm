@@ -1,3 +1,5 @@
+export type { DriverContractOptions, DriverContractRunner } from "./execution/driver-contract"
+export { describeDriverContract } from "./execution/driver-contract"
 export type {
   OpenedTestFixture,
   PendingTestFixture,

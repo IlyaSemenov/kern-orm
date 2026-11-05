@@ -563,6 +563,14 @@ describe("test runners", () => {
       return groups
     }
 
+    test("node:test runs the tests of the driver contract", () => {
+      run(
+        ["node", "--test", "contract.mjs"],
+        join(consumer, "runners/node-driver-contract"),
+        30_000,
+      )
+    }, 60_000)
+
     test("Vitest verifies a history with the migration tests that import.meta.glob finds", () => {
       run(
         ["node", join(consumer, "node_modules/vitest/vitest.mjs"), "run"],
@@ -707,11 +715,16 @@ function getTypeErrorReasons(tsc: string[], config: string): string[] {
     .map(error => /Property '"([^"]+)"' is missing/.exec(error)?.[1] ?? error.split("\n")[0]!)
 }
 
-/** Runs a command in `cwd` and returns its standard output, throwing with its standard error on failure. */
-function run(cmd: string[], cwd: string): string {
-  const result = Bun.spawnSync({ cmd, cwd })
+/**
+ * Runs a command in `cwd` and returns its standard output, throwing with its standard error on failure.
+ *
+ * `timeout` limits a command that can hang, in milliseconds: `spawnSync` blocks the event loop, so the timeout of the calling test cannot stop it.
+ */
+function run(cmd: string[], cwd: string, timeout?: number): string {
+  const result = Bun.spawnSync({ cmd, cwd, timeout })
   if (result.exitCode !== 0) {
-    throw new Error(`${cmd.join(" ")} failed:\n${result.stdout}${result.stderr}`)
+    const outcome = result.exitedDueToTimeout ? "timed out" : "failed"
+    throw new Error(`${cmd.join(" ")} ${outcome}:\n${result.stdout}${result.stderr}`)
   }
   return result.stdout.toString()
 }

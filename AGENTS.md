@@ -187,6 +187,8 @@ Describe the user-visible change.
   - In Bun 1.4.4, `await expect(promise).rejects` ignores the timeout of the test, so a regression that leaves the promise pending hangs `bun test`; the `test:node` script fails such a test at its timeout instead.
 - Test how the test helpers work with a test runner, such as with its timeouts, hooks, and abort signal, by running the runner in a subprocess with a timeout and checking the outcome of each test and the recorded statements: `bun:test` in `packages/kern-orm/tests/test-runner.test.ts`, and `node:test` and Vitest against the packed packages in the package test.
 - Test SQL generation and transaction routing without a database through the recording driver in `packages/kern-orm/testing/`.
+- Test the contract of a driver with `describeDriverContract` of `kern-orm/testing`, which `tests/driver.test.ts` of every driver package calls, skipping it when `DATABASE_URL` is not set; keep in that file only the tests of what its client alone does.
+  Write the tests of the contract with `node:assert/strict` and only the functions of `DriverContractRunner`: users run them with any supported test runner.
 - Skip tests that need PostgreSQL when `DATABASE_URL` is not set; CI provides it.
   Locally, it points to an empty database, set in `.env.test.local` copied from `.env.test.local.example`, which `bun test` and the Vitest config load instead of `.env.local`.
   In `kern-orm`, declare them with `describePostgres` of `packages/kern-orm/testing/postgres.ts`, which skips them and gives them a database created with `test: true`.
