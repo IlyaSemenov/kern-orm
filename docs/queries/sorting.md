@@ -29,15 +29,23 @@ const forms = await db.form.orderBy({ [sort.column]: sort.direction }, "id").sel
 To sort by expressions, such as the length of a name, pass a callback that returns one or an array of them:
 
 ```ts
-import { desc, sql } from "kern-orm"
+import { desc } from "kern-orm"
 
 const forms = await db.form
-  .orderBy(form => [desc(sql`length(${form.name})`), form.name])
+  .orderBy(form => [desc(form.name.length()), form.name])
   .select("id", "name")
 ```
 
 An expression sorts in ascending order.
 Wrap it in `desc` to sort in descending order, or in `orderBy` with a direction, such as `orderBy(form.name, "desc nulls last")`.
+
+For an order that operators do not cover, such as by the bytes of text rather than by the rules of the locale, return a [`sql` fragment](./filtering#sql-fragments):
+
+```ts
+import { sql } from "kern-orm"
+
+const forms = await db.form.orderBy(form => sql`${form.name} COLLATE "C"`).select("id", "name")
+```
 
 ## Selected fields
 

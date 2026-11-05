@@ -33,7 +33,13 @@ export type {
 } from "./expression/operators/equality"
 export { equalityOperators } from "./expression/operators/equality"
 export { orderingOperators } from "./expression/operators/ordering"
-export type { PatternSignature } from "./expression/operators/text"
+export type {
+  PatternSignature,
+  TextConversionSignature,
+  TextLengthSignature,
+  TextOperators,
+  TextTypeOperators,
+} from "./expression/operators/text"
 export { textOperators } from "./expression/operators/text"
 export type {
   CombinedCondition,
@@ -54,6 +60,7 @@ export type {
   TypedOperand,
 } from "./expression/functions"
 export { caseWhen, coalesce, greatest, least } from "./expression/functions"
+export type { NumberTypeOperators } from "./type/number"
 export type {
   AnyType,
   BaseType,

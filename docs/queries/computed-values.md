@@ -3,6 +3,8 @@
 To compute a value from columns and other queries, such as a fallback for `NULL`, the largest of several values, or a value chosen by conditions, call a function of `kern-orm` in the callback of a query.
 Use its result as you use a column: select it, filter and sort by it, or pass it to an aggregate or an update.
 
+To change the case of text or get its length, call an [operator](./operators) of the column instead.
+
 ## Replacing NULL
 
 To get another value instead of `NULL`, such as a placeholder for a field without a hint, pass the expression and the fallback to `coalesce`:
@@ -57,7 +59,7 @@ Pass an expression or a query first: its type reads the result and gives it its 
 await db.form.where(form => coalesce(form.fields.max("position"), 0).gt(3)).select("id")
 ```
 
-A [`sql` fragment](./filtering#sql-fragments) needs a type to come first, such as ``coalesce(sql(t.integer)`length(${form.hint})`, 0)``.
+A [`sql` fragment](./filtering#sql-fragments) needs a type to come first, such as ``coalesce(sql(t.integer)`array_length(${form.tags}, 1)`, 0)``.
 
 PostgreSQL computes the result in the wider of the types of the values, so pass the wider one first when they have different formats, such as a `timestamptz` before a `timestamp`.
 

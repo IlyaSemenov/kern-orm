@@ -55,7 +55,7 @@
   The following operands are `const`, since TypeScript otherwise widens a literal of a union of literals, such as of an enum, which fails the constraint and leaves the constraint itself, whose operands can be `NULL`; a plain array, which the mutable values of an array type do not take as `const`, keeps `null` in the same way, unlike the expression of `param`.
 - Unlike the method `coalesce` of a query, which keeps a missing row missing, a query among the operands of `coalesce` is `NULL` without its row, as in any expression, so the function replaces a missing row too.
 - A call is a raw node of `createList`, so lowering takes it for a SQL fragment in a page after an offset ([SQL generation](sql.md#nested-rows)), which only costs the speed of the page.
-- A call of a function adds about 90 instantiations to a query of a column and about 140 to one of an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
+- A call of a function adds about 70 instantiations to a query of a column and about 140 to one of an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
 - `caseWhen` is a searched SQL `CASE` expression of its branches in order, of a type given as its first argument rather than read from an operand, since its values are often plain values, which have no SQL type.
   - The type decodes the result and gives it its operators.
     It casts each plain value to the cast type, as `param` with a type does, since PostgreSQL resolves `CASE` of parameters alone as `text`, whose `max` compares strings, so that `50` is above `100`.
@@ -67,7 +67,16 @@
   - A condition is a predicate or a query of one Boolean value, at runtime too; an object of column values has no table here, and a plain Boolean value is a matter of the code that builds the branches.
   - Without branches, which PostgreSQL rejects in `CASE`, it is the fallback, or `NULL` of its type, so that a list built in code may be empty, as those of `and` and `or` may.
   - Simple `CASE x WHEN ...` is not offered: `x.eq(...)` in each condition writes it.
-  - A call is a raw node, as `createList` makes those of the other functions, and adds about 310 instantiations to a query of a column for two branches with their conditions ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - A call is a raw node, as `createList` makes those of the other functions, and adds about 410 instantiations to a query of a column for two branches with their conditions ([benchmark](../benchmarks/types/queries.bench.ts)).
+
+## Text functions
+
+- `lower`, `upper`, `trim`, and `length` of `textOperators` are operators rather than [functions](#functions-of-expressions), since they have a single operand and only text types have them.
+- The result of `lower`, `upper`, and `trim` is an expression of `text`, and of `length` of `integer`, whatever the type they are called on, since PostgreSQL returns these types for `varchar`, `char`, and `citext` too, and a decoder of `transform` expects values that it encoded rather than results of a function.
+  It is `NULL` when the expression can be.
+- `trim` removes only spaces, as `btrim` of one argument does, rather than all whitespace.
+- `length` counts what PostgreSQL stores: the characters of the text encoded by the type, without the trailing spaces of `char`.
+- `type/text.ts` and `type/number.ts` create `text` and `integer` on first use, as `type/boolean.ts` creates `boolean`, since text operators and these types depend on each other.
 
 ## Parameters and SQL fragments
 

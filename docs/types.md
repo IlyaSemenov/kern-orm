@@ -164,7 +164,9 @@ export const user = defineTable("user", {
 import { param, sql } from "kern-orm"
 import * as t from "kern-orm/types"
 
-await db.form.where(form => sql(t.text)`lower(${form.name})`.like("draft%")).select("id")
+await db.field
+  .where(field => sql(t.text)`concat_ws(' ', ${field.label}, ${field.hint})`.ilike("%email%"))
+  .select("id")
 
 await db.form.where(form => sql`${form.id} = ANY(${param(t.array(t.uuid), ids)})`).select("id")
 ```

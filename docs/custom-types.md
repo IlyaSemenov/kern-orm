@@ -41,7 +41,7 @@ Add the operators that PostgreSQL has for the type with `withOperators`, reusing
 
 - `equalityOperators`: `eq`, `ne`, and `in`, for a type with SQL `=`.
 - `orderingOperators`: those of `equalityOperators`, and `lt`, `lte`, `gt`, and `gte`, for an ordered type.
-- `textOperators`: `like` and `ilike`, for a type of strings.
+- `textOperators`: `like`, `ilike`, `lower`, `upper`, `trim`, and `length`, for a type of strings.
 
 ```ts
 import { defineType, orderingOperators, textOperators } from "kern-orm"

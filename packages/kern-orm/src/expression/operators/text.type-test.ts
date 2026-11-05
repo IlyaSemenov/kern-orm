@@ -28,6 +28,8 @@ test("text operators are absent on other columns", () => {
 
   // @ts-expect-error UUID columns have no text operators.
   from(account).where(columns => columns.id.ilike("a%"))
+  // @ts-expect-error UUID columns have no conversion of case.
+  from(account).where(columns => columns.id.lower().eq("a"))
 })
 
 test("text operators can only be added to types with string values", () => {
@@ -67,6 +69,58 @@ test("pattern matching is nullable when either side is", () => {
     const length = sql(t.text.nullable().transform({ decode: value => value.length }))`name`
     expectTypeOf(length[operator]("a%")).toEqualTypeOf<Expression<boolean | null>>()
   }
+})
+
+test("lower, upper, and trim give text, nullable when the expression is", () => {
+  const name = param(t.text, "a")
+  const nullableName = param(t.text.nullable(), null)
+  const code = param(t.varchar.with(10), "a")
+  const tags = sql(
+    t.text.nullable().transform({
+      decode: value => value.split(","),
+      encode: (value: string[]) => value.join(","),
+    }),
+  )`tags`
+
+  for (const operator of ["lower", "upper", "trim"] as const) {
+    expectTypeOf(name[operator]()).toEqualTypeOf(sql(t.text)`name`)
+    expectTypeOf(nullableName[operator]()).toEqualTypeOf(sql(t.text.nullable())`name`)
+    expectTypeOf(code[operator]()).toEqualTypeOf(sql(t.text)`name`)
+    expectTypeOf(tags[operator]()).toEqualTypeOf(sql(t.text.nullable())`name`)
+  }
+})
+
+test("lower, upper, and trim give an expression with the operators of text", () => {
+  const name = param(t.text.nullable(), null)
+
+  expectTypeOf(name.lower().like("a%")).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(name.upper().lower().gt("a")).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(name.trim().like("a%")).toEqualTypeOf<Expression<boolean | null>>()
+
+  // @ts-expect-error Text compares with strings.
+  name.lower().eq(1)
+})
+
+test("length gives integer, nullable when the expression is", () => {
+  const tags = sql(
+    t.text.nullable().transform({
+      decode: value => value.split(","),
+      encode: (value: string[]) => value.join(","),
+    }),
+  )`tags`
+
+  expectTypeOf(param(t.text, "a").length()).toEqualTypeOf(sql(t.integer)`length`)
+  expectTypeOf(param(t.text.nullable(), null).length()).toEqualTypeOf(
+    sql(t.integer.nullable())`length`,
+  )
+  expectTypeOf(param(t.varchar.with(10), "a").length()).toEqualTypeOf(sql(t.integer)`length`)
+  expectTypeOf(tags.length()).toEqualTypeOf(sql(t.integer.nullable())`length`)
+  expectTypeOf(param(t.text, "a").length().gt(1)).toEqualTypeOf<Expression<boolean>>()
+
+  // @ts-expect-error A length is a number.
+  param(t.text, "a").length().eq("1")
+  // @ts-expect-error UUID columns have no length.
+  from(account).where(columns => columns.id.length().eq(1))
 })
 
 test("custom pattern operators take string patterns and are added only to types of strings", () => {

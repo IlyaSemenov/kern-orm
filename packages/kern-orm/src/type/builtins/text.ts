@@ -1,16 +1,8 @@
-import { orderingOperators } from "../../expression/operators/ordering"
-import { textOperators } from "../../expression/operators/text"
-import { defineType } from "../type"
+import { defineTextType, getTextType } from "../text"
 import { formatTypeName } from "../type-name"
 
-function defineTextType(sqlType: string, castType?: string) {
-  return defineType({ sqlType, castType })
-    .withOperators(orderingOperators)
-    .withOperators(textOperators)
-}
-
 /** Variable-length string without a limit. */
-export const text = /* @__PURE__ */ defineTextType("text")
+export const text = /* @__PURE__ */ getTextType()
 
 /** Variable-length string; `varchar.with(length)` limits its length. */
 export const varchar = /* @__PURE__ */ defineTextType("varchar").withParameters((length: number) =>

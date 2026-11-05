@@ -22,13 +22,13 @@ const forms = await db.form.select(form => ({
   id: form.id,
   title: form.name,
   isDraft: form.name.ilike("draft%"),
-  upper: sql(t.text)`upper(${form.name})`,
+  slug: sql(t.text)`regexp_replace(lower(${form.name}), '[^a-z0-9]+', '-', 'g')`,
 }))
-// forms: { id: string; title: string; isDraft: boolean; upper: string }[]
+// forms: { id: string; title: string; isDraft: boolean; slug: string }[]
 ```
 
 A field keeps the type of its expression, so a column or a fragment of `sql(type)` returns values of its type.
-A selected fragment needs a type, such as `t.text` of `upper` above.
+A selected fragment needs a type, such as `t.text` of `slug` above.
 
 Each `select` adds new fields to those selected before:
 
@@ -43,7 +43,7 @@ Selecting an existing key replaces its expression and type; the last selection w
 
 ```ts
 const forms = await db.form.select("id", "name").select(form => ({
-  name: sql(t.integer)`length(${form.name})`,
+  name: form.name.length(),
 }))
 // forms: { id: string; name: number }[]
 ```

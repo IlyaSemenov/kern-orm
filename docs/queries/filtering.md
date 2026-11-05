@@ -128,13 +128,13 @@ For a condition that operators do not cover, write it with the `sql` template; i
 ```ts
 import { sql } from "kern-orm"
 
-await db.form.where(form => sql`length(${form.name}) > ${10}`).select("id")
+await db.form.where(form => sql`${form.name} ~ ${"^draft [0-9]+$"}`).select("id")
 ```
 
 A fragment built outside `where`, such as in a variable, needs `sql<boolean>` to be a condition:
 
 ```ts
-const longName = sql<boolean>`length(name) > 10`
+const numberedDraft = sql<boolean>`name ~ '^draft [0-9]+$'`
 ```
 
 A type argument exists only in TypeScript, so such a fragment has only `eq`, `ne`, `in`, and `isNull`.
@@ -159,7 +159,9 @@ The type adds no SQL cast:
 ```ts
 import * as t from "kern-orm/types"
 
-await db.form.where(form => sql(t.text)`lower(${form.name})`.like("draft%")).select("id")
+await db.field
+  .where(field => sql(t.text)`concat_ws(' ', ${field.label}, ${field.hint})`.ilike("%email%"))
+  .select("id")
 ```
 
 ## Reusable filters

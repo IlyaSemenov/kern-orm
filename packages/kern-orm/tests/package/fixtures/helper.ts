@@ -12,6 +12,7 @@ import {
   literal,
   many,
   one,
+  param,
 } from "kern-orm"
 import * as t from "kern-orm/types"
 
@@ -53,6 +54,18 @@ export function getExecute(db: DbOf<typeof schema>) {
 export function getSelect(db: DbOf<typeof schema>) {
   return db.$select
 }
+
+/** Expression of `length`, whose type names the operators of numbers; see the file header. */
+export const nameLength = param(t.text, "name").length()
+
+/** Expression of `trim`, whose type names the operators of text; see the file header. */
+export const trimmedName = param(t.text, "name").trim()
+
+/** Table with columns of the shared `integer` and `text` types; see the file header. */
+export const counter = defineTable("counter", {
+  label: t.text,
+  value: t.integer,
+})
 
 /** Selects computed values from a column, a relation aggregate, and a condition; see the file header. */
 export const selectComputedValues = schema.form.select(form => ({

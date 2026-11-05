@@ -27,6 +27,7 @@ const withFieldIds = defineHelper(formsSchema.form, form =>
 bench.baseline(async () => {
   await tenantDb.form.where({ name: "baseline" }).pluck("id")
   await tenantDb.field.where(field => field.label.eq("baseline")).pluck("id")
+  await tenantDb.field.pluck(field => field.label.lower())
   await formsDb.$execute(
     formsSchema.form
       .where({ name: "baseline" })
@@ -166,7 +167,11 @@ bench("aggregate with a fallback", async () => {
 
 bench("function of a column", async () => {
   await tenantDb.form.pluck(form => coalesce(form.name, "x"))
-}).types([255, "instantiations"])
+}).types([210, "instantiations"])
+
+bench("case conversion of a column", async () => {
+  await tenantDb.form.pluck(form => form.name.lower())
+}).types([139, "instantiations"])
 
 bench("function of an aggregate of a relation and a value", async () => {
   await tenantDb.form.select(form => ({
@@ -185,7 +190,7 @@ bench("case of two branches", async () => {
       "b",
     ),
   )
-}).types([473, "instantiations"])
+}).types([551, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
@@ -245,7 +250,7 @@ bench("unbound query", async () => {
       }))
       .take(),
   )
-}).types([980, "instantiations"])
+}).types([964, "instantiations"])
 
 bench("unbound query on DbOf", async () => {
   await sharedDb.$execute(
@@ -257,7 +262,7 @@ bench("unbound query on DbOf", async () => {
       }))
       .take(),
   )
-}).types([980, "instantiations"])
+}).types([964, "instantiations"])
 
 bench("relation many", async () => {
   await tenantDb.$execute(

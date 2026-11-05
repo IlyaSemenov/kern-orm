@@ -1,18 +1,13 @@
 import { orderingOperators } from "../../expression/operators/ordering"
+import { defineNumberType, getIntegerType } from "../number"
 import { defineType } from "../type"
 import { formatTypeName } from "../type-name"
-
-function defineNumberType(sqlType: string) {
-  return defineType({ sqlType })
-    .transform({ decode: Number, encode: (value: number) => String(value) })
-    .withOperators(orderingOperators)
-}
 
 /** 2-byte integer as a `number`. */
 export const smallint = /* @__PURE__ */ defineNumberType("smallint")
 
 /** 4-byte integer as a `number`. */
-export const integer = /* @__PURE__ */ defineNumberType("integer")
+export const integer = /* @__PURE__ */ getIntegerType()
 
 /** 8-byte integer as a `bigint`, which keeps values beyond `Number.MAX_SAFE_INTEGER`; accepts a `number` too. */
 export const bigint = /* @__PURE__ */ defineType({ sqlType: "bigint" })
