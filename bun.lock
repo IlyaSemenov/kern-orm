@@ -50,7 +50,7 @@
     },
     "packages/kern-orm": {
       "name": "kern-orm",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
         "kern-orm-0.2.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
@@ -76,7 +76,7 @@
     },
     "packages/node-postgres": {
       "name": "@kern-orm/node-postgres",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "@types/pg": "^8.23.1",
         "kern-orm": "workspace:*",

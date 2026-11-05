@@ -1,5 +1,20 @@
 # kern-orm
 
+## 0.5.0
+
+### Minor Changes
+
+- 4656c07: Add `defineExpression`, which defines a reusable expression of a table with arguments that queries can filter and sort by, select, and combine with other expressions.
+- ad7884b: Add `describeDriverContract` to `kern-orm/testing`, which tests a custom driver in PostgreSQL with any supported test runner.
+- 740af0d: Add `matches` to turn an object of column values into a Boolean expression for use in `select` and `defineExpression`.
+- 6db2c8d: Allow a query of one value, such as of `get` or an aggregate, as a value of `insert`, `insertMany`, and `update`.
+- e9e747c: Allow reading related records in the callbacks of `get`, `pluck`, the aggregate methods, and `update`, such as `db.form.pluck(form => form.fields.count())`.
+- 7be282f: Remove `defineFilter`, which could apply its objects of column values to the table of another `where`; define reusable conditions with `defineExpression` and `matches` instead.
+
+### Patch Changes
+
+- ce0c36f: Fix type errors on literals of an enum column returned from the callbacks of `where` and `update`, such as `update(() => ({ status: "live" }))`.
+
 ## 0.4.0
 
 ### Minor Changes
