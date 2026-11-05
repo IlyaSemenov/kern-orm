@@ -38,8 +38,10 @@
     It reads the snapshot of the statement, so a relation of the table of the update reads the rows as they were before it, under an alias of its own.
   - The queries among the values of the callback add their relations to the state of the mutation, as the nested queries of a selection do, so types reject them where the `Db` lacks them; an expression, such as of `expr` or `coalesce`, does not carry them, and only lowering rejects them, at any depth of the statement ([queries of a Db](queries.md#queries-of-a-db)).
     The values of a callback annotated with `UpdateValues` may hold a query of any relation, as a `Selection` may, so types reject them on a `Db` of known relations.
-  - `update` has an overload of a callback that infers its values for their relations, and then one of a value of `UpdateSet`, which takes an object or a callback, so that a call that matches no overload reports the error of its own form and a value of `UpdateSet` applies, whose relations stay out of the state.
+  - `update` has an overload that infers the type of a callback for the relations of its values, and then one of a value of `UpdateSet`, which takes an object or a callback, so that a call that matches no overload reports the error of its own form and a value of `UpdateSet` applies, whose relations stay out of the state.
     One signature that infers the values of a callback takes about 10% more instantiations for a callback and 1% for an object ([benchmark](../benchmarks/types/queries.bench.ts)), and a variable of `UpdateSet` could not be passed to a signature of a callback and one of an object.
+    The overload infers the callback rather than its values, so that the constraint of the callback types its body by the columns of the table: with a type parameter of the values, the body of the callback sees no specific table, which widens a literal of a column, such as of an enum, and a callback keeps that type for every overload.
+    A conditional type of a callback that infers its values, as `where` takes its filter ([queries](queries.md)), takes about 5% to 15% more instantiations for each form of `update` ([benchmark](../benchmarks/types/queries.bench.ts)).
 
 ## Results
 

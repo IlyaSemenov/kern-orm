@@ -159,11 +159,11 @@ bench("bound query", async () => {
 
 bench("filter of a callback", async () => {
   await tenantDb.form.where(form => form.name.eq("x")).pluck("name")
-}).types([223, "instantiations"])
+}).types([231, "instantiations"])
 
 bench("filter of matches", async () => {
   await tenantDb.form.where(form => matches(form, { name: "x" })).pluck("name")
-}).types([513, "instantiations"])
+}).types([521, "instantiations"])
 
 bench("find", async () => {
   await tenantDb.form.find("x").select("name")
@@ -234,7 +234,7 @@ bench("exists", async () => {
 
 bench("filter of exists of a relation", async () => {
   await tenantDb.form.where(form => not(form.fields.exists())).pluck("name")
-}).types([377, "instantiations"])
+}).types([387, "instantiations"])
 
 bench("filter of a value of a query", async () => {
   await tenantDb.field
@@ -244,21 +244,21 @@ bench("filter of a value of a query", async () => {
 
 bench("filter of a list", async () => {
   await tenantDb.form.where(form => form.id.in(["x", "y"])).pluck("name")
-}).types([279, "instantiations"])
+}).types([287, "instantiations"])
 
 bench("filter of the values of a query", async () => {
   await tenantDb.field
     .where(field => field.formId.in(tenantDb.form.where({ name: "x" }).pluck("id")))
     .pluck("label")
-}).types([254, "instantiations"])
+}).types([262, "instantiations"])
 
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
-}).types([501, "instantiations"])
+}).types([509, "instantiations"])
 
 bench("comparison of an aggregate of a relation", async () => {
   await tenantDb.form.where(form => form.fields.count().expr().gt(3)).pluck("name")
-}).types([392, "instantiations"])
+}).types([400, "instantiations"])
 
 bench("order of a callback", async () => {
   await tenantDb.form.orderBy(form => desc(form.name)).pluck("name")
@@ -388,25 +388,25 @@ bench("insert", async () => {
 
 bench("update", async () => {
   await tenantDb.form.find("x").update({ name: "x" }).select("id", "name")
-}).types([521, "instantiations"])
+}).types([519, "instantiations"])
 
 bench("update of a value of a query", async () => {
   await tenantDb.form.find("x").update({
     name: tenantDb.field.min("label").coalesce("x"),
   })
-}).types([372, "instantiations"])
+}).types([368, "instantiations"])
 
 bench("update of a callback", async () => {
   await tenantDb.form.find("x").update(form => ({
     name: form.name.lower(),
   }))
-}).types([305, "instantiations"])
+}).types([324, "instantiations"])
 
 bench("update of an aggregate of a relation", async () => {
   await tenantDb.form.find("x").update(form => ({
     name: form.fields.min("label").coalesce("x"),
   }))
-}).types([829, "instantiations"])
+}).types([823, "instantiations"])
 
 bench("delete with get of a callback", async () => {
   await tenantDb.form

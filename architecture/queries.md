@@ -88,6 +88,16 @@ Queries come in two kinds that share the query methods and differ only by execut
 - Query filters are kept as separate `relation`, `scope`, and `user` predicates combined with `AND` at compilation; `where` adds only to `user`, so a user `OR` never bypasses the relation filter ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
 - A condition rejects, also at runtime, a value that is not an object of column values, such as `false` or an array, and an object without keys that is not plain, such as a `Date` or an instance whose values are getters: without keys it would read as an empty object, which is `TRUE`, and `where(false)` would select every row.
   An instance of a class with fields stays an object of column values, as types take it, since the compiler checks its keys against the columns, and an empty plain object, of any realm, stays `TRUE`.
+- The callback of `where` types a literal that it returns by its column, such as of an enum, so `where` takes its filter as `QueryWhereFilter`, a conditional type of the state of the query, which TypeScript resolves before it types the body of the callback, once for every overload.
+  - A type parameter of the filter, as of the callback of [`update`](mutations.md#values), would type the body too, but gives `or` and `and` in a filter no columns to infer their objects from.
+  - On a query that the overload that keeps its state rejects, such as of a required relation or of a helper, a literal requires an object or a callback with a parameter: the query resolves the type parameter of that overload to its constraint, which has no columns, and TypeScript types a callback without parameters by it, for every overload.
+    The checks of the state that would type it lose the type of the query in a function generic over it, such as of a query of any state, or take more than the case is worth:
+    - A conditional type of `this` stays unresolved in such a function, which then takes the overload that changes the state.
+    - An intersection of `this` with an interface of the state rejects a query of any state in the first pass of overload resolution, which compares by subtypes.
+    - An intersection of `this` with a whole query takes about 200 more instantiations for each query.
+    - The overload that changes the state, placed first and guarded by the state, rejects a function generic over the state of its query and adds about 208 instantiations to a query.
+    - A further overload of concrete queries before the one of the constraint types every form and keeps generic functions, but takes about 27% more instantiations for a filter of a value of a query and 16% for a filter of a required relation, and shows in declarations and editors.
+  - It adds about 8 instantiations to a filter, which is 2% to 4%, and up to about 4% to the first query or helper of a table ([benchmark](../benchmarks/types/queries.bench.ts)).
 - `where`, `and`, `or`, and `not` take a query of a table of one Boolean value as a condition, such as `not(form.fields.exists())`, as an expression takes it as an operand ([queries in expressions](#queries-in-expressions)).
   Only types check that the value is Boolean: at runtime, as for an expression, PostgreSQL rejects a predicate of another type, such as in `WHERE` or `NOT`.
 

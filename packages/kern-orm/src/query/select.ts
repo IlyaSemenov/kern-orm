@@ -22,7 +22,7 @@ import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { noContext } from "./column-refs"
 import type { ExistsValueType } from "./exists"
 import { getExistsProjection, isExistsQuery } from "./exists"
-import type { EqValue, WhereFilter } from "./filters"
+import type { EqValue, QueryWhereFilter, WhereFilter } from "./filters"
 import { addUserFilter } from "./filters"
 import type { KeyCheck, PrimaryKeyValues } from "./find"
 import { toKeyValues, toPrimaryKeyValues } from "./find"
@@ -276,10 +276,7 @@ export class SelectQuery<
 
   // A query whose row no relation guarantees keeps its state, so that a union of such queries takes `where`.
   /** Adds a filter combined with `AND` with the previous ones; a callback receives the columns and the queries of the relations of the table. */
-  where<Q extends QueryOf<UnguaranteedQueryState>>(
-    this: Q,
-    filter: WhereFilter<Q["types"]["table"], Q["types"]["schema"]>,
-  ): Q
+  where<Q extends QueryOf<UnguaranteedQueryState>>(this: Q, filter: QueryWhereFilter<Q["types"]>): Q
   /**
    * Adds a filter combined with `AND` with the previous ones; a callback receives the columns and the queries of the relations of the table.
    *
@@ -287,7 +284,7 @@ export class SelectQuery<
    */
   where<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
-    filter: WhereFilter<S["table"], S["schema"]>,
+    filter: QueryWhereFilter<S>,
   ): SelectQuery<FilteredState<S>, Kind>
   where(filter: WhereFilter<AnyTable>): unknown {
     return this.derive(this.addFilter(filter))
@@ -878,6 +875,8 @@ export class SelectQuery<
   // Overloads rather than one signature that infers the values of a callback, which costs about 10% more for a callback.
   // The last overload takes a callback too, so that a call that matches no overload reports the error of its own form, and a value of `UpdateSet` applies.
   // It records no relations, as an object of values does not.
+  // The first overload infers the callback rather than its values: the constraint of the callback types its body by the columns of the table, whereas a type parameter of the values would widen a literal of a column, such as of an enum, to `string` for every overload.
+  // It costs less than a conditional type of a callback that infers its values, as `QueryWhereFilter` is for `where`.
   /**
    * Updates the rows that the filters of the query choose with the values that `callback` returns, and resolves to the number of the updated rows.
    *
@@ -890,12 +889,19 @@ export class SelectQuery<
   update<
     S extends SelectQueryState,
     Kind extends SelectQueryKind,
-    V extends UpdateValues<S["table"]>,
+    F extends (
+      columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>,
+    ) => UpdateValues<S["table"]>,
   >(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => V,
+    callback: F,
   ): MutationQuery<
-    InitialMutationState<S["table"], S["schema"], S["rows"], OperandUses<V[keyof V]>>,
+    InitialMutationState<
+      S["table"],
+      S["schema"],
+      S["rows"],
+      OperandUses<ReturnType<F>[keyof ReturnType<F>]>
+    >,
     Kind
   >
   /**

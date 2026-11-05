@@ -1,7 +1,7 @@
 // Exports values and functions whose inferred types name types of the package, as a module of a consumer does.
 // The package test emits their declarations, which fail, such as with TS4023 or TS4058, when they name a type that the package does not export.
 // Each export covers a kind of such code; the type tests of `declaration-consumer/` import some of them to check the emitted types, and nothing uses the others.
-import type { DbOf, QueryStateOf, SelectQuery, SelectQueryKind } from "kern-orm"
+import type { DbOf, QueryStateOf, SelectQuery, SelectQueryKind, WhereFilter } from "kern-orm"
 import {
   caseWhen,
   coalesce,
@@ -9,6 +9,7 @@ import {
   defineHelper,
   defineSchema,
   defineTable,
+  from,
   greatest,
   literal,
   many,
@@ -132,6 +133,26 @@ export function renameFromField(id: string) {
   return schema.form.find(id).update(form => ({
     name: coalesce(form.fields.max("id"), "Empty"),
   }))
+}
+
+const survey = defineTable("survey", {
+  id: t.uuid.primaryKey(),
+  status: t.enum("survey_status", ["draft", "live"]),
+})
+
+const surveys = from(survey)
+
+/** Publishes the draft surveys with literals of an enum column in callbacks, which each supported TypeScript must type by the column; see the file header. */
+export const publishDrafts = surveys
+  .where(() => ({ status: "draft" }))
+  .update(() => ({ status: "live" }))
+
+/** Filters a query in a function generic over it, keeping its type; see the file header. */
+export function filterSurveys<Q extends typeof surveys>(
+  query: Q,
+  filter: WhereFilter<Q["types"]["table"], Q["types"]["schema"]>,
+): Q {
+  return query.where(filter)
 }
 
 /** Query that selects the records of a relation; see the file header. */

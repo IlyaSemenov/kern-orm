@@ -64,6 +64,26 @@ describe("values", () => {
     blog.post.insert({ title: sql<number>`1` })
   })
 
+  test("take literals of the values of their columns in a callback", () => {
+    const article = defineTable("article", {
+      id: t.uuid.primaryKey(),
+      status: t.enum("article_status", ["draft", "live"]),
+      history: t.array(t.enum("article_status", ["draft", "live"])),
+    })
+    const found = defineSchema({ article }).article.find("article-id")
+    const published = true as boolean
+
+    found.update(() => ({ status: "live" }))
+    found.update(() => ({ status: published ? "live" : "draft" }))
+    found.update(() => ({ history: ["draft", "live"] }))
+    found.update(columns => ({ status: "live", history: columns.history }))
+
+    // @ts-expect-error A literal of other values is rejected.
+    found.update(() => ({ status: "archived" }))
+    // @ts-expect-error A literal of other values is rejected.
+    found.update(columns => ({ status: "archived", history: columns.history }))
+  })
+
   test("take a query of one value of the values of their columns", () => {
     blog.post.insert({ title: "Hello", subtitle: blog.comment.get("id") })
     blog.post.insert({ title: blog.comment.min("id").coalesce("Hello") })

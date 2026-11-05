@@ -84,4 +84,4 @@ bench("first expression of a table", () => {
 
 bench("first helper of a table", () => {
   defineHelper(formsSchema.form, query => query.where({ published: true }))
-}).types([562, "instantiations"])
+}).types([583, "instantiations"])

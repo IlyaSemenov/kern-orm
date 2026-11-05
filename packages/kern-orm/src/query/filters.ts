@@ -12,6 +12,7 @@ import type { IsAny } from "../utils/type-helpers"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { createSelectionRefs } from "./column-refs"
 import { resolveValues } from "./resolve-values"
+import type { SelectQueryState } from "./state"
 
 /**
  * Filter by column values, each matched by the `eq` operator of its column; `null` matches `IS NULL`.
@@ -48,6 +49,16 @@ export type WhereCallback<T extends AnyTable, C extends SchemaContext = NoRelati
 export type WhereFilter<T extends AnyTable, C extends SchemaContext = NoRelations> =
   | WhereCondition<T>
   | WhereCallback<T, C>
+
+/**
+ * Argument of `where` of a query of state `S`: a `WhereFilter` of its table and schema, which TypeScript resolves with what it has inferred for `S` before it checks a callback in it.
+ *
+ * TypeScript types the body of a callback once, for every overload, and a plain `WhereFilter` leaves `S` unresolved there, so the body would widen a literal, such as of an enum column, to `string`.
+ * It reads the filter only in its branch: a general alias that takes the filter as an argument resolves it on every call, which takes about 25 more instantiations.
+ */
+export type QueryWhereFilter<S extends SelectQueryState> = [S] extends [unknown]
+  ? WhereFilter<S["table"], S["schema"]>
+  : never
 
 /** Creates query filters with the filter of `where` over `source` with the relations of `context` combined with `AND` with the user filters of `filters`. */
 export function addUserFilter(
