@@ -42,7 +42,7 @@ export default defineConfig({
           { text: "Operators", link: "/queries/operators" },
           { text: "Sorting and Pagination", link: "/queries/sorting" },
           { text: "Related Records", link: "/queries/relations" },
-          { text: "Computed Values", link: "/queries/computed-values" },
+          { text: "Expressions", link: "/queries/expressions" },
           { text: "Inserting, Updating, and Deleting", link: "/queries/mutations" },
           { text: "Composing Queries", link: "/queries/composing" },
           { text: "Reusable Queries", link: "/queries/reusable" },

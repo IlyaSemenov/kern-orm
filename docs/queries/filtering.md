@@ -178,7 +178,7 @@ await db.field
 
 ## Reusable conditions
 
-To reuse a condition in queries of a table, define it with [`defineExpression`](./computed-values#reusable-expressions), which also takes arguments and can be selected:
+To reuse a condition in queries of a table, define it with [`defineExpression`](./expressions#reusable-expressions), which also takes arguments and can be selected:
 
 ```ts
 import { defineExpression, matches, or } from "kern-orm"

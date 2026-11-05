@@ -18,7 +18,7 @@ import type { ResultOf } from "kern-orm"
 type PublishedForm = ResultOf<typeof publishedForms>
 ```
 
-For reusable conditions and other expressions, see [`defineExpression`](./computed-values#reusable-expressions), and for reusable clauses, [helpers](./composing#helpers).
+For reusable conditions and other expressions, see [`defineExpression`](./expressions#reusable-expressions), and for reusable clauses, [helpers](./composing#helpers).
 
 ## Queries without a Db
 

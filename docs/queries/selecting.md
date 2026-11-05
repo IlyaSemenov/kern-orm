@@ -12,7 +12,7 @@ A record has no fields without `select`, so a result never carries data that the
 
 To select all columns of the table, call `select("*")`.
 
-To rename columns or select results of [operators](./operators), [functions](./computed-values), and `sql` fragments, pass a callback that returns them under keys of your choice:
+To rename columns or select results of [operators](./operators), [functions](./expressions), and `sql` fragments, pass a callback that returns them under keys of your choice:
 
 ```ts
 import { sql } from "kern-orm"
@@ -82,7 +82,7 @@ The value stays out of the SQL statement, so the database does not read the skip
 Every record gets that value itself rather than a copy, whatever it is, such as an object or a `Date`.
 
 `literal` works as a field in the callback of `select`, including of nested rows and mutations, and in `$select`.
-To use a value in a condition or another expression, pass it directly or through [`param`](./computed-values#constant-values).
+To use a value in a condition or another expression, pass it directly or through [`param`](./expressions#constant-values).
 
 ## One row
 
@@ -178,7 +178,7 @@ const hint = await db.field.find(fieldId).get("hint").coalesce("")
 
 `coalesce` replaces only `NULL`: without a row, the query still rejects or gives `undefined`.
 After `pluck`, it replaces each `NULL` value.
-To replace a missing row too, or `NULL` of a column of each record, use the [function `coalesce`](./computed-values#replacing-null).
+To replace a missing row too, or `NULL` of a column of each record, use the [function `coalesce`](./expressions#replacing-null).
 
 ## Aggregates
 

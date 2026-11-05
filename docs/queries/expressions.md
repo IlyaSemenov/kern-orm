@@ -1,9 +1,11 @@
-# Computed Values
+# Expressions
 
 To compute a value from columns and other queries, such as a fallback for `NULL`, the largest of several values, or a value chosen by conditions, call a function of `kern-orm` in the callback of a query.
-Use its result as you use a column: select it, filter and sort by it, or pass it to an aggregate or an update.
+Use the resulting expression as you use a column: select it, filter and sort by it, or pass it to an aggregate or an update.
+To use one expression in several queries, [define it once](#reusable-expressions).
 
 To change the case of text or get its length, call an [operator](./operators) of the column instead.
+To combine conditions, call [`and`, `or`, and `not`](./filtering#combining-conditions), and to write what no function or operator covers, use a [`sql` fragment](./filtering#sql-fragments).
 
 ## Replacing NULL
 
