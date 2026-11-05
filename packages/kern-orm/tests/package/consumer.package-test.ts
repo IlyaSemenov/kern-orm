@@ -9,7 +9,14 @@ import { rolldown } from "rolldown"
 
 const root = join(import.meta.dir, "../../../..")
 // The companion packages, with the packages of the client that their consumer installs, and the packed packages that it also installs.
-const companionPackages = [
+// `unpublished` marks a package before its first release, which has no published version to run.
+const companionPackages: {
+  dir: string
+  project: string
+  clients: string[]
+  dependencies?: string[]
+  unpublished?: boolean
+}[] = [
   {
     dir: "packages/postgres-js",
     project: ".",
@@ -24,7 +31,6 @@ const companionPackages = [
     dir: "packages/node-postgres",
     project: ".",
     clients: ["pg", "@types/pg"],
-    unpublished: true,
   },
   {
     dir: "packages/migrations",

@@ -56,6 +56,7 @@
         "kern-orm-0.2.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
         "kern-orm-0.3.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.3.0.tgz",
         "migrations-published": "https://registry.npmjs.org/@kern-orm/migrations/-/migrations-0.3.1.tgz",
+        "node-postgres-published": "https://registry.npmjs.org/@kern-orm/node-postgres/-/node-postgres-0.1.0.tgz",
         "postgres": "catalog:",
         "postgres-js-published": "https://registry.npmjs.org/@kern-orm/postgres-js/-/postgres-js-0.1.2.tgz",
         "postgres-js-v3-published": "https://registry.npmjs.org/@kern-orm/postgres-js-v3/-/postgres-js-v3-0.1.2.tgz",
@@ -967,6 +968,8 @@
     "natural-compare": ["natural-compare@1.4.0", "", {}, "sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw=="],
 
     "natural-orderby": ["natural-orderby@5.0.0", "", {}, "sha512-kKHJhxwpR/Okycz4HhQKKlhWe4ASEfPgkSWNmKFHd7+ezuQlxkA5cM3+XkBPvm1gmHen3w53qsYAv+8GwRrBlg=="],
+
+    "node-postgres-published": ["@kern-orm/node-postgres@https://registry.npmjs.org/@kern-orm/node-postgres/-/node-postgres-0.1.0.tgz", { "peerDependencies": { "@types/pg": "^8.0.0", "kern-orm": ">=0.2.0 <1", "pg": "^8.23.1" }, "optionalPeers": ["@types/pg"] }, "sha512-7EYoWoGazYPOljWuUVOQy3Vm4W1bZKBg09MpqLZ5/g7J/wleJemrD7EOvnYvc7s3SHTNxXnar4JD03jx7VFN8A=="],
 
     "obug": ["obug@3.0.0", "", {}, "sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw=="],
 

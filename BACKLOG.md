@@ -11,10 +11,6 @@ An object of column values in a condition resolves against the source of the `wh
 
 Decide how types tell the tables of conditions apart: every key of `WhereValues` is optional, so a type of another table that shares a key is assignable to it.
 
-## Published version of `@kern-orm/node-postgres` in the package test
-
-After the first release of `@kern-orm/node-postgres`, add `node-postgres-published` to `devDependencies` of `kern-orm` and remove `unpublished` of the package from `companionPackages` of the package test, so that it runs the published version with the current `kern-orm`.
-
 ## Moving from rake-db
 
 Moving a project from rake-db to `@kern-orm/migrations`:
