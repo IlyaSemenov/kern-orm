@@ -6,6 +6,7 @@ import * as t from "kern-orm/types"
 
 import {
   deleteFormsWithFields,
+  hasFieldId,
   insertForm,
   namesWithFields,
   renameForm,
@@ -73,6 +74,18 @@ describe("emitted declarations of queries of SQL text", () => {
     expectTypeOf(await upsertForm(database.bind(schema), "Survey")).toEqualTypeOf<
       { id: string; name: string } | undefined
     >()
+  })
+})
+
+describe("emitted expression declarations", () => {
+  test("filter by and select an expression of a relation", () => {
+    const query = schema.form
+      .where(form => hasFieldId(form, "field-id"))
+      .select(form => ({
+        hasField: hasFieldId(form, "field-id"),
+      }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ hasField: boolean }>()
   })
 })
 

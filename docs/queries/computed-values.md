@@ -125,3 +125,42 @@ const forms = await db.form.select(form => ({
 ```
 
 For a constant condition, use [`TRUE` and `FALSE`](./filtering#combining-conditions).
+
+## Reusable expressions
+
+To use one expression in several queries, such as whether a form has a field with a label, define it with `defineExpression` and call it with the columns of the query and its arguments:
+
+```ts
+import { defineExpression } from "kern-orm"
+
+const hasField = defineExpression(db.form, (form, label: string) =>
+  form.fields.where({ label }).exists(),
+)
+
+const forms = await db.form
+  .where(form => hasField(form, "Email"))
+  .select(form => ({
+    id: form.id,
+    hasPhone: hasField(form, "Phone"),
+  }))
+// forms: { id: string; hasPhone: boolean }[]
+```
+
+Call it wherever a callback of a query takes an expression, such as in `orderBy`, `or`, or another reusable expression.
+Pass an expression without further parameters directly, such as `db.form.where(hasFields)`.
+
+Write a condition on the columns of the table with operators, such as `form.published.eq(true)`, since only `where` takes objects of column values, such as the `where` of the fields above.
+
+To accept a value or a column of another query as an argument, type the parameter as both, such as `label: string | Expression<string>`.
+
+When the code that defines an expression has no `Db`, such as with dependency injection or in code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
+
+To call an expression in the callback of `get`, `pluck`, an aggregate, or `update`, which receive only the columns, define it with `form` itself as returned by `defineTable`:
+
+```ts
+const isSurvey = defineExpression(form, form => form.name.ilike("%survey%"))
+
+await db.form.find(formId).update(form => ({
+  published: isSurvey(form),
+}))
+```

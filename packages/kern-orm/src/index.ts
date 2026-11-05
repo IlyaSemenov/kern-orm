@@ -137,6 +137,7 @@ export type {
   WhereValues,
 } from "./query/filters"
 export { defineFilter } from "./query/filters"
+export { defineExpression } from "./query/reusable-expression"
 export type { KeyCheck, NotAKey, PrimaryKeyValues } from "./query/find"
 export type {
   OrderColumns,

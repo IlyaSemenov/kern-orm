@@ -54,3 +54,4 @@ When the code that defines a helper has no `Db`, such as with dependency injecti
 Pass the table returned by `defineTable`, such as `form`, when the helper does not need the relations of the table.
 
 For a reusable condition alone, use [`defineFilter`](./filtering#reusable-filters), which also combines with `and`, `or`, and `not`.
+For an expression that queries filter by and select, use [`defineExpression`](./computed-values#reusable-expressions).

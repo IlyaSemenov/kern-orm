@@ -11,6 +11,7 @@ import {
   getFormPage,
   getPublishedFormNames,
   listFormPreviews,
+  listFormsByFieldLabel,
   listFormSummaries,
   listSubmissions,
   publishedForms,
@@ -302,6 +303,27 @@ describePostgres("in PostgreSQL", ({ testTransaction, tenantDb, saasDb, inTenant
       saas: [
         { name: "Contact", fields: [{ label: "Name" }, { label: "Email" }, { label: "Phone" }] },
       ],
+    })
+  })
+
+  it("filter by, sort by, and select a shared expression through the Db of a tenant and of the SaaS", async () => {
+    const forms = await testTransaction(async () => ({
+      tenant: await inTenant("tenant_1", async () => {
+        // Unpublished and last by name, so only the expression lets the filter keep it and sorts it first.
+        const formId = await tenantDb.form.insert({ name: "Zoo", published: false }).get("id")
+        await tenantDb.field.insert({ formId, position: 1, label: "Species" })
+        return await listFormsByFieldLabel(tenantDb, "Species")
+      }),
+      saas: await listFormsByFieldLabel(saasDb, "Email"),
+    }))
+
+    expect(forms).toStrictEqual({
+      tenant: [
+        { name: "Zoo", hasField: true },
+        { name: "Feedback", hasField: false },
+        { name: "Survey", hasField: false },
+      ],
+      saas: [{ name: "Contact", hasField: true }],
     })
   })
 

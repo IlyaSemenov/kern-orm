@@ -2,13 +2,19 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
-## Reusable expressions with arguments
+## Objects of column values in reusable filters
 
-An expression over the columns and relations of a table that queries of the table reuse with arguments, such as whether a user can moderate a record, which a query both selects and filters by, while `defineFilter` reuses only a condition without arguments.
+`defineFilter` leaves the objects of column values of its condition unresolved until `where` resolves them against its own source, so a filter that another `where` calls with the references of its table applies them to the table of that `where`.
 
-- `where` and `orderBy` resolve columns against the source rather than the selected fields, as [architecture/queries.md](architecture/queries.md#selection) states, so a query that filters by a field it selects calls such an expression in both.
-- A function of the references and the arguments works in `where`, `select`, and `orderBy`, such as of `columns.fields.count().expr().gt(count)`, but its parameter takes `ColumnRefs<typeof form> & RelationRefs<(typeof db.form)["types"]["schema"]>`; decide on a short name of that type and document the pattern beside filters and helpers instead of adding an API.
-- Otherwise, decide whether `defineFilter` takes further arguments, as `defineHelper` does, and whether it defines expressions of types other than `boolean`.
+- A filter of a form called in the `where` of its fields, such as `form.fields.where(() => filter(form))`, compares `{ id }` with the column of the field, and types accept it when the tables share a column; `defineExpression` takes no such objects, so it refers to the columns it is called with.
+- A condition defined without a callback, such as `defineFilter(form, { id })`, also passes types in `where` of another table that shares a column.
+- A filter with objects of column values is not an expression, so `select`, `caseWhen`, and `defineExpression` reject it, while a filter can call an expression.
+- Decide whether to remove `defineFilter`, so that reusable conditions are written with operators, or to resolve its objects when it is called, against the source of the references it receives.
+  The call is then a Boolean expression that `select` takes, at the cost of references that expose their source and of a result of `boolean | null`, also without objects of column values, since a condition does not tell which columns its objects read.
+  Its callback can then take further arguments too, instead of a function that returns a filter, such as `(name: string) => defineFilter(...)`.
+- If removing `defineFilter` leaves a need for objects of column values in expressions, a function of the references, such as `matches(form, { published: true })`, can call `eq` of each column: it keeps the table of the references and the nullability of each comparison, and needs no source on the references.
+  It is longer than the operator of one column, and a probe took about 4.5 times the instantiations of `eq` for each further call and about 2200 more for the first.
+- No signature of one function was found that both keeps the type of an expression and takes objects of column values in `or`, which reads its table from the contextual return type: a type parameter of the result gives none, and an overload is not retried for a nested call.
 
 ## Moving from rake-db
 

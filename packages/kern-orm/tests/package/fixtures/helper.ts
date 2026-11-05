@@ -5,6 +5,7 @@ import type { DbOf, QueryStateOf, SelectQuery, SelectQueryKind } from "kern-orm"
 import {
   caseWhen,
   coalesce,
+  defineExpression,
   defineHelper,
   defineSchema,
   defineTable,
@@ -107,6 +108,11 @@ export const withFieldIds = defineHelper(schema.form, form =>
   form.select(columns => ({
     fields: columns.fields.pluck("id"),
   })),
+)
+
+/** Expression with an argument that reads a relation; see the file header. */
+export const hasFieldId = defineExpression(schema.form, (form, id: string) =>
+  form.fields.where({ id }).exists(),
 )
 
 /** Query that selects the records of a relation; see the file header. */

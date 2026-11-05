@@ -189,3 +189,5 @@ await db.form.where(hasFields).select("id")
 ```
 
 Define a filter of related records with a table of a `Db` or a schema rather than with `form` itself, whose callback receives only the columns.
+
+To select a reusable condition too, or to pass it arguments, define it with [`defineExpression`](./computed-values#reusable-expressions).

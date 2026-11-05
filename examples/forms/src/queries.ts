@@ -1,5 +1,5 @@
 import type { DbOf } from "kern-orm"
-import { defineHelper } from "kern-orm"
+import { defineExpression, defineHelper, desc, or } from "kern-orm"
 import { defineDependency } from "ripple-di"
 
 import { formsSchema, tenantSchema } from "./schemas"
@@ -17,6 +17,11 @@ export const selectForm = defineHelper(formsSchema.form, form =>
   form.select("id", "name").select(columns => ({
     fields: columns.fields.use(selectFormFields),
   })),
+)
+
+/** Tells whether a form has a field with a label, the same for the forms of a tenant and the templates of the SaaS. */
+export const hasFieldLabel = defineExpression(formsSchema.form, (form, label: string) =>
+  form.fields.where({ label }).exists(),
 )
 
 /** Returns a form with its fields through the `Db` of a tenant or of the SaaS. */
@@ -68,6 +73,22 @@ export async function listFormSummaries(db: DbOf<typeof formsSchema>) {
     .select(form => ({
       fieldCount: form.fields.count(),
       labels: form.fields.orderBy("position").stringAgg("label", ", ").coalesce(""),
+    }))
+}
+
+/**
+ * Returns the published forms and the forms that have a field with a label, through the `Db` of a tenant or of the SaaS.
+ *
+ * Each form tells whether it has such a field, and those that have it come first.
+ */
+export async function listFormsByFieldLabel(db: DbOf<typeof formsSchema>, label: string) {
+  return await db.form
+    .where(form => or(form.published, hasFieldLabel(form, label)))
+    .orderBy(form => desc(hasFieldLabel(form, label)))
+    .orderBy("name", "id")
+    .select(form => ({
+      name: form.name,
+      hasField: hasFieldLabel(form, label),
     }))
 }
 
