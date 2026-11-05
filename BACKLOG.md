@@ -2,15 +2,6 @@
 
 Work not done yet, ideas, and research, roughly from the most important; the order is a loose hint, not a plan.
 
-## Conditions of another table
-
-An object of column values in a condition resolves against the source of the `where` that receives it, so a condition of one table that reaches `where` of another applies its objects there, and types accept it when the tables share a column:
-
-- a variable annotated as a condition, such as `db.field.where(condition)` with `condition: WhereCondition<typeof form>`;
-- a callback annotated as a filter and called with the references of its table in `where` of another, such as `form.fields.where(() => filter(form))` with `filter: WhereFilter<typeof form>`.
-
-Decide how types tell the tables of conditions apart: every key of `WhereValues` is optional, so a type of another table that shares a key is assignable to it.
-
 ## Moving from rake-db
 
 Moving a project from rake-db to `@kern-orm/migrations`:
@@ -372,3 +363,28 @@ Types take a query of one value that is `NULL` without its row as a value of a c
   - The mark changes only the value of the query in an expression, `ScalarValue` of `query/select.ts`, which already has no `null` for the guaranteed row of a required relation; PostgreSQL still rejects `NULL` for a column that is not nullable.
   - An executed query and a nested query of a selection reject without their row anyway, so the mark means nothing for them.
   - Decide the API of the mark with that in mind.
+
+## Branded types of columns
+
+An opt-in `brand()` of a column gives its values a type distinct from other values of the same underlying type, so that types reject a mixed-up identifier, such as `db.field.find(formId)` or `db.field.where({ id: formId }).delete()`.
+
+Orchid ORM has [`brand()`](https://orchid-orm.netlify.app/guide/common-column-methods.html#brand), which brands a column by its table and column by default and takes a token for a brand that columns share.
+[orchid-orm#734](https://github.com/romeerez/orchid-orm/issues/734) also proposes inheriting the brand through a foreign key, which that documentation does not state.
+
+Preliminary decisions:
+
+- A brand exists only in types: it changes neither SQL nor runtime values.
+- A brand also covers inputs, such as of `find`, `findBy`, `where`, `matches`, operators, `insert`, and `update`: `EqValue` reads `Operand<Output, Input>`, so a brand of the result alone still accepts an identifier of another column.
+- Conditions stay structural, without a table of their own, so that one condition can apply to several tables:
+  - A branded column rejects a condition of another table, such as `const condition: WhereCondition<typeof form> = { id }` in `db.field.where(condition)`.
+  - Columns of one brand or without a brand do not, such as `{ active: true, tenantId }` of a parent table in `where` of its child.
+  - The type of a condition of a table keeps its other columns as optional keys, so a condition of `form` with `{ published: true }` is rejected by a table whose `id` has another brand; a condition shared on purpose needs a narrow type, such as `{ published?: boolean }`.
+- Relations do not inherit a brand: they belong to schemas, and the types of columns belong to tables.
+
+Open questions:
+
+- What identifies a brand, and how a primary key and its foreign keys share one.
+- How a table shared by several schemas behaves.
+- How users get a branded value from external input without a promise of runtime validation.
+- How a brand passes through `nullable`, arrays, `transform`, expressions, subqueries, and `returning`.
+- What brands cost to type-check, and how they appear in public declarations.
