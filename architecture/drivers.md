@@ -3,6 +3,7 @@
 - **Driver** (separate packages): transport, pooling, and connections.
   It sends parameters as text without declared types and returns result values as text, so that types alone define how values are represented and the statement text alone determines the types of parameters.
   It returns the number of rows of the command tag beside the rows, which a mutation without `RETURNING` resolves to, and the names of the result columns, which a query of SQL text reads its fields by.
+  A statement without a command, such as an empty text or only a comment, which PostgreSQL completes with `EmptyQueryResponse` instead of a command tag, gives `command: null`, `count: 0`, and neither columns nor rows; `execute` does not reject it, since telling it apart takes parsing the SQL.
   It also executes a script of several statements without parameters, which a statement with parameters cannot hold, since PostgreSQL takes several statements only in a query of its simple protocol; it ignores the results of a script.
   A connection runs its statements and scripts one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
   The coordinator releases a transaction connection whatever the outcome, passing the failure of `BEGIN`, `COMMIT`, or `ROLLBACK`; the driver returns such a connection to its pool only once it is idle, and never returns a lost one.

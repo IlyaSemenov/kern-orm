@@ -325,13 +325,6 @@ Optional, research: a function that types a union of queries of several tables o
 - Branches of a callback of `use` or of a helper that leave different states could become one query of a union state the same way.
 - Alternatively, methods that change the state could apply to a union of queries by one of the designs that [architecture/queries.md](architecture/queries.md) weighs, at the costs it records.
 
-## Command of an empty statement
-
-A statement of empty text gives `command: null` in `@kern-orm/postgres-js` and `@kern-orm/node-postgres`, while `DriverResult.command` declares a string: PostgreSQL answers such a statement with `EmptyQueryResponse`, which has no command tag.
-
-- Decide what the contract gives for it, such as an empty string or `null` in the type of `command`, or whether `execute` rejects empty text before the driver.
-- Check the decision in `describeDriverContract`, so that every driver follows it.
-
 ## Schema views
 
 Restricted views of schemas for business logic shared between schemas.

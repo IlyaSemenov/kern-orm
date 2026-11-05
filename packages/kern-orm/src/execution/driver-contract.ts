@@ -180,6 +180,17 @@ export function describeDriverContract(
       assert.deepEqual(selected.rows, [])
     })
 
+    it("reports no command for a statement without a command tag", async () => {
+      for (const text of ["", "-- only a comment"]) {
+        const { command, count, columns, rows } = await database.execute(createStatement(text))
+
+        assert.equal(command, null)
+        assert.equal(count, 0)
+        assert.deepEqual(columns, [])
+        assert.deepEqual(rows, [])
+      }
+    })
+
     it("infers the types of parameters from the statement", async () => {
       assert.equal(await selectValue("SELECT $1::integer + $2", ["1", "2"]), "3")
       assert.equal(await selectValue("SELECT $1", ["text"]), "text")

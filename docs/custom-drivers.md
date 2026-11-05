@@ -43,6 +43,7 @@ Follow these rules in the driver:
 
 - Send parameters as text without declared types, so that PostgreSQL infers their types from the statement.
 - Return values as their text without the parsers of your client, and `NULL` as `null`.
+- Return `null` as the `command` of a statement that PostgreSQL completes without a command tag, such as an empty text.
 - Send a statement with the extended protocol also without parameters, so that PostgreSQL rejects a text of several statements, and a script with the simple protocol.
 - Run the statements and scripts of a reserved connection one at a time in the order of calls.
 - When `release` gets a failure, return the connection to the pool only once it is idle, and never return a lost one.
