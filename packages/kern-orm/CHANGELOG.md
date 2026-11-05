@@ -1,5 +1,19 @@
 # kern-orm
 
+## 0.4.0
+
+### Minor Changes
+
+- 4b826fe: Add `TRUE` and `FALSE`, constant conditions for a branch of a condition built in code.
+- 833d083: Add `caseWhen` to choose a value based on conditions, with an explicit result type.
+- b12e8a6: Add the functions `coalesce`, `greatest`, and `least`, which compute a value from expressions and queries, typed by their operands.
+- 56030de: Add `literal` to select a value from code as a field of a record without sending it to PostgreSQL, such as `withHint ? field.hint : literal(null)`.
+- e73620b: Add `lower`, `upper`, `trim`, and `length` operators of text expressions.
+
+### Patch Changes
+
+- 38cea9e: Fix invalid conditions such as `false` or a `Date` being treated as `TRUE` instead of throwing an error in `where`, `and`, `or`, and `not`.
+
 ## 0.3.0
 
 ### Minor Changes

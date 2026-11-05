@@ -1,5 +1,11 @@
 # @kern-orm/migrations
 
+## 0.3.1
+
+### Patch Changes
+
+- 7facf68: Accept every 0.x version of `kern-orm` from 0.3.0, so that upgrading `kern-orm` to a new minor version no longer needs a new version of `@kern-orm/migrations`.
+
 ## 0.3.0
 
 ### Minor Changes
