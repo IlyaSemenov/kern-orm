@@ -121,6 +121,19 @@ export const isNamed = defineExpression(schema.form, (form, name: string) =>
   matches(form, { name }),
 )
 
+/** Query of a value of the records of a relation of each form; see the file header. */
+export const fieldCounts = schema.form.pluck(form => form.fields.count())
+
+/** Query of an aggregate of a value of the records of a relation; see the file header. */
+export const largestFieldCount = schema.form.max(form => form.fields.count())
+
+/** Renames a form after the largest ID of its fields; see the file header. */
+export function renameFromField(id: string) {
+  return schema.form.find(id).update(form => ({
+    name: coalesce(form.fields.max("id"), "Empty"),
+  }))
+}
+
 /** Query that selects the records of a relation; see the file header. */
 export const namesWithFields = schema.form.select("name").select(form => ({
   fields: form.fields.select("id"),
@@ -227,6 +240,14 @@ export function selectNameAsTitle<
   return query.select(form => ({
     title: form.name,
   }))
+}
+
+/** Replaces the fields of a query over forms of any state and kind with the expression of the name; see the file header. */
+export function pluckName<
+  S extends QueryStateOf<typeof form> & { readonly aggregate: false },
+  Kind extends SelectQueryKind,
+>(query: SelectQuery<S, Kind>) {
+  return query.pluck(form => form.name)
 }
 
 /** Selects the name with a helper from a record query over forms of any state and kind; see the file header. */

@@ -416,3 +416,86 @@ describe("orderBy", () => {
     from(form).orderBy(form => form.fields.count())
   })
 })
+
+describe("callbacks of values", () => {
+  test("give the value of a query of one value, NULL without its row unless it always has it", () => {
+    const counts = tenant.form.pluck(form => form.fields.count())
+    const filled = tenant.form.pluck(form => form.fields.exists())
+    const name = tenant.field.take().get(field => field.form.get("name"))
+    const label = tenant.form.take().get(form => form.fields.get("label"))
+    const optional = tenant.form
+      .take()
+      .optional()
+      .get(form => form.fields.get("id"))
+
+    expectTypeOf<Executed<typeof counts>>().toEqualTypeOf<number[]>()
+    expectTypeOf<Executed<typeof filled>>().toEqualTypeOf<boolean[]>()
+    expectTypeOf<Executed<typeof name>>().toEqualTypeOf<string>()
+    expectTypeOf<Executed<typeof label>>().toEqualTypeOf<string | null>()
+    expectTypeOf<Executed<typeof optional>>().toEqualTypeOf<string | null | undefined>()
+  })
+
+  test("aggregate the values of a query of one value", () => {
+    const max = tenant.form.max(form => form.fields.count())
+    const every = tenant.field.every(field => field.answers.exists())
+    const count = tenant.form.count(form => form.fields.get("id"))
+    const distinct = tenant.form.countDistinct(form => form.fields.get("id"))
+    const joined = tenant.field.stringAgg(field => field.form.get("name"), ",")
+
+    expectTypeOf<Executed<typeof max>>().toEqualTypeOf<number | null>()
+    expectTypeOf<Executed<typeof every>>().toEqualTypeOf<boolean | null>()
+    expectTypeOf<Executed<typeof count>>().toEqualTypeOf<number>()
+    expectTypeOf<Executed<typeof distinct>>().toEqualTypeOf<number>()
+    expectTypeOf<Executed<typeof joined>>().toEqualTypeOf<string | null>()
+  })
+
+  test("keep the type of the value of a query, which gives the operators and encodes a fallback", () => {
+    const greater = tenant.form.where(form =>
+      form.fields
+        .max(field => field.answers.count())
+        .expr()
+        .gt(3),
+    )
+    const fallback = tenant.form.pluck(form => form.fields.max("label")).coalesce("None")
+    const sorted = tenant.form
+      .pluck(form => form.fields.count())
+      .orderBy((_form, value) => desc(value))
+
+    expectTypeOf<Executed<typeof greater>>().toEqualTypeOf<EmptyRecord[]>()
+    expectTypeOf<Executed<typeof fallback>>().toEqualTypeOf<string[]>()
+    expectTypeOf<Executed<typeof sorted>>().toEqualTypeOf<number[]>()
+  })
+
+  test("reject a query of the records or the values of a relation many", () => {
+    // @ts-expect-error The value is a query of one value, not of an array.
+    tenant.form.pluck(form => form.fields.pluck("id"))
+    // @ts-expect-error The value is a query of one value, not of records.
+    tenant.form.take().get(form => form.fields.select("id"))
+    // @ts-expect-error The value is a query of one value, not of records.
+    tenant.form.max(form => form.fields)
+  })
+
+  test("add the relations of a query to the state, which a Db must have, unlike those of an expression", () => {
+    const query = tenant.field.pluck(field => field.answers.count())
+    const aggregate = tenant.field.max(field => field.answers.count())
+    const counted = tenant.field.count(field => field.answers.get("id"))
+    const expression = tenant.field.pluck(field => field.answers.count().expr())
+    const shared = createDatabase({ driver: createRecordingDriver().driver }).bind(forms)
+
+    expectTypeOf<(typeof expression)["types"]["uses"]>().toBeNever()
+    // @ts-expect-error The schema of the Db lacks the relation.
+    shared.$compile(query)
+    // @ts-expect-error The schema of the Db lacks the relation.
+    shared.$compile(aggregate)
+    // @ts-expect-error The schema of the Db lacks the relation.
+    shared.$compile(counted)
+    shared.$compile(forms.form.pluck(form => form.fields.count()))
+  })
+
+  test("give no relations to a query of from", () => {
+    // @ts-expect-error A query of from has no relations.
+    from(form).pluck(form => form.fields.count())
+    // @ts-expect-error A query of from has no relations.
+    from(form).max(form => form.fields.count())
+  })
+})

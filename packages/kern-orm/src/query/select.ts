@@ -3,13 +3,13 @@ import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
-import type {
-  AnyExpression,
-  Expression,
-  ExpressionOperators,
-  TypedExpression,
-} from "../expression/expression"
+import type { AnyExpression, Expression } from "../expression/expression"
 import { operandNode, toExpression } from "../expression/expression"
+import type {
+  TypedOperand,
+  TypedOperandInput,
+  TypedOperandOperators,
+} from "../expression/functions"
 import type { Operand, OperandValue } from "../expression/operators/comparison"
 import { valuesQueryNode } from "../expression/operators/equality"
 import type { ResultRows } from "../result/result"
@@ -39,8 +39,6 @@ import { coalesceValue, mergeProjections, projectValue } from "./projections"
 import type { FilteredRows, OneRow, OneValueRows, ValueRows } from "./rows"
 import { limitToOne, toFilteredRows, toValueRows } from "./rows"
 import type {
-  ExpressionInput,
-  ExpressionValue,
   HelperFields,
   MergeSelection,
   Selection,
@@ -54,7 +52,7 @@ import type {
   QueryValueType,
   SelectQueryState,
 } from "./state"
-import type { InsertValues, UpdateSet } from "./values"
+import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
 // Declared in the module of `SelectQuery`: declared in another module, it keeps TypeScript 6 and `bun check` from reducing a union of queries that differ by their fields, such as `cond ? query.select("id", "title") : query.select("id")`, to one query, so that methods that change the state reject the union.
 /** State `S` with the parts of `Changes` replaced. */
@@ -116,6 +114,9 @@ export interface ScalarQuery<T = unknown> {
 /** Value of query `Q` of one value in an expression. */
 export type ScalarQueryValue<Q extends ScalarQuery> = Q[typeof scalarValue]
 
+/** Relations whose records `E`, an expression or a query of one value that a callback returns, selects: those of a query, as an expression does not carry the relations of its queries. */
+export type OperandUses<E> = E extends ScalarQuery ? E["types"]["uses"] : never
+
 /** State of a query of one value, which an expression takes. */
 interface ScalarQueryState extends SelectQueryState {
   readonly rows: "one" | "optional"
@@ -172,16 +173,36 @@ type ColumnValueType<T extends AnyTable, K extends keyof T["columns"]> = {
   readonly operators: ColumnOperators<T, K>
 }
 
-/** Type of the value of a query of expression `E`. */
-type ExpressionValueType<E extends TypedExpression> = {
-  readonly input: ExpressionInput<E>
-  readonly operators: ExpressionOperators<E>
+/** Type of the value of a query of `E`, an expression or a query of one value that a callback returns. */
+type OperandValueType<E extends TypedOperand> = {
+  readonly input: TypedOperandInput<E>
+  readonly operators: TypedOperandOperators<E>
 }
 
 /** State of a query of the value `V` of type `Type` of an aggregate or of `exists` over the rows of a query of state `S`, which always returns one row. */
 type AggregateState<S extends SelectQueryState, V, Type extends QueryValueType> = ChangeState<
   S,
   { result: V; valueType: Type; rows: "one"; value: true; guaranteed: false; aggregate: true }
+>
+
+// Apart from `AggregateState`: a parameter of `AggregateState` for the relations made every aggregate and `exists` cost more, such as 3% more for `count` and for `exists` of a relation, and `ChangeState` of its result about 17% more for this state.
+/** State of a query of the value `V` of type `Type` of an aggregate over the rows of a query of state `S`, whose argument is `E`, an expression or a query of one value that a callback returns. */
+type OperandAggregateState<
+  S extends SelectQueryState,
+  V,
+  Type extends QueryValueType,
+  E,
+> = ChangeState<
+  S,
+  {
+    result: V
+    valueType: Type
+    rows: "one"
+    value: true
+    guaranteed: false
+    aggregate: true
+    uses: S["uses"] | OperandUses<E>
+  }
 >
 
 /** State of a query of the number of rows or of values among the rows of a query of state `S`. */
@@ -193,11 +214,11 @@ type ColumnAggregateState<
   K extends keyof S["table"]["columns"],
 > = AggregateState<S, Selectable<S["table"]>[K] | null, ColumnValueType<S["table"], K>>
 
-/** State of a query of an aggregate of the values of expression `E` over the rows of a query of state `S`, `NULL` without values other than `NULL`. */
-type ExpressionAggregateState<
+/** State of a query of an aggregate of the values of `E`, an expression or a query of one value that a callback returns, over the rows of a query of state `S`, `NULL` without values other than `NULL`. */
+type OperandValueAggregateState<
   S extends SelectQueryState,
-  E extends TypedExpression,
-> = AggregateState<S, ExpressionValue<E> | null, ExpressionValueType<E>>
+  E extends TypedOperand,
+> = OperandAggregateState<S, OperandValue<E> | null, OperandValueType<E>, E>
 
 // `null` among the values of a type stands for `NULL`, so `coalesce` removes only `null`: `undefined` that a decoder returns stays, and so does `unknown` of a JSON type.
 // A fallback expression or query whose value can be `NULL` keeps `null`, while its other values are decoded by the type of the value.
@@ -243,7 +264,7 @@ export class SelectQuery<
   constructor(
     readonly table: S["table"],
     readonly node: QueryNode,
-    /** Relations of the table in the schema the query starts from, which `select` gives its callback. */
+    /** Relations of the table in the schema the query starts from, which its callbacks receive. */
     readonly context: QueryContext,
     db?: AnyDb,
   ) {
@@ -404,21 +425,24 @@ export class SelectQuery<
   /**
    * Replaces the selected fields with the expression returned by `callback`, limits the query to one row, and returns the value of the expression instead of a record.
    *
+   * `callback` receives the columns and the queries of the relations of the table.
+   * It may return a query of one value, such as of an aggregate of related records, which gives `NULL` without its row.
    * Without a row, it rejects with `NotFoundError`, or with `RequiredRelationError` when a required relation still guarantees the row, such as of `field.form`.
    * An optional or nullable query resolves to `undefined` without a row instead.
    * A `NULL` value is `null`.
    */
-  get<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  get<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
   ): SelectQuery<
     ChangeState<
       S,
       {
-        result: ExpressionValue<E>
-        valueType: ExpressionValueType<E>
+        result: OperandValue<E>
+        valueType: OperandValueType<E>
         rows: OneValueRows<S["rows"]>
         value: true
+        uses: S["uses"] | OperandUses<E>
       }
     >,
     Kind
@@ -427,7 +451,7 @@ export class SelectQuery<
     this.rejectAggregate("get")
     // The changes of `pluck` followed by `take`.
     return this.deriveTaken({
-      projections: [projectValue(this.node.from, arg, "get")],
+      projections: [projectValue(this.node.from, arg, "get", this.context)],
       value: true,
       rows: toValueRows(this.node.rows),
     })
@@ -460,19 +484,22 @@ export class SelectQuery<
   /**
    * Replaces the selected fields with the expression returned by `callback` and returns the value of the expression for each row instead of a record.
    *
+   * `callback` receives the columns and the queries of the relations of the table.
+   * It may return a query of one value, such as of an aggregate of related records, which gives `NULL` without its row.
    * It keeps whether the query returns an array or one value, such as after `take`, and how it handles a missing row, except that a nullable query resolves to `undefined` without a row.
    */
-  pluck<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  pluck<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
   ): SelectQuery<
     ChangeState<
       S,
       {
-        result: ExpressionValue<E>
-        valueType: ExpressionValueType<E>
+        result: OperandValue<E>
+        valueType: OperandValueType<E>
         rows: ValueRows<S["rows"]>
         value: true
+        uses: S["uses"] | OperandUses<E>
       }
     >,
     Kind
@@ -480,7 +507,7 @@ export class SelectQuery<
   pluck(arg: unknown): unknown {
     this.rejectAggregate("pluck")
     return this.derive({
-      projections: [projectValue(this.node.from, arg, "pluck")],
+      projections: [projectValue(this.node.from, arg, "pluck", this.context)],
       value: true,
       rows: toValueRows(this.node.rows),
     })
@@ -501,11 +528,15 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<CountState<S>, Kind>
-  /** Replaces the selected fields with the number of the values other than `NULL` of the expression returned by `callback` among the rows of the query and returns it instead of the rows. */
-  count<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Replaces the selected fields with the number of the values other than `NULL` of the expression returned by `callback` among the rows of the query and returns it instead of the rows.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  count<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<CountState<S>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandAggregateState<S, number, CountValueType, E>, Kind>
   count(arg?: unknown): unknown {
     if (arg !== undefined) {
       return this.aggregateBy("count", arg)
@@ -520,15 +551,19 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<CountState<S>, Kind>
-  /** Replaces the selected fields with the number of the distinct values other than `NULL` of the expression returned by `callback` among the rows of the query and returns it instead of the rows. */
+  /**
+   * Replaces the selected fields with the number of the distinct values other than `NULL` of the expression returned by `callback` among the rows of the query and returns it instead of the rows.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
   countDistinct<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
-    E extends TypedExpression,
+    E extends TypedOperand,
   >(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<CountState<S>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandAggregateState<S, number, CountValueType, E>, Kind>
   countDistinct(arg: unknown): unknown {
     return this.aggregateBy("countDistinct", arg)
   }
@@ -539,11 +574,15 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
-  /** Replaces the selected fields with the smallest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`. */
-  min<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Replaces the selected fields with the smallest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  min<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<ExpressionAggregateState<S, E>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandValueAggregateState<S, E>, Kind>
   min(arg: unknown): unknown {
     return this.aggregateBy("min", arg)
   }
@@ -554,11 +593,15 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
-  /** Replaces the selected fields with the largest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`. */
-  max<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Replaces the selected fields with the largest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  max<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<ExpressionAggregateState<S, E>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandValueAggregateState<S, E>, Kind>
   max(arg: unknown): unknown {
     return this.aggregateBy("max", arg)
   }
@@ -569,11 +612,15 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
-  /** Replaces the selected fields with the sum of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`. */
-  sum<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Replaces the selected fields with the sum of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  sum<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<ExpressionAggregateState<S, E>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandValueAggregateState<S, E>, Kind>
   sum(arg: unknown): unknown {
     return this.aggregateBy("sum", arg)
   }
@@ -584,11 +631,15 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
-  /** Replaces the selected fields with the average of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`; for `bigint` values, average an expression of a type that can represent fractional values. */
-  avg<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Replaces the selected fields with the average of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`; for `bigint` values, average an expression of a type that can represent fractional values.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  avg<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<ExpressionAggregateState<S, E>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandValueAggregateState<S, E>, Kind>
   avg(arg: unknown): unknown {
     return this.aggregateBy("avg", arg)
   }
@@ -599,11 +650,15 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
-  /** Replaces the selected fields with whether every value other than `NULL` of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows, or `null` without such values. */
-  every<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Replaces the selected fields with whether every value other than `NULL` of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows, or `null` without such values.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  every<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<ExpressionAggregateState<S, E>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandValueAggregateState<S, E>, Kind>
   every(arg: unknown): unknown {
     return this.aggregateBy("every", arg)
   }
@@ -614,11 +669,15 @@ export class SelectQuery<
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
-  /** Replaces the selected fields with whether any value of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows, or `null` without values other than `NULL`. */
-  some<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Replaces the selected fields with whether any value of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows, or `null` without values other than `NULL`.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  some<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): SelectQuery<ExpressionAggregateState<S, E>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): SelectQuery<OperandValueAggregateState<S, E>, Kind>
   some(arg: unknown): unknown {
     return this.aggregateBy("some", arg)
   }
@@ -633,16 +692,16 @@ export class SelectQuery<
     key: K,
     delimiter: string,
   ): SelectQuery<ColumnAggregateState<S, K>, Kind>
-  /** Replaces the selected fields with the values other than `NULL` of the text expression returned by `callback` among the rows of the query, joined with `delimiter` in the order of the query, and returns them instead of the rows, or `null` without such values. */
-  stringAgg<
-    S extends UnaggregatedQueryState,
-    Kind extends SelectQueryKind,
-    E extends TypedExpression,
-  >(
+  /**
+   * Replaces the selected fields with the values other than `NULL` of the text expression returned by `callback` among the rows of the query, joined with `delimiter` in the order of the query, and returns them instead of the rows, or `null` without such values.
+   *
+   * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
+   */
+  stringAgg<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
     delimiter: string,
-  ): SelectQuery<ExpressionAggregateState<S, E>, Kind>
+  ): SelectQuery<OperandValueAggregateState<S, E>, Kind>
   stringAgg(arg: unknown, delimiter: string): unknown {
     return this.aggregateBy("stringAgg", arg, delimiter)
   }
@@ -816,10 +875,33 @@ export class SelectQuery<
     return createInsert(this, records, "many", "insertMany")
   }
 
+  // Overloads rather than one signature that infers the values of a callback, which costs about 10% more for a callback.
+  // The last overload takes a callback too, so that a call that matches no overload reports the error of its own form, and a value of `UpdateSet` applies.
+  // It records no relations, as an object of values does not.
+  /**
+   * Updates the rows that the filters of the query choose with the values that `callback` returns, and resolves to the number of the updated rows.
+   *
+   * `callback` receives the columns and the queries of the relations of the changed rows, such as to set a column from another one or from related records, and returns the values of the columns to update; a column omitted or given as `undefined` keeps its value.
+   * A value is what `insert` takes as a value, such as a query of an aggregate of related records.
+   * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
+   * A query without a filter must call `all` to update every row.
+   * Select the fields that it returns after it, with their values after the update, such as `update(callback).select("id")`.
+   */
+  update<
+    S extends SelectQueryState,
+    Kind extends SelectQueryKind,
+    V extends UpdateValues<S["table"]>,
+  >(
+    this: SelectQuery<S, Kind>,
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => V,
+  ): MutationQuery<
+    InitialMutationState<S["table"], S["schema"], S["rows"], OperandUses<V[keyof V]>>,
+    Kind
+  >
   /**
    * Updates the rows that the filters of the query choose with the values of `set`, and resolves to the number of the updated rows.
    *
-   * `set` gives the values of the columns to update, or is a callback that receives the columns and returns them, such as to set a column from another one; a column omitted or given as `undefined` keeps its value.
+   * `set` gives the values of the columns to update, or is a callback that returns them; a column omitted or given as `undefined` keeps its value.
    * A value is what `insert` takes as a value.
    * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
    * A query without a filter must call `all` to update every row.
@@ -827,7 +909,7 @@ export class SelectQuery<
    */
   update<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
-    set: UpdateSet<S["table"]>,
+    set: UpdateSet<S["table"], S["schema"]>,
   ): MutationQuery<InitialMutationState<S["table"], S["schema"], S["rows"]>, Kind>
   update(set: unknown): unknown {
     return createUpdate(this, set)
@@ -949,11 +1031,11 @@ export class SelectQuery<
     return this.derive({ projections: [projection], rows: "one", value: true, guaranteed: false })
   }
 
-  /** Creates the query of the aggregate of `method` over `arg`, a column key or a callback that receives the columns and returns an expression; `delimiter` is the delimiter of `stringAgg`. */
+  /** Creates the query of the aggregate of `method` over `arg`, a column key or a callback that receives the columns and the relations and returns an expression or a query of one value; `delimiter` is the delimiter of `stringAgg`. */
   private aggregateBy(method: AggregateMethod, arg: unknown, delimiter?: string): AnySelectQuery {
     this.rejectAggregate(method)
     return this.deriveAggregate(
-      projectAggregate(method, projectValue(this.node.from, arg, method), delimiter),
+      projectAggregate(method, projectValue(this.node.from, arg, method, this.context), delimiter),
     )
   }
 

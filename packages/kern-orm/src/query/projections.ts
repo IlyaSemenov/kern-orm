@@ -8,7 +8,7 @@ import type { AnyType } from "../type/type"
 
 import { addFallback, isAggregateProjection } from "./aggregate"
 import type { QueryContext } from "./column-refs"
-import { createColumnRefs, createSelectionRefs } from "./column-refs"
+import { createSelectionRefs } from "./column-refs"
 import { isExistsProjection } from "./exists"
 import { Literal } from "./literal"
 import { MutationQuery } from "./mutation"
@@ -63,19 +63,27 @@ export function addSelection(
 /**
  * Creates the projection of the value of `get` or `pluck`, or of the argument of an aggregate method, such as `max`, over `source`.
  *
- * `arg` is the argument of `method`: a column key, or a callback that receives the columns and returns an expression.
+ * `arg` is the argument of `method`: a column key, or a callback that receives the references of `source` with the relations of `context` and returns an expression or a query of one value.
+ * The value of such a query is that of `expr`, `NULL` without its row, since the projection holds one scalar rather than nested rows.
  */
 export function projectValue(
   source: TableSourceNode,
   arg: unknown,
   method: string,
+  context: QueryContext,
 ): ScalarProjection {
   if (typeof arg !== "function") {
     return projectColumn(source, arg as string)
   }
-  const value: unknown = (arg as (columns: unknown) => unknown)(createColumnRefs(source))
+  const result: unknown = (arg as (columns: unknown) => unknown)(
+    createSelectionRefs(source, context),
+  )
+  // `expr` rejects a query other than of one value.
+  const value = result instanceof SelectQuery ? result.expr() : result
   if (!isExpression(value)) {
-    throw new TypeError(`The callback of ${method} must return an expression`)
+    throw new TypeError(
+      `The callback of ${method} must return an expression or a query of one value`,
+    )
   }
   const type = getType(value)
   if (!type) {

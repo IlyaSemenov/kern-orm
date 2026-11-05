@@ -65,6 +65,15 @@ await db.field.where({ formId }).update(field => ({
 }))
 ```
 
+To compute a value from [related records](./relations), such as the number of fields of each form, return a query of one value from the callback:
+
+```ts
+await db.form.where({ published: true }).update(form => ({
+  fieldCount: form.fields.count(),
+  hasFields: form.fields.exists(),
+}))
+```
+
 ## Deleting
 
 To delete records, choose them with `where`, `find`, or `findBy`, and call `delete`:

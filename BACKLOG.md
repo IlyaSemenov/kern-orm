@@ -11,15 +11,6 @@ An object of column values in a condition resolves against the source of the `wh
 
 Decide how types tell the tables of conditions apart: every key of `WhereValues` is optional, so a type of another table that shares a key is assignable to it.
 
-## Relations in the callbacks of values
-
-The callbacks of `get`, `pluck`, the aggregate methods, and the values of `update` receive only the columns, unlike those of `select`, `where`, and `orderBy`.
-So they cannot read a relation, or call an expression of `defineExpression` defined with a query of a schema or a `Db`, even one that reads no relations, such as `form.fields.get(field => isLabeled(field, "Email"))`.
-
-- Pass them the relations of the schema context of the query, as `createSelectionRefs` does.
-- The relations add about 35 instantiations to `where` and 30 to `orderBy` of a callback, so measure each of these methods.
-- The values of `update` reject a query but take an expression of one, such as of `expr`, so decide how they take a query of `exists` that an expression returns.
-
 ## Moving from rake-db
 
 Moving a project from rake-db to `@kern-orm/migrations`:

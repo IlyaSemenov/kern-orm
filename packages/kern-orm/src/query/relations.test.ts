@@ -330,6 +330,93 @@ describe("relation queries", () => {
   })
 })
 
+describe("relation queries in the callbacks of values", () => {
+  it("are scalar subqueries of get and pluck, correlated with the row, or EXISTS of a query of exists", () => {
+    expect(schema.form.pluck(form => form.fields.count()).toSQL().text).toBe(
+      'SELECT (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id") AS "value" FROM "form" AS "form"',
+    )
+    expect(schema.form.pluck(form => form.fields.exists()).toSQL().text).toBe(
+      'SELECT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id") AS "value" FROM "form" AS "form"',
+    )
+    expect(
+      schema.field
+        .where({ id: 1 })
+        .get(field => field.form.get("name"))
+        .toSQL().text,
+    ).toBe(
+      'SELECT (SELECT "form"."name" AS "name" FROM "form" AS "form" WHERE "form"."id" = "form_field"."form_id") AS "value" FROM "form_field" AS "form_field" WHERE "form_field"."id" = $1 LIMIT 1',
+    )
+  })
+
+  it("are read by an aggregate from a derived source of the rows that it aggregates", () => {
+    expect(schema.form.max(form => form.fields.count()).toSQL().text).toBe(
+      'SELECT max("subquery"."value") AS "max" FROM (SELECT (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id") AS "value" FROM "form" AS "form") AS "subquery"',
+    )
+    expect(
+      schema.field
+        .orderBy({ id: "desc" })
+        .stringAgg(field => field.form.get("name"), ",")
+        .toSQL().text,
+    ).toBe(
+      'SELECT string_agg("subquery"."value", $1 ORDER BY "subquery"."$order1" DESC) AS "stringAgg" FROM (SELECT (SELECT "form"."name" AS "name" FROM "form" AS "form" WHERE "form"."id" = "form_field"."form_id") AS "value", "form_field"."id" AS "$order1" FROM "form_field" AS "form_field") AS "subquery"',
+    )
+  })
+
+  it("sort by the projection of the value, which the statement evaluates once", () => {
+    const query = schema.form
+      .pluck(form => form.fields.count())
+      .orderBy((_form, value) => desc(value))
+
+    expect(query.toSQL().text).toBe(
+      'SELECT (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id") AS "value" FROM "form" AS "form" ORDER BY 1 DESC',
+    )
+  })
+
+  it("reject a query other than of one value", () => {
+    const message = "An expression takes a query of one value"
+
+    // @ts-expect-error A query of records is not of one value.
+    expect(() => schema.field.take().get(field => field.form.select("id"))).toThrow(message)
+    // @ts-expect-error A query of an array is not of one value.
+    expect(() => schema.form.pluck(form => form.fields.pluck("id"))).toThrow(message)
+    // @ts-expect-error A query of records is not of one value.
+    expect(() => schema.form.max(form => form.fields)).toThrow(message)
+  })
+
+  it("are checked by a Db at any depth, as a nested query of a selection", () => {
+    const { driver } = createRecordingDriver()
+    const same = createDatabase({ driver }).bind(schema)
+    // The same tables and the same keys, but other relation definitions.
+    const other = createDatabase({ driver }).bind(
+      defineSchema({ form, field, option }).$relations({
+        form: {
+          fields: many(field, { from: "id", to: "formId" }),
+        },
+      }),
+    )
+    const message = 'Relation "form.fields" is not part of the schema'
+
+    expect(() => same.$compile(schema.form.pluck(form => form.fields.count()))).not.toThrow()
+    expect(() => other.$compile(schema.form.pluck(form => form.fields.count()))).toThrow(message)
+    expect(() => other.$compile(schema.form.max(form => form.fields.count()))).toThrow(message)
+    const nested = schema.option.pluck(option => option.field.get(field => field.form.get("name")))
+    // @ts-expect-error The schema of the Db lacks the relation.
+    expect(() => other.$compile(nested)).toThrow(
+      'Relation "option.field" is not part of the schema',
+    )
+  })
+
+  it("keep the bound query of another Db out of the statement", () => {
+    const { driver } = createRecordingDriver()
+    const db = createDatabase({ driver }).bind(schema)
+    const other = createDatabase({ driver }).bind(schema)
+
+    expect(() => db.$compile(db.form.pluck(() => other.field.count()))).toThrow(
+      "A query in an expression is bound to another Db",
+    )
+  })
+})
+
 describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }) => {
   useTestFixture(() =>
     database.script(`
@@ -894,6 +981,98 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
         { id: 3, fields: [] },
       ],
     ])
+  })
+
+  describe("in the callbacks of values", () => {
+    it("gives the value of a relation for each row, NULL without its row", async () => {
+      const values = await testTransaction(async () => ({
+        counts: await db.form.orderBy("id").pluck(form => form.fields.count()),
+        filled: await db.form.orderBy("id").pluck(form => form.fields.exists()),
+        name: await db.field.find(4).get(field => field.form.get("name")),
+        first: await db.form.find(1).get(form => form.fields.orderBy("id").get("label")),
+        missing: await db.form.find(3).get(form => form.fields.orderBy("id").get("label")),
+        decoded: await db.form.find(2).get(form => form.fields.max("weight")),
+      }))
+
+      expect(values).toEqual({
+        counts: [3, 1, 0],
+        filled: [true, true, false],
+        name: "Feedback",
+        first: "Name",
+        missing: null,
+        decoded: { stars: 5 },
+      })
+    })
+
+    it("aggregates the values of a relation over the rows of the query", async () => {
+      const values = await testTransaction(async () => ({
+        max: await db.form.max(form => form.fields.count()),
+        sum: await db.form.sum(form => form.fields.count()),
+        count: await db.form.count(form => form.fields.max("id")),
+        distinct: await db.field.countDistinct(field => field.form.get("name")),
+        every: await db.field.every(field => field.options.exists()),
+        some: await db.field.some(field => field.options.exists()),
+        joined: await db.field
+          .orderBy({ id: "desc" })
+          .stringAgg(field => field.form.get("name"), ","),
+        page: await db.field
+          .orderBy("id")
+          .limit(2)
+          .offset(1)
+          .max(field => field.options.count()),
+      }))
+
+      expect(values).toEqual({
+        max: 3,
+        sum: 4,
+        count: 2,
+        distinct: 2,
+        every: false,
+        some: true,
+        joined: "Feedback,Survey,Survey,Survey",
+        page: 0,
+      })
+    })
+
+    it("sorts and pages by the value, also of nested rows", async () => {
+      const values = await testTransaction(async () => ({
+        sorted: await db.form
+          .pluck(form => form.fields.count())
+          .orderBy((_form, value) => desc(value)),
+        nested: await db.form.orderBy("id").select(form => ({
+          byId: form.fields.orderBy({ id: "desc" }).pluck(field => field.options.count()),
+          byValue: form.fields
+            .pluck(field => field.options.count())
+            .orderBy((_field, value) => desc(value)),
+          page: form.fields
+            .orderBy("id")
+            .limit(1)
+            .offset(1)
+            .pluck(field => field.options.exists()),
+          top: form.fields.max(field => field.options.count()),
+        })),
+      }))
+
+      expect(values).toEqual({
+        sorted: [3, 1, 0],
+        nested: [
+          { byId: [0, 0, 2], byValue: [2, 0, 0], page: [false], top: 2 },
+          { byId: [1], byValue: [1], page: [], top: 1 },
+          { byId: [], byValue: [], page: [], top: null },
+        ],
+      })
+    })
+
+    it("reads a relation at any depth of the callback", async () => {
+      const optionCounts = await testTransaction(
+        async () =>
+          await db.form
+            .orderBy("id")
+            .pluck(form => form.fields.sum(field => field.options.count())),
+      )
+
+      expect(optionCounts).toEqual([2, 1, null])
+    })
   })
 
   describe("of tables and fields with long names", () => {

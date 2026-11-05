@@ -253,7 +253,7 @@ describe("mergeProjections", () => {
 
 describe("projectValue", () => {
   it("projects a column under its key with the type of the column", () => {
-    expect(projectValue(source, "createdAt", "get")).toEqual({
+    expect(projectValue(source, "createdAt", "get", noContext)).toEqual({
       key: "createdAt",
       expression: { kind: "column", source, key: "createdAt" },
       type: t.timestamptz,
@@ -265,22 +265,43 @@ describe("projectValue", () => {
       source,
       (columns: PostColumns) => columns.title.ilike("draft%"),
       "get",
+      noContext,
     )
 
     expect(projection).toMatchObject({ key: "value", type: t.boolean })
   })
 
+  it("projects a query of one value as an expression of it, with the type of its value", () => {
+    const query = from(post).take().get("createdAt")
+    const projection = projectValue(source, () => query, "get", noContext)
+
+    expect(projection).toEqual({
+      key: "value",
+      expression: { kind: "nestedQuery", query: query.node, db: undefined },
+      type: t.timestamptz,
+    })
+  })
+
+  it("rejects a query other than of one value", () => {
+    expect(() => projectValue(source, () => from(post).pluck("id"), "get", noContext)).toThrow(
+      "An expression takes a query of one value",
+    )
+    expect(() => projectValue(source, () => from(post).select("id"), "get", noContext)).toThrow(
+      "An expression takes a query of one value",
+    )
+  })
+
   it("rejects an unknown column and a callback that returns no expression", () => {
-    expect(() => projectValue(source, "missing", "get")).toThrow(
+    expect(() => projectValue(source, "missing", "get", noContext)).toThrow(
       'Unknown column "missing" of table "post"',
     )
-    expect(() => projectValue(source, () => "id", "pluck")).toThrow(
-      "The callback of pluck must return an expression",
+    expect(() => projectValue(source, () => "id", "pluck", noContext)).toThrow(
+      "The callback of pluck must return an expression or a query of one value",
     )
   })
 
   it("rejects an expression without a type", () => {
-    expect(() => projectValue(source, () => sql<number>`length(title)`, "get")).toThrow(
+    expect(() => projectValue(source, () => sql<number>`length(title)`, "get", noContext)).toThrow(
       "The expression of get has no type to decode its values",
     )
   })

@@ -27,13 +27,19 @@
 - A value may be a query of one value, such as of `get`, of an aggregate, or of `exists`, which is a scalar subquery or `EXISTS` in `VALUES` or `SET`, as an operand of an expression is ([queries](queries.md#queries-in-expressions)), and other queries are rejected, in types and at runtime.
   - Types take it by its value in an expression or `NULL`, so a column that is not nullable takes a query that is `NULL` without its row, such as of `get`, unlike an expression that may be `NULL`: PostgreSQL rejects the statement without the row, which is how such a value requires it.
   - It adds about 3% to the instantiations of a query of `insert` and 1% to one of `update` of values ([benchmark](../benchmarks/types/queries.bench.ts)).
-  - It does not add its relations to the state of the mutation, as a condition does not, so only lowering rejects a relation that the `Db` lacks, at runtime.
+  - A query among the values of an insert or of an object of an update does not add its relations to the state of the mutation, as a condition does not, so only lowering rejects a relation that the `Db` lacks, at runtime.
 - An insert may omit a column marked with `hasDefault` and a nullable column, which get their defaults, `NULL` for a nullable column without one; types require the other columns, and the database rejects a record that misses one.
   - The columns of the statement are those that some record gives a value other than `undefined`, in the order that the records first give them, and a record that lacks one inserts `DEFAULT`.
   - One record without values inserts `DEFAULT VALUES`, and several insert the `DEFAULT` of the first column of the table, since `DEFAULT VALUES` inserts one row.
   - The values of an insert see no source, so they cannot refer to a column.
   - `insertMany` rejects an array without records, which has no statement to compile.
-- `update` takes the values of its columns or a callback that receives the columns of the changed rows and returns them, and rejects values without a column to set, which have no statement to compile.
+- `update` takes the values of its columns or a callback that receives the columns and the relations of the changed rows and returns them, and rejects values without a column to set, which have no statement to compile.
+  - A query of a relation among the values of the callback is correlated with the changed row.
+    It reads the snapshot of the statement, so a relation of the table of the update reads the rows as they were before it, under an alias of its own.
+  - The queries among the values of the callback add their relations to the state of the mutation, as the nested queries of a selection do, so types reject them where the `Db` lacks them; an expression, such as of `expr` or `coalesce`, does not carry them, and only lowering rejects them, at any depth of the statement ([queries of a Db](queries.md#queries-of-a-db)).
+    The values of a callback annotated with `UpdateValues` may hold a query of any relation, as a `Selection` may, so types reject them on a `Db` of known relations.
+  - `update` has an overload of a callback that infers its values for their relations, and then one of a value of `UpdateSet`, which takes an object or a callback, so that a call that matches no overload reports the error of its own form and a value of `UpdateSet` applies, whose relations stay out of the state.
+    One signature that infers the values of a callback takes about 10% more instantiations for a callback and 1% for an object ([benchmark](../benchmarks/types/queries.bench.ts)), and a variable of `UpdateSet` could not be passed to a signature of a callback and one of an object.
 
 ## Results
 
@@ -42,6 +48,7 @@
   - A mutation of one row rejects several rows, as a query of one row rejects them, such as of a database that lacks a key of its table or of `find` with an expression of a column, such as ``find(sql`id`)``.
   - Its state has `number` as the value of rows `one`, the rows mode of the changed rows as `changed`, and `returning: false`, so that `QueryResult` and the `then` of a query type its result.
 - `select`, `get`, and `pluck` after a mutation return the fields of the changed rows instead, as `RETURNING`, in the rows mode of the changed rows: records of `select`, which adds fields as `select` of a query does, or values of `get` and `pluck`, which replace the fields.
+  - Their callbacks receive the columns and the relations of the changed rows, and those of `get` and `pluck` return a value as those of a query do ([nested queries and relations](queries.md#nested-queries-and-relations)).
   - `get` applies only to a mutation of one row, and makes rows `nullable` `optional`, as for a query; `pluck` keeps the rows of a mutation of many rows.
   - `select` rejects a mutation of `get` or `pluck`, in types and at runtime, as for a query of values.
   - PostgreSQL rejects `RETURNING` without fields, so a mutation of `select` without fields resolves to as many records without fields as the command tag reports.

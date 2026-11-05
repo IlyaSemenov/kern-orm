@@ -10,11 +10,13 @@ import {
   getForm,
   getFormPage,
   getPublishedFormNames,
+  listFieldCounts,
   listFormPreviews,
   listFormsByFieldLabel,
   listFormSummaries,
   listSubmissions,
   publishedForms,
+  publishWithFieldLabel,
   selectForm,
   useFormsDb,
 } from "../src/queries"
@@ -325,6 +327,25 @@ describePostgres("in PostgreSQL", ({ testTransaction, tenantDb, saasDb, inTenant
       ],
       saas: [{ name: "Contact", hasField: true }],
     })
+  })
+
+  it("read a relation and call a shared expression in the callbacks of values through the Db of a tenant and of the SaaS", async () => {
+    const results = await testTransaction(async () => {
+      const blankId = await saasDb.form.insert({ name: "Blank", published: true }).get("id")
+      await publishWithFieldLabel(saasDb, blankId, "Email")
+      return {
+        tenant: await inTenant("tenant_1", async () => {
+          const zooId = await tenantDb.form.insert({ name: "Zoo", published: false }).get("id")
+          await tenantDb.field.insert({ formId: zooId, position: 1, label: "Species" })
+          await publishWithFieldLabel(tenantDb, zooId, "Species")
+          return await tenantDb.form.find(zooId).get("published")
+        }),
+        saas: await saasDb.form.find(blankId).get("published"),
+        counts: await listFieldCounts(saasDb),
+      }
+    })
+
+    expect(results).toStrictEqual({ tenant: true, saas: false, counts: [3] })
   })
 
   it("run shared code on the Db that dependency injection provides, in the PostgreSQL schema of the tenant of the request", async () => {

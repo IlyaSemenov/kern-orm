@@ -215,21 +215,63 @@ describe("source of the definition", () => {
     tenantDb.form.where(form => isNamed(form, "Survey"))
   })
 
-  test("only a table applies to the callbacks that receive only the columns", () => {
+  test("a query of a schema or a Db applies to the callbacks of values of queries whose schema has its relations", () => {
     const isNamedOfDb = defineExpression(db.form, (form, name: string) => form.name.eq(name))
 
-    db.form.take().get(form => isNamed(form, "Survey"))
+    db.form.take().get(form => isNamedOfDb(form, "Survey"))
+    db.form.pluck(form => isNamedOfDb(form, "Survey"))
+    db.form.every(form => isNamedOfDb(form, "Survey"))
+    db.form.find("id").update(form => ({
+      published: isNamedOfDb(form, "Survey"),
+    }))
+    db.form
+      .find("id")
+      .delete()
+      .get(form => isNamedOfDb(form, "Survey"))
+    tenantDb.form.pluck(form => isNamedOfDb(form, "Survey"))
+
+    const fromTable = from(form)
+    const found = fromTable.find("id")
+
+    // @ts-expect-error A query of from has no relations.
+    found.get(form => isNamedOfDb(form, "Survey"))
+
+    // @ts-expect-error A query of from has no relations.
+    found.update(form => ({ published: isNamedOfDb(form, "Survey") }))
+  })
+
+  test("a table applies to the callbacks of values of every query of the table", () => {
+    from(form)
+      .take()
+      .get(form => isNamed(form, "Survey"))
     db.form.pluck(form => isNamed(form, "Survey"))
     db.form.every(form => isNamed(form, "Survey"))
     db.form.find("id").update(form => ({
       published: isNamed(form, "Survey"),
     }))
+  })
 
-    // @ts-expect-error The callback of `get` receives only the columns.
-    db.form.take().get(form => isNamedOfDb(form, "Survey"))
+  test("a query that it returns applies to the callbacks of values with its value", () => {
+    const firstLabel = defineExpression(db.form, form => form.fields.get("label"))
+    const query = db.form.take().get(form => hasField(form, "Email"))
+    const labels = db.form.pluck(firstLabel)
+    const count = db.form.count(firstLabel)
+    const every = db.form.every(form => hasField(form, "Email"))
 
-    // @ts-expect-error The callback of `update` receives only the columns.
-    db.form.find("id").update(form => ({ published: isNamedOfDb(form, "Survey") }))
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<boolean>()
+    expectTypeOf<ResultOf<typeof labels>>().toEqualTypeOf<string | null>()
+    expectTypeOf<ResultOf<typeof count>>().toEqualTypeOf<number>()
+    expectTypeOf<ResultOf<typeof every>>().toEqualTypeOf<boolean | null>()
+
+    db.form.find("id").update(form => ({
+      published: hasField(form, "Email"),
+    }))
+    db.form.find("id").update(form => ({
+      name: firstLabel(form),
+    }))
+    db.form.find("id").update(form => ({
+      hint: firstLabel(form),
+    }))
   })
 
   test("an expression applies only to queries of its table", () => {

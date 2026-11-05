@@ -10,7 +10,7 @@ import type { ScalarQuery, TableOrQuery } from "./select"
  *
  * `expression` returns an expression or a query of one value, and a call has its type, so that a selected field has its values and an expression has its operators.
  * Defined with a query of a schema or a `Db`, such as `schema.form`, it receives the queries of the relations of the table in that schema, and queries whose schema has them can call it.
- * Defined with a table, it receives only the columns, and the callbacks that receive only the columns, such as of `get` and `update`, can call it too.
+ * Defined with a table, it receives only the columns, and every query of the table can call it, also one without relations, such as of `from`.
  */
 export function defineExpression<
   T extends AnyTable,

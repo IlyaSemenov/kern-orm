@@ -3,11 +3,12 @@
 import type { AssignmentNode, ExpressionNode, TableSourceNode } from "../ast/nodes"
 import type { AnyExpression } from "../expression/expression"
 import { toValueNode } from "../expression/expression"
+import type { NoRelations, SchemaContext } from "../schema/relation"
 import type { AnyTable, ColumnValues, Selectable } from "../table/table"
 import { requireColumn } from "../table/table"
 
-import type { ColumnRefs } from "./column-refs"
-import { createColumnRefs } from "./column-refs"
+import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
+import { createSelectionRefs } from "./column-refs"
 import type { ScalarQuery } from "./select"
 
 /**
@@ -44,10 +45,10 @@ export type UpdateValues<T extends AnyTable> = {
   readonly [K in keyof T["columns"]]?: ColumnValue<T, K> | undefined
 }
 
-/** Argument of `update`: the values that it sets, or a callback that receives the columns of the changed rows and returns them. */
-export type UpdateSet<T extends AnyTable> =
+/** Argument of `update` of table `T` with schema context `C`: the values that it sets, or a callback that receives the columns and the queries of the relations of the changed rows and returns them. */
+export type UpdateSet<T extends AnyTable, C extends SchemaContext = NoRelations> =
   | UpdateValues<T>
-  | ((columns: ColumnRefs<T>) => UpdateValues<T>)
+  | ((columns: ColumnRefs<T> & RelationRefs<C>) => UpdateValues<T>)
 
 /** Columns and rows of `VALUES` of an insert. */
 export interface InsertRows {
@@ -109,14 +110,19 @@ export function toInsertRows(
 }
 
 /**
- * Returns the assignments of an update of the rows of `source` that `set` gives: the values of its columns, or a callback that receives the columns and returns them, read when it is called.
+ * Returns the assignments of an update of the rows of `source` that `set` gives: the values of its columns, or a callback that receives the references of `source` with the relations of `context` and returns them, read when it is called.
  *
  * A value of `undefined` keeps its column, and an update must set at least one column.
  * It rejects a key that is not a column of the table of `source`, and a query other than of one value.
  */
-export function toAssignments(source: TableSourceNode, set: unknown): AssignmentNode[] {
+export function toAssignments(
+  source: TableSourceNode,
+  set: unknown,
+  context: QueryContext,
+): AssignmentNode[] {
   const { table } = source
-  const values: unknown = typeof set === "function" ? set(createColumnRefs(source)) : set
+  const values: unknown =
+    typeof set === "function" ? set(createSelectionRefs(source, context)) : set
   if (typeof values !== "object" || values === null) {
     throw new TypeError(
       `update takes the values of the columns of table "${table.name}" or a callback that returns them`,

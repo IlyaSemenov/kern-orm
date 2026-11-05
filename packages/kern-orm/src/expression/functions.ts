@@ -27,12 +27,12 @@ import type { Predicate } from "./predicates"
 export type TypedOperand = TypedExpression | TypedScalarQuery
 
 /** Values that the type of the first operand `F` encodes. */
-type TypedOperandInput<F> = F extends TypedScalarQuery
+export type TypedOperandInput<F> = F extends TypedScalarQuery
   ? F["types"]["valueType"]["input"]
   : ExpressionInput<F>
 
 /** Operators of the type of the first operand `F`. */
-type TypedOperandOperators<F> = F extends TypedScalarQuery
+export type TypedOperandOperators<F> = F extends TypedScalarQuery
   ? F["types"]["valueType"]["operators"]
   : F extends TypedExpression
     ? ExpressionOperators<F>

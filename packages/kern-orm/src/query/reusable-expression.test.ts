@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 
+import { coalesce } from "../expression/functions"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -63,6 +64,39 @@ test("applies directly to where and orderBy without further arguments", () => {
       .where(form => form.fields.exists())
       .orderBy(form => form.fields.exists())
       .select("id")
+      .toSQL(),
+  )
+})
+
+test("compiles as its callback in the callbacks of values", () => {
+  const isSurvey = defineExpression(schema.form, form => form.name.eq("Survey"))
+  const maxFieldId = defineExpression(schema.form, form => coalesce(form.fields.max("id"), "None"))
+
+  expect(schema.form.pluck(form => hasField(form, "Email")).toSQL()).toEqual(
+    schema.form.pluck(form => form.fields.where({ name: "Email" }).exists()).toSQL(),
+  )
+  expect(schema.form.every(form => hasField(form, "Email")).toSQL()).toEqual(
+    schema.form.every(form => form.fields.where({ name: "Email" }).exists()).toSQL(),
+  )
+  expect(schema.form.take().get(isSurvey).toSQL()).toEqual(
+    schema.form
+      .take()
+      .get(form => form.name.eq("Survey"))
+      .toSQL(),
+  )
+  expect(
+    schema.form
+      .find("id")
+      .update(form => ({
+        id: maxFieldId(form),
+      }))
+      .toSQL(),
+  ).toEqual(
+    schema.form
+      .find("id")
+      .update(form => ({
+        id: coalesce(form.fields.max("id"), "None"),
+      }))
       .toSQL(),
   )
 })

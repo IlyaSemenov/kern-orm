@@ -58,6 +58,8 @@ export type {
   FollowingOperand,
   NullSkippingResult,
   TypedOperand,
+  TypedOperandInput,
+  TypedOperandOperators,
 } from "./expression/functions"
 export { caseWhen, coalesce, greatest, least } from "./expression/functions"
 export type { NumberTypeOperators } from "./type/number"
@@ -86,6 +88,7 @@ export type {
   AnySelectQuery,
   BoundSelectQuery,
   FilteredStateRows,
+  OperandUses,
   ResultOf,
   ScalarQuery,
   SelectQuery,

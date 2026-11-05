@@ -90,6 +90,23 @@ const forms = await db.form.select("id").select(form => ({
 // forms: { id: string; hasManyFields: boolean }[]
 ```
 
+## Values of related records
+
+To get a value from the related records of each row instead of selecting it as a field, return a query of one value from the callback of `pluck`, `get`, or an [aggregate](./selecting#aggregates):
+
+```ts
+const fieldCounts = await db.form.orderBy("name").pluck(form => form.fields.count())
+// fieldCounts: number[]
+
+const formName = await db.field.find(fieldId).get(field => field.form.get("name"))
+// formName: string
+
+const largestFieldCount = await db.form.max(form => form.fields.count())
+// largestFieldCount: number | null
+```
+
+Without its row, such a query gives `null`, while a field of `select` keeps [how the query handles a missing row](./selecting#one-value).
+
 ## Whether related records exist
 
 To tell whether each row has related records, such as whether each form has fields, select [`exists`](./selecting#whether-rows-exist) of the relation:

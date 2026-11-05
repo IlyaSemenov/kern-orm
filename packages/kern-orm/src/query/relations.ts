@@ -1,4 +1,4 @@
-// Queries of relations: the runtime contexts of the tables of a schema, whose references in `select` start the correlated queries of their relations.
+// Queries of relations: the runtime contexts of the tables of a schema, whose references in the callbacks of queries start the correlated queries of their relations.
 
 import { combineNodes } from "../ast/boolean"
 import type { ExpressionNode, TableSourceNode } from "../ast/nodes"
@@ -42,11 +42,11 @@ export function createQueryContexts(
   return Object.freeze(contexts)
 }
 
-/** References of the callback of `select` whose relation a getter starts, with the columns of the source of the parent row by key. */
+/** References of the callback of a query whose relation a getter starts, with the columns of the source of the parent row by key. */
 type ParentRefs = Readonly<Record<string, AnyExpression>>
 
 /**
- * Starts the query of the records of relation `definition` of the row of `parent`, the references of `select`, in the context of the target table.
+ * Starts the query of the records of relation `definition` of the row of `parent`, the references of the callback of a query, in the context of the target table.
  *
  * The relation filter compares the key columns of the target with those of `parent` with SQL `=` directly rather than with the `eq` operators of their types, which a custom type can replace.
  */

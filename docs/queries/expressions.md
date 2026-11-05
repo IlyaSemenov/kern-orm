@@ -148,7 +148,7 @@ const forms = await db.form
 // forms: { id: string; hasPhone: boolean }[]
 ```
 
-Call it wherever a callback of a query takes an expression, such as in `orderBy`, `or`, or another reusable expression.
+Call it wherever a callback of a query takes an expression, such as in `orderBy`, `get`, an aggregate, `update`, `or`, or another reusable expression.
 Pass an expression without further parameters directly, such as `db.form.where(hasFields)`.
 
 Write conditions with column operators, such as `form.published.eq(true)`.
@@ -158,12 +158,11 @@ To accept a value or a column of another query as an argument, type the paramete
 
 When the code that defines an expression has no `Db`, such as with dependency injection or in code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
 
-To call an expression in the callback of `get`, `pluck`, an aggregate, or `update`, which receive only the columns, define it with `form` itself as returned by `defineTable`:
+To call an expression in queries of schemas that do not share the relations of the table, define it with `form` itself as returned by `defineTable`; it then receives only the columns:
 
 ```ts
 const isSurvey = defineExpression(form, form => form.name.ilike("%survey%"))
 
-await db.form.find(formId).update(form => ({
-  published: isSurvey(form),
-}))
+await tenantDb.form.where(isSurvey).select("id")
+await saasDb.form.where(isSurvey).select("id")
 ```

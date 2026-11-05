@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
+import { coalesce } from "../expression/functions"
 import { sql } from "../expression/sql"
 import { NotFoundError } from "../result/result"
 import { many, one } from "../schema/relation"
@@ -11,6 +12,7 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import type { AnyMutationQuery } from "./mutation"
+import { defineExpression } from "./reusable-expression"
 import type { AnySelectQuery } from "./select"
 import { from } from "./select"
 
@@ -158,6 +160,77 @@ describe("delete", () => {
       text: 'DELETE FROM "form" AS "form" WHERE "form"."name" = $1',
       parameters: ["Survey"],
     })
+  })
+})
+
+describe("update of a query of a relation", () => {
+  it("sets a column from a scalar subquery correlated with the row, also through an expression", () => {
+    const query = schema.form.find(1).update(columns => ({
+      name: coalesce(columns.fields.max("label"), "Empty"),
+      note: columns.fields.orderBy("id").get("label"),
+    }))
+
+    expect(query.toSQL()).toEqual({
+      text: 'UPDATE "form" AS "form" SET "name" = coalesce((SELECT max("form_field"."label") AS "max" FROM "form_field" AS "form_field" WHERE "form_field"."form_id" = "form"."id"), $1), "note" = (SELECT "form_field_2"."label" AS "label" FROM "form_field" AS "form_field_2" WHERE "form_field_2"."form_id" = "form"."id" ORDER BY "form_field_2"."id" LIMIT 1) WHERE "form"."id" = $2',
+      parameters: ["Empty", "1"],
+    })
+  })
+
+  it("rejects a query other than of one value in a callback", () => {
+    expect(() =>
+      // @ts-expect-error A query of an array is not of one value.
+      schema.form.find(1).update(columns => ({ note: columns.fields.pluck("label") })),
+    ).toThrow("An expression takes a query of one value")
+    expect(() =>
+      // @ts-expect-error A mutation is not a query of one value.
+      schema.form.find(1).update(() => ({ note: schema.form.find(1).delete().get("name") })),
+    ).toThrow("An expression takes a query of one value of a table")
+  })
+
+  it("is checked by a Db as a nested query of a selection, in the values and in what it returns", () => {
+    const { driver } = createRecordingDriver()
+    const db = createDatabase({ driver }).bind(schema)
+    const other = createDatabase({ driver }).bind(defineSchema({ form, field }))
+    const message = 'Relation "form.fields" is not part of the schema'
+    const update = schema.form.find(1).update(columns => ({
+      note: columns.fields.get("label"),
+    }))
+    const updateByExpression = schema.form.find(1).update(columns => ({
+      note: coalesce(columns.fields.max("label"), "Empty"),
+    }))
+    const returning = schema.form
+      .find(1)
+      .update({ name: "Survey" })
+      .get(columns => columns.fields.count())
+
+    expect(() => db.$compile(update)).not.toThrow()
+    // @ts-expect-error The schema of the Db lacks the relation.
+    expect(() => other.$compile(update)).toThrow(message)
+    // An expression does not carry the relations of its queries, so only lowering rejects it.
+    expect(() => other.$compile(updateByExpression)).toThrow(message)
+    // @ts-expect-error The schema of the Db lacks the relation.
+    expect(() => other.$compile(returning)).toThrow(message)
+  })
+
+  it("rejects a query of a relation in a filter of the changed rows of another schema", () => {
+    const { driver } = createRecordingDriver()
+    const other = createDatabase({ driver }).bind(defineSchema({ form, field }))
+
+    expect(() =>
+      other.$compile(
+        schema.form.where(columns => columns.fields.exists()).update({ name: "Survey" }),
+      ),
+    ).toThrow('Relation "form.fields" is not part of the schema')
+  })
+
+  it("rejects a bound query of another Db", () => {
+    const { driver } = createRecordingDriver()
+    const db = createDatabase({ driver }).bind(schema)
+    const other = createDatabase({ driver }).bind(schema)
+
+    expect(() =>
+      db.$compile(db.form.find(1).update(() => ({ note: other.field.max("label") }))),
+    ).toThrow("A query in an expression is bound to another Db")
   })
 })
 
@@ -520,3 +593,165 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
   })
 })
+
+describePostgres(
+  "values of queries in PostgreSQL",
+  ({ database, testTransaction, useTestFixture }) => {
+    const board = defineTable("board", {
+      id: t.integer.primaryKey(),
+      parentId: t.integer.nullable().columnName("parent_id"),
+      title: t.text.nullable(),
+      postCount: t.integer.nullable().columnName("post_count"),
+      hasPosts: t.boolean.nullable().columnName("has_posts"),
+    })
+    const post = defineTable("post", {
+      id: t.integer.primaryKey(),
+      boardId: t.integer.columnName("board_id"),
+      title: t.text,
+    })
+    const boards = defineSchema({ board, post }).$relations({
+      board: {
+        posts: many(post, { from: "id", to: "boardId" }),
+        parent: one(board, { from: "parentId", to: "id" }),
+        children: many(board, { from: "id", to: "parentId" }),
+      },
+      post: {
+        board: one(board, { from: "boardId", to: "id", required: true }),
+      },
+    })
+
+    useTestFixture(() =>
+      database.script(`
+      CREATE TABLE board (id integer PRIMARY KEY, parent_id integer, title text, post_count integer, has_posts boolean);
+      CREATE TABLE post (id integer PRIMARY KEY, board_id integer NOT NULL REFERENCES board, title text NOT NULL);
+      INSERT INTO board (id, parent_id, title) VALUES (1, NULL, 'Root'), (2, 1, 'News'), (3, 1, 'Empty');
+      INSERT INTO post (id, board_id, title) VALUES (1, 1, 'First'), (2, 1, 'Second'), (3, 2, 'Third');
+    `),
+    )
+
+    const db = database.bind(boards)
+    const rows = () => db.board.orderBy("id").select("id", "title", "postCount", "hasPosts")
+
+    it("gives each changed row the values of its own relations", async () => {
+      const result = await testTransaction(async () => [
+        await db.board.all().update(columns => ({
+          postCount: columns.posts.count(),
+          hasPosts: columns.posts.exists(),
+        })),
+        await rows(),
+      ])
+
+      expect(result).toEqual([
+        3,
+        [
+          { id: 1, title: "Root", postCount: 2, hasPosts: true },
+          { id: 2, title: "News", postCount: 1, hasPosts: true },
+          { id: 3, title: "Empty", postCount: 0, hasPosts: false },
+        ],
+      ])
+    })
+
+    it("writes NULL for a query without its row", async () => {
+      const titles = await testTransaction(async () => {
+        await db.board.all().update(columns => ({
+          title: columns.posts.orderBy("id").get("title"),
+        }))
+        return await db.board.orderBy("id").pluck("title")
+      })
+
+      expect(titles).toEqual(["First", "Third", null])
+    })
+
+    it("reads the rows of its table as they were before the update under an alias of their own", async () => {
+      const result = await testTransaction(async () => {
+        await db.board.all().update(columns => ({
+          postCount: columns.children.count(),
+          title: columns.parent.get("title"),
+        }))
+        return await rows()
+      })
+
+      expect(result).toEqual([
+        { id: 1, title: null, postCount: 2, hasPosts: null },
+        { id: 2, title: "Root", postCount: 0, hasPosts: null },
+        { id: 3, title: "Root", postCount: 0, hasPosts: null },
+      ])
+    })
+
+    it("takes a reusable expression that returns a query or an expression of one", async () => {
+      const hasPosts = defineExpression(db.board, columns => columns.posts.exists())
+      const postCount = defineExpression(db.board, columns => columns.posts.count().expr())
+      const hasManyPosts = defineExpression(db.board, (columns, count: number) =>
+        columns.posts.count().expr().gt(count),
+      )
+      const result = await testTransaction(async () => {
+        await db.board.find(1).update(columns => ({
+          hasPosts: hasPosts(columns),
+          postCount: postCount(columns),
+        }))
+        await db.board.find(2).update(columns => ({
+          hasPosts: hasManyPosts(columns, 1),
+          postCount: coalesce(columns.children.max("postCount"), 7),
+        }))
+        return await rows()
+      })
+
+      expect(result).toEqual([
+        { id: 1, title: "Root", postCount: 2, hasPosts: true },
+        { id: 2, title: "News", postCount: 7, hasPosts: false },
+        { id: 3, title: "Empty", postCount: null, hasPosts: null },
+      ])
+    })
+
+    it("filters and returns by relations in one statement", async () => {
+      const result = await testTransaction(async () => [
+        await db.board
+          .where(columns => columns.posts.exists())
+          .update(columns => ({
+            postCount: columns.posts.count(),
+          }))
+          .select("id", "postCount")
+          .select(columns => ({
+            firstPost: columns.posts.orderBy("id").get("title"),
+          })),
+        await db.board
+          .find(3)
+          .delete()
+          .get(columns => columns.parent.get("title")),
+      ])
+
+      expect(result[0]).toEqual(
+        expect.arrayContaining([
+          { id: 1, postCount: 2, firstPost: "First" },
+          { id: 2, postCount: 1, firstPost: "Third" },
+        ]),
+      )
+      expect(result[1]).toBe("Root")
+    })
+
+    it("returns the values of a callback that reads a relation after insert, update, and delete", async () => {
+      const result = await testTransaction(async () => ({
+        inserted: await db.board
+          .insert({ id: 4, parentId: 1, title: "New" })
+          .get(columns => columns.parent.get("title")),
+        updated: await db.board
+          .find(1)
+          .update({ title: "Renamed" })
+          .get(columns => columns.posts.count()),
+        plucked: await db.board
+          .where({ parentId: 1 })
+          .update({ hasPosts: false })
+          .pluck(columns => columns.posts.exists()),
+        deleted: await db.board
+          .find(4)
+          .delete()
+          .get(columns => columns.parent.get("title")),
+      }))
+
+      expect(result.inserted).toBe("Root")
+      expect(result.updated).toBe(2)
+      expect(result.plucked.toSorted()).toEqual([false, false, true])
+      expect(result.deleted).toBe("Renamed")
+    })
+  },
+)

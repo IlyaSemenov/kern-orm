@@ -94,7 +94,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 ## Queries in expressions
 
 - An expression takes a query of a table of one value, such as of `get`, of an aggregate, or of [`exists`](#exists), wherever it takes an operand: as a condition, an operand of an operator, such as `field.position.lt(form.fields.max("position"))`, a value of an object condition, an item of the list of `in`, the fallback of `coalesce`, an operand of a [function of expressions](types.md#functions-of-expressions), a value of `param` with an expression, and a value of an [insert or an update](mutations.md#values).
-  A [sort key](#sorting-and-pagination) takes it too.
+  A [sort key](#sorting-and-pagination) takes it too, and so does the value that a callback of `get`, `pluck`, or an aggregate method returns ([nested queries and relations](#nested-queries-and-relations)).
   A query of `exists` is `EXISTS` of its rows, and another query a scalar subquery of its value.
   - The query keeps its `Db`, which must be the `Db` that runs the statement, as for a nested query of a selection.
   - At runtime, it rejects the queries of a shape that types reject: a query of records or of rows `many`, and a query of `$select`, a mutation, and a query of SQL text.
@@ -153,7 +153,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - A string names a column, sorted in ascending order, and an object gives columns with their directions in the order of its keys, which JavaScript gives to integer-like keys first.
   - A direction is `asc` or `desc`, optionally followed by `nulls first` or `nulls last`, in lower case.
     The columns and directions of an object are checked at runtime too, since TypeScript accepts a computed key of type `string` as any column.
-  - The callback receives the columns and the relations of the table, as the callbacks of `select` and `where` do ([nested queries and relations](#nested-queries-and-relations)).
+  - The callback receives the columns and the relations of the table, as the other callbacks of a query do ([nested queries and relations](#nested-queries-and-relations)).
   - The callback returns a sort key or an array of them: an expression or a query of one value, sorted in ascending order, or an `Ordering` made by `asc`, `desc`, or `orderBy` of one, which its class tells apart from them.
     An expression without a type sorts too, since sort keys are never decoded.
     A query is the sort key that it is as an operand of an expression ([queries in expressions](#queries-in-expressions)): a scalar subquery of its value, or `EXISTS` of its rows, and `asc`, `desc`, `orderBy`, and the callback reject the queries that an expression rejects.
@@ -172,7 +172,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 - An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of [`exists`](#exists): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
   - `count` without an argument is `count(*)`; with a column or an expression, `count` and `countDistinct` count its values other than `NULL`, each distinct value once for `countDistinct`.
   - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `null` without values other than `NULL`.
-  - The argument is a column key or a callback that returns an expression with a type, as of `get` and `pluck`.
+  - The argument is a column key or a callback that returns an expression with a type or a query of one value, as of `get` and `pluck`.
     Types do not check that PostgreSQL has the aggregate for the type of the argument, such as `sum` of `text` or `max` of `uuid`, which PostgreSQL rejects when the statement runs.
 - A count is a `bigint` of PostgreSQL decoded as a number, with the operators of `orderingOperators`; a count outside the safe integer range of numbers fails to decode with `ResultDecodeError`, and a fragment of `sql(t.bigint)` gives a `bigint`.
 - The type of the argument decodes the value of the other aggregates, which PostgreSQL writes as it writes the values of the argument, also where its SQL type differs, such as the `bigint` sum of `integer` values, the `numeric` sum of `bigint` values, or the `text` maximum of `varchar` values; so a type derived with `transform` keeps its values, such as a `Date` of `max`.
@@ -214,11 +214,17 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Nested queries and relations
 
-- The references of the callbacks of `select`, `where`, and `orderBy` have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them in `select` selects every field their type has; the callbacks of `get`, `pluck`, and the aggregate methods get only the columns.
-  The relations add about 35 instantiations to a call of `where` with a callback on a query of a table with relations, 19% of a query of `where` of a callback and `pluck`, and about 30 to a call of `orderBy` with a callback, 22% of a query of `orderBy` of a callback and `pluck` ([benchmark](../benchmarks/types/queries.bench.ts)).
+- The references of the callbacks of a query, of `select`, `where`, `orderBy`, `get`, `pluck`, the aggregate methods, and `update`, have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them in `select` selects every field their type has.
+  The relations add about 35 instantiations to a call of `where` with a callback on a query of a table with relations, 19% of a query of `where` of a callback and `pluck`, about 30 to a call of `orderBy` with a callback, 22% of a query of `orderBy` of a callback and `pluck`, about 32 to `get`, `pluck`, and an aggregate method with a callback, 12% to 23% of such a query, and about 35 to `update` with a callback, 13% of a query of `find` and `update` ([benchmark](../benchmarks/types/queries.bench.ts)).
   A relation gives an unbound query of its related records over a new occurrence of the target table, in the context of the target table in the same schema, even for a query of a `Db`.
   Its relation filter compares the columns of the keys with SQL `=` in order, built from SQL nodes rather than by calling the `eq` operators of their types.
   In types, a schema context whose table key is `string`, such as that of the queries a `Db` accepts, has no relations, since queries of relations there would keep the queries of a `Db` from being assigned to them.
+- The callback of `get`, `pluck`, and an aggregate method returns an expression with a type or a query of one value, which is the expression of `expr` of the query, whose type decodes the value and gives it its operators, so that a call of `defineExpression` applies there whichever of them it returns.
+  - Without its row, such a query is `NULL`, as in an expression, and types give it its value there, `ScalarValue`, unlike a nested query of a selection, which keeps its rows mode: the projection of `get` and `pluck` is one scalar, which `coalesce`, a sort key, and the argument of an aggregate read as one.
+  - The projection holds the node of the query, so that a sort key of the value is its projection and the statement evaluates the query once.
+  - The argument of an aggregate does not refer to the source of its query outside the nested query, so the aggregate reads it from a derived source ([SQL generation](sql.md)).
+  - Types take the query as `TypedScalarQuery`, as the first operand of `coalesce`, and the signature of a callback in place of one of an expression adds no instantiations.
+    The state adds the relations of such a query, as those of a nested query of a selection, at about 7 instantiations to `get` and `pluck`, 10 to an aggregate method, and 12 to `get` after a mutation, 2% to 5% of such a query; a query of a column and `count()` pay nothing, since the state of an aggregate of a callback is an alias of its own, as a parameter of `AggregateState` for the relations would cost each aggregate about 3% ([benchmark](../benchmarks/types/queries.bench.ts)).
 - A selected field is an expression with a type, a query of either kind, whose rows become the value of the field, or a literal.
   A nested query bound to a `Db` runs only in a statement of the same `Db`, since the statement takes the options of its `Db`, such as the PostgreSQL schema; lowering checks the `Db` by identity at any depth, and types do not check it.
   So `toSQL` of an unbound query rejects a nested query bound to a `Db`, which `$compile` of that `Db` compiles.
@@ -245,6 +251,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 - A `Db` compiles a statement with the tables of its schema, and the compiler rejects an occurrence of any other table at any depth of the statement, such as in a scalar subquery, `EXISTS`, a join, or a derived source, when it compiles the occurrence.
 - A `Db` compiles a query with the relation definitions of its schema, and lowering rejects a query of any other definition at any depth, by identity rather than by name, so a relation that another schema declares with the same name and keys is rejected, while a tenant schema adds relations of its own and keeps the shared ones.
   In types, `$compile` and `$execute` reject a query whose state selects a relation that the relations of the `Db` lack by table key, name, kind, target, and `required`; types cannot tell two definitions of the same shape apart.
+  A query that a callback of `get`, `pluck`, an aggregate method, or `update` returns adds its relations to the state, as a nested query of a selection does.
   A condition or another expression, such as of `expr`, does not carry the relations of its queries, so they stay out of the state, and only lowering rejects a relation of one that the `Db` lacks, at runtime.
   The relations of a query only accumulate in its state: `clearSelect`, `get`, `pluck`, the aggregate methods, and replacing a field keep them in types after the runtime drops their nested queries, which never under-approximates the relations that its selections need.
   An awaited query of a `Db` is checked only at runtime: the references of its `select` give the relations of the `Db`, but a nested query of another schema can select others.
@@ -274,7 +281,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - The result is a type parameter, which gives `and`, `or`, and `not` in the callback no table, so they reject objects of column values there; `matches` and a `where` in the callback take them.
     No signature was found that both keeps the type of an expression and takes such objects in `or`, which reads its table from the contextual return type: a type parameter of the result gives none, and an overload is not retried for a nested call.
   - The further arguments are a tuple of the parameters of the callback, as of `defineHelper`, so a parameter without a type is `unknown`, and using it fails in the callback.
-  - An expression defined with a query of a schema or a `Db` requires the relations of its schema context, so the callbacks that receive only the columns, of `get`, `pluck`, the aggregate methods, and the values of `update`, call only one defined with a table.
+  - An expression defined with a query of a schema or a `Db` requires the relations of its schema context, so a query without them, such as of `from(table)`, calls only one defined with a table.
 - A helper checks the query it is applied to by the constraint of its state rather than by a conditional type: TypeScript defers a conditional type of a generic state and accepts a query for it only when the query fits both branches, one of which is the error.
   So a function generic over the state applies every helper that the constraint of its state allows: one that selects fields or ends with `nullable` when the constraint has `value: false`, and one that reads relations when the constraint has a schema context with them.
   The constraint of `value` is `false` or the error that names what the helper cannot do, so that the error of a query of values names it; for a missing relation, TypeScript names the relation itself.

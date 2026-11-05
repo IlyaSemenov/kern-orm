@@ -146,6 +146,8 @@ const draftFlags = await db.form.pluck(form => form.name.ilike("draft%"))
 // draftFlags: boolean[]
 ```
 
+The callback also receives the [relations](./relations#values-of-related-records) of the table, as do those of `get` and of aggregates.
+
 ## One value
 
 To get one value, such as the ID of a form, call `get` with a column or an expression:

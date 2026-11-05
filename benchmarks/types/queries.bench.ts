@@ -30,6 +30,10 @@ bench.baseline(async () => {
   // Another table, since reading the references instantiates the columns of the table, which the other benchmarks count.
   await storeDb.brand.where(brand => matches(brand, { name: "baseline" })).pluck("id")
   await tenantDb.field.pluck(field => field.label.lower())
+  await tenantDb.field.find("baseline").get(field => field.label.lower())
+  await tenantDb.field.where({ label: "baseline" }).max(field => field.label.lower())
+  await tenantDb.field.pluck(field => field.answers.count())
+  await tenantDb.field.where({ label: "baseline" }).max(field => field.answers.count())
   await formsDb.$execute(
     formsSchema.form
       .where({ name: "baseline" })
@@ -116,6 +120,13 @@ bench.baseline(async () => {
   await tenantDb.field.find("baseline").update({
     label: tenantDb.answer.min("value").coalesce("baseline"),
   })
+  await tenantDb.field.find("baseline").update(field => ({
+    label: field.label.lower(),
+  }))
+  await tenantDb.field
+    .find("baseline")
+    .delete()
+    .get(field => field.label.lower())
   await tenantDb.$execute(formsSchema.field.where({ label: "baseline" }).delete().pluck("label"))
   await storeDb.customer
     .where({ email: "baseline" })
@@ -176,11 +187,27 @@ bench("aggregate with a fallback", async () => {
 
 bench("function of a column", async () => {
   await tenantDb.form.pluck(form => coalesce(form.name, "x"))
-}).types([209, "instantiations"])
+}).types([242, "instantiations"])
 
 bench("case conversion of a column", async () => {
   await tenantDb.form.pluck(form => form.name.lower())
-}).types([139, "instantiations"])
+}).types([178, "instantiations"])
+
+bench("get of a callback", async () => {
+  await tenantDb.form.find("x").get(form => form.name.lower())
+}).types([315, "instantiations"])
+
+bench("aggregate of a callback", async () => {
+  await tenantDb.form.where({ name: "x" }).max(form => form.name.lower())
+}).types([209, "instantiations"])
+
+bench("value of an aggregate of a relation", async () => {
+  await tenantDb.form.pluck(form => form.fields.count())
+}).types([393, "instantiations"])
+
+bench("aggregate of an aggregate of a relation", async () => {
+  await tenantDb.form.where({ name: "x" }).max(form => form.fields.count())
+}).types([428, "instantiations"])
 
 bench("function of an aggregate of a relation and a value", async () => {
   await tenantDb.form.select(form => ({
@@ -199,7 +226,7 @@ bench("case of two branches", async () => {
       "b",
     ),
   )
-}).types([551, "instantiations"])
+}).types([589, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
@@ -227,7 +254,7 @@ bench("filter of the values of a query", async () => {
 
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
-}).types([513, "instantiations"])
+}).types([501, "instantiations"])
 
 bench("comparison of an aggregate of a relation", async () => {
   await tenantDb.form.where(form => form.fields.count().expr().gt(3)).pluck("name")
@@ -357,18 +384,37 @@ bench("$select", async () => {
 
 bench("insert", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).get("id")
-}).types([522, "instantiations"])
+}).types([523, "instantiations"])
 
 bench("update", async () => {
   await tenantDb.form.find("x").update({ name: "x" }).select("id", "name")
-}).types([512, "instantiations"])
+}).types([521, "instantiations"])
 
 bench("update of a value of a query", async () => {
   await tenantDb.form.find("x").update({
     name: tenantDb.field.min("label").coalesce("x"),
   })
-}).types([397, "instantiations"])
+}).types([372, "instantiations"])
+
+bench("update of a callback", async () => {
+  await tenantDb.form.find("x").update(form => ({
+    name: form.name.lower(),
+  }))
+}).types([305, "instantiations"])
+
+bench("update of an aggregate of a relation", async () => {
+  await tenantDb.form.find("x").update(form => ({
+    name: form.fields.min("label").coalesce("x"),
+  }))
+}).types([829, "instantiations"])
+
+bench("delete with get of a callback", async () => {
+  await tenantDb.form
+    .find("x")
+    .delete()
+    .get(form => form.name.lower())
+}).types([327, "instantiations"])
 
 bench("unbound delete", async () => {
   await tenantDb.$execute(formsSchema.form.where({ name: "x" }).delete().pluck("id"))
-}).types([248, "instantiations"])
+}).types([249, "instantiations"])

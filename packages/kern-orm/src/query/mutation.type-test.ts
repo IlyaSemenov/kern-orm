@@ -9,13 +9,15 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import type { ResultOf } from "./select"
-import type { InsertValues } from "./values"
+import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
 const post = defineTable("post", {
   id: t.uuid.primaryKey().hasDefault(),
   title: t.text,
   subtitle: t.text.nullable(),
   publishedAt: t.timestamptz.hasDefault(),
+  commentCount: t.integer.nullable(),
+  hasComments: t.boolean.nullable(),
 })
 
 const comment = defineTable("comment", {
@@ -37,7 +39,7 @@ const db = createDatabase({ driver: createRecordingDriver().driver }).bind(blog)
 describe("values", () => {
   test("require the columns without a default that are not nullable", () => {
     expectTypeOf<keyof InsertValues<typeof post>>().toEqualTypeOf<
-      "id" | "title" | "subtitle" | "publishedAt"
+      "id" | "title" | "subtitle" | "publishedAt" | "commentCount" | "hasComments"
     >()
 
     blog.post.insert({ title: "Hello" })
@@ -82,11 +84,43 @@ describe("values", () => {
     blog.post.find("post-id").update({ subtitle: blog.comment.select("id") })
   })
 
+  test("take a query of a relation of the changed rows in a callback", () => {
+    blog.post.find("post-id").update(columns => ({
+      subtitle: columns.comments.get("id"),
+      commentCount: columns.comments.count(),
+      hasComments: columns.comments.exists(),
+    }))
+    blog.comment.where({ postId: "post-id" }).update(columns => ({
+      postId: columns.post.get("id"),
+    }))
+
+    // A column that is not nullable takes a query that is `NULL` without its row, which PostgreSQL rejects.
+    blog.post.find("post-id").update(columns => ({
+      title: columns.comments.get("id"),
+    }))
+    // @ts-expect-error A query of other values is rejected.
+    blog.post.find("post-id").update(columns => ({ title: columns.comments.exists() }))
+    // @ts-expect-error A query of an array is not of one value.
+    blog.post.find("post-id").update(columns => ({ subtitle: columns.comments.pluck("id") }))
+    // @ts-expect-error A query of records is not of one value.
+    blog.post.find("post-id").update(columns => ({ subtitle: columns.comments.select("id") }))
+  })
+
+  test("take the values of update as a variable of its argument", () => {
+    const set: UpdateSet<typeof post, (typeof blog.post)["types"]["schema"]> = {
+      title: "Hello",
+    }
+
+    blog.post.find("post-id").update(set)
+  })
+
   test("reject a key that is not a column", () => {
     // @ts-expect-error Not a column.
     blog.post.insert({ title: "Hello", body: "World" })
     // @ts-expect-error Not a column.
     blog.post.find("post-id").update({ body: "World" })
+    // @ts-expect-error Not a column.
+    blog.post.find("post-id").update(columns => ({ body: columns.title }))
   })
 })
 
@@ -132,6 +166,26 @@ describe("results", () => {
     expectTypeOf<ResultOf<ReturnType<typeof deleteTitles>>>().toEqualTypeOf<string>()
   })
 
+  test("are the values of queries of one value in callbacks", () => {
+    expectTypeOf(
+      db.post
+        .find("post-id")
+        .update({ title: "Hello" })
+        .get(columns => columns.comments.count()),
+    ).resolves.toEqualTypeOf<number>()
+    expectTypeOf(
+      db.post
+        .all()
+        .delete()
+        .pluck(columns => columns.comments.get("id")),
+    ).resolves.toEqualTypeOf<(string | null)[]>()
+    expectTypeOf(
+      db.comment
+        .insert({ id: "comment-id", postId: "post-id" })
+        .get(columns => columns.post.get("title")),
+    ).resolves.toEqualTypeOf<string>()
+  })
+
   test("nest the rows of relations, which a Db must have", () => {
     const deleted = blog.comment
       .where({ postId: "post-id" })
@@ -146,6 +200,45 @@ describe("results", () => {
     expectTypeOf(db.$execute(deleted)).resolves.toEqualTypeOf<{ post: { title: string } }[]>()
     // @ts-expect-error The schema of the Db lacks the relation.
     other.$execute(deleted)
+  })
+
+  test("add the relations of the queries of values to the state, which a Db must have", () => {
+    const other = createDatabase({ driver: createRecordingDriver().driver }).bind(
+      defineSchema({ post, comment }),
+    )
+    const updated = blog.post.find("post-id").update(columns => ({
+      commentCount: columns.comments.count(),
+      subtitle: "Hello",
+    }))
+    const byExpression = blog.post.find("post-id").update(columns => ({
+      commentCount: columns.comments.count().expr(),
+    }))
+    const returned = blog.post
+      .find("post-id")
+      .delete()
+      .get(columns => columns.comments.count())
+    const plucked = blog.post
+      .all()
+      .delete()
+      .pluck(columns => columns.comments.count())
+
+    expectTypeOf(db.$execute(updated)).resolves.toEqualTypeOf<number>()
+    expectTypeOf(db.$execute(returned)).resolves.toEqualTypeOf<number>()
+    // @ts-expect-error The schema of the Db lacks the relation.
+    other.$execute(updated)
+    // @ts-expect-error The schema of the Db lacks the relation.
+    other.$execute(returned)
+    // @ts-expect-error The schema of the Db lacks the relation.
+    other.$execute(plucked)
+    // An expression does not carry the relations of its queries, so only the `Db` that runs it rejects them.
+    expectTypeOf<(typeof byExpression)["types"]["uses"]>().toBeNever()
+
+    // The values of an annotated callback may hold a query of any relation, as may a `Selection`, so types reject them on a Db of known relations.
+    const annotated = blog.post.find("post-id").update((columns): UpdateValues<typeof post> => ({
+      commentCount: columns.comments.count(),
+    }))
+    // @ts-expect-error The annotation tells no relations.
+    other.$execute(annotated)
   })
 
   test("reject get of many rows and select after get or pluck", () => {

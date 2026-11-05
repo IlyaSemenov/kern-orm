@@ -24,6 +24,25 @@ export const hasFieldLabel = defineExpression(formsSchema.form, (form, label: st
   form.fields.where({ label }).exists(),
 )
 
+/** Returns the numbers of fields of the published forms by name through the `Db` of a tenant or of the SaaS. */
+export async function listFieldCounts(db: DbOf<typeof formsSchema>) {
+  return await db.form
+    .where({ published: true })
+    .orderBy("name", "id")
+    .pluck(form => form.fields.count())
+}
+
+/** Publishes a form only if it has a field with a label, in one statement, through the `Db` of a tenant or of the SaaS. */
+export async function publishWithFieldLabel(
+  db: DbOf<typeof formsSchema>,
+  formId: string,
+  label: string,
+) {
+  await db.form.find(formId).update(form => ({
+    published: hasFieldLabel(form, label),
+  }))
+}
+
 /** Returns a form with its fields through the `Db` of a tenant or of the SaaS. */
 export async function getForm(db: DbOf<typeof formsSchema>, formId: string) {
   return await db.form.find(formId).use(selectForm)

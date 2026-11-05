@@ -4,8 +4,9 @@ import { combineFilters } from "../ast/boolean"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
-import type { TypedExpression } from "../expression/expression"
 import { operandNode } from "../expression/expression"
+import type { TypedOperand } from "../expression/functions"
+import type { OperandValue } from "../expression/operators/comparison"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable, Selectable } from "../table/table"
@@ -18,14 +19,8 @@ import { isTableQuery } from "./node"
 import { mergeProjections, projectValue } from "./projections"
 import type { OneValueRows, ValueRows } from "./rows"
 import { toValueRows } from "./rows"
-import type { AnySelectQuery } from "./select"
-import type {
-  ExpressionValue,
-  MergeSelection,
-  Selection,
-  SelectionResult,
-  SelectionUses,
-} from "./selection"
+import type { AnySelectQuery, OperandUses } from "./select"
+import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
 import type { EmptyRecord, QueryState } from "./state"
 import { toAssignments, toInsertRows } from "./values"
 
@@ -43,11 +38,12 @@ export interface MutationQueryState extends QueryState {
   readonly returning: boolean
 }
 
-/** State of a query that inserts, updates, or deletes rows of table `T` with schema context `C` in rows mode `Rows` and returns their number. */
+/** State of a query that inserts, updates, or deletes rows of table `T` with schema context `C` in rows mode `Rows` and returns their number, whose values select records of relations `U`. */
 export interface InitialMutationState<
   T extends AnyTable,
   C extends SchemaContext,
   Rows extends ResultRows,
+  U extends UsedRelation = never,
 > extends MutationQueryState {
   readonly table: T
   readonly schema: C
@@ -56,7 +52,7 @@ export interface InitialMutationState<
   readonly result: number
   readonly rows: "one"
   readonly value: true
-  readonly uses: never
+  readonly uses: U
 }
 
 // Apart from `ChangeState` of `select.ts`: a parameter of `ChangeState` for the parts of the state made each change of a select query cost more instantiations, such as 40% more for a helper, and an alias of the mapped type shared by both made methods reject a union of queries that differ by their fields, such as `cond ? query.select("id", "title") : query.select("id")`.
@@ -104,6 +100,22 @@ type ValueState<S extends MutationQueryState, V, Rows extends ResultRows> = Chan
   { result: V; rows: Rows; value: true; returning: true }
 >
 
+/** State of a mutation of state `S` that returns the value of `E`, an expression or a query of one value that a callback returns, of each row it changes in rows mode `Rows`. */
+type OperandState<
+  S extends MutationQueryState,
+  E extends TypedOperand,
+  Rows extends ResultRows,
+> = ChangeMutationState<
+  S,
+  {
+    result: OperandValue<E>
+    rows: Rows
+    value: true
+    returning: true
+    uses: S["uses"] | OperandUses<E>
+  }
+>
+
 /**
  * Immutable query of state `S` that inserts, updates, or deletes rows, unbound or bound to a `Db`.
  *
@@ -126,7 +138,7 @@ export class MutationQuery<
   constructor(
     readonly table: S["table"],
     readonly node: MutationNode,
-    /** Relations of the table in the schema the query starts from, which `select` gives its callback. */
+    /** Relations of the table in the schema the query starts from, which its callbacks receive. */
     readonly context: QueryContext,
     db?: AnyDb,
   ) {
@@ -190,12 +202,13 @@ export class MutationQuery<
   /**
    * Returns the value of the expression that `callback` returns for the changed row instead of the number of the rows, in a query that changes one row, such as of `insert` or `find`.
    *
+   * `callback` receives what the callback of `select` receives, and may return a query of one value, which gives `NULL` without its row.
    * A query of a nullable row resolves to `undefined` without the row.
    */
-  get<S extends OneRowMutationState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  get<S extends OneRowMutationState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: MutationQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): MutationQuery<ValueState<S, ExpressionValue<E>, OneValueRows<S["changed"]>>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): MutationQuery<OperandState<S, E, OneValueRows<S["changed"]>>, Kind>
   get(arg: unknown): unknown {
     if (this.node.rows === "many") {
       throw new Error(
@@ -214,11 +227,15 @@ export class MutationQuery<
     this: MutationQuery<S, Kind>,
     key: K,
   ): MutationQuery<ValueState<S, Selectable<S["table"]>[K], ValueRows<S["changed"]>>, Kind>
-  /** Returns the value of the expression that `callback` returns for each changed row instead of the number of the rows, keeping whether the query returns an array or one value. */
-  pluck<S extends MutationQueryState, Kind extends SelectQueryKind, E extends TypedExpression>(
+  /**
+   * Returns the value of the expression that `callback` returns for each changed row instead of the number of the rows, keeping whether the query returns an array or one value.
+   *
+   * `callback` receives what the callback of `select` receives, and may return a query of one value, which gives `NULL` without its row.
+   */
+  pluck<S extends MutationQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: MutationQuery<S, Kind>,
-    callback: (columns: ColumnRefs<S["table"]>) => E,
-  ): MutationQuery<ValueState<S, ExpressionValue<E>, ValueRows<S["changed"]>>, Kind>
+    callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
+  ): MutationQuery<OperandState<S, E, ValueRows<S["changed"]>>, Kind>
   pluck(arg: unknown): unknown {
     return this.deriveValue(arg, "pluck")
   }
@@ -250,11 +267,11 @@ export class MutationQuery<
     )
   }
 
-  /** Creates the mutation that returns the value of `arg` of `method`, a column key or a callback that receives the columns and returns an expression, of each changed row. */
+  /** Creates the mutation that returns the value of `arg` of `method`, a column key or a callback that receives the columns and the relations and returns an expression or a query of one value, of each changed row. */
   private deriveValue(arg: unknown, method: string): AnyMutationQuery {
     const { node } = this
     return this.derive({
-      returning: [projectValue(node.target, arg, method)],
+      returning: [projectValue(node.target, arg, method, this.context)],
       value: true,
       rows: toValueRows(node.rows),
     })
@@ -308,7 +325,7 @@ export function createUpdate(query: AnySelectQuery, set: unknown): AnyMutationQu
     Object.freeze({
       kind: "update",
       target: node.from,
-      set: toAssignments(node.from, set),
+      set: toAssignments(node.from, set, query.context),
       filters: node.filters,
       returning: undefined,
       rows: node.rows,

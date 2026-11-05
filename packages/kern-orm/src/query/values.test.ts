@@ -4,17 +4,31 @@ import type { ParamNode } from "../ast/nodes"
 import { createRef } from "../ast/testing"
 import { toNode } from "../expression/expression"
 import { sql } from "../expression/sql"
+import { many } from "../schema/relation"
+import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import type { AnyType } from "../type/type"
 import * as t from "../types"
 
-import { from } from "./select"
+import { noContext } from "./column-refs"
+import { from, SelectQuery } from "./select"
 import { toAssignments, toInsertRows } from "./values"
 
 const form = defineTable("form", {
   id: t.uuid.primaryKey().hasDefault(),
   name: t.text,
   note: t.text.nullable(),
+})
+
+const field = defineTable("field", {
+  id: t.uuid.primaryKey().hasDefault(),
+  formId: t.uuid,
+})
+
+const schema = defineSchema({ form, field }).$relations({
+  form: {
+    fields: many(field, { from: "id", to: "formId" }),
+  },
 })
 
 /** Node of a parameter of `value` encoded with `type`, as a value of a column becomes one. */
@@ -96,24 +110,48 @@ describe("toAssignments", () => {
   const source = from(form).node.from
 
   it("assigns the values of the columns, skipping a column of undefined", () => {
-    expect(toAssignments(source, { note: null, name: "Survey", id: undefined })).toEqual([
-      { key: "note", value: createValue(null, form.columns.note.type) },
-      { key: "name", value: createValue("Survey", t.text) },
-    ])
+    expect(toAssignments(source, { note: null, name: "Survey", id: undefined }, noContext)).toEqual(
+      [
+        { key: "note", value: createValue(null, form.columns.note.type) },
+        { key: "name", value: createValue("Survey", t.text) },
+      ],
+    )
   })
 
   it("gives a callback the columns of the source", () => {
-    const assignments = toAssignments(source, (columns: { name: unknown }) => ({
-      note: columns.name,
-    }))
+    const assignments = toAssignments(
+      source,
+      (columns: { name: unknown }) => ({
+        note: columns.name,
+      }),
+      noContext,
+    )
 
     expect(assignments).toEqual([{ key: "note", value: createRef(source, "name") }])
   })
 
-  it("takes a query of one value as a value", () => {
+  it("gives a callback the relations of the context beside the columns", () => {
+    let refs: object | undefined
+    toAssignments(
+      source,
+      (columns: object) => {
+        refs = columns
+        return { name: "Survey" }
+      },
+      schema.form.context,
+    )
+
+    expect(Reflect.get(refs!, "name")).toBeDefined()
+    expect(Reflect.get(refs!, "fields")).toBeInstanceOf(SelectQuery)
+  })
+
+  it("takes a query of one value as a value, also from a callback", () => {
     const value = from(form).take().get("name")
 
-    expect(toAssignments(source, { name: value })).toEqual([
+    expect(toAssignments(source, { name: value }, noContext)).toEqual([
+      { key: "name", value: { kind: "nestedQuery", query: value.node, db: undefined } },
+    ])
+    expect(toAssignments(source, () => ({ name: value }), noContext)).toEqual([
       { key: "name", value: { kind: "nestedQuery", query: value.node, db: undefined } },
     ])
   })
@@ -122,15 +160,15 @@ describe("toAssignments", () => {
     const message =
       'update takes the value of at least one column of table "form"; a column given as undefined keeps its value'
 
-    expect(() => toAssignments(source, {})).toThrow(message)
-    expect(() => toAssignments(source, { name: undefined })).toThrow(message)
-    expect(() => toAssignments(source, () => "Survey")).toThrow(
+    expect(() => toAssignments(source, {}, noContext)).toThrow(message)
+    expect(() => toAssignments(source, { name: undefined }, noContext)).toThrow(message)
+    expect(() => toAssignments(source, () => "Survey", noContext)).toThrow(
       'update takes the values of the columns of table "form" or a callback that returns them',
     )
-    expect(() => toAssignments(source, { title: "Survey" })).toThrow(
+    expect(() => toAssignments(source, { title: "Survey" }, noContext)).toThrow(
       'Unknown column "title" of table "form"',
     )
-    expect(() => toAssignments(source, { name: from(form).pluck("name") })).toThrow(
+    expect(() => toAssignments(source, { name: from(form).pluck("name") }, noContext)).toThrow(
       "An expression takes a query of one value",
     )
   })
