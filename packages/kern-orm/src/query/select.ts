@@ -788,7 +788,7 @@ export class SelectQuery<
    * Inserts a record into the table of a query without clauses, such as a table of a `Db`, and resolves to the number of the inserted rows, `1`.
    *
    * A column omitted or given as `undefined` gets its default, so only columns marked with `hasDefault` and nullable columns may be omitted.
-   * A value is what the type of its column takes, `null` for `NULL`, or an expression, such as a `sql` fragment.
+   * A value is what the type of its column takes, `null` for `NULL`, an expression, such as a `sql` fragment, or a query of one value, which gives `NULL` without its row.
    * Select the fields that it returns after it, such as `insert(values).get("id")`.
    */
   insert<S extends SelectQueryState, Kind extends SelectQueryKind>(
@@ -820,6 +820,7 @@ export class SelectQuery<
    * Updates the rows that the filters of the query choose with the values of `set`, and resolves to the number of the updated rows.
    *
    * `set` gives the values of the columns to update, or is a callback that receives the columns and returns them, such as to set a column from another one; a column omitted or given as `undefined` keeps its value.
+   * A value is what `insert` takes as a value.
    * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
    * A query without a filter must call `all` to update every row.
    * Select the fields that it returns after it, with their values after the update, such as `update(set).select("id")`.

@@ -23,8 +23,11 @@
 - A value is what the type of its column encodes, `null` for `NULL`, or an expression of the values of the column, whose node it keeps; a parameter is encoded by the type of its column without a cast, since the column types it, as for a compared value.
   Types take an expression of the output values of the column, so a column that is not nullable rejects an expression that may be `NULL`.
 - A key of `undefined` is omitted, as a key that an object lacks, so that an optional property of TypeScript, which may hold `undefined` without `exactOptionalPropertyTypes`, omits its column.
-- Mutations read the keys and values of their objects when they are called, and reject a key that is not a column and a query as a value, rather than take a query of one value as a scalar subquery, as an operand of an expression takes it ([queries](queries.md#queries-in-expressions)).
-  Types reject a query as a value too, except for a column whose type takes any value, such as `jsonb`.
+- Mutations read the keys and values of their objects when they are called, and reject a key that is not a column.
+- A value may be a query of one value, such as of `get`, of an aggregate, or of `exists`, which is a scalar subquery or `EXISTS` in `VALUES` or `SET`, as an operand of an expression is ([queries](queries.md#queries-in-expressions)), and other queries are rejected, in types and at runtime.
+  - Types take it by its value in an expression or `NULL`, so a column that is not nullable takes a query that is `NULL` without its row, such as of `get`, unlike an expression that may be `NULL`: PostgreSQL rejects the statement without the row, which is how such a value requires it.
+  - It adds about 3% to the instantiations of a query of `insert` and 1% to one of `update` of values ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - It does not add its relations to the state of the mutation, as a condition does not, so only lowering rejects a relation that the `Db` lacks, at runtime.
 - An insert may omit a column marked with `hasDefault` and a nullable column, which get their defaults, `NULL` for a nullable column without one; types require the other columns, and the database rejects a record that misses one.
   - The columns of the statement are those that some record gives a value other than `undefined`, in the order that the records first give them, and a record that lacks one inserts `DEFAULT`.
   - One record without values inserts `DEFAULT VALUES`, and several insert the `DEFAULT` of the first column of the table, since `DEFAULT VALUES` inserts one row.

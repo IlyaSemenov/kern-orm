@@ -231,7 +231,7 @@ describe("rows", () => {
       'Selected field "one" is a query of $query, which cannot be nested',
     )
     expect(() => db.form.insert({ id: 1, name: query as never })).toThrow(
-      'Column "name" of table "form" takes a value or an expression, not a query',
+      "An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of $query",
     )
   })
 })

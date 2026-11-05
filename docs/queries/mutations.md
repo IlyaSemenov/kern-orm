@@ -31,6 +31,18 @@ import { sql } from "kern-orm"
 await db.form.insert({ name: sql<string>`initcap(${name})`, published: false })
 ```
 
+A value can also be a [query of one value](./filtering#values-of-other-queries), which reads it in the same statement:
+
+```ts
+await db.field.insert({
+  formId: db.form.where({ name: "Survey" }).get("id"),
+  position: 1,
+  label: "Name",
+})
+```
+
+Without its row, such a query gives `NULL`, so PostgreSQL rejects the statement for a column that is not nullable.
+
 ## Updating
 
 To update records, choose them with `where`, `find`, or `findBy`, and pass the new values to `update`:
@@ -41,6 +53,7 @@ await db.form.find(formId).update({ published: true })
 
 Omitted columns, and columns given as `undefined`, keep their values, so you can pass a partial object, such as the fields that a request changes.
 Pass at least one value other than `undefined`.
+A value is anything that [`insert`](#inserting) takes, such as a query of one value.
 
 To compute a value from the columns of the record, pass a callback:
 
@@ -128,5 +141,5 @@ To undo the change with the error, run the query in a [transaction](../transacti
 
 ## Many records
 
-A statement takes at most 65535 parameters: each value that you pass takes one, and a `sql` fragment takes those of the values in it.
+A statement takes at most 65535 parameters: each plain value takes one, and a `sql` fragment or a query takes those of the values in it.
 To insert more values, such as tens of thousands of records, call `insertMany` with batches of them in a [transaction](../transactions).

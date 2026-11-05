@@ -93,7 +93,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Queries in expressions
 
-- An expression takes a query of a table of one value, such as of `get`, of an aggregate, or of [`exists`](#exists), wherever it takes an operand: as a condition, an operand of an operator, such as `field.position.lt(form.fields.max("position"))`, a value of an object condition, an item of the list of `in`, the fallback of `coalesce`, an operand of a [function of expressions](types.md#functions-of-expressions), and a value of `param` with an expression.
+- An expression takes a query of a table of one value, such as of `get`, of an aggregate, or of [`exists`](#exists), wherever it takes an operand: as a condition, an operand of an operator, such as `field.position.lt(form.fields.max("position"))`, a value of an object condition, an item of the list of `in`, the fallback of `coalesce`, an operand of a [function of expressions](types.md#functions-of-expressions), a value of `param` with an expression, and a value of an [insert or an update](mutations.md#values).
   A [sort key](#sorting-and-pagination) takes it too.
   A query of `exists` is `EXISTS` of its rows, and another query a scalar subquery of its value.
   - The query keeps its `Db`, which must be the `Db` that runs the statement, as for a nested query of a selection.
@@ -105,7 +105,6 @@ Queries come in two kinds that share the query methods and differ only by execut
     - calling `isOperandSource`, 6 to 8% longer for the dates and 2 to 3% for the others on Bun.
       Recognizing only an expression by its class, as without queries in expressions, is at most 2% faster, for the dates on Bun.
   - Types check the value of the query, as they check the values of an expression operand, rather than its SQL type.
-  - The values of inserts and updates reject a query at runtime, and in types except for a column whose type takes any value, such as `jsonb` ([mutations](mutations.md#values)).
 - Types type a query by its value in an expression, `ScalarValue` of `query/select.ts`: the value of an aggregate query, such as `boolean` of `exists` and `boolean | null` of `some`, and of a query whose row a required relation guarantees, such as of `field.form`; the value or `null` of another query, such as of `get`, which is `NULL` without its row whatever its rows mode.
   A query has this value as a member for types only, from which `and`, `or`, `not`, and the operators infer it for each operand.
 - Types take a query in an expression as `ScalarQuery`, an interface of the state, the value, and the method `exists` of a query, rather than as a query, which would compare every method of the query.

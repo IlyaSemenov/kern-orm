@@ -81,6 +81,60 @@ describe("insert", () => {
   })
 })
 
+describe("values of queries", () => {
+  const value = schema.form.find(2).get("note")
+
+  it("are scalar subqueries of the statement, with its parameters in order", () => {
+    expect(schema.form.insert({ name: "Survey", note: value }).toSQL()).toEqual({
+      text: 'INSERT INTO "form" AS "form" ("name", "note") VALUES ($1, (SELECT "form_2"."note" AS "note" FROM "form" AS "form_2" WHERE "form_2"."id" = $2))',
+      parameters: ["Survey", "2"],
+    })
+    expect(schema.form.find(1).update({ note: value }).toSQL()).toEqual({
+      text: 'UPDATE "form" AS "form" SET "note" = (SELECT "form_2"."note" AS "note" FROM "form" AS "form_2" WHERE "form_2"."id" = $1) WHERE "form"."id" = $2',
+      parameters: ["2", "1"],
+    })
+  })
+
+  it("reject a query other than of one value", () => {
+    const message = "An expression takes a query of one value"
+    const records = schema.form.select("note")
+    const values = schema.form.pluck("note")
+
+    // @ts-expect-error A query of records is not of one value.
+    expect(() => schema.form.insert({ name: "Survey", note: records })).toThrow(message)
+    // @ts-expect-error A query of an array is not of one value.
+    expect(() => schema.form.find(1).update({ note: values })).toThrow(message)
+    expect(() =>
+      // @ts-expect-error A mutation is not a query of one value.
+      schema.form.find(1).update({ note: schema.form.find(1).delete().get("note") }),
+    ).toThrow(`${message} of a table`)
+  })
+
+  it("are checked by a Db at any depth, as queries in expressions", () => {
+    const { driver } = createRecordingDriver()
+    const db = createDatabase({ driver }).bind(schema)
+    const other = createDatabase({ driver }).bind(schema)
+    const withoutRelations = createDatabase({ driver }).bind(defineSchema({ form, field }))
+    const related = schema.form.where(columns => columns.fields.exists()).get("note")
+    const message = 'Relation "form.fields" is not part of the schema'
+
+    expect(() => db.$compile(schema.form.find(1).update({ note: related }))).not.toThrow()
+    // A query of one value does not carry the relations of its condition, so only lowering rejects them.
+    expect(() => withoutRelations.$compile(schema.form.find(1).update({ note: related }))).toThrow(
+      message,
+    )
+    expect(() =>
+      withoutRelations.$compile(schema.form.insert({ name: "Survey", note: related })),
+    ).toThrow(message)
+    expect(() => db.$compile(db.form.find(1).update({ note: other.form.get("note") }))).toThrow(
+      "A query in an expression is bound to another Db",
+    )
+    expect(() =>
+      db.$compile(db.form.insert({ name: "Survey", note: other.form.get("note") })),
+    ).toThrow("A query in an expression is bound to another Db")
+  })
+})
+
 describe("update", () => {
   it("updates the rows of the filters of the query with values or the expressions of a callback", () => {
     const query = schema.form
@@ -334,6 +388,59 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
 
     expect(counts).toEqual([2, 2, 1, 2])
+  })
+
+  it("sets the values of queries of one value in its statement, NULL without a row", async () => {
+    const result = await testTransaction(async () => {
+      const inserted = await db.form
+        .insert({
+          name: db.field.min("label").coalesce("None"),
+          note: db.form.find(100).get("name"),
+        })
+        .select("name", "note")
+      const many = await db.form.insertMany([
+        { name: "Largest", note: db.field.max("label") },
+        { name: "Plain" },
+        { name: "Missing", note: db.form.find(-1).get("name") },
+      ])
+      const updated = await db.form
+        .find(100)
+        .update({
+          note: db.field.where({ formId: 100 }).orderBy("id").get("label"),
+        })
+        .get("note")
+      const notes = await db.form.where({ name: "Largest" }).get("note")
+      const missing = await db.form.where({ name: "Missing" }).get("note")
+      return { inserted, many, updated, notes, missing }
+    })
+
+    expect(result).toEqual({
+      inserted: { name: "Email", note: "Survey" },
+      many: 3,
+      updated: "Name",
+      notes: "Name",
+      missing: null,
+    })
+  })
+
+  it("rejects a query without its row as a value of a column that is not nullable", async () => {
+    const message = /null value in column "name"/
+
+    await testTransaction(async () => {
+      const missing = db.form.find(-1).get("name")
+
+      await expect(
+        db.$transaction(async () => {
+          await db.form.insert({ name: missing })
+        }),
+      ).rejects.toThrow(message)
+      await expect(
+        db.$transaction(async () => {
+          await db.form.find(100).update({ name: missing })
+        }),
+      ).rejects.toThrow(message)
+      expect(await db.form.find(100).get("name")).toBe("Survey")
+    })
   })
 
   it("rejects a mutation of find without its row unless it is optional, keeping the transaction usable", async () => {

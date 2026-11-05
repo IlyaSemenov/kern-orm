@@ -62,6 +62,26 @@ describe("values", () => {
     blog.post.insert({ title: sql<number>`1` })
   })
 
+  test("take a query of one value of the values of their columns", () => {
+    blog.post.insert({ title: "Hello", subtitle: blog.comment.get("id") })
+    blog.post.insert({ title: blog.comment.min("id").coalesce("Hello") })
+    // A column that is not nullable takes a query that is `NULL` without its row, which PostgreSQL rejects.
+    blog.post.insert({ title: blog.comment.get("id") })
+    blog.post.find("post-id").update({ title: blog.comment.get("id") })
+    blog.post.insertMany([{ title: "Hello", subtitle: blog.comment.max("id") }])
+    blog.post.find("post-id").update({ subtitle: blog.comment.get("id") })
+    blog.post.find("post-id").update(() => ({
+      subtitle: blog.comment.get("id"),
+    }))
+
+    // @ts-expect-error A query of other values is rejected.
+    blog.post.insert({ title: blog.comment.exists() })
+    // @ts-expect-error A query of an array is not of one value.
+    blog.post.find("post-id").update({ subtitle: blog.comment.pluck("id") })
+    // @ts-expect-error A query of records is not of one value.
+    blog.post.find("post-id").update({ subtitle: blog.comment.select("id") })
+  })
+
   test("reject a key that is not a column", () => {
     // @ts-expect-error Not a column.
     blog.post.insert({ title: "Hello", body: "World" })

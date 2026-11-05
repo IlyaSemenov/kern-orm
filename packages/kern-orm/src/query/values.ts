@@ -8,15 +8,17 @@ import { requireColumn } from "../table/table"
 
 import type { ColumnRefs } from "./column-refs"
 import { createColumnRefs } from "./column-refs"
-import { MutationQuery } from "./mutation"
-import { RecordQuery } from "./record"
-import { SelectQuery } from "./select"
-import { SqlQuery } from "./sql-query"
+import type { ScalarQuery } from "./select"
 
-/** Value of column `K` of table `T` that an insert or an update sets: a value that its type encodes, `null` for a nullable column, or an expression of its values. */
+/**
+ * Value of column `K` of table `T` that an insert or an update sets: a value that its type encodes, `null` for a nullable column, an expression of its values, or a query of one such value.
+ *
+ * A query may be `NULL` without its row, which PostgreSQL rejects for a column that is not nullable.
+ */
 export type ColumnValue<T extends AnyTable, K extends keyof T["columns"]> =
   | ColumnValues<T>[K]
   | AnyExpression<Selectable<T>[K]>
+  | ScalarQuery<Selectable<T>[K] | null>
 
 /** Key of a column of table `T` that an insert may omit, which gets its default: one that the database gives a value, as `hasDefault` marks it, or a nullable one, whose default is `NULL` unless the database declares another. */
 type OptionalColumnKey<T extends AnyTable> = {
@@ -58,7 +60,7 @@ export interface InsertRows {
  *
  * The columns are those that some record gives a value other than `undefined`, in the order that the records first give them, and a record that omits one inserts its `DEFAULT`.
  * Several records without values insert the `DEFAULT` of the first column of the table, since `DEFAULT VALUES` inserts one row.
- * It rejects a key that is not a column of `table`, and a query as a value.
+ * It rejects a key that is not a column of `table`, and a query other than of one value.
  */
 export function toInsertRows(
   table: AnyTable,
@@ -110,7 +112,7 @@ export function toInsertRows(
  * Returns the assignments of an update of the rows of `source` that `set` gives: the values of its columns, or a callback that receives the columns and returns them, read when it is called.
  *
  * A value of `undefined` keeps its column, and an update must set at least one column.
- * It rejects a key that is not a column of the table of `source`, and a query as a value.
+ * It rejects a key that is not a column of the table of `source`, and a query other than of one value.
  */
 export function toAssignments(source: TableSourceNode, set: unknown): AssignmentNode[] {
   const { table } = source
@@ -136,19 +138,7 @@ export function toAssignments(source: TableSourceNode, set: unknown): Assignment
 }
 
 // The column types the parameter, so it needs no cast, as a compared value does.
-/** Returns the node of `value` of the column of `table` under `key`: an expression, or a parameter encoded with the type of the column. */
+/** Returns the node of `value` of the column of `table` under `key`: an expression or a query of one value, which lowering replaces with a scalar subquery, or a parameter encoded with the type of the column. */
 function resolveValue(table: AnyTable, key: string, value: unknown): ExpressionNode {
-  const column = requireColumn(table, key)
-  // Checked before `toValueNode`, which would take a query of one value as a subquery: types reject a query only where the column does not take any value, unlike `jsonb`.
-  if (
-    value instanceof SelectQuery ||
-    value instanceof RecordQuery ||
-    value instanceof MutationQuery ||
-    value instanceof SqlQuery
-  ) {
-    throw new TypeError(
-      `Column "${key}" of table "${table.name}" takes a value or an expression, not a query`,
-    )
-  }
-  return toValueNode(value, column.type)
+  return toValueNode(value, requireColumn(table, key).type)
 }

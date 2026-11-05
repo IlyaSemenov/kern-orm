@@ -64,7 +64,16 @@ describe("toInsertRows", () => {
     })
   })
 
-  it("rejects no records, a record that is not an object, a key that is not a column, and a query as a value", () => {
+  it("takes a query of one value as a value", () => {
+    const value = from(form).take().get("name")
+
+    expect(toInsertRows(form, [{ name: value }], "insert")).toEqual({
+      columns: ["name"],
+      values: [[{ kind: "nestedQuery", query: value.node, db: undefined }]],
+    })
+  })
+
+  it("rejects no records, a record that is not an object, a key that is not a column, and a query other than of one value", () => {
     expect(() => toInsertRows(form, [], "insertMany")).toThrow(
       "insertMany takes at least one record",
     )
@@ -77,8 +86,8 @@ describe("toInsertRows", () => {
     expect(() => toInsertRows(form, [{ toString: "Survey" }], "insert")).toThrow(
       'Unknown column "toString" of table "form"',
     )
-    expect(() => toInsertRows(form, [{ name: from(form).get("name") }], "insert")).toThrow(
-      'Column "name" of table "form" takes a value or an expression, not a query',
+    expect(() => toInsertRows(form, [{ name: from(form).pluck("name") }], "insert")).toThrow(
+      "An expression takes a query of one value",
     )
   })
 })
@@ -101,7 +110,15 @@ describe("toAssignments", () => {
     expect(assignments).toEqual([{ key: "note", value: createRef(source, "name") }])
   })
 
-  it("rejects values without a column to set, a value that is not an object, a key that is not a column, and a query as a value", () => {
+  it("takes a query of one value as a value", () => {
+    const value = from(form).take().get("name")
+
+    expect(toAssignments(source, { name: value })).toEqual([
+      { key: "name", value: { kind: "nestedQuery", query: value.node, db: undefined } },
+    ])
+  })
+
+  it("rejects values without a column to set, a value that is not an object, a key that is not a column, and a query other than of one value", () => {
     const message =
       'update takes the value of at least one column of table "form"; a column given as undefined keeps its value'
 
@@ -114,7 +131,7 @@ describe("toAssignments", () => {
       'Unknown column "title" of table "form"',
     )
     expect(() => toAssignments(source, { name: from(form).pluck("name") })).toThrow(
-      'Column "name" of table "form" takes a value or an expression, not a query',
+      "An expression takes a query of one value",
     )
   })
 })

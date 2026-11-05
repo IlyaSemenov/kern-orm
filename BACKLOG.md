@@ -111,10 +111,10 @@ Orchid ORM 1.78.47 narrows a column with `narrowType` ([docs](https://github.com
 
 - Decide whether `of` narrows the values of every type, such as number literals of `integer`, and which operators take the union, such as `eq` and `in`, while `like` keeps a string pattern.
 
-## Queries as values of inserts and updates
+## Inserting the records of a query
 
-Values of an insert or an update that a query of one value gives in the same statement, such as the record that an inserted one belongs to, locked by a [row lock](#row-locks), or the position after the last record of an ordered collection, `max("position")` plus one, rather than a read before the statement; a value could take such a query as a scalar subquery, as an operand of an expression takes it ([architecture/queries.md](architecture/queries.md#queries-in-expressions)).
-Orchid ORM 1.78.47 takes a query of one value as the value of a column, such as `() => db.other.find(id).get("name")` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#sub-queries)), and inserts the records of a query with `createOneFrom` and `createForEachFrom` (`INSERT ... SELECT`, [docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#createonefrom-insertfrom)); kern-orm takes values and expressions only, and rejects a query as a value.
+Inserting the records that a query selects, as `INSERT ... SELECT`.
+Orchid ORM 1.78.47 inserts them with `createOneFrom` and `createForEachFrom` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#createonefrom-insertfrom)).
 
 ## Empty changes and `none()`
 
@@ -364,3 +364,13 @@ Helpers that change enum types: PostgreSQL cannot drop a value of an enum, so un
 A separate project.
 
 - An update that deletes the record its selected records reference changes only the selected records; other records that reference it only lose the reference ([orchid-orm#853](https://github.com/romeerez/orchid-orm/issues/853)).
+
+## Queries that may be `NULL` as values of columns that are not nullable
+
+Types take a query of one value that is `NULL` without its row as a value of a column that is not nullable, such as `db.field.insert({ formId: db.form.where({ name }).get("id"), ... })`, and PostgreSQL rejects the statement without the row, while types reject an expression that may be `NULL` ([architecture/mutations.md](architecture/mutations.md#values)).
+
+- Think again about whether types keep taking such a query, which moves the error from type-checking to the statement, or reject it as they reject an expression.
+- Preliminary decision: types reject such a query unless it is explicitly marked as having its row, as the `!` operator of TypeScript marks a value.
+  - The mark changes only the value of the query in an expression, `ScalarValue` of `query/select.ts`, which already has no `null` for the guaranteed row of a required relation; PostgreSQL still rejects `NULL` for a column that is not nullable.
+  - An executed query and a nested query of a selection reject without their row anyway, so the mark means nothing for them.
+  - Decide the API of the mark with that in mind.

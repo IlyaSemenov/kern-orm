@@ -113,6 +113,9 @@ bench.baseline(async () => {
     .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
     .get("id")
   await tenantDb.field.find("baseline").update({ label: "baseline" }).select("label", "position")
+  await tenantDb.field.find("baseline").update({
+    label: tenantDb.answer.min("value").coalesce("baseline"),
+  })
   await tenantDb.$execute(formsSchema.field.where({ label: "baseline" }).delete().pluck("label"))
   await storeDb.customer
     .where({ email: "baseline" })
@@ -224,7 +227,7 @@ bench("filter of the values of a query", async () => {
 
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
-}).types([514, "instantiations"])
+}).types([513, "instantiations"])
 
 bench("comparison of an aggregate of a relation", async () => {
   await tenantDb.form.where(form => form.fields.count().expr().gt(3)).pluck("name")
@@ -354,11 +357,17 @@ bench("$select", async () => {
 
 bench("insert", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).get("id")
-}).types([507, "instantiations"])
+}).types([522, "instantiations"])
 
 bench("update", async () => {
   await tenantDb.form.find("x").update({ name: "x" }).select("id", "name")
-}).types([507, "instantiations"])
+}).types([512, "instantiations"])
+
+bench("update of a value of a query", async () => {
+  await tenantDb.form.find("x").update({
+    name: tenantDb.field.min("label").coalesce("x"),
+  })
+}).types([397, "instantiations"])
 
 bench("unbound delete", async () => {
   await tenantDb.$execute(formsSchema.form.where({ name: "x" }).delete().pluck("id"))
