@@ -1,11 +1,16 @@
 name: Docs
 
+# Publishes the docs of the last release at the root of the site and the docs of `main` under next/.
+# A run derives both from the current state of the repository, so any run can replace a queued one, and a rerun neither rolls back the site nor needs to know what is deployed.
+
 on:
   push:
     branches: [main]
+  release:
+    types: [released]
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}
+concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   contents: read
@@ -13,14 +18,32 @@ permissions:
   id-token: write
 
 jobs:
+  # Starts this workflow on `main` rather than deploying from here: a release event runs on the ref of the tag, which the github-pages environment does not allow to deploy and which the cache of `main` does not cover.
+  # A dispatch is the event of `GITHUB_TOKEN` that does start a workflow.
+  dispatch:
+    name: Dispatch
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+
+    steps:
+      - name: Start the workflow on main
+        run: gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build:
     name: Build
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # The tip of the branch rather than the commit of the event, so that a rerun does not roll back Next.
+          ref: ${{ github.ref }}
           # VitePress takes last updated times from the Git history.
           fetch-depth: 0
 
@@ -32,8 +55,46 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Build docs
+      - name: Build Next
         run: bun run docs:build
+        env:
+          DOCS_TRACK: next
+
+      - name: Find the last release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Any package counts, and a batch of releases shares one commit.
+        # The list goes from the newest tag, whereas GitHub marks as latest only some of the releases.
+        run: |
+          tag=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')
+          commit=$(git rev-parse "refs/tags/$tag^{commit}")
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Stable
+        id: stable
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/stable
+          key: docs-stable-${{ steps.release.outputs.commit }}
+
+      # Builds with the tools and dependencies of the release, which main may have moved past.
+      - name: Build Stable
+        if: steps.stable.outputs.cache-hit != 'true'
+        env:
+          COMMIT: ${{ steps.release.outputs.commit }}
+          MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}
+        run: |
+          git worktree add "$RUNNER_TEMP/stable-source" "$COMMIT"
+          cd "$RUNNER_TEMP/stable-source"
+          mise exec -- bun install --frozen-lockfile
+          mise exec -- bun run docs:build
+          mv docs/.vitepress/dist "$RUNNER_TEMP/stable"
+
+      - name: Assemble the site
+        run: |
+          cp -R "$RUNNER_TEMP/stable" "$RUNNER_TEMP/site"
+          mv docs/.vitepress/dist "$RUNNER_TEMP/site/next"
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
@@ -41,10 +102,12 @@ jobs:
       - name: Upload docs
         uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/.vitepress/dist
+          path: ${{ runner.temp }}/site
 
+  # A run on another branch tests the build.
   deploy:
     name: Deploy
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     environment:

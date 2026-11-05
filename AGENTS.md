@@ -116,6 +116,11 @@ Do not catalog files or restate information evident from their names and locatio
 ## Documentation
 
 - Keep user documentation in the VitePress site in `docs/`, published to GitHub Pages; keep package READMEs short and link to the site.
+- Each run of `.github/workflows/docs.yml` on `main` publishes the whole site from the current state of the repository, so run `gh workflow run docs.yml` to repair or redeploy it:
+  - Stable, at the root, from the commit of the last published non-prerelease GitHub Release of any package; such a release starts a run on `main`.
+  - Next, under `next/`, from `main`, built with `DOCS_TRACK=next`.
+- Test a change of the workflow with `gh workflow run docs.yml --ref <branch>`, which builds the site of that branch without deploying it.
+- Keep the build of a commit of Stable in the Actions cache under `docs-stable-<commit>`, which a run rebuilds when it is missing; delete it with `gh cache delete` to rebuild it on purpose.
 - Add every new page to the sidebar in `docs/.vitepress/config.ts`.
 - Write every column of a `defineTable` call on its own line, even a single column, in documentation, examples, and tests.
 - Write every field returned from the callback of `select`, such as an expression or a relation, on its own line, even a single field, in documentation, examples, and tests.

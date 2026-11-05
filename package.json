@@ -23,7 +23,7 @@
     "lint:check": "oxlint && oxfmt --check",
     "prepare": "lefthook install",
     "release": "changesets-local",
-    "release:check": "bun run types && bun run test && bun run test:node && bun run test:package",
+    "release:check": "bun run types && bun run test && bun run test:node && bun run test:package && bun run docs:build",
     "test": "bun test",
     "test:node": "vitest run",
     "test:package": "bun run build && bun test ./packages/kern-orm/tests/package/consumer.package-test.ts",
