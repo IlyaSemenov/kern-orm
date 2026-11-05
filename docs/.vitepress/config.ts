@@ -21,6 +21,7 @@ export default defineConfig({
         items: [
           { text: "Selecting", link: "/queries/selecting" },
           { text: "Filtering", link: "/queries/filtering" },
+          { text: "Operators", link: "/queries/operators" },
           { text: "Sorting and Pagination", link: "/queries/sorting" },
           { text: "Related Records", link: "/queries/relations" },
           { text: "Computed Values", link: "/queries/computed-values" },

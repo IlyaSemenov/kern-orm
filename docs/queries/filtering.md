@@ -19,15 +19,7 @@ For conditions other than equality, pass `where` a callback that receives the co
 await db.form.where(form => form.name.ilike("draft%")).select("id")
 ```
 
-Columns have the operators of their type:
-
-- `isNull` for every type;
-- `eq`, `ne`, and `in` for types with SQL `=`: every built-in type except `json` and arrays of it;
-- `lt`, `lte`, `gt`, and `gte` for ordered types: numbers, text, `uuid`, dates and times, `inet`, and enums;
-- `like` and `ilike` for `text`, `varchar`, and `char`;
-- [operators added to a type](../custom-types#operators) with `withOperators`.
-
-Comparison operators take non-null values; `isNull` matches `NULL`.
+Columns have the [operators](./operators) of their type.
 
 ## Combining conditions
 

@@ -12,7 +12,7 @@ A record has no fields without `select`, so a result never carries data that the
 
 To select all columns of the table, call `select("*")`.
 
-To rename columns or select results of operators, [functions](./computed-values), and `sql` fragments, pass a callback that returns them under keys of your choice:
+To rename columns or select results of [operators](./operators), [functions](./computed-values), and `sql` fragments, pass a callback that returns them under keys of your choice:
 
 ```ts
 import { sql } from "kern-orm"

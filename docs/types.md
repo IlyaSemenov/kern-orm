@@ -1,6 +1,6 @@
 # Types
 
-Give each column a type from `kern-orm/types`: the type sets the PostgreSQL type of the column, the JavaScript values that queries return and accept, and the operators of its expressions.
+Give each column a type from `kern-orm/types`: the type sets the PostgreSQL type of the column, the JavaScript values that queries return and accept, and the [operators](./queries/operators) of its expressions.
 Import all types as a namespace, or individual types by name:
 
 ```ts
