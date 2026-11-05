@@ -53,7 +53,8 @@
       "version": "0.3.0",
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
-        "kern-orm-minimum": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
+        "kern-orm-0.2.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
+        "kern-orm-0.3.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.3.0.tgz",
         "postgres": "catalog:",
         "postgres-js-published": "https://registry.npmjs.org/@kern-orm/postgres-js/-/postgres-js-0.1.2.tgz",
         "postgres-js-v3-published": "https://registry.npmjs.org/@kern-orm/postgres-js-v3/-/postgres-js-v3-0.1.2.tgz",
@@ -69,7 +70,7 @@
         "postgres": "catalog:",
       },
       "peerDependencies": {
-        "kern-orm": "^0.3.0",
+        "kern-orm": ">=0.3.0 <1",
       },
     },
     "packages/postgres-js": {
@@ -869,7 +870,9 @@
 
     "kern-orm": ["kern-orm@workspace:packages/kern-orm"],
 
-    "kern-orm-minimum": ["kern-orm@https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz", {}, "sha512-v2DzubBu146QWXAqf+wgPLu0e9oW8L0znA2eXTNDjx+0u8SZIrhWy0WLZ9+eQzS10eV5IoLyt/axCD1aPSvLdg=="],
+    "kern-orm-0.2.0": ["kern-orm@https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz", {}, "sha512-v2DzubBu146QWXAqf+wgPLu0e9oW8L0znA2eXTNDjx+0u8SZIrhWy0WLZ9+eQzS10eV5IoLyt/axCD1aPSvLdg=="],
+
+    "kern-orm-0.3.0": ["kern-orm@https://registry.npmjs.org/kern-orm/-/kern-orm-0.3.0.tgz", {}, "sha512-7WgeahfmNczcUG0SExZi0UqPqbR/0crJByXnHhhu9hmG/B7WIOel7+Umgk+E24lMayP5fLGTx6659a+4KtSe+w=="],
 
     "keyv": ["keyv@5.6.0", "", { "dependencies": { "@keyv/serialize": "^1.1.1" } }, "sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw=="],
 

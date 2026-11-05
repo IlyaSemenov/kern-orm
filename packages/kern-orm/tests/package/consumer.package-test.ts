@@ -8,16 +8,28 @@ import { build } from "esbuild"
 import { rolldown } from "rolldown"
 
 const root = join(import.meta.dir, "../../../..")
-// Each packed package with the consumer project that installs it: the postgres.js 3 driver has a project of its own, whose `postgres` is postgres.js 3.
-const packages = [
-  { dir: "packages/kern-orm", project: "." },
-  { dir: "packages/postgres-js", project: ".", driver: true },
-  { dir: "packages/postgres-js-v3", project: "postgres-js-v3", driver: true },
-  { dir: "packages/migrations", project: "." },
+// The companion packages, with the packed packages that their consumer also installs.
+const companionPackages = [
+  {
+    dir: "packages/postgres-js",
+    project: ".",
+    scenarios: ["minimum-kern-orm", "published-package"],
+  },
+  {
+    dir: "packages/postgres-js-v3",
+    project: "postgres-js-v3",
+    scenarios: ["minimum-kern-orm", "published-package"],
+  },
+  {
+    dir: "packages/migrations",
+    project: ".",
+    scenarios: ["minimum-kern-orm"],
+    dependencies: ["@kern-orm/postgres-js"],
+  },
 ]
 
-const drivers = packages.filter(({ driver }) => driver)
-const minimumKernOrm = dirname(Bun.resolveSync("kern-orm-minimum/package.json", import.meta.dir))
+// Each packed package with the consumer project that installs it: the postgres.js 3 driver has a project of its own, whose `postgres` is postgres.js 3.
+const packages = [{ dir: "packages/kern-orm", project: "." }, ...companionPackages]
 
 const compileOnlyOutput = {
   text: 'SELECT "form"."name" AS "name" FROM "form" AS "form" WHERE "form"."name" = $1',
@@ -35,24 +47,50 @@ const consumerOutput = {
 
 let consumer: string
 
-/** Returns the project of a driver in a compatibility scenario. */
-function getDriverProject(scenario: string, dir: string): string {
+/** Returns the directory of a package installed under an alias in `kern-orm`. */
+function resolveAlias(alias: string): string {
+  return dirname(Bun.resolveSync(`${alias}/package.json`, import.meta.dir))
+}
+
+/** Returns the directory of the oldest `kern-orm` in the range of a companion package, installed under an alias named after its version. */
+async function resolveMinimumKernOrm(dir: string): Promise<string> {
+  const { peerDependencies } = await Bun.file(join(root, dir, "package.json")).json()
+  const range: string = peerDependencies["kern-orm"]
+  const minimum = /^>=(\S+) <1$/.exec(range)?.[1]
+  if (minimum === undefined) {
+    throw new Error(`${dir} must require kern-orm by a range of the whole 0.x series, not ${range}`)
+  }
+  return resolveAlias(`kern-orm-${minimum}`)
+}
+
+/** Returns the project of a companion package in a compatibility scenario. */
+function getCompanionProject(scenario: string, dir: string): string {
   return join(consumer, scenario, basename(dir))
 }
 
-/** Creates the project of a driver in a compatibility scenario from the given copies of the driver and `kern-orm`. */
-async function createDriverProject(
+/** Creates the project of a companion package in a compatibility scenario from the given copies of the package and `kern-orm`, with the packed `dependencies`. */
+async function createCompanionProject(
   scenario: string,
   dir: string,
-  driverPath: string,
+  packagePath: string,
   kernOrmPath: string,
+  dependencies: readonly string[] = [],
 ): Promise<void> {
   const { name } = await Bun.file(join(root, dir, "package.json")).json()
-  const project = getDriverProject(scenario, dir)
-  await cp(driverPath, join(project, "node_modules", name), { recursive: true })
+  const project = getCompanionProject(scenario, dir)
+  await cp(packagePath, join(project, "node_modules", name), { recursive: true })
   await cp(kernOrmPath, join(project, "node_modules/kern-orm"), { recursive: true })
+  for (const dependency of dependencies) {
+    await cp(
+      join(consumer, "node_modules", dependency),
+      join(project, "node_modules", dependency),
+      {
+        recursive: true,
+      },
+    )
+  }
   await symlink(join(root, dir, "node_modules/postgres"), join(project, "node_modules/postgres"))
-  await cp(join(import.meta.dir, "fixtures/driver-consumers", basename(dir)), project, {
+  await cp(join(import.meta.dir, "fixtures/companion-consumers", basename(dir)), project, {
     recursive: true,
   })
   await writeFile(
@@ -93,20 +131,24 @@ beforeAll(async () => {
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
-  for (const { dir, project } of drivers) {
+  for (const { dir, project, scenarios, dependencies } of companionPackages) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
-    await createDriverProject(
+    await createCompanionProject(
       "minimum-kern-orm",
       dir,
       join(consumer, project, "node_modules", name),
-      minimumKernOrm,
+      await resolveMinimumKernOrm(dir),
+      dependencies,
     )
-    await createDriverProject(
-      "published-driver",
-      dir,
-      dirname(Bun.resolveSync(`${basename(dir)}-published/package.json`, import.meta.dir)),
-      join(consumer, "node_modules/kern-orm"),
-    )
+    if (scenarios.includes("published-package")) {
+      await createCompanionProject(
+        "published-package",
+        dir,
+        resolveAlias(`${basename(dir)}-published`),
+        join(consumer, "node_modules/kern-orm"),
+        dependencies,
+      )
+    }
   }
   await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
   await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }))
@@ -307,23 +349,26 @@ describe.each(["node", "bun"])("%s", runtime => {
   })
 })
 
-describe.each(drivers)("$dir", ({ dir }) => {
+describe.each(companionPackages)("$dir", ({ dir, scenarios }) => {
   test("declares the minimum version of kern-orm as the minimum of its range", async () => {
-    const { version } = await Bun.file(join(minimumKernOrm, "package.json")).json()
+    const { version } = await Bun.file(
+      join(await resolveMinimumKernOrm(dir), "package.json"),
+    ).json()
     const { peerDependencies } = await Bun.file(join(root, dir, "package.json")).json()
     expect(peerDependencies["kern-orm"]).toBe(`>=${version} <1`)
   })
 
-  // The current driver with the oldest `kern-orm` in its range, and the first published driver with that range with the current `kern-orm`.
-  describe.each(["minimum-kern-orm", "published-driver"])("%s", scenario => {
+  // The current companion package with the oldest `kern-orm` in its range, and its oldest published version that must keep working with the current `kern-orm`.
+  describe.each(scenarios)("%s", scenario => {
     test("type-checks a consumer", () => {
-      run([join(root, "node_modules/.bin/tsc"), "-p", getDriverProject(scenario, dir)], consumer)
+      run([join(root, "node_modules/.bin/tsc"), "-p", getCompanionProject(scenario, dir)], consumer)
     }, 60_000)
 
     describe.each(["node", "bun"])("%s", runtime => {
-      test.skipIf(!process.env.DATABASE_URL)("runs statements in PostgreSQL", () => {
-        const output = run([runtime, "consumer.ts"], getDriverProject(scenario, dir))
-        expect(JSON.parse(output)).toEqual({ pooled: [["1"]], reserved: [["2"]] })
+      test.skipIf(!process.env.DATABASE_URL)("runs statements in PostgreSQL", async () => {
+        const project = getCompanionProject(scenario, dir)
+        const output = run([runtime, "consumer.ts"], project)
+        expect(JSON.parse(output)).toEqual(await Bun.file(join(project, "expected.json")).json())
       })
     })
   })

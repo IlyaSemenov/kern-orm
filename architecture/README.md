@@ -9,7 +9,7 @@ Its core promises:
 - Nested relations load in a constant number of round trips through subqueries that aggregate their rows as JSON.
 - Queries join the ambient transaction of the current async context without passing a transaction around.
 
-The public API is not settled before 1.0 and may change in any release.
+The public API is not settled before 1.0 and may change in any release; a change of what companion packages rely on follows [package compatibility](compatibility.md).
 
 ## Motivation
 
@@ -39,3 +39,4 @@ Module paths are relative to `packages/kern-orm/src/`.
 - [Testing](testing.md): `execution/testing.ts` and `execution/transaction.ts`.
 - [Drivers](drivers.md): `execution/driver.ts`, `packages/postgres-js/`, and `packages/postgres-js-v3/`.
 - [Migrations](migrations.md): `packages/migrations/`.
+- [Package compatibility](compatibility.md): the peer dependency of companion packages on `kern-orm`, and `packages/kern-orm/tests/package/`.

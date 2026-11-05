@@ -12,14 +12,7 @@
 
 ## Compatibility
 
-A driver requires `kern-orm` by a range of the whole 0.x series, such as `>=0.2.0 <1`, as a peer dependency, so that a new minor version of `kern-orm` does not release the drivers.
-A published version keeps its range forever, so this contract covers every published driver:
-
-- A later version of `kern-orm` before 1.0 must keep working with every published driver, so the contract of `execution/driver.ts` must not start to require a new method, parameter, or result field, or change the meaning of an existing one.
-  The package test runs the first published version of each driver with such a range with the current `kern-orm`.
-- A driver that starts to rely on a newer version of `kern-orm` must raise the minimum of its range.
-  The package test runs each driver with that version.
-- A change that cannot keep the contract requires a decision about the published drivers before the change.
+A driver follows the [contract of package compatibility](compatibility.md), and relies on the contract of `execution/driver.ts`.
 
 ## postgres.js
 

@@ -4,10 +4,13 @@
   It is an official but replaceable migrator: `kern-orm` knows nothing of migrations, and another package must be able to implement migrations, their verification, and a command line with the public API of `kern-orm` alone.
 - A need of the migrator that the public API of `kern-orm` does not cover becomes a general capability of `kern-orm`, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
   The migrator imports only types from `kern-orm`.
-- The migrator requires `kern-orm` by a caret range as a peer dependency: it calls methods of `Database`, which may change in any minor version before 1.0, so it is released with a new range for each minor version of `kern-orm`, unlike the [drivers](drivers.md#compatibility).
 - The migrator runs everything through the `Database` of its target: transactions with `transaction`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
 - The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
   The entry point `@kern-orm/migrations/cli` holds the [command line](#command-line), and `@kern-orm/migrations/testing` the [verification](#verification), which import `node:*` modules.
+
+## Compatibility
+
+The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `lock`, and `close` of `Database`, `$database` and `$schemaName` of a `Db`, and the types of their options and results that it uses, such as the `searchPath` option and the text values of `execute`.
 
 ## Migrations
 
