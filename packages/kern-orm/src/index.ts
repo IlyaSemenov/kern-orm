@@ -138,6 +138,8 @@ export type {
 } from "./query/filters"
 export { defineFilter } from "./query/filters"
 export { defineExpression } from "./query/reusable-expression"
+export type { ColumnRefKey, MatchCheck, MatchResult, NotAColumn } from "./query/matches"
+export { matches } from "./query/matches"
 export type { KeyCheck, NotAKey, PrimaryKeyValues } from "./query/find"
 export type {
   OrderColumns,

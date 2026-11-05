@@ -149,7 +149,8 @@ const forms = await db.form
 Call it wherever a callback of a query takes an expression, such as in `orderBy`, `or`, or another reusable expression.
 Pass an expression without further parameters directly, such as `db.form.where(hasFields)`.
 
-Write a condition on the columns of the table with operators, such as `form.published.eq(true)`, since only `where` takes objects of column values, such as the `where` of the fields above.
+Write conditions with column operators, such as `form.published.eq(true)`.
+To use an object of column values, call [`matches`](./filtering#combining-conditions), such as `matches(form, { published: true })`.
 
 To accept a value or a column of another query as an argument, type the parameter as both, such as `label: string | Expression<string>`.
 

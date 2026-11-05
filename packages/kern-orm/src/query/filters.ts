@@ -34,7 +34,7 @@ export type EqValue<T extends AnyTable, K extends keyof T["columns"]> =
       : EqOperand<ColumnRefs<T>[K]>
 
 /** Operand of the `eq` operator of an expression, if it has one taking a single operand and returning a predicate. */
-type EqOperand<E> = E extends { eq: (value: infer V) => Predicate } ? V : never
+export type EqOperand<E> = E extends { eq: (value: infer V) => Predicate } ? V : never
 
 /** Filter of `where`: a Boolean expression, a query of one Boolean value, such as of `exists`, an object of column values, or their combination with `and`, `or`, and `not`. */
 export type WhereCondition<T extends AnyTable> = ConditionOperand<WhereValues<T>>

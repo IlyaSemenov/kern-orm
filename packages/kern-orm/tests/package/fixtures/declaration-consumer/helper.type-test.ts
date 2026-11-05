@@ -8,6 +8,7 @@ import {
   deleteFormsWithFields,
   hasFieldId,
   insertForm,
+  isNamed,
   namesWithFields,
   renameForm,
   schema,
@@ -86,6 +87,14 @@ describe("emitted expression declarations", () => {
       }))
 
     expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ hasField: boolean }>()
+  })
+
+  test("select an expression of an object of column values", () => {
+    const query = schema.form.select(form => ({
+      isNamed: isNamed(form, "Survey"),
+    }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ isNamed: boolean }>()
   })
 })
 

@@ -48,7 +48,7 @@ export function toConditionNode(operand: unknown): ExpressionNode {
 // A value without keys reads as an empty object, which is `TRUE`, such as `where(false)` selecting every row, so only an empty plain object may lack them.
 // An instance of a class with fields is an object of column values, as types take it, since the compiler checks its keys against the columns.
 /** Tells whether `value` can be an object of column values: a plain object, of this or another realm, or an object that has keys. */
-function isColumnValues(value: unknown): boolean {
+export function isColumnValues(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false
   }

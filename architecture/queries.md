@@ -79,6 +79,12 @@ Queries come in two kinds that share the query methods and differ only by execut
 ## Filters
 
 - Objects of column values in `and`/`or`/`not` stay unresolved `values` nodes until `where` resolves them against its source; the compiler rejects an unresolved one.
+- `matches` is a Boolean expression of an object of column values over the references it receives, so it needs no `where` and refers to their columns whichever query it is used in.
+  - Each key takes the source and the key of the column reference of the same name, and `matchColumn` of `query/resolve-values.ts`, which `where` calls too, matches its value; a key without a column reference rejects at runtime, and so does a value that a condition rejects as not an object of column values, which would otherwise read as `TRUE`.
+  - Types cannot infer the table from references with relations, so they read the columns from the type of the references, as the keys whose values are expressions.
+  - They check the object by its own keys rather than by a constraint of the values of every column, which in a probe added about 30% to a further call.
+    A filter of `matches` takes about 2.3 times the instantiations of a filter of `eq` of a column ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - The result is `boolean`, with `null` when a matched column or value can be `NULL`, or a custom `eq` returns it; matching `null` is `IS NULL`, which is never `NULL`.
 - Query filters are kept as separate `relation`, `scope`, and `user` predicates combined with `AND` at compilation; `where` adds only to `user`, so a user `OR` never bypasses the relation filter ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
 - A condition rejects, also at runtime, a value that is not an object of column values, such as `false` or an array, and an object without keys that is not plain, such as a `Date` or an instance whose values are getters: without keys it would read as an empty object, which is `TRUE`, and `where(false)` would select every row.
   An instance of a class with fields stays an object of column values, as types take it, since the compiler checks its keys against the columns, and an empty plain object, of any realm, stays `TRUE`.

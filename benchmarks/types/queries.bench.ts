@@ -3,7 +3,7 @@
 
 import { bench } from "@ark/attest"
 import type { DbOf } from "kern-orm"
-import { caseWhen, coalesce, defineHelper, desc, greatest, not } from "kern-orm"
+import { caseWhen, coalesce, defineHelper, desc, greatest, matches, not } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { formsDb, formsSchema, storeDb, tenantDb } from "./fixture.ts"
@@ -27,6 +27,8 @@ const withFieldIds = defineHelper(formsSchema.form, form =>
 bench.baseline(async () => {
   await tenantDb.form.where({ name: "baseline" }).pluck("id")
   await tenantDb.field.where(field => field.label.eq("baseline")).pluck("id")
+  // Another table, since reading the references instantiates the columns of the table, which the other benchmarks count.
+  await storeDb.brand.where(brand => matches(brand, { name: "baseline" })).pluck("id")
   await tenantDb.field.pluck(field => field.label.lower())
   await formsDb.$execute(
     formsSchema.form
@@ -145,6 +147,10 @@ bench("filter of a callback", async () => {
   await tenantDb.form.where(form => form.name.eq("x")).pluck("name")
 }).types([223, "instantiations"])
 
+bench("filter of matches", async () => {
+  await tenantDb.form.where(form => matches(form, { name: "x" })).pluck("name")
+}).types([513, "instantiations"])
+
 bench("find", async () => {
   await tenantDb.form.find("x").select("name")
 }).types([271, "instantiations"])
@@ -167,7 +173,7 @@ bench("aggregate with a fallback", async () => {
 
 bench("function of a column", async () => {
   await tenantDb.form.pluck(form => coalesce(form.name, "x"))
-}).types([210, "instantiations"])
+}).types([209, "instantiations"])
 
 bench("case conversion of a column", async () => {
   await tenantDb.form.pluck(form => form.name.lower())

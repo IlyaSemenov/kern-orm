@@ -51,6 +51,18 @@ await db.form
 Pass `TRUE` in the same way for a branch of `and`.
 To add a whole clause only in some cases, use [`use`](./composing).
 
+To use an object of column values outside `where`, such as to select whether a record matches it, pass it to `matches` with the columns of the callback:
+
+```ts
+import { matches } from "kern-orm"
+
+const forms = await db.form.select(form => ({
+  id: form.id,
+  isPublishedSurvey: matches(form, { name: "Survey", published: true }),
+}))
+// forms: { id: string; isPublishedSurvey: boolean }[]
+```
+
 ## Related records
 
 To find records that have related records, such as the forms that have fields, call `exists` on the [relation](../schemas#relations) in the callback of `where`:

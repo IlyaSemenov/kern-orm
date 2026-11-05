@@ -16,17 +16,7 @@ export function resolveValues(node: ExpressionNode, source: TableSourceNode): Ex
     case "values": {
       const conditions: ExpressionNode[] = []
       for (const key of Object.keys(node.values)) {
-        const value = node.values[key]
-        const type = findColumn(source.table, key)?.type
-        const column = createNode({ kind: "column", source, key })
-        if (value === null) {
-          conditions.push(createIsNullNode(column))
-        } else if (type) {
-          conditions.push(matchValue(source, column, type, value))
-        } else {
-          // The compiler rejects a key that is not a column of the table.
-          conditions.push(compareNodes("=", column, value, undefined))
-        }
+        conditions.push(matchColumn(source, key, node.values[key]))
       }
       return combineNodes("and", conditions)
     }
@@ -48,6 +38,20 @@ export function resolveValues(node: ExpressionNode, source: TableSourceNode): Ex
     default:
       return node
   }
+}
+
+/** Creates the condition of column `key` of `source` in an object of column values: `IS NULL` of `null`, or the `eq` operator of its type for another value. */
+export function matchColumn(source: TableSourceNode, key: string, value: unknown): ExpressionNode {
+  const type = findColumn(source.table, key)?.type
+  const column = createNode({ kind: "column", source, key })
+  if (value === null) {
+    return createIsNullNode(column)
+  }
+  if (type) {
+    return matchValue(source, column, type, value)
+  }
+  // The compiler rejects a key that is not a column of the table.
+  return compareNodes("=", column, value, undefined)
 }
 
 /** Matches a column with a value of an object condition by calling the `eq` operator of its type, whichever operator it is. */

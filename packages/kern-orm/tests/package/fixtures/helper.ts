@@ -12,6 +12,7 @@ import {
   greatest,
   literal,
   many,
+  matches,
   one,
   param,
 } from "kern-orm"
@@ -113,6 +114,11 @@ export const withFieldIds = defineHelper(schema.form, form =>
 /** Expression with an argument that reads a relation; see the file header. */
 export const hasFieldId = defineExpression(schema.form, (form, id: string) =>
   form.fields.where({ id }).exists(),
+)
+
+/** Expression of an object of column values; see the file header. */
+export const isNamed = defineExpression(schema.form, (form, name: string) =>
+  matches(form, { name }),
 )
 
 /** Query that selects the records of a relation; see the file header. */

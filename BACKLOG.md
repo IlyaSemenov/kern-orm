@@ -9,12 +9,17 @@ Work not done yet, ideas, and research, roughly from the most important; the ord
 - A filter of a form called in the `where` of its fields, such as `form.fields.where(() => filter(form))`, compares `{ id }` with the column of the field, and types accept it when the tables share a column; `defineExpression` takes no such objects, so it refers to the columns it is called with.
 - A condition defined without a callback, such as `defineFilter(form, { id })`, also passes types in `where` of another table that shares a column.
 - A filter with objects of column values is not an expression, so `select`, `caseWhen`, and `defineExpression` reject it, while a filter can call an expression.
-- Decide whether to remove `defineFilter`, so that reusable conditions are written with operators, or to resolve its objects when it is called, against the source of the references it receives.
-  The call is then a Boolean expression that `select` takes, at the cost of references that expose their source and of a result of `boolean | null`, also without objects of column values, since a condition does not tell which columns its objects read.
-  Its callback can then take further arguments too, instead of a function that returns a filter, such as `(name: string) => defineFilter(...)`.
-- If removing `defineFilter` leaves a need for objects of column values in expressions, a function of the references, such as `matches(form, { published: true })`, can call `eq` of each column: it keeps the table of the references and the nullability of each comparison, and needs no source on the references.
-  It is longer than the operator of one column, and a probe took about 4.5 times the instantiations of `eq` for each further call and about 2200 more for the first.
+- Preliminary decision: remove `defineFilter`, so that reusable conditions are written as expressions of `defineExpression`, with operators or `matches`.
 - No signature of one function was found that both keeps the type of an expression and takes objects of column values in `or`, which reads its table from the contextual return type: a type parameter of the result gives none, and an overload is not retried for a nested call.
+
+## Relations in the callbacks of values
+
+The callbacks of `get`, `pluck`, the aggregate methods, and the values of `update` receive only the columns, unlike those of `select`, `where`, and `orderBy`.
+So they cannot read a relation, or call an expression of `defineExpression` defined with a query of a schema or a `Db`, even one that reads no relations, such as `form.fields.get(field => isLabeled(field, "Email"))`.
+
+- Pass them the relations of the schema context of the query, as `createSelectionRefs` does.
+- The relations add about 35 instantiations to `where` and 30 to `orderBy` of a callback, so measure each of these methods.
+- The values of `update` reject a query but take an expression of one, such as of `expr`, so decide how they take a query of `exists` that an expression returns.
 
 ## Moving from rake-db
 
