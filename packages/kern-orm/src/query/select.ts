@@ -28,8 +28,8 @@ import type { KeyCheck, PrimaryKeyValues } from "./find"
 import { toKeyValues, toPrimaryKeyValues } from "./find"
 import type { AnyQuery, QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
-import type { InitialMutationState, MutationQuery } from "./mutation"
-import { createDelete, createInsert, createUpdate } from "./mutation"
+import type { AnyMutationQuery, InitialMutationState } from "./mutation"
+import { createDelete, createInsert, createUpdate, MutationQuery } from "./mutation"
 import type { QueryNode } from "./node"
 import { createQueryNode } from "./node"
 import type { OrderKey, OrderTerms, SelectedRefs } from "./order"
@@ -1102,13 +1102,21 @@ export class SelectQuery<
 export type BoundSelectQuery<S extends SelectQueryState> = SelectQuery<S, "bound">
 
 /**
- * Returns `result`, which a callback named by `subject` returned for `query`, after checking that it is `query` or a query derived from it.
+ * Returns `result`, which a callback named by `subject` returned for `query`, a query of a table or a mutation, after checking that it is `query` or a query of the same class derived from it.
  *
  * An ancestor of `query` also passes, since only the source occurrence is compared.
  */
-export function requireDerived<R>(query: AnySelectQuery, result: R, subject: string): R {
+export function requireDerived<R>(
+  query: AnySelectQuery | AnyMutationQuery,
+  result: R,
+  subject: string,
+): R {
   // A query derived from `query` keeps its source occurrence and its `Db`.
-  if (!(result instanceof SelectQuery) || result.node.from !== query.node.from) {
+  const derived =
+    query instanceof SelectQuery
+      ? result instanceof SelectQuery && result.node.from === query.node.from
+      : result instanceof MutationQuery && result.node.target === query.node.target
+  if (!derived) {
     throw new Error(`${subject} must return the query it receives or one derived from it`)
   }
   return result

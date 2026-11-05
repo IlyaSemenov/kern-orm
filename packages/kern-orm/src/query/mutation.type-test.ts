@@ -8,6 +8,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
+import { defineHelper } from "./helper"
 import type { ResultOf } from "./select"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
@@ -266,6 +267,123 @@ describe("results", () => {
     db.post.all().delete().get("id")
     // @ts-expect-error `select` cannot follow `get`.
     db.post.insert({ title: "Hello" }).get("id").select("title")
+  })
+})
+
+describe("use", () => {
+  const values = { title: "Hello" }
+  const withTitle = defineHelper(blog.post, query => query.select("title"))
+  type Titled = { title: string }
+
+  test("selects what a helper selects, in the rows mode of the changed rows", () => {
+    expectTypeOf(db.post.insert(values).use(withTitle)).resolves.toEqualTypeOf<Titled>()
+    expectTypeOf(db.post.insertMany([values]).use(withTitle)).resolves.toEqualTypeOf<Titled[]>()
+    expectTypeOf(
+      db.post.find("post-id").update(values).use(withTitle),
+    ).resolves.toEqualTypeOf<Titled>()
+    expectTypeOf(db.post.find("post-id").optional().delete().use(withTitle)).resolves.toEqualTypeOf<
+      Titled | undefined
+    >()
+    expectTypeOf(db.post.all().delete().use(withTitle)).resolves.toEqualTypeOf<Titled[]>()
+  })
+
+  test("adds what a helper selects to the fields selected before", () => {
+    expectTypeOf(db.post.insert(values).select("id").use(withTitle)).resolves.toEqualTypeOf<{
+      id: string
+      title: string
+    }>()
+  })
+
+  test("checks the arguments of a helper", () => {
+    const withLabel = defineHelper(blog.post, (query, label: string) =>
+      query.select(() => ({
+        label: sql(t.text)`${label}`,
+      })),
+    )
+
+    expectTypeOf(db.post.insert(values).use(withLabel, "a")).resolves.toEqualTypeOf<{
+      label: string
+    }>()
+    // @ts-expect-error The helper takes a label.
+    void db.post.insert(values).use(withLabel)
+    // @ts-expect-error The label is a string.
+    void db.post.insert(values).use(withLabel, 1)
+  })
+
+  test("keeps the number of the rows with a helper that selects nothing", () => {
+    const same = defineHelper(blog.post, query => query)
+
+    expectTypeOf(db.post.insert(values).use(same)).resolves.toEqualTypeOf<number>()
+  })
+
+  test("keeps the kind of the mutation", () => {
+    expectTypeOf(blog.post.insert(values).use(withTitle).then).toBeUndefined()
+  })
+
+  test("applies a helper of a table, on a schema that adds relations to it", () => {
+    const ofTable = defineHelper(post, query => query.select("title"))
+
+    expectTypeOf(db.post.insert(values).use(ofTable)).resolves.toEqualTypeOf<Titled>()
+  })
+
+  test("selects the relations of a helper of a schema, which the mutation must have", () => {
+    const plain = defineSchema({ post, comment })
+    const withCommentIds = defineHelper(blog.post, query =>
+      query.select(columns => ({
+        commentIds: columns.comments.pluck("id"),
+      })),
+    )
+
+    expectTypeOf(db.post.insert(values).use(withCommentIds)).resolves.toEqualTypeOf<{
+      commentIds: string[]
+    }>()
+    // @ts-expect-error The schema has no relation `post.comments`.
+    void plain.post.insert(values).use(withCommentIds)
+  })
+
+  test("applies a callback, which returns a mutation, with the result of either branch", () => {
+    const returnTable = () => blog.post
+    const returnFields = Boolean(values.title)
+    const either = db.post
+      .insert(values)
+      .use(query => (returnFields ? query.select("id", "title") : query))
+
+    expectTypeOf(db.post.insert(values).use(query => query.select("id"))).resolves.toEqualTypeOf<{
+      id: string
+    }>()
+    expectTypeOf<Awaited<typeof either>>().toEqualTypeOf<number | { id: string; title: string }>()
+    // @ts-expect-error The callback returns no mutation.
+    void blog.post.insert(values).use(returnTable)
+  })
+
+  test("rejects a helper that filters or takes one row, which a mutation lacks", () => {
+    const filtered = defineHelper(blog.post, query => query.where({ title: "Hello" }))
+    const taken = defineHelper(blog.post, query => query.take())
+    const found = defineHelper(blog.post, query => query.find("post-id"))
+    const optional = defineHelper(blog.post, query => query.take().optional())
+
+    // @ts-expect-error A mutation does not filter.
+    void db.post.insert(values).use(filtered)
+    // @ts-expect-error A mutation does not take one row.
+    void db.post.insert(values).use(taken)
+    // @ts-expect-error A mutation does not filter.
+    void db.post.insert(values).use(found)
+    // @ts-expect-error A mutation does not take one row.
+    void db.post.insert(values).use(optional)
+  })
+
+  test("rejects a helper of another table", () => {
+    const ofComment = defineHelper(comment, query => query.select("postId"))
+
+    // @ts-expect-error The helper is of another table.
+    void db.post.insert(values).use(ofComment)
+  })
+
+  test("rejects a helper that selects fields after get", () => {
+    const value = db.post.insert(values).get("id")
+
+    // @ts-expect-error `select` cannot follow `get`.
+    void value.use(withTitle)
   })
 })
 

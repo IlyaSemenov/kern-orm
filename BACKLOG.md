@@ -212,6 +212,13 @@ A "Why kern-orm" section of the README and a page of the site that compare kern-
 
 Pages after the sort keys of the last row of the previous page, reading the order of a query, which its node keeps as expressions with directions; how code outside kern-orm reads the order is not designed.
 
+## Helpers of a mutation in types
+
+[`use` of a mutation](architecture/mutations.md#helpers) rejects at runtime some of what types accept, and a helper applies to a mutation only with `use`, not as a function of a query:
+
+- Types do not tell a helper of `orderBy`, `limit`, or `offset`, which a mutation lacks, from one that only selects; the state of a helper could record them.
+- Types do not tell a selection of no fields from none, which needs a new part of the state or of the marker of a helper, and each query would pay for it.
+
 ## Records of a relation at any depth
 
 Records of a relation of a table to itself at any depth through `WITH RECURSIVE`, such as the fields shown after a field directly or through others, or the ancestors of a category; nested queries of a relation reach only the depth that a query spells out.

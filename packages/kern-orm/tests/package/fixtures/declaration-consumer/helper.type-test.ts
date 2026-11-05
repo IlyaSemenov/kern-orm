@@ -8,6 +8,7 @@ import {
   deleteFormsWithFields,
   hasFieldId,
   insertForm,
+  insertFormWithFieldIds,
   isNamed,
   namesWithFields,
   renameForm,
@@ -135,6 +136,11 @@ describe("emitted declarations of queries that change rows", () => {
       Promise<{ id: string; name: string }>
     >()
     expectTypeOf(db.$execute(insertForm("Survey"))).toEqualTypeOf<Promise<string>>()
+    expectTypeOf(db.$execute(insertFormWithFieldIds("Survey"))).toEqualTypeOf<
+      Promise<{ fields: string[] }>
+    >()
+    // @ts-expect-error The schema lacks the relations of the helper.
+    void database.bind(defineSchema(schema.$tables)).$execute(insertFormWithFieldIds("Survey"))
     expectTypeOf(db.$execute(deleteFormsWithFields)).toEqualTypeOf<
       Promise<{ fields: string[] }[]>
     >()

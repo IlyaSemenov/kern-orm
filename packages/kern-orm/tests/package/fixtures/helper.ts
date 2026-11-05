@@ -112,6 +112,11 @@ export const withFieldIds = defineHelper(schema.form, form =>
   })),
 )
 
+/** Inserts a form and returns the fields that a helper selects; see the file header. */
+export function insertFormWithFieldIds(name: string) {
+  return schema.form.insert({ id: name, name }).use(withFieldIds)
+}
+
 /** Expression with an argument that reads a relation; see the file header. */
 export const hasFieldId = defineExpression(schema.form, (form, id: string) =>
   form.fields.where({ id }).exists(),

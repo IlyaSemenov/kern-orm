@@ -12,6 +12,7 @@ import type { SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable, Selectable } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
+import type { Helper, HelperEffect, HelperError, ReadsContext } from "./helper"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { MutationNode, QueryNode } from "./node"
@@ -20,6 +21,7 @@ import { mergeProjections, projectValue } from "./projections"
 import type { OneValueRows, ValueRows } from "./rows"
 import { toValueRows } from "./rows"
 import type { AnySelectQuery, OperandUses } from "./select"
+import { requireDerived } from "./select"
 import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
 import type { EmptyRecord, QueryState } from "./state"
 import { toAssignments, toInsertRows } from "./values"
@@ -72,6 +74,30 @@ type RecordMutationState = MutationQueryState &
 type OneRowMutationState = MutationQueryState & {
   readonly changed: "one" | "nullable" | "optional"
 }
+
+/** Constraint of a mutation that does not accept a helper that filters or takes one row, whose methods it lacks. */
+interface NotMutationEffect {
+  readonly returning: HelperError<"A helper of a mutation can only select fields">
+}
+
+/** Constraint of a mutation that accepts a helper of table `T` of effect `E`, whose callback reads the relations of its schema context from the mutation. */
+type HelperMutationInput<T extends AnyTable, E extends HelperEffect> = MutationQueryState & {
+  readonly table: T
+  readonly schema: ReadsContext<E>
+} & ([E["guaranteed"]] extends [true]
+    ? [E["rows"]] extends ["many"]
+      ? [E extends HelperEffect ? keyof E["fields"] : never] extends [never]
+        ? unknown
+        : RecordMutationState
+      : NotMutationEffect
+    : NotMutationEffect)
+
+/** State of a mutation of state `S` after a helper of effect `E`: the records with the fields that it selects. */
+type HelperMutationState<S extends MutationQueryState, E extends HelperEffect> = [
+  keyof E["fields"],
+] extends [never]
+  ? ChangeMutationState<S, { uses: S["uses"] | E["uses"] }>
+  : RecordsState<S, E["fields"], E["uses"]>
 
 /** Record that the returned fields of a mutation of state `S` add to: the fields selected earlier, or none. */
 type ReturnedRecord<S extends MutationQueryState> = S["returning"] extends true
@@ -238,6 +264,58 @@ export class MutationQuery<
   ): MutationQuery<OperandState<S, E, ValueRows<S["changed"]>>, Kind>
   pluck(arg: unknown): unknown {
     return this.deriveValue(arg, "pluck")
+  }
+
+  // The result is constrained to the kind of this query, so a callback cannot change the binding, and a Promise or another value is rejected.
+  // Before the overload of a helper, since TypeScript keeps the type that the first overload gives to the parameter of a callback, and a helper is no such callback, since it takes a query of a table.
+  /**
+   * Returns the mutation that `callback` builds from this mutation, such as one that selects the fields it returns.
+   *
+   * `callback` receives this mutation and `args` and returns this mutation or a mutation derived from it, which keeps the binding of this mutation.
+   */
+  use<
+    Q,
+    Kind extends SelectQueryKind,
+    // oxlint-disable-next-line typescript/no-explicit-any -- a mutation of any state of this kind
+    R extends MutationQuery<any, Kind>,
+    A extends unknown[] = [],
+  >(
+    // oxlint-disable-next-line typescript/no-explicit-any -- the kind of a mutation of any state
+    this: Q & MutationQuery<any, Kind>,
+    callback: (query: Q, ...args: A) => R,
+    ...args: A
+  ): R
+  // TypeScript infers the parameters of `Helper` from a helper by the alias, whereas a helper called with a mutation would need an overload of `Helper`, and `use` of a query of a table would infer a generic overloaded function from its last overload only.
+  /**
+   * Applies a helper of `defineHelper` that only selects fields to what the mutation returns, as `use` of a select query does.
+   *
+   * Another method of a query in the helper fails: types reject those that filter or take one row, but not `orderBy`, `limit`, and `offset`, which they do not tell from a selection.
+   * A selection of no fields fails as well on a mutation that returns the number of its rows.
+   */
+  use<
+    S extends HelperMutationInput<T, E>,
+    Kind extends SelectQueryKind,
+    T extends AnyTable,
+    E extends HelperEffect,
+    A extends unknown[],
+  >(
+    this: MutationQuery<S, Kind>,
+    helper: Helper<T, E, A>,
+    ...args: A
+  ): E extends HelperEffect ? MutationQuery<HelperMutationState<S, E>, Kind> : never
+  use(callback: (query: never, ...args: never[]) => unknown, ...args: never[]): unknown {
+    const result = requireDerived(
+      this,
+      callback(this as never, ...args) as AnyMutationQuery,
+      "The callback of use",
+    )
+    // The effect of a helper does not tell a selection of no fields from no selection, so types keep the number of the rows, whereas this selection returns empty records; a helper is a plain function here, so a callback is rejected too.
+    if (this.node.returning === undefined && result.node.returning?.length === 0) {
+      throw new Error(
+        "The callback of use must select at least one field, or not call select to return the number of the rows",
+      )
+    }
+    return result
   }
 
   /**

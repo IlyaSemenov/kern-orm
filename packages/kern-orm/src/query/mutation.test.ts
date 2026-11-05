@@ -11,6 +11,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
+import { defineHelper } from "./helper"
 import type { AnyMutationQuery } from "./mutation"
 import { defineExpression } from "./reusable-expression"
 import type { AnySelectQuery } from "./select"
@@ -36,6 +37,12 @@ const schema = defineSchema({ form, field }).$relations({
     form: one(form, { from: "formId", to: "id", required: true }),
   },
 })
+
+/** Binds the schema to a database whose driver answers every statement with `rows`, reporting `count` rows. */
+function connect(count: number, rows: string[][] = []) {
+  const { driver, statements } = createRecordingDriver({ respond: () => ({ count, rows }) })
+  return { db: createDatabase({ driver }).bind(schema, { schemaName: "app" }), statements }
+}
 
 describe("insert", () => {
   it("inserts the values of a record, returning the number of the rows", () => {
@@ -370,13 +377,93 @@ describe("returned fields", () => {
   })
 })
 
-describe("execution", () => {
-  /** Binds the schema to a database whose driver answers every statement with `rows`, reporting `count` rows. */
-  function connect(count: number, rows: string[][] = []) {
-    const { driver, statements } = createRecordingDriver({ respond: () => ({ count, rows }) })
-    return { db: createDatabase({ driver }).bind(schema, { schemaName: "app" }), statements }
-  }
+describe("use", () => {
+  const insert = schema.form.insert({ name: "Survey" })
+  const withName = defineHelper(schema.form, query => query.select("name"))
 
+  it("selects what a helper selects, as select does on each kind of a mutation", () => {
+    const updated = schema.form.find(1).update({ name: "Survey" })
+    const deleted = schema.form.where({ name: "Survey" }).delete()
+
+    expect(insert.use(withName).toSQL()).toEqual(insert.select("name").toSQL())
+    expect(updated.use(withName).toSQL()).toEqual(updated.select("name").toSQL())
+    expect(deleted.use(withName).toSQL()).toEqual(deleted.select("name").toSQL())
+    expect(deleted.use(withName).node).toMatchObject({ rows: "many", value: false })
+  })
+
+  it("adds what a helper selects to the fields selected before, passing the arguments of the helper", async () => {
+    const withTitle = defineHelper(schema.form, (query, title: string) =>
+      query.select(columns => ({
+        title: sql(t.text)`upper(${columns.name}) || ${title}`,
+      })),
+    )
+    const { db, statements } = connect(1, [["1", "SURVEY!"]])
+
+    expect(await db.form.insert({ name: "Survey" }).select("id").use(withTitle, "!")).toEqual({
+      id: 1,
+      title: "SURVEY!",
+    })
+    expect(statements[0]?.parameters).toEqual(["Survey", "!"])
+  })
+
+  it("keeps the number of the rows with a helper that selects nothing", async () => {
+    const same = defineHelper(schema.form, query => query)
+    const { db } = connect(2)
+
+    expect(await db.form.where({ name: "Survey" }).delete().use(same)).toBe(2)
+  })
+
+  it("selects the relations of the changed rows through a helper of a schema", () => {
+    const withFieldIds = defineHelper(schema.form, query =>
+      query.select(columns => ({
+        fieldIds: columns.fields.pluck("id"),
+      })),
+    )
+
+    expect(insert.use(withFieldIds).toSQL().text).toContain("RETURNING (SELECT")
+  })
+
+  it("applies a callback, which returns the mutation it receives or one derived from it", async () => {
+    const { db } = connect(1, [["1"]])
+    const inserted = db.form.insert({ name: "Survey" })
+
+    expect(inserted.use(query => query)).toBe(inserted)
+    expect(await inserted.use(query => query.get("id"))).toBe(1)
+  })
+
+  it("rejects a callback that returns another mutation or a query of a table", () => {
+    const returnTable = () => schema.form
+
+    expect(() => insert.use(() => schema.form.insert({ name: "Other" }))).toThrow(
+      "The callback of use must return the query it receives",
+    )
+    // @ts-expect-error The callback returns no mutation.
+    expect(() => insert.use(returnTable)).toThrow(
+      "The callback of use must return the query it receives",
+    )
+  })
+
+  it("fails with the methods of a query that a mutation lacks, also those that types do not reject", () => {
+    const filtered = defineHelper(schema.form, query => query.where({ id: 1 }))
+    const sorted = defineHelper(schema.form, query => query.orderBy("name"))
+
+    // @ts-expect-error A mutation does not filter.
+    expect(() => insert.use(filtered)).toThrow()
+    expect(() => insert.use(sorted)).toThrow()
+  })
+
+  it("rejects a selection of no fields on a mutation of the number of its rows, whose types keep the number", async () => {
+    const empty = defineHelper(schema.form, query => query.select(() => ({})))
+    const message = "The callback of use must select at least one field"
+    const { db } = connect(1, [["1"]])
+
+    expect(() => insert.use(empty)).toThrow(message)
+    expect(() => insert.use(query => query.select(() => ({})))).toThrow(message)
+    expect(await db.form.insert({ name: "Survey" }).select("id").use(empty)).toEqual({ id: 1 })
+  })
+})
+
+describe("execution", () => {
   it("resolves to the number of the changed rows, rejecting without the row of find unless it is optional", async () => {
     const { db, statements } = connect(0)
 

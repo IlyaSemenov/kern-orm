@@ -1,7 +1,7 @@
 # Mutations
 
 - **Mutation** (`query/mutation.ts`): immutable insert, update, or delete of a table, which `insert`, `insertMany`, `update`, and `delete` of a select query start, as a `MutationQuery` over the semantic mutation node (`MutationNode` of `query/node.ts`).
-  It is a class apart from `SelectQuery`, like `RecordQuery`, with the members that differ by kind, `toSQL`, and the methods that return the fields of the changed rows, `select`, `get`, and `pluck`, since the methods of a select query do not apply to it.
+  It is a class apart from `SelectQuery`, like `RecordQuery`, with the members that differ by kind, `toSQL`, the methods that return the fields of the changed rows, `select`, `get`, and `pluck`, and `use`, since the methods of a select query do not apply to it.
   It is covariant in its state and its kind, like `SelectQuery`, and of the same two kinds: an unbound mutation starts from a schema and executes with `$execute`, and a bound one starts from a `Db` and executes when awaited.
 - **Values** (`query/values.ts`): the records of an insert and the values of an update, their types, and their nodes.
 - Lowering and the compiler turn a mutation into an `INSERT`, `UPDATE`, or `DELETE` statement of the SQL AST, as [SQL generation](sql.md) describes.
@@ -65,6 +65,16 @@
 - A mutation checks its rows and decodes its result after the statement, so its rejection there, such as with `NotFoundError` of a nested `find`, with several rows of a mutation of one row, or with a value that fails to decode, comes after the change and does not undo it.
   Undoing the change with the error requires a transaction around the mutation; kern-orm adds no transaction or savepoint of its own, which would cost two roundtrips for each mutation.
 - A selection rejects a mutation as a field, in types and at runtime: PostgreSQL takes a data-modifying statement only in `WITH`.
+
+## Helpers
+
+- `use` takes a callback or a helper of [`defineHelper`](queries.md#helpers), so that one helper that selects fields serves a query of a table and a mutation alike; the callback returns the mutation it receives or one derived from it, in types and at runtime, as `use` of a query does.
+  - The callback of a helper receives the mutation at runtime, typed as a query of a table, so it may call only what both have: `select`, with the columns and the relations of the changed rows.
+  - The effect of the helper tells whether it filters or takes one row, which types reject on a mutation, so that the error names what it can do; it does not tell `orderBy`, `limit`, and `offset`, which fail at runtime as a method the mutation lacks, as a helper of pagination fails on a query of one row.
+  - The effect does not tell a selection of no fields from no selection, so types keep the number of the rows, whereas that selection returns empty records; a selection that `use` adds to a mutation of the number of its rows must therefore have at least one field, also in a callback, which `use` does not tell from a helper, and `use` rejects it before the mutation runs.
+  - The effect gives a mutation of the fields it selects, in the rows mode of the changed rows; a helper that selects none leaves the number of the rows.
+  - A mutation applies a helper only with `use`, not as a function of a query: an overload of `Helper` for a mutation would make `use` of a query infer from its last overload only, whereas `use` of a mutation infers the parameters of `Helper` by its alias.
+  - A callback of `use` comes first among the overloads, since TypeScript keeps the type that the first overload gives to the parameter of a callback.
 
 ## Statements
 

@@ -108,6 +108,9 @@ bench.baseline(async () => {
       })),
   )
   await tenantDb.field.select("id").use(withLabel)
+  await tenantDb.field
+    .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
+    .use(withLabel)
   await tenantDb.form.select("published").use(withPositions)
   await tenantDb.$select({
     ids: tenantDb.form.pluck("id"),
@@ -275,6 +278,10 @@ bench("helper", async () => {
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
 }).types([1156, "instantiations"])
+
+bench("insert with a helper", async () => {
+  await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
+}).types([1175, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(

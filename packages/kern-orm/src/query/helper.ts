@@ -61,7 +61,7 @@ type ReadEffect<S extends SelectQueryState> = S extends SelectQueryState
   : never
 
 /** Error of a helper that a query does not accept, or whose callback returns a query it does not accept. */
-interface HelperError<Message extends string> {
+export interface HelperError<Message extends string> {
   readonly error: Message
 }
 
@@ -99,7 +99,7 @@ interface RecordRows<Message extends string> {
 // The callback reads the relations of the query it is applied to by name, so the query must be of the table of the helper under the same key and have them.
 // Relations of other schemas, such as of an independent query that the helper nests, stay in `uses` for the `Db`.
 /** Schema context of a query that has the relations of its schema that a helper of effect `E` may read. */
-type ReadsContext<E extends HelperEffect> = [E["reads"]] extends [never]
+export type ReadsContext<E extends HelperEffect> = [E["reads"]] extends [never]
   ? SchemaContext
   : SchemaContext<
       {
@@ -141,6 +141,7 @@ type EffectRows<S extends SelectQueryState, E extends HelperEffect> = E["guarant
  * Helper of `defineHelper` for queries over table `T`: it applies effect `E` to the query it receives with arguments `A` and returns a query of the same kind.
  *
  * Selected fields replace earlier fields under the same keys; a query made by `get`, `pluck`, or an aggregate method does not accept a helper that selects fields.
+ * `use` of a mutation also applies a helper that only selects fields.
  */
 export type Helper<T extends AnyTable, E extends HelperEffect, A extends unknown[]> = <
   S extends HelperInput<T, E>,
@@ -156,6 +157,7 @@ export type Helper<T extends AnyTable, E extends HelperEffect, A extends unknown
  * `helper` receives the query it is applied to and any further arguments, and returns the query with its clauses.
  * Defined with a query of a schema, such as `schema.form`, it can select the relations of the table in that schema, and applies to queries whose schema has them.
  * The helper returns a query of the same kind as the one it is applied to, bound to the same `Db` if any.
+ * A helper that only selects fields also applies to an insert, an update, and a delete with their `use`, where it selects what they return; other methods fail there.
  */
 export function defineHelper<
   T extends AnyTable,

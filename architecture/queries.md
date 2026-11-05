@@ -278,6 +278,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     The marker prevents a branch selecting extra keys from being reduced to one selecting fewer fields or none, preserving possible overwrites of input fields.
   - The public type of a helper holds the selected fields without the marker, so that the declarations of a module exporting a helper never name it.
   - Every branch of a helper must retain the marker and remain a record query; `clearSelect`, `get`, `pluck`, the aggregate methods, and `exists` are rejected because its effect cannot describe the discarded input fields.
+  - A helper that only selects fields also applies to a [mutation](mutations.md#helpers), with its `use`.
   - A helper adds or replaces fields by the same merge as `select`, for every branch of its effect; a query of values rejects a helper that selects fields or ends with a call of `nullable` in any branch.
   - A helper checks that its callback returns the input query or one derived from it, also when called directly.
     The returned query keeps the kind and the `Db` of the input query.

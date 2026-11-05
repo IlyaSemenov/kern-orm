@@ -122,6 +122,8 @@ const names = await db.form.where({ published: false }).delete().pluck("name")
 
 `update` returns the values of the records after the update, and `delete` the values of the deleted records.
 
+To return the same fields from a query and a mutation, define them in a [helper](./composing#helpers).
+
 `insertMany` may return the records in a different order from the one you pass them in, since PostgreSQL does not guarantee the order.
 To tell which returned record is which, select a column whose values you pass, such as `position`:
 
