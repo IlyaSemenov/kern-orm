@@ -250,6 +250,7 @@ type NodeChanges = { -readonly [K in keyof QueryNode]?: QueryNode[K] }
  * An unbound query is not thenable, so it can be returned from async functions; it is compiled with `toSQL` or executed by a `Db`.
  * A bound query executes on its `Db` when awaited.
  */
+// The classes of queries repeat these members rather than share a base class, which would add to the instantiations of nearly every query and to the time of deriving it.
 // Methods take the query they are called on from `this` rather than from the parameters of the class, so that the parameters reach only members that keep the query covariant in them, as `out` declares and TypeScript checks.
 // So a query of a narrower state or kind is a query of a wider one, and comparing two queries of different states compares their states rather than their methods.
 // - The methods that keep the state in types, such as `orderBy`, `where` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query as `Q`, so that they also apply to a union of queries.

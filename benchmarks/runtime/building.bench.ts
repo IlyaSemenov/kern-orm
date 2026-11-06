@@ -1,4 +1,4 @@
-// Time of building a query of many values, each of which becomes a parameter, an expression, or a query of one value, apart from compiling it, which `preparation.bench.ts` measures.
+// Time of building a query, apart from compiling it, which `preparation.bench.ts` measures: of many values, each of which becomes a parameter, an expression, or a query of one value, and of a chain of clauses, each of which derives a query.
 // Each scenario builds its query on every call from values prepared once: strings, `Date` objects, and records of several types.
 
 import { createEvent, createFixture, createUuid } from "./fixture.ts"
@@ -8,6 +8,16 @@ const building: Topic = build => {
   const { db } = createFixture(build)
 
   return {
+    "1000 chains of 5 clauses": () => {
+      const id = createUuid(0)
+      return () => {
+        let query: unknown
+        for (let index = 0; index < 1000; index++) {
+          query = db.form.where({ id }).select("id").select("name").orderBy("id").limit(1)
+        }
+        return query
+      }
+    },
     "in of 1000 strings": () => {
       const ids: string[] = []
       for (let index = 0; index < 1000; index++) {
