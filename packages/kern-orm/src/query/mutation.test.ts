@@ -80,6 +80,7 @@ describe("insert", () => {
       schema.form.orderBy("id"),
       schema.form.limit(1),
       schema.form.distinct(),
+      schema.form.forUpdate(),
       schema.form.take(),
       schema.form.all(),
     ] as AnySelectQuery[]) {
@@ -286,6 +287,9 @@ describe("update and delete", () => {
           `${method} cannot sort or limit the rows it changes; choose them with where, find, or findBy instead of take, limit, offset, orderBy, or distinct`,
         )
       }
+      expect(() => mutate(schema.form.find(1).forUpdate())).toThrow(
+        `${method} locks the rows it changes itself, so its query takes no row lock`,
+      )
       expect(() => mutate(schema.form.find(1).select("id"))).toThrow(
         `${method} returns the fields selected after it, not before; call select, get, or pluck after ${method}`,
       )

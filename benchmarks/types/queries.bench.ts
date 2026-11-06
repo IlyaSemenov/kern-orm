@@ -206,6 +206,10 @@ bench("findBy", async () => {
   await tenantDb.form.findBy({ id: "x" }).select("name")
 }).types([298, "instantiations"])
 
+bench("forUpdate", async () => {
+  await tenantDb.form.find("x").select("name").forUpdate()
+}).types([309, "instantiations"])
+
 bench("count", async () => {
   await tenantDb.form.where({ name: "x" }).count()
 }).types([141, "instantiations"])
@@ -330,7 +334,7 @@ bench("relation many of map", async () => {
 
 bench("helper of map", async () => {
   await tenantDb.form.use(withMappedName)
-}).types([780, "instantiations"])
+}).types([804, "instantiations"])
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
@@ -345,11 +349,11 @@ bench("transform of the number of the rows", async () => {
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1078, "instantiations"])
+}).types([1090, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1183, "instantiations"])
+}).types([1195, "instantiations"])
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)

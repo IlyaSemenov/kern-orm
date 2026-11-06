@@ -53,7 +53,7 @@ const forms = await db.form.select("id", "name").use(search, "%survey%")
 
 A helper is also a function of a query: `search(db.form, "%survey%")` is the same as `db.form.use(search, "%survey%")`.
 
-A helper can also return one row with `take`, optionally followed by `optional`, `nullable`, or `required`, [sort and paginate](./sorting) the rows, and [remove their duplicates](./selecting#distinct-rows).
+A helper can also return one row with `take`, optionally followed by `optional`, `nullable`, or `required`, [sort and paginate](./sorting) the rows, [remove their duplicates](./selecting#distinct-rows), and [lock them](../transactions#locking-rows).
 Apply a helper that calls `limit`, `offset`, or `distinct` before `take` and `get`, and one that calls `limit` or `offset` also before aggregates, such as `count`, and `exists`.
 To discard the entire selection, return values, an aggregate, or whether rows exist instead of records, or convert the whole result, call `clearSelect`, `get`, `pluck`, the aggregate, `exists`, or `transform` on the query rather than in a helper.
 

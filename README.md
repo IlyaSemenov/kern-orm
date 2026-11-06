@@ -97,4 +97,4 @@ bun run docs:dev
 ```
 
 Set `DATABASE_URL` to an empty database to run tests against PostgreSQL, such as in `.env.test.local` copied from [`.env.test.local.example`](.env.test.local.example); without it, those tests are skipped.
-The tests roll back their changes.
+The tests leave the database unchanged.

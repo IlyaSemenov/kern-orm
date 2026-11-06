@@ -95,6 +95,30 @@ describe("packRows", () => {
     )
   })
 
+  it("reads the rows of a query with a row lock from its derived source, which PostgreSQL does not merge, so that it needs no barrier, and leaves the aggregate without the lock", () => {
+    const columns = createColumnRefs<typeof field>(allFields.node.from)
+    const upper = sql(t.text)`upper(${columns.label})`
+    const labels = lower(allFields.pluck(() => upper).forShare())
+
+    expect(compileStatement(packRows(labels)).text).toBe(
+      `SELECT coalesce(json_agg(json_build_array(CASE WHEN "subquery"."value" IS NOT DISTINCT FROM NULL THEN NULL ELSE format('%s', "subquery"."value") END)), '[]'::json) AS "rows" FROM (SELECT upper("form_field"."label") AS "value" FROM "form_field" AS "form_field" FOR SHARE) AS "subquery"`,
+    )
+  })
+
+  it("sorts the derived source of a query with a row lock, which takes its rows in that order, also of one row, apart from the order of the aggregate", () => {
+    const sorted = (query: typeof allFields) =>
+      compileStatement(packRows(lower(query.select("label").orderBy("label").forUpdate()))).text
+
+    expect(sorted(allFields)).toContain(
+      'ORDER BY "subquery"."label"), \'[]\'::json) AS "rows" FROM (SELECT "form_field"."label" AS "label" FROM "form_field" AS "form_field" ORDER BY 1 FOR UPDATE) AS "subquery"',
+    )
+    expect(
+      compileStatement(
+        packRows(lower(allFields.select("label").orderBy("label").take().forUpdate())),
+      ).text,
+    ).toContain('ORDER BY 1 LIMIT 1 FOR UPDATE) AS "subquery"')
+  })
+
   it("packs a query of distinct in its order, paginating it in the derived source by its sort keys, which are its projections", () => {
     const labels = lower(allFields.pluck("label").distinct().orderBy("label").limit(2))
 

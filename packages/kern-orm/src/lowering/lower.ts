@@ -238,9 +238,11 @@ function lowerSelectStatement(
       : undefined
   // PostgreSQL evaluates the select list also for the rows that an offset skips, so the nested queries of a page after an offset read its rows from a derived source.
   // A query of `distinct` compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway.
+  // A query with a row lock stays on its table too, since PostgreSQL evaluates the select list below the lock there, whereas a derived page would lock its rows before the nested queries that read them lock theirs.
   const page =
     node.offset !== undefined &&
     !node.distinct &&
+    node.lock === undefined &&
     selected.some((field, index) => isPagedField(field, projections[index]!, orderBy))
       ? lowerPage(
           node,
@@ -266,6 +268,7 @@ function lowerSelectStatement(
     limit: node.limit,
     offset: node.offset,
     distinct: node.distinct,
+    lock: node.lock,
     rows: node.rows,
     value: node.value,
     guaranteedBy,

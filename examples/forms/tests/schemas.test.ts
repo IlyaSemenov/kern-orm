@@ -5,6 +5,7 @@ import { createDatabase, defineSchema, many } from "kern-orm"
 import { provide, withOverrides } from "ripple-di"
 
 import {
+  appendField,
   createFormCard,
   getField,
   getFieldCountsById,
@@ -20,6 +21,7 @@ import {
   listFormSummaries,
   listSubmissions,
   listSubmittedFormNames,
+  lockFieldWithForm,
   publishedForms,
   publishWithFieldLabel,
   selectForm,
@@ -27,7 +29,7 @@ import {
 } from "../src/queries"
 import { formsSchema, saasSchema, tenantSchema } from "../src/schemas"
 import { answer, field, form, user } from "../src/tables"
-import { describePostgres } from "../testing/postgres"
+import { describePostgres, getSampleId } from "../testing/postgres"
 
 const unusedDriver: Driver = {
   execute: () => Promise.reject(new Error("unused")),
@@ -341,6 +343,27 @@ describePostgres("in PostgreSQL", ({ testTransaction, tenantDb, saasDb, inTenant
 
     // Without the unpublished `Archive`, which has no submissions, and with `Survey` once, which has two.
     expect(names).toStrictEqual(["Feedback", "Survey"])
+  })
+
+  it("lock a form to add a field at its end through the Db of a tenant and of the SaaS", async () => {
+    const positions = await testTransaction(async () => ({
+      tenant: await inTenant("tenant_1", () =>
+        appendField(tenantDb, getSampleId("form:survey"), "Nickname"),
+      ),
+      saas: await appendField(saasDb, getSampleId("form:contact"), "Fax"),
+    }))
+
+    expect(positions).toStrictEqual({ tenant: 5, saas: 4 })
+  })
+
+  it("lock a field with its form, nested in the query of the field, in a transaction that the query joins", async () => {
+    const locked = await testTransaction(() =>
+      inTenant("tenant_1", () =>
+        tenantDb.$transaction(() => lockFieldWithForm(tenantDb, getSampleId("field:survey:name"))),
+      ),
+    )
+
+    expect(locked).toStrictEqual({ label: "Name", published: true })
   })
 
   it("read a relation and call a shared expression in the callbacks of values through the Db of a tenant and of the SaaS", async () => {

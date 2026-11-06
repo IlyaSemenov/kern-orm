@@ -20,17 +20,6 @@ A migration whose `down` cannot restore the structure, such as one that adds a v
 - Preliminary decision: an option of `verifyMigrations` lists the keys of such migrations, which it applies without running their `down`, running `setup`, `up`, and `assertUp` of their migration tests.
 - Decide what `rollback` and `redo` do with such a migration, such as reject before they change anything.
 
-## Row locks
-
-Locking the rows that a query reads, as `SELECT ... FOR UPDATE`, `FOR NO KEY UPDATE`, `FOR SHARE`, or `FOR KEY SHARE`, with `NOWAIT` or `SKIP LOCKED`, such as for a queue of jobs.
-
-- PostgreSQL rejects a locking clause in a query of aggregates, `DISTINCT`, or `GROUP BY`, so reject it in a query of an aggregate method or of `distinct`.
-- The clause locks the rows of the tables in `FROM` of its query, including those of a derived source, but not the related records of nested queries in the select list; decide whether lowering keeps the clause when it packs the query into a derived source, such as a page after an offset.
-- A nested query and a query of an expression lock their own rows, such as a query of one value in the values of an insert that locks the record that the inserted one belongs to.
-  Lowering puts the clause of packed nested rows into the derived source that reads their rows, since PostgreSQL rejects it beside their aggregate.
-- Orchid ORM 1.78.47 takes the tables to lock, as `FOR UPDATE OF` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#forupdate)); kern-orm selects related records in subqueries of the select list, which the clause of the query does not lock, so decide whether a query needs to name its tables.
-- Outside a transaction the lock ends with its statement, so decide whether a locking query rejects outside one.
-
 ## Through and many-to-many relations
 
 Relations through other relations, such as the answers of a form through its fields, and many-to-many relations through a join table, which queries select and filter by as other relations, as `chain` of Orchid ORM 1.78.47 queries the related records of related records ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/relation-queries.md#chain)).
@@ -207,6 +196,7 @@ A "Why kern-orm" section of the README and a page of the site that compare kern-
 - Tables and queries reused across PostgreSQL schemas.
 - Tests in transactions that roll back.
 - Conventions of column names ([orchid-orm#197](https://github.com/romeerez/orchid-orm/issues/197)).
+- Row locks of a query that selects related records, and of the related records themselves ([row locks](architecture/queries.md#row-locks)).
 
 ## Keyset pagination
 
@@ -237,6 +227,7 @@ Records of a relation of a table to itself at any depth through `WITH RECURSIVE`
 
 `UNION ALL` of queries, `WITH` queries, and queries of a derived source of another query, such as the nearest administrators of a record among those of its ancestors.
 [Records of a relation at any depth](#records-of-a-relation-at-any-depth) need `WITH RECURSIVE` too.
+A query of `WITH` that locks the rows that the rest of a statement changes, such as `WITH locked AS (SELECT ... FOR UPDATE) UPDATE ...`, is written as SQL text with the query interpolated until then.
 
 ## Joins
 
@@ -245,6 +236,7 @@ Queries with joined tables:
 - Decide which sources the column values of `where` resolve against, whether they can address joined tables, and how a callback receives the columns of joined tables.
 - `SelectQuery` is typed by a single table and will need the shape of all query sources.
 - A column of a source joined with `LEFT JOIN` is `NULL` without a match whatever its type, so its result type needs the nullability of the join.
+- A [row lock](architecture/queries.md#row-locks) of a query with joins applies to all its sources, and PostgreSQL rejects it for the nullable side of an outer join, so it will need the sources to lock, as `FOR UPDATE OF`.
 - Sorting by a field of a related record, such as fields by the name of their form, is a [scalar subquery](architecture/queries.md#sorting-and-pagination) of the relation in `orderBy`; benchmark a join against it, such as with an index of the order.
 
 ## Values before an update

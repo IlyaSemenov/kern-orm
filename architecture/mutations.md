@@ -8,10 +8,11 @@
 
 ## Rows to change
 
-- `insert` and `insertMany` apply only to a query of a table without clauses: no relation, filters, selected fields, order, limit, offset, `distinct`, rows other than `many`, or `all`.
+- `insert` and `insertMany` apply only to a query of a table without clauses: no relation, filters, selected fields, order, limit, offset, `distinct`, row lock, rows other than `many`, or `all`.
   `insert` changes rows `one` and `insertMany` rows `many`.
 - `update` and `delete` change the rows that the filters of the query choose, in the rows mode of the query, such as `one` of `find` or `optional` after `optional`.
   They reject a query of a relation, a query with selected fields, which a mutation selects after it, and a query with an order, a limit, an offset, or `distinct`: PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters.
+  They also reject a query with a [row lock](queries.md#row-locks), since they lock the rows they change themselves.
   `find` and `findBy` add no limit, since the values of a key match at most one row, so a mutation of their query changes its row, and tells it from a query of `take`; a value that depends on the row, such as ``find(sql`id`)``, may match several, which the mutation changes before it rejects them.
 - `update` and `delete` require an effective restriction or `all`: they reject a query whose filters combine into `TRUE`, such as of `where({})`, unless `all` allows it ([orchid-orm#847](https://github.com/romeerez/orchid-orm/issues/847), [#854](https://github.com/romeerez/orchid-orm/issues/854)).
   - A filter that matches no row, such as `in([])`, which is `FALSE`, restricts the rows, and so does a SQL fragment, whose text kern-orm does not read.
@@ -35,7 +36,7 @@
   - `insertMany` rejects an array without records, which has no statement to compile.
 - `update` takes the values of its columns or a callback that receives the columns and the relations of the changed rows and returns them, and rejects values without a column to set, which have no statement to compile.
   - A query of a relation among the values of the callback is correlated with the changed row.
-    It reads the snapshot of the statement, so a relation of the table of the update reads the rows as they were before it, under an alias of its own.
+    It reads the snapshot of the statement, apart from a row that its [row lock](queries.md#row-locks) waited for, so a relation of the table of the update reads the rows as they were before it, under an alias of its own.
   - The queries among the values of the callback add their relations to the state of the mutation, as the nested queries of a selection do, so types reject them where the `Db` lacks them; an expression, such as of `expr` or `coalesce`, does not carry them, and only lowering rejects them, at any depth of the statement ([queries of a Db](queries.md#queries-of-a-db)).
     The values of a callback annotated with `UpdateValues` may hold a query of any relation, as a `Selection` may, so types reject them on a `Db` of known relations.
   - `update` has an overload that infers the type of a callback for the relations of its values, and then one of a value of `UpdateSet`, which takes an object or a callback, so that a call that matches no overload reports the error of its own form and a value of `UpdateSet` applies, whose relations stay out of the state.
@@ -60,8 +61,9 @@
   Django relies on it: `bulk_create` pairs the returned rows with its objects by position ([`django/db/models/query.py`](https://github.com/django/django/blob/main/django/db/models/query.py)).
 - The fields of `RETURNING` may nest the rows of queries, such as of the relations of the changed rows, which lowering packs as scalar subqueries of `RETURNING`, as in a select list, so the mutation and the reads of its nested rows are one statement, atomic without a transaction or a savepoint of their own.
   Orchid ORM loads the relations that a mutation selects with a second query; for a mutation whose failure is caught, it left the savepoint across both open, and kept the changes of the mutation when an after hook between them threw ([orchid-orm#824](https://github.com/romeerez/orchid-orm/pull/824)).
-  - The nested queries read the snapshot of the statement, as all parts of a statement do ([PostgreSQL](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-MODIFYING)): the database before the mutation, apart from the columns of the changed row, which are its values after an insert or an update.
+  - The nested queries read the snapshot of the statement ([PostgreSQL](https://www.postgresql.org/docs/current/queries-with.html#QUERIES-WITH-MODIFYING)): the database before the mutation, apart from the columns of the changed row, which are its values after an insert or an update.
     So a nested query of the table of the mutation, such as of the form of a changed field after an update of forms, reads its records before the change.
+    A nested query with a [row lock](queries.md#row-locks) reads a row that it waited for as it is after the wait.
 - A mutation checks its rows and decodes its result after the statement, so its rejection there, such as with `NotFoundError` of a nested `find`, with several rows of a mutation of one row, or with a value that fails to decode, comes after the change and does not undo it.
   Undoing the change with the error requires a transaction around the mutation; kern-orm adds no transaction or savepoint of its own, which would cost two roundtrips for each mutation.
 - A selection rejects a mutation as a field, in types and at runtime: PostgreSQL takes a data-modifying statement only in `WITH`.
@@ -75,7 +77,7 @@
 
 - `use` takes a callback or a helper of [`defineHelper`](queries.md#helpers), so that one helper that selects fields and maps them serves a query of a table and a mutation alike; the callback returns the mutation it receives or one derived from it, in types and at runtime, as `use` of a query does.
   - The callback of a helper receives the mutation at runtime, typed as a query of a table, so it may call only what both have: `select` and `map`, with the columns and the relations of the changed rows.
-  - The effect of the helper tells whether it filters or takes one row, which types reject on a mutation, so that the error names what it can do; it does not tell `orderBy`, `limit`, `offset`, and `distinct`, which fail at runtime as a method the mutation lacks, as a helper of pagination fails on a query of one row.
+  - The effect of the helper tells whether it filters or takes one row, which types reject on a mutation, so that the error names what it can do; it does not tell `orderBy`, `limit`, `offset`, `distinct`, and the row locks, which fail at runtime as a method the mutation lacks, as a helper of pagination fails on a query of one row.
   - Types also accept `map` without `select` in a helper, which rejects at runtime on a mutation without earlier fields, since the state does not keep the fields before `map`.
   - The effect does not tell a selection of no fields from no selection, so types keep the number of the rows, whereas that selection returns empty records; a selection that `use` adds to a mutation of the number of its rows must therefore have at least one field, also in a callback, which `use` does not tell from a helper, and `use` rejects it before the mutation runs.
   - The effect gives a mutation of the fields it selects or of what `map` gives, in the rows mode of the changed rows; a helper that does neither leaves the number of the rows.

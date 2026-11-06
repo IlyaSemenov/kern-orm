@@ -23,7 +23,7 @@ const zeroNode = /* @__PURE__ */ createNode<RawSqlNode>({
   values: [],
 })
 
-// A scalar subquery in the select list rather than a LATERAL join: PostgreSQL evaluates it after the sort of the parent and only for its rows up to the limit, while it evaluates a LATERAL join for every row before them.
+// A scalar subquery in the select list rather than a LATERAL join: with a limit, PostgreSQL evaluates it after the sort of the parent and stops once it has the rows of the limit, while it evaluates a LATERAL join for every row before them.
 /**
  * Creates the projection of the rows of `query` packed as JSON under `key`, selected as a scalar subquery and decoded by the result plan of `query`.
  *
@@ -45,10 +45,11 @@ export function packRows(query: SelectNode): SelectNode {
   const { projections } = query
   const many = query.rows === "many"
   // Packing and ordering read the values of `query` through a derived source, whose expressions are evaluated once per row unless PostgreSQL merges it into the created query.
-  // PostgreSQL merges no derived source with `DISTINCT`, a limit, an offset, or a volatile function in its select list.
+  // PostgreSQL merges no derived source with `DISTINCT`, a row lock, a limit, an offset, or a volatile function in its select list.
   // Packing refers to each scalar twice, so `OFFSET 0` keeps it from merging a source that selects scalars other than table columns, which it would evaluate twice.
   const separate =
     !query.distinct &&
+    query.lock === undefined &&
     query.limit === undefined &&
     query.offset === undefined &&
     projections.some(

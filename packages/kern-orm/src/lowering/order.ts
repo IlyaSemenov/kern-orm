@@ -66,7 +66,8 @@ export interface OrderedSource {
  * Creates the derived source of the rows of `query`, and, when `ordered`, the order of the query over the projections of the source, in which its reader takes the rows, such as an aggregate.
  *
  * The order of a derived source does not carry into the query that reads it, so the reader sorts by sort keys: the projections that have the values of the sort expressions, as for an executed query, or projections of the sort expressions added to the source.
- * With a limit or an offset, the source sorts by the positions of the sort keys, so that the rows it chooses, their values, and their order in the reader come from one evaluation; without them, it has no order.
+ * With a limit or an offset, the source sorts by the positions of the sort keys, so that the rows it chooses, their values, and their order in the reader come from one evaluation; so it does with a row lock, which takes the rows in the order of its query.
+ * Without them, it has no order.
  * `offset` replaces the offset of `query` in the source, such as `OFFSET 0` that keeps PostgreSQL from merging it, and the source replaces the occurrence of a table `replaces` for its reader.
  */
 export function deriveOrderedSource(
@@ -77,24 +78,24 @@ export function deriveOrderedSource(
 ): OrderedSource {
   const { orderBy } = query
   const projections = query.projections.slice()
-  const paginated = query.limit !== undefined || query.offset !== undefined
+  const sorted = query.limit !== undefined || query.offset !== undefined || query.lock !== undefined
   const sortKeys: SortKey[] = []
   const positions: OrderNode[] = []
-  if (orderBy.length > 0 && (ordered || paginated)) {
+  if (orderBy.length > 0 && (ordered || sorted)) {
     for (let index = 0; index < orderBy.length; index++) {
       const { expression, direction, nulls } = orderBy[index]!
       const position = projectSortKey(projections, expression, index)
       if (ordered) {
         sortKeys.push({ key: projections[position]!.key, direction, nulls })
       }
-      if (paginated) {
+      if (sorted) {
         positions.push(
           Object.freeze({ expression: createPositionNode(position), direction, nulls }),
         )
       }
     }
   }
-  // The order only chooses the rows of a limit or an offset there.
+  // The order only chooses the rows of a limit or an offset, or the order of a row lock, there.
   const derivedQuery = Object.freeze({ ...query, projections, orderBy: positions, offset })
   const source: DerivedSourceNode = Object.freeze(
     replaces === undefined

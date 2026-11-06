@@ -141,6 +141,13 @@ describe("defineHelper", () => {
     expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ name: string }[]>()
   })
 
+  test("locks the rows of the query", () => {
+    const locked = defineHelper(schema.form, form => form.select("name").forUpdate())
+
+    const forms = db.form.select("id").use(locked)
+    expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ id: string; name: string }[]>()
+  })
+
   test("applies a helper that adds fields to a query of any result", () => {
     /** State of a query over forms of any result. */
     interface AnyResultState extends InitialQueryState<typeof form> {

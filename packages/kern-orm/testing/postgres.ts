@@ -16,6 +16,28 @@ export interface PostgresTestContext extends TestHelpers {
   readonly database: Database
 }
 
+/** Database of a `describePooledPostgres` block. */
+export interface PooledPostgresContext {
+  /** Database created without `test: true`, closed after the block. */
+  readonly database: Database
+}
+
+/**
+ * Declares a `describe` block of tests that run in PostgreSQL on a database created without `test: true`, such as tests of what concurrent transactions see, skipped when `DATABASE_URL` is not set.
+ *
+ * A test drops what its transactions commit.
+ */
+export function describePooledPostgres(
+  name: string,
+  body: (context: PooledPostgresContext) => void,
+): void {
+  describe.skipIf(!DATABASE_URL)(name, () => {
+    const database = createDatabase({ driver: postgresJsDriver(postgres(DATABASE_URL!)) })
+    afterAll(() => database.close())
+    body({ database })
+  })
+}
+
 /**
  * Declares a `describe` block of tests that run in PostgreSQL, skipped when `DATABASE_URL` is not set.
  *

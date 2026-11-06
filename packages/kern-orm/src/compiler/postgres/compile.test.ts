@@ -646,6 +646,7 @@ describe("derived sources", () => {
       value: false,
       counted: undefined,
       named: false,
+      locksRows: false,
     })
   })
 
@@ -843,6 +844,62 @@ describe("ordering and pagination", () => {
   })
 })
 
+describe("row locks", () => {
+  const posts = from(post)
+
+  it("writes the lock after the limit and the offset, with what the statement does with a locked row", () => {
+    const page = {
+      ...lower(posts.select("id")),
+      limit: createParameter(1),
+      offset: createParameter(2),
+    }
+
+    expect(
+      compileStatement({ ...page, lock: { strength: "UPDATE", onLocked: undefined } }).text,
+    ).toBe('SELECT "post"."id" AS "id" FROM "post" AS "post" LIMIT $1 OFFSET $2 FOR UPDATE')
+    expect(
+      compileStatement({ ...page, lock: { strength: "NO KEY UPDATE", onLocked: "NOWAIT" } }).text,
+    ).toBe(
+      'SELECT "post"."id" AS "id" FROM "post" AS "post" LIMIT $1 OFFSET $2 FOR NO KEY UPDATE NOWAIT',
+    )
+    expect(
+      compileStatement({ ...page, lock: { strength: "KEY SHARE", onLocked: "SKIP LOCKED" } }).text,
+    ).toBe(
+      'SELECT "post"."id" AS "id" FROM "post" AS "post" LIMIT $1 OFFSET $2 FOR KEY SHARE SKIP LOCKED',
+    )
+  })
+
+  it("tells that a select statement locks rows at any depth, unlike a mutation, which may change them under the lock", () => {
+    const lock = { strength: "UPDATE", onLocked: undefined } as const
+    const locked = { ...lower(from(post).select("id")), lock }
+    const nested: SelectNode = {
+      ...lower(posts),
+      projections: [
+        {
+          key: "value",
+          expression: toNode(createSubquery(locked, t.uuid)),
+          type: t.uuid,
+        },
+      ],
+    }
+
+    expect(compileStatement(lower(posts.select("id"))).locksRows).toBe(false)
+    expect(compileStatement(locked).locksRows).toBe(true)
+    expect(compileStatement(nested).locksRows).toBe(true)
+    expect(
+      compileStatement({
+        kind: "update",
+        target: posts.node.from,
+        set: [{ key: "title", value: toNode(createSubquery(locked, t.uuid)) }],
+        filters: noFilters,
+        returning: undefined,
+        rows: "many",
+        value: false,
+      }).locksRows,
+    ).toBe(false)
+  })
+})
+
 describe("mutations", () => {
   const target = from(form).node.from
   const name = createRef(target, "name")
@@ -1028,6 +1085,7 @@ describe("statements of SQL text", () => {
       value: false,
       counted: "number",
       named: true,
+      locksRows: false,
     })
     expect(compileStatement({ ...node, fields })).toMatchObject({
       text: 'DELETE FROM "form" WHERE name = $1',

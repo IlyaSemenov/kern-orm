@@ -31,6 +31,7 @@
   They reject without a statement where `isInTransaction` is `false`, since a lock taken outside a transaction ends with its statement and one taken in a test transaction would not be held in production.
 - PostgreSQL holds the lock until the transaction ends and releases it at `ROLLBACK TO` of a savepoint taken before it, so a nested level that rolls back releases its locks and one that is released keeps them.
 - The [migrator](migrations.md#applying-and-rolling-back) locks its target with `lock`.
+- A query that locks rows rejects under the same condition, as its [row locks](queries.md#row-locks) describe.
 
 ## Settings
 

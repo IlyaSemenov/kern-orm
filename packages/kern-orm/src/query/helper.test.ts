@@ -85,6 +85,14 @@ it("removes the duplicates of the rows of the query it is applied to, which must
   )
 })
 
+it("locks the rows of the query it is applied to", () => {
+  const locked = defineHelper(schema.form, form => form.select("name").forUpdate())
+
+  expect(schema.form.use(locked).toSQL().text).toBe(
+    'SELECT "form"."name" AS "name" FROM "form" AS "form" FOR UPDATE',
+  )
+})
+
 it("applies a helper inside another helper", () => {
   const ownedNamesWithId = defineHelper(schema.form, (form, ownerId: string) =>
     form.use(ownedBy, ownerId).select("id"),

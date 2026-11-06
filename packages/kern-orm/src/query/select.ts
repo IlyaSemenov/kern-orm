@@ -30,6 +30,8 @@ import type { KeyCheck, PrimaryKeyValues } from "./find"
 import { toKeyValues, toPrimaryKeyValues } from "./find"
 import type { AnyQuery, QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
+import type { RowLockOptions } from "./lock"
+import { createRowLock } from "./lock"
 import type { AnyMutationQuery, InitialMutationState } from "./mutation"
 import { createDelete, createInsert, createUpdate, MutationQuery } from "./mutation"
 import type { QueryNode } from "./node"
@@ -232,6 +234,11 @@ type CoalescedValue<V, F> = Exclude<V, null> | Extract<OperandValue<F>, null>
 
 /** State of a query of many rows, which `limit` and `offset` apply to. */
 type ManyRowsQueryState = SelectQueryState & { readonly rows: "many" }
+
+// `map` marks a query as an aggregate query to reject the methods that read its fields, but keeps its rows.
+/** State of a query that returns rows of its table, which a row lock applies to: not of an aggregate or of `exists`. */
+type LockableQueryState = SelectQueryState &
+  ({ readonly aggregate: false } | { readonly value: "mapped" })
 
 /** State of a query of one row, which `optional` and `required` apply to. */
 type OneRowQueryState = SelectQueryState & { readonly rows: "one" | "nullable" | "optional" }
@@ -840,7 +847,51 @@ export class SelectQuery<
     if (this.node.rows !== "many") {
       throw new Error("distinct applies only to a query of many rows")
     }
+    if (this.node.lock !== undefined) {
+      throw new Error(
+        "distinct cannot be used after a row lock, since a row without duplicates comes from several rows of the table",
+      )
+    }
     return this.derive({ distinct: true })
+  }
+
+  // They keep the state, as `distinct` does, so that a conditional call can assign the query back to its variable.
+  /**
+   * Locks the rows of the query until its transaction ends, so that code can read a row and then update it based on the values it read: another transaction waits to change or lock them.
+   *
+   * It replaces an earlier lock of the query, and reaches no other query: lock the records of a nested query by calling it there.
+   * Without `options`, the query waits for the rows that another transaction has locked.
+   *
+   * It requires a transaction, unless the query is part of a mutation, such as of its filter.
+   * The query cannot use `distinct`, and the aggregate methods and `exists` reject it after the lock.
+   */
+  forUpdate<Q extends QueryOf<LockableQueryState>>(this: Q, options?: RowLockOptions): Q
+  forUpdate(options?: RowLockOptions): unknown {
+    return this.derive({ lock: createRowLock(this.node, "forUpdate", "UPDATE", options) })
+  }
+
+  /**
+   * Locks the rows of the query as `forUpdate` does, but lets other transactions insert records that refer to them.
+   *
+   * Use it when the transaction only updates columns outside the keys of the rows.
+   */
+  forNoKeyUpdate<Q extends QueryOf<LockableQueryState>>(this: Q, options?: RowLockOptions): Q
+  forNoKeyUpdate(options?: RowLockOptions): unknown {
+    return this.derive({
+      lock: createRowLock(this.node, "forNoKeyUpdate", "NO KEY UPDATE", options),
+    })
+  }
+
+  /** Keeps the rows of the query from changing until its transaction ends, as `forUpdate` does, while other transactions read and share-lock them too. */
+  forShare<Q extends QueryOf<LockableQueryState>>(this: Q, options?: RowLockOptions): Q
+  forShare(options?: RowLockOptions): unknown {
+    return this.derive({ lock: createRowLock(this.node, "forShare", "SHARE", options) })
+  }
+
+  /** Keeps the rows of the query from being deleted or changing their keys until its transaction ends, as `forUpdate` does, while other transactions change their other columns. */
+  forKeyShare<Q extends QueryOf<LockableQueryState>>(this: Q, options?: RowLockOptions): Q
+  forKeyShare(options?: RowLockOptions): unknown {
+    return this.derive({ lock: createRowLock(this.node, "forKeyShare", "KEY SHARE", options) })
   }
 
   /** Makes a query of one row, such as one of `take` or `get`, resolve to `undefined` without a row. */
@@ -1185,12 +1236,18 @@ export class SelectQuery<
   }
 
   // They replace the fields that `distinct` compares, so nothing tells which rows they would read.
-  /** Rejects `method`, an aggregate method or `exists`, on a query made by one of them or of `distinct`. */
+  // PostgreSQL rejects a lock beside an aggregate, and `EXISTS` would lock only the first row that it finds.
+  /** Rejects `method`, an aggregate method or `exists`, on a query made by one of them, of `distinct`, or with a row lock. */
   private rejectAggregation(method: string): void {
     this.rejectAggregate(method)
     if (this.node.distinct) {
       throw new Error(
         `${method} cannot be used after distinct, whose selected fields it replaces; to count distinct values, call countDistinct without distinct`,
+      )
+    }
+    if (this.node.lock !== undefined) {
+      throw new Error(
+        `${method} cannot be used after a row lock, since it returns no rows of the table to lock`,
       )
     }
   }

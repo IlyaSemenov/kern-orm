@@ -196,6 +196,11 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     },
     async $execute<Q extends DbQuery<T, R>>(query: Q) {
       const compiled = compile(query)
+      if (compiled.locksRows && !database.isInTransaction()) {
+        throw new Error(
+          "Cannot lock the rows of a query outside a transaction, where the locks would end with its statement; a test transaction alone does not count",
+        )
+      }
       return decodeStatement(compiled, await database.execute(compiled)) as QueryResult<Q["types"]>
     },
     $select: selection => startRecordQuery(selection, db),

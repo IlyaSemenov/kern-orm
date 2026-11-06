@@ -236,6 +236,14 @@ export interface OrderNode {
   readonly nulls: "first" | "last" | undefined
 }
 
+/** Lock of the rows that a select statement reads, in the words of PostgreSQL. */
+export interface RowLockNode {
+  /** Strength of the lock, which follows `FOR`. */
+  readonly strength: "UPDATE" | "NO KEY UPDATE" | "SHARE" | "KEY SHARE"
+  /** What the statement does with a row that another transaction has locked, instead of waiting for it. */
+  readonly onLocked: "NOWAIT" | "SKIP LOCKED" | undefined
+}
+
 /** Select query; its result mode applies only when it is executed or its rows are packed. */
 export interface SelectNode<
   From extends SourceNode | undefined = SourceNode | undefined,
@@ -253,6 +261,8 @@ export interface SelectNode<
   readonly offset: ExpressionNode | undefined
   /** Whether the query removes the duplicates of its rows, as `SELECT DISTINCT`; it requires a projection, as PostgreSQL does. */
   readonly distinct?: boolean | undefined
+  /** Lock of the rows of the source of the statement, which does not reach the subqueries of its other clauses; it requires a source of rows, as PostgreSQL does. */
+  readonly lock?: RowLockNode | undefined
   /** Required relation that guarantees the row of the query, such as `field.form`; see `ResultPlan`. */
   readonly guaranteedBy: string | undefined
   /** Template of the records of a query with literals; see `ResultPlan`. */

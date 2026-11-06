@@ -911,6 +911,62 @@ describe("distinct", () => {
   })
 })
 
+describe("row locks", () => {
+  test("keep the state of a query of any rows, so that a conditional call assigns back to its variable", () => {
+    const base = from(post).select("id")
+    expectTypeOf(base.forUpdate()).toEqualTypeOf<typeof base>()
+    expectTypeOf(base.forNoKeyUpdate()).toEqualTypeOf<typeof base>()
+    expectTypeOf(base.forShare()).toEqualTypeOf<typeof base>()
+    expectTypeOf(base.forKeyShare()).toEqualTypeOf<typeof base>()
+
+    let query = base
+    query = query.forUpdate()
+    expectTypeOf(query.select("title").take()).toEqualTypeOf(base.select("title").take())
+
+    const values = from(post).get("title")
+    expectTypeOf(values.forUpdate()).toEqualTypeOf<typeof values>()
+    const mapped = from(post)
+      .select("id")
+      .map(({ id }) => id)
+    expectTypeOf(mapped.forUpdate()).toEqualTypeOf<typeof mapped>()
+  })
+
+  test("apply to a union of queries", () => {
+    const query = Math.random() > 0.5 ? from(post).select("id") : from(post).select("title")
+    expectTypeOf(query.forUpdate()).toEqualTypeOf(query)
+  })
+
+  test("apply to a bound query and to a query in an expression", async () => {
+    const id = await db.$transaction(async () => await db.post.take().forUpdate().get("id"))
+    expectTypeOf(id).toEqualTypeOf<string>()
+
+    const titled = db.post.where(columns =>
+      columns.title.eq(db.post.take().get("title").forShare()),
+    )
+    expectTypeOf(titled).toEqualTypeOf(db.post)
+  })
+
+  test("take either noWait or skipLocked", () => {
+    from(post).forUpdate({ noWait: true })
+    from(post).forUpdate({ skipLocked: true })
+    from(post).forUpdate({ noWait: false, skipLocked: true })
+    from(post).forUpdate({ noWait: Math.random() > 0.5 })
+    // @ts-expect-error A query either rejects or skips a locked row.
+    from(post).forUpdate({ noWait: true, skipLocked: true })
+    // @ts-expect-error Not an option.
+    from(post).forUpdate({ wait: false })
+  })
+
+  test("reject a query that returns no rows of its table", () => {
+    // @ts-expect-error An aggregate query returns no rows of its table.
+    from(post).count().forUpdate()
+    // @ts-expect-error An aggregate query returns no rows of its table.
+    from(post).max("title").forShare()
+    // @ts-expect-error A query of exists returns no rows of its table.
+    from(post).exists().forUpdate()
+  })
+})
+
 describe("optional", () => {
   test("resolves to undefined without a row", () => {
     const record = from(post).select("id").take().optional()

@@ -1,4 +1,4 @@
-import { expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createSubquery } from "../ast/testing"
@@ -207,6 +207,82 @@ it("takes an advisory lock in a transaction of the database with $lock", async (
     { text: "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", parameters: ["import"] },
     { text: "COMMIT" },
   ])
+})
+
+describe("row locks", () => {
+  const message =
+    "Cannot lock the rows of a query outside a transaction, where the locks would end with its statement; a test transaction alone does not count"
+
+  it("runs a query with a row lock in a transaction", async () => {
+    const { db, statements } = connectRecorded()
+
+    await db.$transaction(async () => await db.post.select("id").forUpdate())
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      'SELECT "post"."id" AS "id" FROM "app"."post" AS "post" FOR UPDATE',
+      "COMMIT",
+    ])
+  })
+
+  it("rejects a statement of a query or of $select that locks rows at any depth outside a transaction, without a statement, unlike $compile", async () => {
+    const { db, statements } = connectRecorded()
+    const locked = db.post.select("id").forUpdate()
+
+    await expect(db.$execute(locked)).rejects.toThrow(message)
+    await expect(db.$execute(db.$schema.post.select("id").forUpdate())).rejects.toThrow(message)
+    await expect(
+      db.$execute(
+        db.post.select(post => ({
+          title: db.post.where({ id: post.id }).get("title").forShare(),
+        })),
+      ),
+    ).rejects.toThrow(message)
+    await expect(
+      db.$execute(
+        db.$select({
+          id: db.post.take().get("id").forUpdate(),
+        }),
+      ),
+    ).rejects.toThrow(message)
+
+    expect(statements).toEqual([])
+    expect(db.$compile(locked).text).toEndWith("FOR UPDATE")
+  })
+
+  it("rejects it in a test transaction alone, which code under test does not rely on, so that the lock is held in production too", async () => {
+    const { driver, statements } = createRecordingDriver({
+      respond: () => ({ rows: [["post-id"]] }),
+    })
+    const database = createDatabase({ driver, test: true })
+    const db = database.bind(schema)
+    const locked = db.post.select("id").forUpdate()
+
+    await database.coordinator.testTransaction(async () => {
+      await expect(db.$execute(locked)).rejects.toThrow(message)
+      await db.$ensureTransaction(async () => await locked)
+    })
+
+    expect(statements.map(({ text }) => text)).toMatchObject([
+      "BEGIN",
+      expect.stringMatching(/^SAVEPOINT/),
+      'SELECT "post"."id" AS "id" FROM "post" AS "post" FOR UPDATE',
+      expect.stringMatching(/^RELEASE SAVEPOINT/),
+      "ROLLBACK",
+    ])
+  })
+
+  it("runs a mutation and a statement of SQL text that hold a lock outside a transaction, since the statement itself may rely on it", async () => {
+    const { db, statements } = connectRecorded()
+    const lockedId = db.post.orderBy("id").take().get("id").forUpdate({ skipLocked: true })
+
+    await db.post.where(post => post.id.eq(lockedId)).update({ title: "Taken" })
+    await db.$query`WITH taken AS (${db.post.select("id").forUpdate()}) DELETE FROM ${db.post} USING taken`
+
+    expect(statements).toHaveLength(2)
+    expect(statements[0]!.text).toContain("FOR UPDATE SKIP LOCKED")
+    expect(statements[1]!.text).toContain("FOR UPDATE")
+  })
 })
 
 it("leaves unbound queries unexecuted when returned from async functions", async () => {

@@ -49,6 +49,7 @@ export type {
 } from "./expression/predicates"
 export { and, not, or } from "./expression/predicates"
 export { FALSE, TRUE } from "./expression/constants"
+export type { RowLockOptions } from "./query/lock"
 export type { Literal } from "./query/literal"
 export { literal } from "./query/literal"
 export type {

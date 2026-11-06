@@ -195,6 +195,38 @@ Queries come in two kinds that share the query methods and differ only by execut
   Types accept the call, since they keep no part of the state for `distinct`.
   Orchid ORM 1.78.47 adds `DISTINCT` to any select list ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/sql/to-sql.ts)), so its `distinct().count()` compiles to `SELECT DISTINCT count(*)`, which counts every row.
 
+## Row locks
+
+- `forUpdate`, `forNoKeyUpdate`, `forShare`, and `forKeyShare` make a query lock the rows it reads until its transaction ends, as the clauses of the same names of PostgreSQL ([PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)); a later call replaces an earlier one.
+  - They keep the state in types, as `distinct` does, so that a conditional call assigns the query back to its variable and gives no union of states.
+  - Types reject an aggregate query and a query of `exists` by `LockableQueryState`, which adds about 35 instantiations, 13% of a query of `find` and `select`, to a call, compared with a constraint of any query, and each of the four methods adds about 1% to a [helper](#helpers) ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - `noWait` adds `NOWAIT` and `skipLocked` adds `SKIP LOCKED`; `RowLockOptions` takes only one of them as `true`, and the methods reject both at runtime.
+- A clause locks only the rows of its own query: PostgreSQL applies it to the sources of `FROM`, and a nested query is a subquery of the select list ([SQL generation](sql.md#nested-rows)), so a query names no tables to lock.
+  Orchid ORM 1.78.37 selects a relation with `LEFT JOIN LATERAL`, so its `forUpdate()` of such a query fails with "FOR UPDATE cannot be applied to the nullable side of an outer join", and it must name the table, as `forUpdate(["idea"])` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#forupdate)).
+- A query locks its rows wherever it is: nested in a selection, such as a related record that its parent does not select, in a [query of `$select`](#queries-of-select), in an expression, among the values of `in` and of an [insert or an update](mutations.md#values), and interpolated into SQL text.
+  Its statement holds the clause; a packed query holds it in the derived source that reads its rows, since PostgreSQL rejects it beside an aggregate, and that source needs no `OFFSET 0`, since PostgreSQL merges no source with a lock ([SQL generation](sql.md#nested-rows)).
+- A statement locks the rows of the queries of its select list, its conditions, and its sort keys before its own rows, since the node of PostgreSQL that locks them does not project and takes its rows from the plan below it, which evaluates those queries ([source](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/optimizer/util/pathnode.c)).
+  - It locks its own rows in the order of the query; a query of the select list runs below the sort unless the query has a limit, so the related records of several rows lock in the order of the scan.
+  - A nested query runs before the lock of the row of its parent, so with `skipLocked` it also runs, and keeps its locks, for a row that the query leaves out, and PostgreSQL goes on to the next row until it has the rows of the limit.
+    A caller that must lock only the related records of the rows it takes must lock them in a later statement.
+  - A query with an offset that selects nested queries stays on its table, as a query of `distinct` does ([SQL generation](sql.md#nested-rows)), since a derived page would lock its rows before its nested queries lock theirs.
+    PostgreSQL locks the rows that an offset skips too ([PostgreSQL](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE)), and on the table so do the nested queries of those rows.
+- After waiting for a row that another transaction changed, PostgreSQL locks the new row, checks it against the filters, and evaluates the select list again ([source](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/executor/nodeLockRows.c)), so the nested queries of a selection read and lock the related records of the new row, such as the record that a changed foreign key refers to.
+  Orchid ORM 1.78.37 selects a relation with `LEFT JOIN LATERAL`, whose row PostgreSQL does not read again, so its query gives and locks only the related record of the old row.
+  - The order there is the record of the old row, which stays locked, the new row, and the record of the new row, so a transaction that locks the record of the new row before the row can deadlock with it; no statement can keep the order, since only the wait tells the new row.
+    A caller that requires the order must lock the record in a statement of its own, then the row, and compare the key; if it differs, it must roll back the transaction or a savepoint taken before both locks before it starts again, since locking the new record while it holds the row is the same order.
+  - The lock of a query checks its own rows in the same way, so a filter of a nested query takes the new row into account.
+  - Other parts of the statement read its snapshot, so a value that must see what a lock waited for must be read in a later statement than the lock.
+    A nested query reads it too, so it does not find a record created after the statement started, which a concurrent transaction points a key at, and a required relation rejects with `RequiredRelationError`.
+- A row lock applies only to a query that returns rows of its table:
+  - The methods reject an aggregate query and a query of `exists`, as types do by the `aggregate` part of the state; `map` sets that part too while it keeps the rows, so `LockableQueryState` also takes a query of `map`, and only the methods reject a conversion of an aggregate.
+  - They reject a query of `distinct`, and `distinct`, the aggregate methods, and `exists` reject a query with a lock when they are called; types accept these calls, since they keep no part of the state for a lock.
+    PostgreSQL rejects a lock beside an aggregate and `DISTINCT`, and takes it in `EXISTS`, where it would lock only the first row found.
+  - [Mutations](mutations.md#rows-to-change) reject a query with a lock.
+- `$execute` rejects a select statement that locks rows at any depth without a statement where `isInTransaction` is `false`, as [`$lock`](transactions.md#locks) does; `compileStatement` tells it in `locksRows`.
+  - A mutation holds the locks of its queries while it changes rows, so it runs without a transaction, such as to take the next jobs of a queue in one statement of `in` and `skipLocked`.
+  - kern-orm does not read the text of a statement of SQL text, which may change rows too, so it runs a query with a lock interpolated into it.
+
 ## Aggregates
 
 - An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of [`exists`](#exists), or a query of [`distinct`](#distinct-rows): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.

@@ -4,6 +4,7 @@ import type { DbOf, ResultOf } from "kern-orm"
 import { createDatabase, defineSchema } from "kern-orm"
 
 import {
+  appendField,
   createFormCard,
   formActivity,
   getField,
@@ -20,6 +21,7 @@ import {
   listSubmissions,
   listSubmittedFormNames,
   listUserActivity,
+  lockFieldWithForm,
   publishedForms,
   useFormsDb,
 } from "../src/queries"
@@ -131,6 +133,16 @@ describe("Db", () => {
     const names = await listSubmittedFormNames(database.bind(tenantSchema))
 
     expectTypeOf(names).toEqualTypeOf<string[]>()
+  })
+
+  test("of a tenant locks a form to add a field at its end, and a field with its form", async () => {
+    const db = database.bind(tenantSchema)
+
+    expectTypeOf(await appendField(db, "form-id", "Name")).toEqualTypeOf<number>()
+    expectTypeOf(await lockFieldWithForm(db, "field-id")).toEqualTypeOf<{
+      label: string
+      published: boolean
+    }>()
   })
 
   test("of a tenant selects a submission with its user and reviewer, its answers by their key, and the comments", async () => {

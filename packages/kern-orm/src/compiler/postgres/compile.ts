@@ -35,7 +35,10 @@ export interface CompileOptions {
 }
 
 /** Compiled statement with the result plan that decodes its result. */
-export interface CompiledQuery extends SqlStatement, StatementPlan {}
+export interface CompiledQuery extends SqlStatement, StatementPlan {
+  /** Whether a select statement locks rows at any depth, so that it is of use only in a transaction, which holds the locks after it. */
+  readonly locksRows: boolean
+}
 
 const noFields: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
 
@@ -65,6 +68,8 @@ export function compileStatement(
         value: node.value,
         counted: undefined,
         named: false,
+        // The fields above compile the statement first, which finds its locks.
+        locksRows: context.locksRows,
       }
     case "text": {
       const { fields } = node
@@ -76,6 +81,8 @@ export function compileStatement(
         value: node.value,
         counted: fields === undefined ? "number" : undefined,
         named: true,
+        // kern-orm does not read the text, which may change rows under its locks.
+        locksRows: false,
       }
     }
     default: {
@@ -92,6 +99,8 @@ export function compileStatement(
         counted:
           returning === undefined ? "number" : returning.length === 0 ? "records" : undefined,
         named: false,
+        // A lock in a query of its values or filters holds the row for the change of the statement.
+        locksRows: false,
       }
     }
   }
@@ -199,6 +208,14 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
   }
   if (node.offset) {
     text += ` OFFSET ${compileExpression(context, outer, node.offset)}`
+  }
+  const { lock } = node
+  if (lock !== undefined) {
+    context.locksRows = true
+    text += ` FOR ${lock.strength}`
+    if (lock.onLocked !== undefined) {
+      text += ` ${lock.onLocked}`
+    }
   }
   return text
 }

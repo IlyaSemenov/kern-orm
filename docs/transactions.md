@@ -58,7 +58,108 @@ For example, enqueue a job that reads the written data only outside a transactio
 
 A [test transaction](./testing) does not itself count as a transaction for `$isInTransaction` or `$ensureTransaction`, so that the tested code runs as in production: outside a `$transaction` of the test, `$isInTransaction()` returns `false`, and `$ensureTransaction` starts a nested transaction.
 
-## Locks
+## Locking rows
+
+To keep transactions from working on one record at once, such as from adding fields to a form at the same position, lock its row with `forUpdate`: another transaction waits to change or lock the row until the transaction ends.
+
+```ts
+await db.$transaction(async () => {
+  await db.form.find(formId).forUpdate()
+  const lastPosition = await db.field.where({ formId }).max("position")
+  await db.field.insert({ formId, position: (lastPosition ?? 0) + 1, label: "Name" })
+})
+```
+
+To lock several rows, sort them, so that two transactions lock them in one order and do not wait for each other forever:
+
+```ts
+const fields = await db.field.where({ formId }).orderBy("id").select("id", "position").forUpdate()
+```
+
+A query locks only its own rows, not the related records that it selects.
+To lock a related record too, even one whose fields the query of its parent does not select, call `forUpdate` on the nested query:
+
+```ts
+const field = await db.field
+  .find(fieldId)
+  .select("label")
+  .select(field => ({
+    published: field.form.get("published").forUpdate(),
+  }))
+  .forUpdate()
+```
+
+The query locks the related record first and its own row after it.
+When another transaction moves the field to another form meanwhile, the query reads the field and the form as they are after the move, and locks that form too, after the field.
+It does not see a form created after it started, so a move to such a form makes it reject with `RequiredRelationError`; run it again then.
+
+A query in a [value](./queries/mutations#inserting) or a [condition](./queries/filtering) locks its rows the same way:
+
+```ts
+await db.field.insert({
+  formId: db.form.find(formId).get("id").forUpdate(),
+  position: 1,
+  label: "Name",
+})
+```
+
+One statement reads the data of one moment, so the other queries of the statement do not see what another transaction committed while the lock waited.
+To read such data, such as the last position in the first example, lock the row in a statement before the one that reads it.
+
+Other locks leave more to other transactions, also in a nested query:
+
+- `forNoKeyUpdate` is for updates of columns outside the keys of the row: it lets other transactions insert records that refer to the row.
+- `forShare` keeps the row from changing while other transactions read and lock it the same way, such as to check a record that the transaction relies on.
+- `forKeyShare` keeps the row from being deleted or changing its key, and lets other transactions change its other columns.
+
+See [PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS) for which of them conflict.
+
+To take work that no other transaction is doing, such as the next job of a queue, pass `skipLocked`, which leaves out the rows that other transactions have locked:
+
+```ts
+await db.$transaction(async () => {
+  const job = await db.job
+    .where({ status: "pending" })
+    .orderBy("createdAt")
+    .take()
+    .optional()
+    .select("id", "payload")
+    .forUpdate({ skipLocked: true })
+  // ...
+})
+```
+
+A nested query with its own row lock runs before the query locks the row of its parent, so with `skipLocked` it also locks the related records of the rows that the query leaves out.
+To lock only those of the rows it takes, lock them in a later statement.
+
+To fail instead of waiting for a locked row, pass `noWait`: the query rejects with a PostgreSQL error of code `55P03`.
+Like any failed statement, it aborts the transaction, so to continue after it, run the query in a [nested transaction](#nested-transactions).
+
+Run a query that locks rows in `$transaction` or `$ensureTransaction`, also in code under test: outside a transaction, the locks would end with its statement, so the query rejects, and a [test transaction](./testing) alone does not count as one.
+An `update`, `delete`, or `insert` holds the locks of the queries in it while it changes the rows, so it needs no transaction, such as to take the next jobs in one statement:
+
+```ts
+const jobIds = await db.job
+  .where(job =>
+    job.id.in(
+      db.job
+        .where({ status: "pending" })
+        .orderBy("createdAt")
+        .limit(10)
+        .pluck("id")
+        .forUpdate({ skipLocked: true }),
+    ),
+  )
+  .update({ status: "running" })
+  .pluck("id")
+```
+
+A [nested transaction](#nested-transactions) that rolls back releases the locks it took.
+
+A query with [`distinct`](./queries/selecting#distinct-rows) cannot lock rows, and aggregates and `exists` cannot be called on a query that locks them.
+`update` and `delete` lock the rows they change themselves, so their queries take no lock.
+
+## Advisory locks
 
 To keep processes from running the same work at once, such as an import of one file, take a lock of a key in a transaction with `$lock`: the call waits while another transaction holds the lock of the key, and the lock is released when the transaction ends.
 

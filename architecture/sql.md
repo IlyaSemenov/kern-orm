@@ -82,7 +82,7 @@
 
 ## Nested rows
 
-- A nested query is selected as a scalar subquery rather than as a `LATERAL` join: PostgreSQL evaluates a scalar subquery of the select list after the sort of the parent and only for its rows up to the limit, while it joins a `LATERAL` subquery to every row before them unless an index gives the order.
+- A nested query is selected as a scalar subquery rather than as a `LATERAL` join: with a limit, PostgreSQL evaluates a scalar subquery of the select list after the sort of the parent and stops once it has the rows of the limit, while it joins a `LATERAL` subquery to every row before them unless an index gives the order.
   On a page of 20 of 1000 parents ordered by a column without an index, the scalar subquery is 38 to 48 times faster, and the two are within 8% for all parents and for a page ordered by an index ([benchmark](../benchmarks/suites/nested-placement.ts)).
 - PostgreSQL also evaluates a scalar subquery of the select list for the rows that an offset skips, so a query that selects nested queries reads a page after an offset from a derived source that replaces its table.
   The source applies the filters, the order, the limit, and the offset of the query, and selects the columns of the table that the fields and the nested queries of the query read at any depth, the other scalar fields of the query, which it evaluates before the limit and the offset as the query would, such as a window function over all its rows, and the value of each other sort expression.
@@ -91,7 +91,7 @@
   The query reads them from the source and evaluates only its nested queries over the rows of the page, which it sorts again by the sort keys of the source, since the order of a derived source does not carry into the query that reads it.
   For a page of 20 of 1000 parents, it is 4 to 6 times faster after an offset of 100 and 26 to 45 times after 900, and within 4% after an offset of 0 ([benchmark](../benchmarks/suites/offset-page.ts)).
   A query without nested queries other than such sorted fields, also with queries in the expressions of its fields, which are scalar fields, or without an offset keeps its page on its table.
-  So does a query of [`distinct`](queries.md#distinct-rows), which compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway.
+  So does a query of [`distinct`](queries.md#distinct-rows), which compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway, and a query with a [row lock](queries.md#row-locks), which locks the rows of its nested queries before its own there.
   So does a query whose nested queries that the page evaluates over its rows hold a SQL fragment that refers to a column of its table outside the queries nested in the fragment; a sorted field evaluated in the source is not checked, since the source evaluates it as the query would.
   PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, and lowering does not parse SQL fragments to identify their aggregates, so such a fragment, such as `sum` of a column of the parent row, may aggregate the rows of the query before its offset.
 - A nested aggregate query without a conversion is selected as a scalar subquery of its statement, decoded by the type of the aggregate, rather than packed: it always returns one row of one value.
@@ -108,14 +108,15 @@
     A cast to `text` is not used: those of `boolean`, `inet`, `cidr`, and `char` differ from their output, such as `true` instead of `t`.
   - SQL `NULL` is JSON `null` through `IS NOT DISTINCT FROM NULL`, since `format` turns it into an empty string, and `IS NULL` also holds for a composite whose fields are all `NULL`.
   - Nested rows stay JSON inside a packed row and never pass through `format`.
+  - A row lock of the nested query stays in the derived source that reads its rows, since PostgreSQL rejects it beside the aggregate.
   - Packing reads the projections of the nested query through a derived source, whose expressions are evaluated once per row as long as PostgreSQL does not merge the source into the aggregating query, where packing refers to a scalar twice.
-    This relies on the planner, which merges no derived source with `DISTINCT`, a limit, an offset, or a volatile function in its select list ([PostgreSQL](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/optimizer/prep/prepjointree.c)):
+    This relies on the planner, which merges no derived source with `DISTINCT`, a row lock, a limit, an offset, or a volatile function in its select list ([PostgreSQL](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/optimizer/prep/prepjointree.c)):
     - A volatile expression, such as `random()`, is evaluated once per row in any derived source.
-    - A derived source that selects scalar expressions other than table columns gets `OFFSET 0` unless it has `DISTINCT`, a limit, or an offset, so that a stable expression, such as a correlated subquery, is not evaluated twice.
+    - A derived source that selects scalar expressions other than table columns gets `OFFSET 0` unless it has `DISTINCT`, a row lock, a limit, or an offset, so that a stable expression, such as a correlated subquery, is not evaluated twice.
       The aggregating query has no conditions of its own, so the barrier keeps nothing from being pushed down, and the conditions of the nested query and their indexes stay inside the source.
       A source of table columns has no barrier, which would add up to 8% there; with `md5` of each column instead, the barrier makes the query 38 to 45% faster ([benchmark](../benchmarks/suites/offset-barrier.ts)).
   - The order of the query is read from sort keys, projections of the derived source that stay out of the records, so each sort expression is evaluated once:
     - A sort key is the projection that has the value of the sort expression, as for an executed query, or a projection of the sort expression.
-    - With a limit or an offset, the derived source sorts by the positions of the sort keys, such as `ORDER BY 2`, so the rows it chooses, their values, and their order in the aggregate come from one evaluation; without them, it has no order.
+    - With a limit or an offset, the derived source sorts by the positions of the sort keys, such as `ORDER BY 2`, so the rows it chooses, their values, and their order in the aggregate come from one evaluation; so it does with a [row lock](queries.md#row-locks), which takes the rows in that order; without them, it has no order.
     - Rows `many` are aggregated in the order of the query, since the order of a derived source does not carry into an aggregate: the aggregate sorts by the sort keys with the direction and the placement of `NULL` of the query.
     - Numbering the rows with `row_number()` in the derived source and aggregating by the number would be 8 to 26% slower ([benchmark](../benchmarks/suites/sort-keys.ts)), and could not sort by a window function, which PostgreSQL rejects in a window definition.

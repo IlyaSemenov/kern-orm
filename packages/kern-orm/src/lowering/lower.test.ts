@@ -599,6 +599,54 @@ describe("lowerQuery", () => {
   })
 })
 
+describe("query with a row lock", () => {
+  const compile = (query: AnySelectQuery) => compileStatement(lowerStatement(query.node)).text
+
+  it("keeps a page after an offset on its table, so that its nested queries lock their rows before it locks its own", () => {
+    const page = schema.form
+      .orderBy("id")
+      .offset(1)
+      .select(form => ({
+        fields: form.fields.pluck("id").forUpdate(),
+      }))
+
+    expect(compile(page)).toContain('FROM (SELECT "form_2"."id" AS "id" FROM "form" AS "form_2"')
+    const locked = compile(page.forUpdate())
+    expect(locked).not.toContain('"form_2"')
+    expect(locked).toEndWith('FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1 FOR UPDATE')
+  })
+
+  it("locks the rows of a query in a condition, a sort key, and a fragment of SQL, which are its statement", () => {
+    const lockedForm = schema.form.find(1).get("id").forShare()
+    const subquery =
+      '(SELECT "form"."id" AS "id" FROM "form" AS "form" WHERE "form"."id" = $1 FOR SHARE)'
+
+    expect(compile(schema.field.where(field => field.formId.eq(lockedForm)))).toBe(
+      `SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = ${subquery}`,
+    )
+    expect(compile(schema.field.orderBy(() => lockedForm))).toBe(
+      `SELECT FROM "form_field" AS "form_field" ORDER BY ${subquery}`,
+    )
+    expect(
+      compile(schema.field.where(field => sql<boolean>`${field.formId} = ${lockedForm}`)),
+    ).toBe(`SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = ${subquery}`)
+  })
+
+  it("locks the rows of the query of the values of in", () => {
+    expect(
+      compile(
+        schema.field.where(field =>
+          field.formId.in(
+            schema.form.orderBy("id").limit(2).pluck("id").forUpdate({ skipLocked: true }),
+          ),
+        ),
+      ),
+    ).toBe(
+      'SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" IN (SELECT "form"."id" AS "id" FROM "form" AS "form" ORDER BY "form"."id" LIMIT $1 FOR UPDATE SKIP LOCKED)',
+    )
+  })
+})
+
 describe("query of distinct", () => {
   const compile = (query: AnySelectQuery) => compileStatement(lowerStatement(query.node)).text
 

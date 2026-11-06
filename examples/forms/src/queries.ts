@@ -43,6 +43,31 @@ export async function publishWithFieldLabel(
   }))
 }
 
+/** Adds a field at the end of a form through the `Db` of a tenant or of the SaaS, locking the form, so that concurrent calls give the fields of a form different positions. */
+export async function appendField(db: DbOf<typeof formsSchema>, formId: string, label: string) {
+  return await db.$ensureTransaction(async () => {
+    await db.form.find(formId).forUpdate()
+    const lastPosition = await db.field.where({ formId }).max("position")
+    return await db.field
+      .insert({ formId, position: (lastPosition ?? 0) + 1, label })
+      .get("position")
+  })
+}
+
+/** Returns the label of a field and whether its form is published through the `Db` of a tenant or of the SaaS, locking the field and its form, which keeps both from changing while the transaction relies on them. */
+export async function lockFieldWithForm(db: DbOf<typeof formsSchema>, fieldId: string) {
+  return await db.$ensureTransaction(
+    async () =>
+      await db.field
+        .find(fieldId)
+        .select("label")
+        .select(field => ({
+          published: field.form.get("published").forShare(),
+        }))
+        .forNoKeyUpdate(),
+  )
+}
+
 /** Returns a form with its fields through the `Db` of a tenant or of the SaaS. */
 export async function getForm(db: DbOf<typeof formsSchema>, formId: string) {
   return await db.form.find(formId).use(selectForm)

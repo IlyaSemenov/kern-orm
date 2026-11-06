@@ -7,6 +7,7 @@ import type {
   OrderNode,
   ProjectionNode,
   QueryFilters,
+  RowLockNode,
   TableSourceNode,
 } from "../ast/nodes"
 import { noFilters } from "../ast/nodes"
@@ -50,6 +51,8 @@ export interface QueryNode extends ResultMode {
   readonly offset: ExpressionNode | undefined
   /** Whether `distinct` removes the duplicates of the rows, comparing the fields that the query selects when it compiles. */
   readonly distinct: boolean
+  /** Lock of the rows that the query reads. */
+  readonly lock: RowLockNode | undefined
   /** Whether a required relation guarantees the row of the query, so that a filter makes a query of rows `one` resolve without it; see `SelectQueryState`. */
   readonly guaranteed: boolean
   /** Whether `all` allows a mutation of the query to change every row of the table without a filter. */
@@ -88,6 +91,7 @@ export function createQueryNode(
     limit: undefined,
     offset: undefined,
     distinct: false,
+    lock: undefined,
     rows: relation === undefined ? "many" : getRelationRows(relation),
     value: false,
     guaranteed: relation?.required ?? false,
@@ -96,7 +100,7 @@ export function createQueryNode(
   })
 }
 
-/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, order, limit, offset, `distinct`, rows other than `many`, `all`, or conversion. */
+/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, order, limit, offset, `distinct`, row lock, rows other than `many`, `all`, or conversion. */
 export function isTableQuery(node: QueryNode): boolean {
   return (
     node.relation === undefined &&
@@ -108,6 +112,7 @@ export function isTableQuery(node: QueryNode): boolean {
     node.limit === undefined &&
     node.offset === undefined &&
     !node.distinct &&
+    node.lock === undefined &&
     node.rows === "many" &&
     !node.all &&
     node.conversion === undefined

@@ -11,6 +11,8 @@ export const maxParameters = 65535
 /** State of one compilation shared by all queries of the statement, never by reusable nodes: parameters and the aliases of all sources. */
 export class CompileContext {
   readonly parameters: TextValue[] = []
+  /** Whether a select statement of the compilation locks rows. */
+  locksRows = false
   readonly #aliases = new Set<string>()
 
   constructor(
