@@ -14,7 +14,7 @@
       Each query then takes ~10% to ~70% more instantiations, such as ~65% more for `find` and `findBy` and ~25% more for a query of `where`, `select`, and `take` executed by `$execute`, and ~35% more for each further copy of that query ([benchmark](../benchmarks/types/queries.bench.ts)).
     - Each overload of the method is followed by a fallback overload of that form, which TypeScript tries only when the overload does not apply, such as on a union.
       A probe of `take` kept the cost of an ordinary query, but the fallbacks double the overloads of `select`, `get`, and `pluck` that declarations and editors show, and a call that matches no overload also reports the errors of the fallbacks, or only that of the last one, which is a fallback.
-  - A parameter that takes queries of other states, such as of `$execute`, `$compile`, and `defineHelper`, and a nested query of a selection are typed by `SelectQuery` of either kind, and those of `$execute` and `$compile` also by the `RecordQuery` of `$select`; a copy of a query made by spread or rest lacks its methods, so it is not a query.
+  - A parameter that takes queries of other states, such as of `$execute`, `$compile`, and `defineHelper`, and a nested query of a selection are typed by `SelectQuery` of either kind, those of `$execute` and `$compile` also by the `RecordQuery` of `$select`, and those of `$execute` and `$compile` and a nested query also by a [query of `transform`](#converting-results); a copy of a query made by spread or rest lacks its methods, so it is not a query.
 
 Queries come in two kinds that share the query methods and differ only by execution context:
 
@@ -107,7 +107,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   A [sort key](#sorting-and-pagination) takes it too, and so does the value that a callback of `get`, `pluck`, or an aggregate method returns ([nested queries and relations](#nested-queries-and-relations)).
   A query of `exists` is `EXISTS` of its rows, and another query a scalar subquery of its value.
   - The query keeps its `Db`, which must be the `Db` that runs the statement, as for a nested query of a selection.
-  - At runtime, it rejects the queries of a shape that types reject: a query of records or of rows `many`, and a query of `$select`, a mutation, and a query of SQL text.
+  - At runtime, it rejects the queries of a shape that types reject: a query of records or of rows `many`, and a query of `$select`, a [query of `map` or `transform`](#converting-results), a mutation, and a query of SQL text.
     The modules of expressions recognize a query by the method of the symbol key `operandNode` of `expression/expression.ts`, which every class of queries has, since the queries import those modules; the method of `SelectQuery` returns the node of the query in an expression, and the others reject the query.
     An expression has the method too, so that `toValueNode` recognizes either by one lookup of the symbol, which it writes out rather than calling `isOperandSource`.
     Most values are neither, and the alternatives took longer to build a query of them on Bun 1.4.4 and Node.js 24.18 ([benchmark](../benchmarks/runtime/building.bench.ts)):
@@ -171,7 +171,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     A field of an aggregate or of `exists` is an expression of its query whose node holds the field, by which lowering finds the projection of the field, so that the statement sorts by it and evaluates the query once: only lowering creates the scalar subquery of an aggregate and `EXISTS` of a query.
     Lowering identifies the selected field rather than its query: each projection of a query is a subquery of its own, which PostgreSQL evaluates apart, so a query selected under several keys has a value under each, such as of `random()`.
     A sort key of the query held apart, such as in a variable, is a subquery of its own too.
-    A field of nested rows throws when it is read: nested rows are JSON, which PostgreSQL cannot sort by, and types do not tell them from expressions.
+    A field of nested rows throws when it is read: nested rows are JSON, which PostgreSQL cannot sort by, and types do not tell them from expressions; so does a field of an aggregate or of `exists` that [`map` or `transform` converts](#converting-results), which holds nested rows too.
     A query of values gets the expression of its value from another overload.
 - `limit` and `offset` apply only to a query of many rows, in types and at runtime, since a query of one row must find a second row to reject it.
   A helper that paginates passes types when it is applied to a query of one row and fails at runtime, since its effect does not record pagination.
@@ -205,7 +205,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 - `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of `exists`: it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
   - It checks the rows that the filters, the limit, and the offset of the query choose, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
-  - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`; selected as a field, `EXISTS (...)` in the select list rather than a packed row; and in a condition, `EXISTS (...)`.
+  - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`; selected as a field, `EXISTS (...)` in the select list rather than a packed row, unless [`map` or `transform` converts it](#converting-results); and in a condition, `EXISTS (...)`.
   - The methods that keep the rows apply to it as they apply before it, as to an aggregate query: `where`, `find`, and `findBy` restrict the rows that it checks, and `coalesce` keeps it as it is, since `EXISTS` is never `NULL`.
   - In types, it is marked as an aggregate query, `aggregate: true`, so that `get`, `pluck`, the aggregate methods, and `exists` reject it, as does the callback of a helper.
   - At runtime, the methods and lowering recognize a query of `exists` by the projection of `exists`, which only `exists` selects and `coalesce` keeps, as they recognize an aggregate query.
@@ -235,7 +235,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - The argument of an aggregate does not refer to the source of its query outside the nested query, so the aggregate reads it from a derived source ([SQL generation](sql.md)).
   - Types take the query as `TypedScalarQuery`, as the first operand of `coalesce`, and the signature of a callback in place of one of an expression adds no instantiations.
     The state adds the relations of such a query, as those of a nested query of a selection, at about 7 instantiations to `get` and `pluck`, 10 to an aggregate method, and 12 to `get` after a mutation, 2% to 5% of such a query; a query of a column and `count()` pay nothing, since the state of an aggregate of a callback is an alias of its own, as a parameter of `AggregateState` for the relations would cost each aggregate about 3% ([benchmark](../benchmarks/types/queries.bench.ts)).
-- A selected field is an expression with a type, a query of either kind, whose rows become the value of the field, or a literal.
+- A selected field is an expression with a type, a query of either kind, also [converted in code](#converting-results), whose rows become the value of the field, or a literal.
   A nested query bound to a `Db` runs only in a statement of the same `Db`, since the statement takes the options of its `Db`, such as the PostgreSQL schema; lowering checks the `Db` by identity at any depth, and types do not check it.
   So `toSQL` of an unbound query rejects a nested query bound to a `Db`, which `$compile` of that `Db` compiles.
   Nested rows are the result that their query would give when executed; the state of the nested query adds the relations it selects to the state of the parent.
@@ -251,9 +251,44 @@ Queries come in two kinds that share the query methods and differ only by execut
 - The query is a `RecordQuery`, a class apart from `SelectQuery`, with the members that differ by kind and `toSQL`, since the methods of a query of a table have no source to apply to.
   It is covariant in its state and its kind, like `SelectQuery`.
   A selection rejects it as a field, in types and at runtime.
-- `$execute` and `$compile` of a `Db` take a query of `$select`, a [mutation](mutations.md), and a [query of SQL text](sql-queries.md) beside a query of a table, and check them in the same way: in types the relations that they select, and at runtime their `Db`, the relations, the bound queries, and the tables at any depth.
-  Their parameter is constrained by a union of the four classes rather than overloaded, since a call that matches no overload reports the errors of the last overload, which would name another class.
+- `$execute` and `$compile` of a `Db` take a query of `$select`, a [query of `transform`](#converting-results), a [mutation](mutations.md), and a [query of SQL text](sql-queries.md) beside a query of a table, and check them in the same way: in types the relations that they select, and at runtime their `Db`, the relations, the bound queries, and the tables at any depth.
+  Their parameter is constrained by a union of the five classes rather than overloaded, since a call that matches no overload reports the errors of the last overload, which would name another class.
   The query of `$select` in the union adds about 6% to the instantiations of the first unbound query that a consumer executes and up to 1.5% to each further one, the mutation about 0.3% to each, and the query of SQL text none ([first query](../benchmarks/types/first-use.bench.ts), [further queries](../benchmarks/types/queries.bench.ts)).
+
+## Converting results
+
+- `map` and `transform` convert the result of a query of a table or of a [mutation](mutations.md#results) in code after decoding, executed or nested, which changes the result in types but not the SQL.
+  `map` calls its callback with each record or value, and `transform` once with what the query resolves to, also `null` or `undefined` of a missing row.
+  Conversions run in their order, and the earlier ones feed the later ones; every `map` runs before every `transform`, since `map` does not apply after `transform`.
+  - `map` does not call its callback for a missing row, which it tells from the absence of the row rather than from the value, since a row may decode to `null` or `undefined`.
+  - `map` calls its callback with `null` for a `NULL` value, such as of an aggregate without rows, since it is a value of its row rather than a missing row ([result modes](#result-modes)), and types tell the callback to handle it.
+    A `map` that skipped it could not type its result: types do not tell that the `unknown` value of a JSON type can be `NULL`, which the result would hold apart from what the callback returns.
+    Orchid ORM 1.78.47 does not call `map` for `null` of `sum` and `avg` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#map)); `transform` converts it there.
+  - The callback of `map` takes one argument, so that a function with further optional parameters, such as `parseInt`, does not read an index as one of them; `transform` of the array gives the index.
+    Orchid ORM 1.78.47 passes the arguments of `Array.map` instead, and the result as the third one, which may not be an array ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#map)).
+  - A callback must return its result synchronously, since decoding is synchronous.
+    Nothing would wait for a Promise in a field of nested rows, and `then` and `$execute` would need to type each result by what `await` makes of it, on every query.
+    Types reject a result that may be a Promise, including a bound query, through `SynchronousResult`, which `any` and `unknown` pass, and at runtime such a result fails decoding, whichever the type tells, without calling its `then`, which would execute a bound query.
+    The rejection of a Promise that it fails on stays handled, since it would otherwise end the process after the query has reported the failure.
+  - A callback that throws fails decoding, as a decoder of a type does ([SQL generation](sql.md#result-decoding)).
+- They apply to a query of a table and to a [mutation](mutations.md#results); a query of `$select` and a [query of SQL text](sql-queries.md) lack them.
+- `map` keeps a query of a table a `SelectQuery`, so that the methods that choose its rows apply after it, such as to define a query with a helper once and filter it where it runs: `where`, `find`, `findBy`, `orderBy`, `limit`, `offset`, `take`, `optional`, `nullable`, `required`, `all`, and `use`.
+  - The methods that read or change the fields reject it, in types and at runtime, since the fields are what its callback receives: `select`, `clearSelect`, `get`, `pluck`, the aggregate methods, `exists`, `coalesce`, and `expr`.
+  - In types, `map` sets the `value` part of the state to `"mapped"` and the `aggregate` part to `true`, so that the states that those methods narrow reject it, with no part of its own.
+    A part of its own adds about 4 instantiations to each method that changes the state, up to 3% of a query, as the `aggregate` part does ([benchmark](../benchmarks/types/queries.bench.ts)), and the narrowed states would need to name it, which also rejects a function generic over the state that narrows only `value` or `aggregate`.
+    The `valueType` part stays, which tells a query of records that it converts from a query of values for the [check of a helper](#helpers).
+  - The result of `map` is no value of a column, so `null` of its missing row does not read as `NULL`: a filter of a query of a required relation that it converts makes rows `one` `nullable`, also of a query of values, and `nullable` applies to such a query.
+  - The callback of `orderBy` has no selected fields in types, by an overload of its own, since the result of the query no longer tells them, and the columns and the relations of the table still sort it.
+    At runtime, the callback receives them as without `map`, which is what its result comes from.
+  - `insert`, `update`, and `delete` reject it at runtime only, as they reject a query with selected fields.
+- `transform` returns a `TransformedQuery`, a class apart from `SelectQuery`, like `RecordQuery`, with the members that differ by kind, `toSQL`, and the method `transform`, so that no other method of a query applies after it, in types as well as at runtime, since each would change what its callback receives, as `take` changes the rows.
+  Orchid ORM 1.78.47 requires the same of `transform` by its documentation ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#transform)).
+  - It has the type-only member `transformed`, which `SelectQuery` lacks, so that TypeScript rejects a query of a table as a query of `transform` by the missing member rather than by comparing their states: without it, the first unbound query that a consumer executes takes about 3.7% more instantiations, and the first query of a deep relation graph about 5.4% more ([benchmark](../benchmarks/types/first-use.bench.ts)).
+  - It keeps the table and the relations of its query in its state, so that `$execute` and `$compile` check them.
+- An expression takes no query that `map` or `transform` converts, in types as well as at runtime, since SQL reads the value of the query without its conversion: types require `value: true` of the states of `ScalarQuery` and `ValuesQuery`, the methods of `operandNode` and `valuesQueryNode` reject the query, and `sql` rejects it.
+- A selection holds a converted query as a field of its rows, whatever its query is: a field of an aggregate or of `exists` becomes packed rows, since only their result plan holds a conversion ([SQL generation](sql.md#nested-rows)), and it is nested rows for the callback of `orderBy`.
+- The class of `transform` and the union of `NestedQuery` add about 0.3% to the instantiations of the first unbound query that a consumer executes, about 1% to the first query of a deep relation graph, up to 1.2% to a further query, and about 2% to a query of a deep relation graph, which each nested field pays ([first query](../benchmarks/types/first-use.bench.ts), [further queries](../benchmarks/types/queries.bench.ts)).
+  The effect of `map` in a helper adds about 0.5% to a helper, 0.3% to the first helper of a table, and 2% to a helper of relations.
 
 ## Queries of a Db
 
@@ -277,8 +312,13 @@ Queries come in two kinds that share the query methods and differ only by execut
   - The marker starts with no selected keys and accumulates their union on every selection, including through another helper.
     The marker prevents a branch selecting extra keys from being reduced to one selecting fewer fields or none, preserving possible overwrites of input fields.
   - The public type of a helper holds the selected fields without the marker, so that the declarations of a module exporting a helper never name it.
-  - Every branch of a helper must retain the marker and remain a record query; `clearSelect`, `get`, `pluck`, the aggregate methods, and `exists` are rejected because its effect cannot describe the discarded input fields.
-  - A helper that only selects fields also applies to a [mutation](mutations.md#helpers), with its `use`.
+  - Every branch of a helper must retain the marker and remain a record query; `clearSelect`, `get`, `pluck`, the aggregate methods, and `exists` are rejected because its effect cannot describe the discarded input fields, and so is `transform`, whose [query](#converting-results) takes no method that the effect could describe.
+  - `map` in a helper replaces the marker, and the effect records what the callback gives, without the marker, which a record of the callback keeps through a spread, so a query the helper is applied to has that as its result, whatever fields it selected before the helper.
+    The callback reads only the fields that the helper selects, while at runtime it also receives those selected before, which types do not tell.
+    A query of values, and one that `map` already converts, reject a helper that selects fields or maps them, as the callback could not read their fields.
+    A helper that only filters applies to a query that `map` converts.
+    A check that the result retains the marker or comes from `map` of records rejects a helper that maps a value, by the `valueType` part that `map` keeps.
+  - A helper that only selects fields and maps them also applies to a [mutation](mutations.md#helpers), with its `use`.
   - A helper adds or replaces fields by the same merge as `select`, for every branch of its effect; a query of values rejects a helper that selects fields or ends with a call of `nullable` in any branch.
   - A helper checks that its callback returns the input query or one derived from it, also when called directly.
     The returned query keeps the kind and the `Db` of the input query.

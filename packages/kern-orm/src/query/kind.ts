@@ -7,6 +7,7 @@ import type { SqlStatement } from "../execution/driver"
 import { createStatement } from "../execution/driver"
 import { lowerStatement } from "../lowering/lower"
 
+import type { AnyTransformedQuery, TransformedQuery, TransformedQueryState } from "./conversion"
 import type { AnyMutationQuery, MutationQuery, MutationQueryState } from "./mutation"
 import type { AnyRecordQuery, RecordQuery, RecordQueryState } from "./record"
 import type { QueryResult } from "./rows"
@@ -51,6 +52,7 @@ export function executeOnAwait(
     | SelectQuery<SelectQueryState, "bound">
     | RecordQuery<RecordQueryState, "bound">
     | MutationQuery<MutationQueryState, "bound">
+    | TransformedQuery<TransformedQueryState, "bound">
     | SqlQuery<SqlQueryState>,
   onFulfilled?: ((result: unknown) => unknown) | null,
   onRejected?: ((reason: unknown) => unknown) | null,
@@ -58,8 +60,13 @@ export function executeOnAwait(
   return this.db.$execute(this).then(onFulfilled, onRejected)
 }
 
-/** Query of any class, state, and kind: a select query of a table, a query of `$select`, one that inserts, updates, or deletes rows, or a query of SQL text. */
-export type AnyQuery = AnySelectQuery | AnyRecordQuery | AnyMutationQuery | AnySqlQuery
+/** Query of any class, state, and kind: a select query of a table, one converted by `transform`, a query of `$select`, one that inserts, updates, or deletes rows, or a query of SQL text. */
+export type AnyQuery =
+  | AnySelectQuery
+  | AnyTransformedQuery
+  | AnyRecordQuery
+  | AnyMutationQuery
+  | AnySqlQuery
 
 /** Compiles `query` as its `toSQL` does: an unbound query with `options`, and a bound query as its `Db` executes it, which takes no options. */
 export function compileToSQL(query: AnyQuery, options: CompileOptions | undefined): SqlStatement {

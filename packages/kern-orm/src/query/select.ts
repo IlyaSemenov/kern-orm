@@ -20,6 +20,8 @@ import type { AggregateMethod, CountValueType } from "./aggregate"
 import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { noContext } from "./column-refs"
+import type { SynchronousResult, TransformedQuery, TransformedQueryState } from "./conversion"
+import { addMap, transformQuery } from "./conversion"
 import type { ExistsValueType } from "./exists"
 import { getExistsProjection, isExistsQuery } from "./exists"
 import type { EqValue, QueryWhereFilter, WhereFilter } from "./filters"
@@ -36,7 +38,7 @@ import type { OrderKey, OrderTerms, SelectedRefs } from "./order"
 import { addOrder } from "./order"
 import { createPageCount } from "./pagination"
 import { coalesceValue, mergeProjections, projectValue } from "./projections"
-import type { FilteredRows, OneRow, OneValueRows, ValueRows } from "./rows"
+import type { FilteredRows, OneRow, OneValueRows, QueryResult, ValueRows } from "./rows"
 import { limitToOne, toFilteredRows, toValueRows } from "./rows"
 import type {
   HelperFields,
@@ -160,6 +162,9 @@ type UnguaranteedQueryState = SelectQueryState & { readonly guaranteed: false }
 /** State of a query whose rows are values, made by `get`, `pluck`, an aggregate method, such as `count`, or `exists`. */
 type ValueQueryState = SelectQueryState & { readonly value: true }
 
+/** State of a query converted by `map`, whose callback of `orderBy` reads no selected fields, which its result no longer tells. */
+type MappedQueryState = SelectQueryState & { readonly value: "mapped" }
+
 /** State of a query of values with the values that the type of its value encodes, which `coalesce` takes; it narrows nothing else, so that a call compares no operators. */
 type CoalesceQueryState = ValueQueryState & { readonly valueType: { readonly input: unknown } }
 
@@ -231,8 +236,9 @@ type ManyRowsQueryState = SelectQueryState & { readonly rows: "many" }
 /** State of a query of one row, which `optional` and `required` apply to. */
 type OneRowQueryState = SelectQueryState & { readonly rows: "one" | "nullable" | "optional" }
 
-/** State of a query of one row whose rows are records, which `nullable` applies to. */
-type OneRecordQueryState = OneRowQueryState & { readonly value: false }
+// The result of `map` is no value of a column, so `null` of its missing row does not read as `NULL`.
+/** State of a query of one row whose rows are records or what `map` gives, which `nullable` applies to. */
+type OneRecordQueryState = OneRowQueryState & { readonly value: false | "mapped" }
 
 /** Changes of the node of a query, which a method collects before it derives a query from them. */
 type NodeChanges = { -readonly [K in keyof QueryNode]?: QueryNode[K] }
@@ -732,6 +738,7 @@ export class SelectQuery<
     fallback: F,
   ): SelectQuery<ChangeState<S, { result: CoalescedValue<S["result"], F> }>, Kind>
   coalesce(fallback: unknown): unknown {
+    this.rejectMapped("coalesce")
     const { node } = this
     if (!node.value) {
       throw new Error(
@@ -789,6 +796,17 @@ export class SelectQuery<
       value: AnyExpression<Q["types"]["result"]>,
     ) => OrderTerms,
   ): Q
+  /**
+   * Sorts the rows of a query that `map` converts by the sort keys returned by `callback`, after the sort keys of earlier calls.
+   *
+   * `callback` receives the columns with the queries of the relations of the table, and returns what `orderBy` of a query of records takes.
+   */
+  orderBy<Q extends QueryOf<MappedQueryState>>(
+    this: Q,
+    callback: (
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
+    ) => OrderTerms,
+  ): Q
   /** Sorts the rows by the listed columns in ascending order, or in the directions of objects of columns, after the sort keys of earlier calls. */
   orderBy<Q extends AnySelectQuery>(this: Q, ...keys: OrderKey<Q["types"]["table"]>[]): Q
   orderBy(...args: unknown[]): unknown {
@@ -818,13 +836,14 @@ export class SelectQuery<
   /**
    * Makes a query of one record, such as one of `take`, resolve to `null` without a row.
    *
-   * A value of `get` or `pluck` is never `null` for a missing row, which would read as a `NULL` value, so a query of values does not accept it, and after `get` or `pluck` the query resolves to `undefined` without a row.
+   * A value of `get` or `pluck` is never `null` for a missing row, which would read as a `NULL` value, so a query of values does not accept it, unless `map` converts them, and after `get` or `pluck` the query resolves to `undefined` without a row.
    */
   nullable<S extends OneRecordQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
   ): SelectQuery<ChangeState<S, { rows: "nullable"; guaranteed: false }>, Kind>
   nullable(): unknown {
-    if (this.node.value) {
+    // The result of `map` is no value of a column, so `null` does not read as `NULL`.
+    if (this.node.value && this.node.conversion === undefined) {
       throw new Error(
         "nullable applies only to a query of records; use optional after get, pluck, or an aggregate",
       )
@@ -944,6 +963,36 @@ export class SelectQuery<
     return this.derive({ all: true })
   }
 
+  /**
+   * Converts each record or value of the result in code, after decoding, executed or nested, such as to add a field that SQL cannot compute.
+   *
+   * `callback` receives one record or value, also `null` of a `NULL` value, and is not called for a missing row, so an optional query still resolves to `undefined` without a row; it returns its result synchronously.
+   * The SQL stays as it is, so the methods that read the fields, such as `select` and `count`, and expressions reject the query after it, whereas `where`, `orderBy`, `limit`, `take`, and further `map` apply.
+   * A failure of `callback` rejects with `ResultDecodeError`, whose cause is the error.
+   */
+  map<S extends SelectQueryState, Kind extends SelectQueryKind, R>(
+    this: SelectQuery<S, Kind>,
+    callback: (row: S["result"]) => R & SynchronousResult<R>,
+  ): SelectQuery<ChangeState<S, { result: R; value: "mapped"; aggregate: true }>, Kind>
+  map(callback: (row: unknown) => unknown): unknown {
+    return this.derive({ conversion: addMap(this.node.conversion, callback) })
+  }
+
+  /**
+   * Converts the whole result in code, after decoding, executed or nested, such as to group rows or to compute a value from them.
+   *
+   * `callback` receives what the query resolves to, once: the array of rows, one row, or `null` or `undefined` of a missing row of a nullable or optional query; it returns its result synchronously.
+   * The SQL stays as it is, so call it last: the returned query only executes, nests in a selection, and takes further `transform`.
+   * A failure of `callback` rejects with `ResultDecodeError`, whose cause is the error.
+   */
+  transform<S extends SelectQueryState, Kind extends SelectQueryKind, R>(
+    this: SelectQuery<S, Kind>,
+    callback: (result: QueryResult<S>) => R & SynchronousResult<R>,
+  ): TransformedQuery<TransformedQueryState<S["table"], R, S["uses"]>, Kind>
+  transform(callback: (result: unknown) => unknown): unknown {
+    return transformQuery(this.node, this.db as AnyDb | undefined, callback)
+  }
+
   // The result is constrained to the kind of this query, so a callback cannot change the binding, and a Promise or another value is rejected.
   // A state of `any` spares comparing the state of every result with `SelectQueryState` member by member.
   /**
@@ -993,6 +1042,12 @@ export class SelectQuery<
         "An expression takes a query of one value, such as of get, an aggregate, or exists, not a query of records or of an array",
       )
     }
+    // SQL reads the value without its conversion.
+    if (node.conversion !== undefined) {
+      throw new TypeError(
+        "An expression takes a query of one value, such as of get, an aggregate, or exists, not a query of map",
+      )
+    }
     return createNode({ kind: "nestedQuery", query: node, db: this.db as AnyDb | undefined })
   }
 
@@ -1005,6 +1060,9 @@ export class SelectQuery<
     const { node } = this
     if (!node.value) {
       throw new TypeError("in takes a query of values, such as of pluck, not a query of records")
+    }
+    if (node.conversion !== undefined) {
+      throw new TypeError("in takes a query of values, such as of pluck, not a query of map")
     }
     return createNode({ kind: "nestedQuery", query: node, db: this.db as AnyDb | undefined })
   }
@@ -1050,7 +1108,8 @@ export class SelectQuery<
     const { node } = this
     return {
       filters: addUserFilter(node.filters, filter, node.from, this.context),
-      rows: toFilteredRows(node.rows, node.value, node.guaranteed),
+      // The result of `map` is no value of a column, so a query of values that it converts turns `one` into `nullable`, as `FilteredStateRows` gives it.
+      rows: toFilteredRows(node.rows, node.value && node.conversion === undefined, node.guaranteed),
       guaranteed: false,
     }
   }
@@ -1074,8 +1133,17 @@ export class SelectQuery<
     return this.derive({ rows, guaranteed: false })
   }
 
+  // The callback of `map` reads the fields of the query, so a change of them would change what it receives.
+  /** Rejects `method`, which reads or changes the fields of the query, on a query that `map` converts. */
+  private rejectMapped(method: string): void {
+    if (this.node.conversion !== undefined) {
+      throw new Error(`${method} cannot be used after map; call it before map`)
+    }
+  }
+
   /** Rejects a change of the selection by `method` of a query made by `get`, `pluck`, or an aggregate method. */
   private rejectValue(method: string): void {
+    this.rejectMapped(method)
     if (!this.node.value) {
       return
     }
@@ -1088,6 +1156,7 @@ export class SelectQuery<
   // An aggregate query has rows `one` over the aggregated rows without a limit, so a value of a row would decode several rows as one, and another aggregate would aggregate those rows rather than the row of the aggregate; so does a query of `exists`.
   /** Rejects `method`, which replaces the value or the selection, on a query made by an aggregate method or `exists`. */
   private rejectAggregate(method: string): void {
+    this.rejectMapped(method)
     const { node } = this
     if (isAggregateQuery(node)) {
       throw new Error(`${method} cannot be used after an aggregate`)

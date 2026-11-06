@@ -9,6 +9,7 @@ import type { AnyType } from "../type/type"
 import { addFallback, isAggregateProjection } from "./aggregate"
 import type { QueryContext } from "./column-refs"
 import { createSelectionRefs } from "./column-refs"
+import { TransformedQuery } from "./conversion"
 import { isExistsProjection } from "./exists"
 import { Literal } from "./literal"
 import { MutationQuery } from "./mutation"
@@ -122,7 +123,7 @@ function selectValue(key: string, value: unknown): SelectedNode {
   if (value instanceof Literal) {
     return Object.freeze({ key, literal: value.literal })
   }
-  if (value instanceof SelectQuery) {
+  if (value instanceof SelectQuery || value instanceof TransformedQuery) {
     return Object.freeze({ key, query: value.node, db: value.db })
   }
   if (value instanceof RecordQuery) {

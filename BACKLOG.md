@@ -31,14 +31,6 @@ Locking the rows that a query reads, as `SELECT ... FOR UPDATE`, `FOR NO KEY UPD
 - Orchid ORM 1.78.47 takes the tables to lock, as `FOR UPDATE OF` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#forupdate)); kern-orm selects related records in subqueries of the select list, which the clause of the query does not lock, so decide whether a query needs to name its tables.
 - Outside a transaction the lock ends with its statement, so decide whether a locking query rejects outside one.
 
-## `transform` and `map` of a query
-
-`transform` and `map` of a query, as in Orchid ORM, such as `max("position").coalesce(0).transform(position => position + 1)`:
-
-- `transform` converts the whole result of the query after decoding, executed or nested, including a missing row and the array of rows;
-- `map` converts each record or value of the result and skips a missing row; decide whether it also skips a `NULL` value, such as of an aggregate without rows.
-- They change the result in types but not the SQL, so decide which methods apply after them, such as `where` and `select`, and how `orderBy` of the selected fields, helpers, and the paths of decoding errors treat a converted value.
-
 ## Through and many-to-many relations
 
 Relations through other relations, such as the answers of a form through its fields, and many-to-many relations through a join table, which queries select and filter by as other relations, as `chain` of Orchid ORM 1.78.47 queries the related records of related records ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/relation-queries.md#chain)).
@@ -139,7 +131,7 @@ Columns that a table defines as expressions over its other columns, which querie
 
 - Decide whether a table or a schema defines them, so that they can read relations, as a schema defines relations, such as the profit of a record from its related records.
 - Inserts and updates reject them, as [generated columns](#generated-columns); decide whether `select("*")` selects them.
-- Fields computed at runtime could be [`map`](#transform-and-map-of-a-query) of a query instead.
+- Fields computed at runtime could be [`map`](architecture/queries.md#converting-results) of a query instead.
 
 ## Updating records with values of each
 
@@ -218,6 +210,16 @@ Pages after the sort keys of the last row of the previous page, reading the orde
 
 - Types do not tell a helper of `orderBy`, `limit`, or `offset`, which a mutation lacks, from one that only selects; the state of a helper could record them.
 - Types do not tell a selection of no fields from none, which needs a new part of the state or of the marker of a helper, and each query would pay for it.
+
+## `transform` and `map` beyond their current limits
+
+[`transform` and `map`](architecture/queries.md#converting-results) leave out what no use has needed yet:
+
+- A query of `$select` and a query of SQL text have no such methods, such as to define one unbound `$select` that gives a converted value; a bound one can convert its result after `await`.
+- `count`, `exists`, `get`, and `pluck` reject a query of `map`, though they replace the fields that its callback reads, so they could drop the conversion, such as to count the rows of a query that a helper of `map` defines.
+- The callback of `orderBy` after `map` has no selected fields, and could read those that `map` receives, which the state would need to keep.
+- `where`, `orderBy`, `limit`, and `offset` could apply after `transform` where they keep what its callback receives, such as on a query whose row no relation guarantees.
+- Types accept `map` without `select` in a helper, which [`use` of a mutation](architecture/mutations.md#helpers) rejects at runtime on a mutation without earlier selected fields, since the state does not keep the fields before `map`.
 
 ## Records of a relation at any depth
 

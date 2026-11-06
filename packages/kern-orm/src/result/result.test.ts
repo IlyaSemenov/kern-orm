@@ -3,7 +3,14 @@ import { describe, expect, it } from "bun:test"
 import type { DriverResult } from "../execution/driver"
 import * as t from "../types"
 
-import type { ResultField, ResultMode, ResultPlan, ResultRows, StatementPlan } from "./result"
+import type {
+  ResultConversion,
+  ResultField,
+  ResultMode,
+  ResultPlan,
+  ResultRows,
+  StatementPlan,
+} from "./result"
 import {
   decodeResult,
   decodeStatement,
@@ -374,6 +381,189 @@ describe("nested rows", () => {
       expect(() => decodeResult(plan, [[text!]])).toThrow(`Cannot decode result field ${message}`)
     }
     expect(() => decodeResult(plan, [["[["]])).toThrow('Cannot decode result field "[0].fields": ')
+  })
+})
+
+describe("conversion", () => {
+  const value: ResultField[] = [{ key: "value", type: t.integer }]
+
+  /** Plan of `rows` of one integer value, converted by `conversion`. */
+  function createValuePlan(rows: ResultRows, conversion: Partial<ResultConversion>): ResultPlan {
+    return {
+      fields: value,
+      rows,
+      value: true,
+      conversion: { map: undefined, transform: undefined, ...conversion },
+    }
+  }
+
+  /** Field of the nested rows of `plan`, of which a row of the driver holds the JSON. */
+  function createNestedPlan(plan: ResultPlan): ResultPlan {
+    return { fields: [{ key: "items", nested: plan }], rows: "one", value: false }
+  }
+
+  const increment = (row: unknown) => (row as number) + 1
+  const count = (result: unknown) => (result as readonly unknown[]).length
+  const failOnCall = (): never => {
+    throw new Error("Unexpected call")
+  }
+
+  it("maps each row, and transforms the whole result after it", () => {
+    expect(decodeResult(createValuePlan("many", { map: increment }), [["1"], ["2"]])).toEqual([
+      2, 3,
+    ])
+    expect(decodeResult(createValuePlan("many", { transform: count }), [["1"], ["2"]])).toBe(2)
+    expect(decodeResult(createValuePlan("one", { map: increment }), [["1"]])).toBe(2)
+    expect(
+      decodeResult(createValuePlan("many", { map: increment, transform: result => [result] }), [
+        ["1"],
+      ]),
+    ).toEqual([[2]])
+  })
+
+  it("does not map a missing row, and transforms its result", () => {
+    for (const rows of ["optional", "nullable"] as const) {
+      const missing = rows === "optional" ? undefined : null
+
+      expect(decodeResult(createValuePlan(rows, { map: failOnCall }), [])).toBe(missing)
+      expect(
+        decodeResult(createValuePlan(rows, { map: failOnCall, transform: result => [result] }), []),
+      ).toEqual([missing])
+    }
+  })
+
+  it("maps a row that decodes to null or undefined, which is not a missing row", () => {
+    const describeValue = (row: unknown) => `value ${String(row)}`
+    const plan = createValuePlan("optional", { map: describeValue })
+    const empty: ResultField[] = [
+      { key: "value", type: t.text.transform({ decode: () => undefined }) },
+    ]
+
+    expect(decodeResult(plan, [[null]])).toBe("value null")
+    expect(decodeResult({ ...plan, fields: empty }, [["text"]])).toBe("value undefined")
+    expect(decodeResult(createValuePlan("many", { map: describeValue }), [[null]])).toEqual([
+      "value null",
+    ])
+  })
+
+  it("rejects a missing row of rows one before it converts", () => {
+    expect(() =>
+      decodeResult(createValuePlan("one", { map: failOnCall, transform: failOnCall }), []),
+    ).toThrow(new NotFoundError("Query returned no rows"))
+  })
+
+  it("converts nested rows, whose missing row it tells by their JSON", () => {
+    const decodeNested = (plan: ResultPlan, json: string | null) =>
+      decodeResult(createNestedPlan(plan), [[json]])
+
+    expect(decodeNested(createValuePlan("many", { map: increment }), '[["1"],["2"]]')).toEqual({
+      items: [2, 3],
+    })
+    expect(decodeNested(createValuePlan("many", { transform: count }), "[]")).toEqual({ items: 0 })
+    expect(decodeNested(createValuePlan("one", { map: increment }), '["1"]')).toEqual({ items: 2 })
+    expect(decodeNested(createValuePlan("optional", { map: increment }), null)).toStrictEqual({
+      items: undefined,
+    })
+    expect(decodeNested(createValuePlan("nullable", { transform: () => "none" }), null)).toEqual({
+      items: "none",
+    })
+    expect(
+      decodeNested(createValuePlan("optional", { map: row => `value ${String(row)}` }), "[null]"),
+    ).toEqual({ items: "value null" })
+    expect(() => decodeNested(createValuePlan("one", { map: failOnCall }), null)).toThrow(
+      NotFoundError,
+    )
+  })
+
+  describe("failures", () => {
+    const failure = new RangeError("Out of range")
+    const fail = (): never => {
+      throw failure
+    }
+    const failOnSecond = (row: unknown): unknown => {
+      if (row === 2) {
+        throw failure
+      }
+      return row
+    }
+
+    /** Returns the `ResultDecodeError` that decoding by `plan` rejects with, checking its cause. */
+    function captureDecodeError(plan: ResultPlan, rows: readonly (readonly string[])[]) {
+      const error = captureError(() => decodeResult(plan, rows)) as ResultDecodeError
+      expect(error).toBeInstanceOf(ResultDecodeError)
+      expect(error.cause).toBe(failure)
+      return error
+    }
+
+    it("names the index of a row of an executed query that map fails on", () => {
+      const error = captureDecodeError(createValuePlan("many", { map: failOnSecond }), [
+        ["1"],
+        ["2"],
+      ])
+
+      expect(error.path).toBe("[1]")
+      expect(error.message).toBe('Cannot decode result field "[1]": Out of range')
+    })
+
+    it("has no path for the only row and the whole result of an executed query", () => {
+      for (const plan of [
+        createValuePlan("one", { map: fail }),
+        createValuePlan("one", { transform: fail }),
+        createValuePlan("many", { transform: fail }),
+      ]) {
+        const error = captureDecodeError(plan, [["1"]])
+
+        expect(error.path).toBeUndefined()
+        expect(error.message).toBe("Cannot convert the result: Out of range")
+      }
+    })
+
+    it("names the field of nested rows that a conversion fails on, with the index of a row of map", () => {
+      const nested = createNestedPlan(createValuePlan("many", { map: failOnSecond }))
+      expect(captureDecodeError(nested, [['[["1"],["2"]]']]).path).toBe("items[1]")
+
+      const transformed = createNestedPlan(createValuePlan("many", { transform: fail }))
+      expect(captureDecodeError(transformed, [["[]"]]).path).toBe("items")
+
+      const mapped = createNestedPlan(createValuePlan("one", { map: fail }))
+      expect(captureDecodeError(mapped, [['["1"]']]).path).toBe("items")
+
+      const deep = createNestedPlan({
+        fields: [{ key: "children", nested: createValuePlan("many", { map: failOnSecond }) }],
+        rows: "many",
+        value: false,
+      })
+      expect(captureDecodeError(deep, [['[[[["1"]]],[[["2"]]]]']]).path).toBe(
+        "items[1].children[0]",
+      )
+    })
+
+    it("adds the index of the row of an executed query before the field", () => {
+      const plan: ResultPlan = {
+        fields: [{ key: "items", nested: createValuePlan("many", { transform: fail }) }],
+        rows: "many",
+        value: false,
+      }
+
+      expect(captureDecodeError(plan, [["[]"]]).path).toBe("[0].items")
+    })
+
+    it("does not describe a thrown value other than an Error", () => {
+      const error = captureError(() =>
+        decodeResult(
+          createValuePlan("one", {
+            map: () => {
+              // oxlint-disable-next-line no-throw-literal -- a callback may throw anything
+              throw "failure"
+            },
+          }),
+          [["1"]],
+        ),
+      ) as ResultDecodeError
+
+      expect(error.message).toBe("Cannot convert the result")
+      expect(error.cause).toBe("failure")
+    })
   })
 })
 

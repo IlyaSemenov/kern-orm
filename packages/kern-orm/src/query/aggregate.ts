@@ -153,9 +153,10 @@ export function isAggregateQuery(node: QueryNode): boolean {
   return node.value && isAggregateProjection(node.projections[0]!)
 }
 
-/** Tells whether `node`, a nested query, is selected as its value rather than as packed rows: an aggregate query as a scalar subquery of its statement, and a query of `exists` as `EXISTS` of its rows. */
+// The result plan of packed rows holds a conversion, whereas a field of a value has only the type that decodes it.
+/** Tells whether `node`, a nested query, is selected as its value rather than as packed rows: an aggregate query as a scalar subquery of its statement, and a query of `exists` as `EXISTS` of its rows, unless `map` or `transform` converts its value. */
 export function isSelectedAsValue(node: QueryNode): boolean {
-  return isAggregateQuery(node) || isExistsQuery(node)
+  return node.conversion === undefined && (isAggregateQuery(node) || isExistsQuery(node))
 }
 
 /** Tells whether a selected field is the projection of an aggregate, which only the aggregate methods select. */

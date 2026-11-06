@@ -12,13 +12,15 @@ import type { SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable, Selectable } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
+import type { SynchronousResult } from "./conversion"
+import { addMap, addTransform } from "./conversion"
 import type { Helper, HelperEffect, HelperError, ReadsContext } from "./helper"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { MutationNode, QueryNode } from "./node"
 import { isTableQuery } from "./node"
 import { mergeProjections, projectValue } from "./projections"
-import type { OneValueRows, ValueRows } from "./rows"
+import type { OneValueRows, QueryResult, ValueRows } from "./rows"
 import { toValueRows } from "./rows"
 import type { AnySelectQuery, OperandUses } from "./select"
 import { requireDerived } from "./select"
@@ -27,7 +29,7 @@ import type { EmptyRecord, QueryState } from "./state"
 import { toAssignments, toInsertRows } from "./values"
 
 /**
- * State in types of a query that inserts, updates, or deletes rows: its table and the relations of its schema, the rows mode of the rows it changes, and its result, which is their number until a selection returns their fields.
+ * State in types of a query that inserts, updates, or deletes rows: its table and the relations of its schema, the rows mode of the rows it changes, and its result, which is their number until a selection returns their fields or `transform` converts it.
  *
  * Methods change only their own parts of the state.
  */
@@ -36,7 +38,7 @@ export interface MutationQueryState extends QueryState {
   readonly schema: SchemaContext
   /** Rows mode of the rows that the query changes, which `select`, `get`, and `pluck` return. */
   readonly changed: ResultRows
-  /** Whether the query returns the fields of the rows it changes rather than their number. */
+  /** Whether the query resolves to something other than the number of the rows it changes: their fields or what `transform` makes of that number. */
   readonly returning: boolean
 }
 
@@ -70,14 +72,23 @@ type ChangeMutationState<
 type RecordMutationState = MutationQueryState &
   ({ readonly returning: false } | { readonly value: false })
 
-/** State of a mutation of one row, which `get` applies to. */
-type OneRowMutationState = MutationQueryState & {
+/** State of a mutation that `map` and `transform` do not convert, which `pluck` applies to. */
+type UnconvertedMutationState = MutationQueryState & { readonly value: boolean }
+
+/** State of a mutation of one row that `map` and `transform` do not convert, which `get` applies to. */
+type OneRowMutationState = UnconvertedMutationState & {
   readonly changed: "one" | "nullable" | "optional"
+}
+
+/** State of a mutation that returns the fields of the rows it changes, which `map` applies to unless `transform` converts it; the number of the rows has no rows to convert. */
+type ReturningMutationState = MutationQueryState & {
+  readonly returning: true
+  readonly value: boolean | "mapped"
 }
 
 /** Constraint of a mutation that does not accept a helper that filters or takes one row, whose methods it lacks. */
 interface NotMutationEffect {
-  readonly returning: HelperError<"A helper of a mutation can only select fields">
+  readonly returning: HelperError<"A helper of a mutation can only select fields and map them">
 }
 
 /** Constraint of a mutation that accepts a helper of table `T` of effect `E`, whose callback reads the relations of its schema context from the mutation. */
@@ -86,18 +97,30 @@ type HelperMutationInput<T extends AnyTable, E extends HelperEffect> = MutationQ
   readonly schema: ReadsContext<E>
 } & ([E["guaranteed"]] extends [true]
     ? [E["rows"]] extends ["many"]
-      ? [E extends HelperEffect ? keyof E["fields"] : never] extends [never]
+      ? [E extends HelperEffect ? keyof E["fields"] : never, E["mapped"]] extends [never, false]
         ? unknown
         : RecordMutationState
       : NotMutationEffect
     : NotMutationEffect)
 
-/** State of a mutation of state `S` after a helper of effect `E`: the records with the fields that it selects. */
-type HelperMutationState<S extends MutationQueryState, E extends HelperEffect> = [
-  keyof E["fields"],
-] extends [never]
-  ? ChangeMutationState<S, { uses: S["uses"] | E["uses"] }>
-  : RecordsState<S, E["fields"], E["uses"]>
+/** State of a mutation of state `S` after a helper of effect `E`: the rows that `map` gives, or the records with the fields that it selects. */
+type HelperMutationState<
+  S extends MutationQueryState,
+  E extends HelperEffect,
+> = E["mapped"] extends true
+  ? ChangeMutationState<
+      S,
+      {
+        result: E["output"]
+        rows: S["changed"]
+        value: "mapped"
+        returning: true
+        uses: S["uses"] | E["uses"]
+      }
+    >
+  : [keyof E["fields"]] extends [never]
+    ? ChangeMutationState<S, { uses: S["uses"] | E["uses"] }>
+    : RecordsState<S, E["fields"], E["uses"]>
 
 /** Record that the returned fields of a mutation of state `S` add to: the fields selected earlier, or none. */
 type ReturnedRecord<S extends MutationQueryState> = S["returning"] extends true
@@ -145,7 +168,7 @@ type OperandState<
 /**
  * Immutable query of state `S` that inserts, updates, or deletes rows, unbound or bound to a `Db`.
  *
- * Without a selection, it resolves to the number of the rows it changes; `select`, `get`, and `pluck` return the fields of those rows instead.
+ * Without a selection, it resolves to the number of the rows it changes; `select`, `get`, and `pluck` return the fields of those rows instead, and `map` and `transform` convert them in code.
  * An unbound query is not thenable, so it can be returned from async functions; it is compiled with `toSQL` or executed by a `Db`.
  * A bound query executes on its `Db` when awaited.
  */
@@ -199,6 +222,7 @@ export class MutationQuery<
     callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => Sel,
   ): MutationQuery<RecordsState<S, SelectionResult<Sel>, SelectionUses<Sel>>, Kind>
   select(...args: unknown[]): unknown {
+    this.rejectConverted("select")
     const { node } = this
     const { returning } = node
     if (returning !== undefined && node.value) {
@@ -246,7 +270,7 @@ export class MutationQuery<
 
   /** Returns the value of a column of each changed row instead of the number of the rows, keeping whether the query returns an array or one value. */
   pluck<
-    S extends MutationQueryState,
+    S extends UnconvertedMutationState,
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(
@@ -258,12 +282,49 @@ export class MutationQuery<
    *
    * `callback` receives what the callback of `select` receives, and may return a query of one value, which gives `NULL` without its row.
    */
-  pluck<S extends MutationQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
+  pluck<S extends UnconvertedMutationState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: MutationQuery<S, Kind>,
     callback: (columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>) => E,
   ): MutationQuery<OperandState<S, E, ValueRows<S["changed"]>>, Kind>
   pluck(arg: unknown): unknown {
     return this.deriveValue(arg, "pluck")
+  }
+
+  /**
+   * Converts each record or value that the mutation returns in code, after decoding, such as to add a field that SQL cannot compute; select the fields before it, since the number of the rows has no rows to convert, which `transform` converts instead.
+   *
+   * `callback` receives one record or value, also `null` of a `NULL` value, and is not called for a missing row; it returns its result synchronously.
+   * A failure of `callback` rejects with `ResultDecodeError`, after the mutation has changed its rows.
+   */
+  map<S extends ReturningMutationState, Kind extends SelectQueryKind, R>(
+    this: MutationQuery<S, Kind>,
+    callback: (row: S["result"]) => R & SynchronousResult<R>,
+  ): MutationQuery<ChangeMutationState<S, { result: R; value: "mapped" }>, Kind>
+  map(callback: (row: unknown) => unknown): unknown {
+    const { node } = this
+    if (node.returning === undefined) {
+      throw new Error(
+        "map applies only to a mutation that returns the fields of its rows; select them before map, or call transform to convert the number of the rows",
+      )
+    }
+    return this.derive({ conversion: addMap(node.conversion, callback) })
+  }
+
+  /**
+   * Converts the whole result of the mutation in code, after decoding, such as the number of the rows it changes into whether it changed any.
+   *
+   * `callback` receives what the mutation resolves to, once, and returns its result synchronously; call `select`, `get`, `pluck`, and `map` before it.
+   * A failure of `callback` rejects with `ResultDecodeError`, after the mutation has changed its rows.
+   */
+  transform<S extends MutationQueryState, Kind extends SelectQueryKind, R>(
+    this: MutationQuery<S, Kind>,
+    callback: (result: QueryResult<S>) => R & SynchronousResult<R>,
+  ): MutationQuery<
+    ChangeMutationState<S, { result: R; rows: "one"; value: "transformed"; returning: true }>,
+    Kind
+  >
+  transform(callback: (result: unknown) => unknown): unknown {
+    return this.derive({ conversion: addTransform(this.node.conversion, callback) })
   }
 
   // The result is constrained to the kind of this query, so a callback cannot change the binding, and a Promise or another value is rejected.
@@ -287,7 +348,7 @@ export class MutationQuery<
   ): R
   // TypeScript infers the parameters of `Helper` from a helper by the alias, whereas a helper called with a mutation would need an overload of `Helper`, and `use` of a query of a table would infer a generic overloaded function from its last overload only.
   /**
-   * Applies a helper of `defineHelper` that only selects fields to what the mutation returns, as `use` of a select query does.
+   * Applies a helper of `defineHelper` that only selects fields and maps them to what the mutation returns, as `use` of a select query does.
    *
    * Another method of a query in the helper fails: types reject those that filter or take one row, but not `orderBy`, `limit`, and `offset`, which they do not tell from a selection.
    * A selection of no fields fails as well on a mutation that returns the number of its rows.
@@ -347,12 +408,21 @@ export class MutationQuery<
 
   /** Creates the mutation that returns the value of `arg` of `method`, a column key or a callback that receives the columns and the relations and returns an expression or a query of one value, of each changed row. */
   private deriveValue(arg: unknown, method: string): AnyMutationQuery {
+    this.rejectConverted(method)
     const { node } = this
     return this.derive({
       returning: [projectValue(node.target, arg, method, this.context)],
       value: true,
       rows: toValueRows(node.rows),
     })
+  }
+
+  // The callbacks of `map` and `transform` read what the mutation returns, so a change of its fields would change what they receive.
+  /** Rejects `method`, which changes the fields that the mutation returns, on a mutation that `map` or `transform` converts. */
+  private rejectConverted(method: string): void {
+    if (this.node.conversion !== undefined) {
+      throw new Error(`${method} cannot be used after map or transform; call it before them`)
+    }
   }
 }
 
@@ -435,7 +505,7 @@ export function createDelete(query: AnySelectQuery): AnyMutationQuery {
 
 // PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters; `find` and `findBy` add no limit, since the values of a key match at most one row.
 /**
- * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a relation, with selected fields, which a mutation selects after it, with an order, a limit, or an offset, or without a filter that restricts its rows unless `all` allows it.
+ * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a relation, with selected fields, which a mutation selects after it, with a conversion of `map`, which a mutation takes after it too, with an order, a limit, or an offset, or without a filter that restricts its rows unless `all` allows it.
  *
  * A filter simplified to `TRUE`, such as `where({})`, restricts no row.
  */
@@ -446,6 +516,11 @@ function checkChangedRows(node: QueryNode, method: string): void {
   if (node.projections.length > 0) {
     throw new Error(
       `${method} returns the fields selected after it, not before; call select, get, or pluck after ${method}`,
+    )
+  }
+  if (node.conversion !== undefined) {
+    throw new Error(
+      `${method} returns what map converts after it, not before; call map after ${method}`,
     )
   }
   if (node.orderBy.length > 0 || node.limit !== undefined || node.offset !== undefined) {

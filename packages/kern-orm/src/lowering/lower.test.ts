@@ -372,6 +372,23 @@ describe("lowerStatement", () => {
 })
 
 describe("lowerQuery", () => {
+  it("keeps the conversion of a query in its statement, whichever the statement is", () => {
+    for (const { node } of [
+      schema.form.select("id").map(String),
+      schema.form.count().map(String),
+      schema.form.exists().map(String),
+      schema.form
+        .select(form => ({
+          fields: form.fields.pluck("id"),
+        }))
+        .offset(1)
+        .map(String),
+    ]) {
+      expect(lowerQuery(node).conversion).toBe(node.conversion)
+    }
+    expect(lowerQuery(schema.form.select("id").node).conversion).toBeUndefined()
+  })
+
   it("keeps the nodes of a query without queries in its fields, filters, and order", () => {
     const { node } = schema.form
       .where(form => form.id.gt(1))
@@ -467,6 +484,30 @@ describe("lowerQuery", () => {
     ])
     expect(compileStatement(statement).text).toBe(
       'SELECT (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "fieldCount", (SELECT count(*) AS "count" FROM (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form"."id" LIMIT $1) AS "subquery") AS "firstCount", (SELECT max("form_field_3"."label") AS "max" FROM "form_field" AS "form_field_3" WHERE "form_field_3"."formId" = "form"."id") AS "lastLabel" FROM "form" AS "form"',
+    )
+  })
+
+  it("packs a nested aggregate query and a query of exists that code converts, whose result plan holds the conversion", () => {
+    const { node } = schema.form.select(form => ({
+      fieldCount: form.fields.count().map(String),
+      hasFields: form.fields.exists().transform(String),
+    }))
+    const statement = lowerQuery(node)
+
+    expect(statement.projections).toMatchObject([
+      {
+        key: "fieldCount",
+        expression: { kind: "subquery" },
+        nested: { rows: "one", value: true, conversion: { map: expect.any(Function) } },
+      },
+      {
+        key: "hasFields",
+        expression: { kind: "subquery" },
+        nested: { rows: "one", value: true, conversion: { transform: expect.any(Function) } },
+      },
+    ])
+    expect(compileStatement(statement).text).toBe(
+      'SELECT (SELECT json_build_array(CASE WHEN "subquery"."count" IS NOT DISTINCT FROM NULL THEN NULL ELSE format(\'%s\', "subquery"."count") END) AS "rows" FROM (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id" OFFSET 0) AS "subquery") AS "fieldCount", (SELECT json_build_array(CASE WHEN "subquery_2"."exists" IS NOT DISTINCT FROM NULL THEN NULL ELSE format(\'%s\', "subquery_2"."exists") END) AS "rows" FROM (SELECT EXISTS (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form"."id") AS "exists" OFFSET 0) AS "subquery_2") AS "hasFields" FROM "form" AS "form"',
     )
   })
 

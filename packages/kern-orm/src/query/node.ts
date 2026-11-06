@@ -11,7 +11,7 @@ import type {
 } from "../ast/nodes"
 import { noFilters } from "../ast/nodes"
 import type { AnyDb } from "../execution/db"
-import type { ResultMode } from "../result/result"
+import type { ResultConversion, ResultMode } from "../result/result"
 import type { RelationDefinition } from "../schema/relation"
 
 import { getRelationRows } from "./rows"
@@ -52,6 +52,8 @@ export interface QueryNode extends ResultMode {
   readonly guaranteed: boolean
   /** Whether `all` allows a mutation of the query to change every row of the table without a filter. */
   readonly all: boolean
+  /** How `map` and `transform` convert the decoded result. */
+  readonly conversion: ResultConversion | undefined
 }
 
 /**
@@ -87,10 +89,11 @@ export function createQueryNode(
     value: false,
     guaranteed: relation?.required ?? false,
     all: false,
+    conversion: undefined,
   })
 }
 
-/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, order, limit, offset, rows other than `many`, or `all`. */
+/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, order, limit, offset, rows other than `many`, `all`, or conversion. */
 export function isTableQuery(node: QueryNode): boolean {
   return (
     node.relation === undefined &&
@@ -102,7 +105,8 @@ export function isTableQuery(node: QueryNode): boolean {
     node.limit === undefined &&
     node.offset === undefined &&
     node.rows === "many" &&
-    !node.all
+    !node.all &&
+    node.conversion === undefined
   )
 }
 

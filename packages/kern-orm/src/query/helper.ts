@@ -12,8 +12,8 @@ import type {
   TableOrQuery,
 } from "./select"
 import { requireDerived } from "./select"
-import type { HelperFields, MergeSelection } from "./selection"
-import type { QueryStateOf, SelectQueryState } from "./state"
+import type { HelperFields, MergeSelection, WithoutHelperFields } from "./selection"
+import type { EmptyRecord, QueryStateOf, SelectQueryState } from "./state"
 
 /**
  * State of the query that the callback of a helper of table `T` with schema context `C` receives: the fields of the query the helper is applied to, and all its rows.
@@ -31,12 +31,16 @@ interface HelperState<T extends AnyTable, C extends SchemaContext> extends Query
 }
 
 /**
- * Effect of a helper: the fields it selects, its rows mode on a query of many rows, `one` after `take` or `required` and `nullable` or `optional` after the method of the same name, the relations it selects records of, and whether it keeps the guarantee of the row of a query of a required relation.
+ * Effect of a helper: the fields it selects, or whether `map` converts its rows and what it gives, its rows mode on a query of many rows, `one` after `take` or `required` and `nullable` or `optional` after the method of the same name, the relations it selects records of, and whether it keeps the guarantee of the row of a query of a required relation.
  *
  * `reads` are the relations of the schema of the helper among them, which its callback may read from the references of the query it is applied to, and `key` is the key of its table there.
  */
 export interface HelperEffect {
   readonly fields: object
+  /** Whether `map` converts the rows, whose fields the result no longer tells, so that `fields` are empty. */
+  readonly mapped: boolean
+  /** What `map` gives for each row of a query the helper is applied to; `never` when `mapped` is `false`. */
+  readonly output: unknown
   readonly rows: ResultRows
   readonly uses: UsedRelation
   readonly reads: UsedRelation
@@ -48,9 +52,11 @@ export interface HelperEffect {
 /** Effect of a helper whose callback returns a query of state `S`, for each state of a union. */
 type ReadEffect<S extends SelectQueryState> = S extends SelectQueryState
   ? {
-      readonly fields: {
-        [K in keyof S["result"] as K extends keyof HelperFields ? never : K]: S["result"][K]
-      }
+      readonly fields: S["value"] extends "mapped"
+        ? EmptyRecord
+        : { [K in keyof S["result"] as K extends keyof HelperFields ? never : K]: S["result"][K] }
+      readonly mapped: S["value"] extends "mapped" ? true : false
+      readonly output: S["value"] extends "mapped" ? WithoutHelperFields<S["result"]> : never
       readonly rows: S["rows"]
       readonly uses: S["uses"]
       // Relations of the schema context that the uses match, so that uses widened to any relation require all of them.
@@ -67,12 +73,14 @@ export interface HelperError<Message extends string> {
 
 // Clearing the selection would discard the marker, so the effect could not describe which input fields survive.
 // `value` is checked as well, since the value of `get` or `pluck` of an expression of `any` passes for the marker.
-/** `unknown` when every result state retains the input marker and returns records, or the error. */
+// `map` replaces the marker, and `valueType` tells a query of records that it converts, whose fields `map` read, from a query of values.
+/** `unknown` when every result state retains the input marker and returns records, or converts such records with `map`, or the error. */
 type CheckResult<S extends SelectQueryState> = [S] extends [
-  { readonly result: HelperFields; readonly value: false },
+  | { readonly result: HelperFields; readonly value: false }
+  | { readonly value: "mapped"; readonly valueType: never },
 ]
   ? unknown
-  : HelperError<"A helper can filter, select fields, and take one row, but cannot clear the selection or use get, pluck, or aggregates">
+  : HelperError<"A helper can filter, select fields, map them, and take one row, but cannot clear the selection or use get, pluck, or aggregates">
 
 // The checks constrain the state of the query rather than test it with a conditional type, which TypeScript defers for a generic state, such as of a function that applies a helper.
 // A generic state passes them through its own constraint, such as `S extends QueryStateOf<T> & { readonly value: false }`.
@@ -80,15 +88,17 @@ type CheckResult<S extends SelectQueryState> = [S] extends [
 type HelperInput<T extends AnyTable, E extends HelperEffect> = QueryStateOf<T, ReadsContext<E>> &
   ValueCheck<E>
 
-// A query of values rejects even one branch that selects fields or ends with a call of `nullable`.
+// A query of values rejects even one branch that selects fields, maps them, or ends with a call of `nullable`, and so does a query that `map` converts, whose fields the callback of the helper could not read.
 /** Constraint of `value` of a query that accepts a helper of effect `E`. */
 type ValueCheck<E extends HelperEffect> = [
   E extends HelperEffect ? keyof E["fields"] : never,
 ] extends [never]
   ? [Extract<E["rows"], "nullable">] extends [never]
-    ? unknown
-    : RecordRows<"A helper cannot apply nullable to a query made by get, pluck, or an aggregate">
-  : RecordRows<"A helper cannot select fields on a query made by get, pluck, or an aggregate">
+    ? [E["mapped"]] extends [false]
+      ? unknown
+      : RecordRows<"A helper cannot apply map to a query made by get, pluck, an aggregate, or map">
+    : RecordRows<"A helper cannot apply nullable to a query made by get, pluck, an aggregate, or map">
+  : RecordRows<"A helper cannot select fields on a query made by get, pluck, an aggregate, or map">
 
 // The error is a member of the union, so that the error of a query of values names it.
 /** Constraint of a query whose rows are records, which a query of values fails with error `Message`. */
@@ -117,9 +127,13 @@ export type ReadsContext<E extends HelperEffect> = [E["reads"]] extends [never]
 type ApplyEffect<S extends SelectQueryState, E extends HelperEffect> = ChangeState<
   S,
   {
-    result: [keyof E["fields"]] extends [never]
-      ? S["result"]
-      : MergeSelection<S["result"], E["fields"]>
+    result: E["mapped"] extends true
+      ? E["output"]
+      : [keyof E["fields"]] extends [never]
+        ? S["result"]
+        : MergeSelection<S["result"], E["fields"]>
+    value: E["mapped"] extends true ? "mapped" : S["value"]
+    aggregate: E["mapped"] extends true ? true : S["aggregate"]
     // `required` also leaves `one`, which the effect cannot tell from `take`, so a query of one row keeps its mode in types while `required` changes it to `one`.
     rows: E["rows"] extends "many"
       ? EffectRows<S, E>
@@ -140,8 +154,8 @@ type EffectRows<S extends SelectQueryState, E extends HelperEffect> = E["guarant
 /**
  * Helper of `defineHelper` for queries over table `T`: it applies effect `E` to the query it receives with arguments `A` and returns a query of the same kind.
  *
- * Selected fields replace earlier fields under the same keys; a query made by `get`, `pluck`, or an aggregate method does not accept a helper that selects fields.
- * `use` of a mutation also applies a helper that only selects fields.
+ * Selected fields replace earlier fields under the same keys; a query made by `get`, `pluck`, an aggregate method, or `map` does not accept a helper that selects fields or maps them.
+ * `use` of a mutation also applies a helper that only selects fields and maps them.
  */
 export type Helper<T extends AnyTable, E extends HelperEffect, A extends unknown[]> = <
   S extends HelperInput<T, E>,
@@ -152,12 +166,12 @@ export type Helper<T extends AnyTable, E extends HelperEffect, A extends unknown
 ) => E extends HelperEffect ? SelectQuery<ApplyEffect<S, E>, Kind> : never
 
 /**
- * Defines a reusable helper of a table that filters, selects fields, and applies `take`, `optional`, `nullable`, and `required`, used with `use` or called with a query.
+ * Defines a reusable helper of a table that filters, selects fields, converts them with `map`, and applies `take`, `optional`, `nullable`, and `required`, used with `use` or called with a query.
  *
  * `helper` receives the query it is applied to and any further arguments, and returns the query with its clauses.
  * Defined with a query of a schema, such as `schema.form`, it can select the relations of the table in that schema, and applies to queries whose schema has them.
  * The helper returns a query of the same kind as the one it is applied to, bound to the same `Db` if any.
- * A helper that only selects fields also applies to an insert, an update, and a delete with their `use`, where it selects what they return; other methods fail there.
+ * A helper that only selects fields and maps them also applies to an insert, an update, and a delete with their `use`, where it selects what they return; other methods fail there.
  */
 export function defineHelper<
   T extends AnyTable,

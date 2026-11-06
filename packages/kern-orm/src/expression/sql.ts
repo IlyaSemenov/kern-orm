@@ -1,6 +1,7 @@
 import type { ExpressionNode, RawSqlNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import { quoteIdentifier } from "../compiler/postgres/identifier"
+import { TransformedQuery } from "../query/conversion"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"
 import { RecordQuery } from "../query/record"
@@ -147,14 +148,25 @@ export function toRawSqlNode(
 function toInterpolatedNode(value: unknown): ExpressionNode {
   if (value instanceof SelectQuery) {
     const { node } = value
+    // SQL reads the rows without their conversion.
+    if (node.conversion !== undefined) {
+      throw new TypeError(
+        "sql takes a query of a table, such as db.form or a query of its records, not a query of map or transform",
+      )
+    }
     // SQL text also takes a query of records or of rows `many`, which `operandNode` rejects, so the node is created here.
     return isTableQuery(node)
       ? createNode({ kind: "tableName", table: value.table, db: value.db })
       : createNode({ kind: "nestedQuery", query: node, db: value.db })
   }
-  if (value instanceof RecordQuery || value instanceof MutationQuery || value instanceof SqlQuery) {
+  if (
+    value instanceof RecordQuery ||
+    value instanceof MutationQuery ||
+    value instanceof SqlQuery ||
+    value instanceof TransformedQuery
+  ) {
     throw new TypeError(
-      "sql takes a query of a table, such as db.form or a query of its records, not a query of $select, a mutation, or a query of SQL text",
+      "sql takes a query of a table, such as db.form or a query of its records, not a query of $select, a mutation, a query of SQL text, or a query of map or transform",
     )
   }
   return toValueNode(value)

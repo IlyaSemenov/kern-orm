@@ -1,7 +1,7 @@
 // States of queries in types: the parts that a query carries in one type parameter and its methods change.
 
 import type { OperatorDefinitions } from "../expression/operators/definitions"
-import type { ResultMode, ResultRows } from "../result/result"
+import type { ResultRows } from "../result/result"
 import type { NoRelations, SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable } from "../table/table"
 
@@ -9,9 +9,17 @@ import type { AnyTable } from "../table/table"
 export type EmptyRecord = Record<never, never>
 
 /** State of a query in types: the record or value of its rows, how its rows become its result, and the relations it selects records of. */
-export interface QueryState extends ResultMode {
-  /** Record of a row, or the value of its only field for a query made by `get`, `pluck`, an aggregate method, such as `count`, or `exists`. */
+export interface QueryState {
+  /** Record of a row, or the value of its only field for a query made by `get`, `pluck`, an aggregate method, such as `count`, or `exists`, or what the callback of `map` or `transform` returns. */
   readonly result: unknown
+  /** How the rows become the result. */
+  readonly rows: ResultRows
+  /**
+   * What a row is: a record for `false`, the value of its only field for `true`, or what a callback of code returns: of `map` for `"mapped"`, whichever the row was before it, or of `transform` for `"transformed"`, of the whole result.
+   *
+   * The states of the methods that read the fields of a row or the value of its only field narrow it to `false` or `true`, so that they reject a query that code converts.
+   */
+  readonly value: boolean | "mapped" | "transformed"
   /** Relations whose records the query and the queries nested in it select, which a `Db` must have. */
   readonly uses: UsedRelation
 }
@@ -40,7 +48,7 @@ export interface SelectQueryState extends QueryState {
    * The callback of a helper starts with it, so that the effect of the helper records whether the callback filters.
    */
   readonly guaranteed: boolean
-  /** Whether the query is made by an aggregate method, such as `count`, or by `exists`, which makes `get`, `pluck`, the aggregate methods, and `exists` reject it. */
+  /** Whether the query is made by an aggregate method, such as `count`, or by `exists`, or converted by `map`, which makes `get`, `pluck`, the aggregate methods, and `exists` reject it. */
   readonly aggregate: boolean
 }
 

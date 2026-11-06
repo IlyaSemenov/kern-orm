@@ -122,6 +122,27 @@ const names = await db.form.where({ published: false }).delete().pluck("name")
 
 `update` returns the values of the records after the update, and `delete` the values of the deleted records.
 
+To convert what a mutation returns in code, call [`map` or `transform`](./selecting#results-converted-in-code) after it:
+
+```ts
+const form = await db.form
+  .insert({ name: "Survey", published: false })
+  .select("id", "name")
+  .map(form => ({ ...form, slug: slugify(form.name) }))
+// form: { id: string; name: string; slug: string }
+```
+
+`transform` also converts the number of the changed rows:
+
+```ts
+const deleted = await db.form
+  .find(formId)
+  .optional()
+  .delete()
+  .transform(count => count === 1)
+// deleted: boolean
+```
+
 To return the same fields from a query and a mutation, define them in a [helper](./composing#helpers).
 
 `insertMany` may return the records in a different order from the one you pass them in, since PostgreSQL does not guarantee the order.
@@ -147,7 +168,7 @@ const form = await db.form
 The change and its related records run in one statement, so related records are read as the database was before the change: a related record of the same table, such as another changed form, has its values before the change.
 Query such records in a separate query after the change instead.
 
-A query that rejects while reading what it returns, such as with `NotFoundError` of a query of `find` in the callback of `select`, has already made its change.
+A query that rejects while reading what it returns, such as with `NotFoundError` of a query of `find` in the callback of `select`, or by a callback of `map` or `transform` that throws, has already made its change.
 To undo the change with the error, run the query in a [transaction](../transactions).
 
 ## Many records

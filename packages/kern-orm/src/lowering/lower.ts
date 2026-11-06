@@ -20,7 +20,7 @@ import { createList, createNode, noFilters } from "../ast/nodes"
 import { collectColumnKeys, holdsFragmentOfSource } from "../ast/references"
 import type { AnyDb } from "../execution/db"
 import type { AggregateProjection } from "../query/aggregate"
-import { countProjection, isAggregateQuery } from "../query/aggregate"
+import { countProjection, isAggregateQuery, isSelectedAsValue } from "../query/aggregate"
 import { isExistsQuery } from "../query/exists"
 import type {
   MutationNode,
@@ -120,7 +120,7 @@ function lowerText(node: TextStatementNode, context: LoweringContext): TextState
 
 /** Lowers a mutation to its statement, replacing the queries in its expressions, and packing the rows of each nested query of `RETURNING` into the value of its field, or selecting the value of a nested aggregate query, as a select list does. */
 function lowerMutation(node: MutationNode, context: LoweringContext): MutationStatementNode {
-  const { target, returning, rows, value } = node
+  const { target, returning, rows, value, conversion } = node
   const recordTemplate = returning === undefined ? undefined : createRecordTemplate(returning)
   const lowered =
     returning === undefined ? undefined : lowerProjections(dropLiterals(returning), context)
@@ -138,6 +138,7 @@ function lowerMutation(node: MutationNode, context: LoweringContext): MutationSt
         values,
         returning: lowered,
         recordTemplate,
+        conversion,
         rows,
         value,
       })
@@ -155,6 +156,7 @@ function lowerMutation(node: MutationNode, context: LoweringContext): MutationSt
         filters,
         returning: lowered,
         recordTemplate,
+        conversion,
         rows,
         value,
       })
@@ -170,6 +172,7 @@ function lowerMutation(node: MutationNode, context: LoweringContext): MutationSt
         filters,
         returning: lowered,
         recordTemplate,
+        conversion,
         rows,
         value,
       })
@@ -199,8 +202,19 @@ function lowerAssignment(assignment: AssignmentNode, context: LoweringContext): 
   return value === assignment.value ? assignment : Object.freeze({ key: assignment.key, value })
 }
 
-/** Lowers a query as `lowerQuery` does, or as `lowerStatement` does when `positions` is set. */
+/** Lowers a query as `lowerQuery` does, or as `lowerStatement` does when `positions` is set, with the conversion of its result. */
 function lowerSelect(node: QueryNode, context: LoweringContext, positions: boolean): SelectNode {
+  const statement = lowerSelectStatement(node, context, positions)
+  const { conversion } = node
+  return conversion === undefined ? statement : Object.freeze({ ...statement, conversion })
+}
+
+/** Lowers a query to its statement, whichever it is: of `exists`, of an aggregate, of a page after an offset, or of the rows of its source. */
+function lowerSelectStatement(
+  node: QueryNode,
+  context: LoweringContext,
+  positions: boolean,
+): SelectNode {
   if (isExistsQuery(node)) {
     return selectExists(node, context)
   }
@@ -668,13 +682,14 @@ function lowerProjections(
   return lowered ?? (selected as readonly ProjectionNode[])
 }
 
-/** Creates the projection of the value of `node`, a nested query, under `key`: `EXISTS` of a query of `exists`, the value of an aggregate query, or the packed rows of another query. */
+/** Creates the projection of the value of `node`, a nested query, under `key`: `EXISTS` of a query of `exists`, the value of an aggregate query, or the packed rows of another query or of one whose result code converts. */
 function projectQuery(key: string, node: QueryNode, context: LoweringContext): ProjectionNode {
-  if (isExistsQuery(node)) {
-    return projectExists(key, node, context)
+  if (!isSelectedAsValue(node)) {
+    return projectRows(key, lowerSelect(node, context, false))
   }
-  const query = lowerSelect(node, context, false)
-  return isAggregateQuery(node) ? projectAggregateValue(key, query) : projectRows(key, query)
+  return isExistsQuery(node)
+    ? projectExists(key, node, context)
+    : projectAggregateValue(key, lowerSelect(node, context, false))
 }
 
 // An aggregate query always returns one row of one value, so its value needs no packing.

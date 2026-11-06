@@ -23,6 +23,12 @@ const withFieldIds = defineHelper(formsSchema.form, form =>
     fieldIds: columns.fields.pluck("id"),
   })),
 )
+const withMappedLabel = defineHelper(formsSchema.field, field =>
+  field.select("label").map(row => row.label.length),
+)
+const withMappedName = defineHelper(formsSchema.form, form =>
+  form.select("name").map(row => row.name.length),
+)
 
 bench.baseline(async () => {
   await tenantDb.form.where({ name: "baseline" }).pluck("id")
@@ -107,6 +113,30 @@ bench.baseline(async () => {
         hasForm: field.form.exists(),
       })),
   )
+  await tenantDb.field
+    .where({ label: "baseline" })
+    .select("id")
+    .map(field => field.id)
+  await tenantDb.field
+    .where({ label: "baseline" })
+    .pluck("id")
+    .transform(ids => ids.length)
+  await tenantDb.field.select(field => ({
+    answerIds: field.answers.pluck("id").map(id => id.length),
+  }))
+  await tenantDb.field
+    .where({ label: "baseline" })
+    .select("id")
+    .map(field => field.id)
+    .where({ position: 1 })
+  await tenantDb.field.use(withMappedLabel)
+  await tenantDb.field
+    .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
+    .use(withMappedLabel)
+  await tenantDb.field
+    .find("baseline")
+    .delete()
+    .transform(count => count === 1)
   await tenantDb.field.select("id").use(withLabel)
   await tenantDb.field
     .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
@@ -216,7 +246,7 @@ bench("function of an aggregate of a relation and a value", async () => {
   await tenantDb.form.select(form => ({
     value: greatest(form.fields.count(), 1),
   }))
-}).types([608, "instantiations"])
+}).types([610, "instantiations"])
 
 bench("case of two branches", async () => {
   await tenantDb.form.pluck(form =>
@@ -271,17 +301,59 @@ bench("order by an aggregate of a relation", async () => {
   await tenantDb.form.orderBy(form => desc(form.fields.count())).pluck("name")
 }).types([302, "instantiations"])
 
+bench("map of records", async () => {
+  await tenantDb.form
+    .where({ published: true })
+    .select("id", "name")
+    .map(form => form.name)
+}).types([654, "instantiations"])
+
+bench("filter after map of records", async () => {
+  await tenantDb.form
+    .select("id", "name")
+    .map(form => form.name)
+    .where({ published: true })
+}).types([759, "instantiations"])
+
+bench("transform of values", async () => {
+  await tenantDb.form
+    .where({ published: true })
+    .pluck("name")
+    .transform(names => names.length)
+}).types([470, "instantiations"])
+
+bench("relation many of map", async () => {
+  await tenantDb.form.where({ id: "x" }).select(form => ({
+    fields: form.fields.pluck("label").map(label => label.length),
+  }))
+}).types([849, "instantiations"])
+
+bench("helper of map", async () => {
+  await tenantDb.form.use(withMappedName)
+}).types([774, "instantiations"])
+
+bench("insert with a helper of map", async () => {
+  await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
+}).types([994, "instantiations"])
+
+bench("transform of the number of the rows", async () => {
+  await tenantDb.form
+    .find("x")
+    .delete()
+    .transform(count => count > 0)
+}).types([323, "instantiations"])
+
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1070, "instantiations"])
+}).types([1075, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1156, "instantiations"])
+}).types([1180, "instantiations"])
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
-}).types([1175, "instantiations"])
+}).types([1193, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -293,7 +365,7 @@ bench("unbound query", async () => {
       }))
       .take(),
   )
-}).types([964, "instantiations"])
+}).types([967, "instantiations"])
 
 bench("unbound query on DbOf", async () => {
   await sharedDb.$execute(
@@ -305,7 +377,7 @@ bench("unbound query on DbOf", async () => {
       }))
       .take(),
   )
-}).types([964, "instantiations"])
+}).types([967, "instantiations"])
 
 bench("relation many", async () => {
   await tenantDb.$execute(
@@ -316,7 +388,7 @@ bench("relation many", async () => {
         fields: form.fields.select("label", "position"),
       })),
   )
-}).types([1042, "instantiations"])
+}).types([1050, "instantiations"])
 
 bench("relation one", async () => {
   await tenantDb.$execute(
@@ -327,7 +399,7 @@ bench("relation one", async () => {
         form: field.form.select("name", "published"),
       })),
   )
-}).types([857, "instantiations"])
+}).types([865, "instantiations"])
 
 bench("exists of a relation", async () => {
   await tenantDb.$execute(
@@ -338,7 +410,7 @@ bench("exists of a relation", async () => {
         hasFields: form.fields.exists(),
       })),
   )
-}).types([1039, "instantiations"])
+}).types([1047, "instantiations"])
 
 bench("filtered relation one", async () => {
   await tenantDb.$execute(
@@ -349,7 +421,7 @@ bench("filtered relation one", async () => {
         form: field.form.where({ published: true }).select("name", "published"),
       })),
   )
-}).types([1341, "instantiations"])
+}).types([1349, "instantiations"])
 
 bench("root query of a deep relation graph", async () => {
   await storeDb.customer.where({ name: "x" }).select("name")
@@ -380,14 +452,14 @@ bench("query of a deep relation graph", async () => {
         })),
       })),
     }))
-}).types([3494, "instantiations"])
+}).types([3564, "instantiations"])
 
 bench("$select", async () => {
   await tenantDb.$select({
     names: tenantDb.form.pluck("name"),
     labels: tenantDb.field.pluck("label"),
   })
-}).types([581, "instantiations"])
+}).types([585, "instantiations"])
 
 bench("insert", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).get("id")
@@ -424,4 +496,4 @@ bench("delete with get of a callback", async () => {
 
 bench("unbound delete", async () => {
   await tenantDb.$execute(formsSchema.form.where({ name: "x" }).delete().pluck("id"))
-}).types([249, "instantiations"])
+}).types([252, "instantiations"])

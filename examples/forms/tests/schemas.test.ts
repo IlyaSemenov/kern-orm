@@ -5,12 +5,16 @@ import { createDatabase, defineSchema, many } from "kern-orm"
 import { provide, withOverrides } from "ripple-di"
 
 import {
+  createFormCard,
   getField,
+  getFieldCountsById,
   getFieldLabels,
   getForm,
   getFormPage,
   getPublishedFormNames,
   listFieldCounts,
+  listFormCards,
+  listFormHeadlines,
   listFormPreviews,
   listFormsByFieldLabel,
   listFormSummaries,
@@ -346,6 +350,56 @@ describePostgres("in PostgreSQL", ({ testTransaction, tenantDb, saasDb, inTenant
     })
 
     expect(results).toStrictEqual({ tenant: true, saas: false, counts: [3] })
+  })
+
+  it("convert the results of shared queries in code through the Db of a tenant and of the SaaS", async () => {
+    const results = await testTransaction(async () => ({
+      tenant: await inTenant("tenant_1", async () => ({
+        headlines: await listFormHeadlines(tenantDb),
+        counts: await getFieldCountsById(tenantDb),
+      })),
+      saas: {
+        headlines: await listFormHeadlines(saasDb),
+        counts: await getFieldCountsById(saasDb),
+      },
+    }))
+
+    expect(results.tenant.headlines).toStrictEqual([
+      "Archive: ",
+      "Feedback: comment",
+      "Survey: name, has pets, pet name, pet age",
+    ])
+    expect([...results.tenant.counts.values()].toSorted()).toStrictEqual([0, 1, 4])
+    expect(results.saas.headlines).toStrictEqual(["Contact: name, email, phone", "Draft: "])
+    expect([...results.saas.counts.values()].toSorted()).toStrictEqual([0, 3])
+  })
+
+  it("apply one helper that converts in code to a query and to an insert, through the Db of a tenant and of the SaaS", async () => {
+    const results = await testTransaction(async () => ({
+      tenant: await inTenant("tenant_1", async () => ({
+        cards: await listFormCards(tenantDb, 1),
+        created: await createFormCard(tenantDb, "Zoo"),
+      })),
+      saas: {
+        cards: await listFormCards(saasDb, 1),
+        created: await createFormCard(saasDb, "Blank"),
+      },
+    }))
+
+    expect(results.tenant.cards).toMatchObject([
+      { name: "Feedback", fieldCount: 1, title: "Feedback" },
+    ])
+    expect(results.tenant.created).toMatchObject({
+      name: "Zoo",
+      fieldCount: 0,
+      title: "Zoo (empty)",
+    })
+    expect(results.saas.cards).toMatchObject([{ name: "Contact", fieldCount: 3, title: "Contact" }])
+    expect(results.saas.created).toMatchObject({
+      name: "Blank",
+      fieldCount: 0,
+      title: "Blank (empty)",
+    })
   })
 
   it("run shared code on the Db that dependency injection provides, in the PostgreSQL schema of the tenant of the request", async () => {

@@ -248,3 +248,71 @@ The queries run as one SQL statement, and each field gets the result that its qu
 A field can also hold an expression, such as a fragment of `sql(type)`.
 
 When a query of one row, such as one of `find`, finds no row, `$select` rejects with `NotFoundError`, whose `path` names its field; add `optional` to the query to get `undefined` in its field instead, or `nullable` to a query of records to get `null`.
+
+## Results converted in code
+
+To compute what SQL cannot, such as a slug by a function of your application, pass each record or value to `map`:
+
+```ts
+const forms = await db.form.select("id", "name").map(form => ({
+  ...form,
+  slug: slugify(form.name),
+}))
+// forms: { id: string; name: string; slug: string }[]
+```
+
+On a query of one row, `map` converts that row, and a missing row stays missing without a call:
+
+```ts
+const slug = await db.form.where({ name: "Survey" }).take().get("name").optional().map(slugify)
+// slug: string | undefined
+```
+
+A `NULL` value is a value of its row, so handle `null` in the callback, or replace it with [`coalesce`](#aggregates) before `map`.
+
+SQL does not see what `map` converts, so keep choosing the rows after it, such as with `where`, `orderBy`, `limit`, and `take`:
+
+```ts
+const formViews = db.form.select("id", "name").map(toView)
+
+const page = await formViews.where({ published: true }).orderBy("name").limit(20)
+```
+
+Call the methods that read the fields, such as `select`, `get`, and `count`, before `map`.
+To use a query in a condition, an operator, or `sql`, pass it without `map`.
+
+To convert the whole result at once, such as to return the rows of a page with its cursor, pass it to `transform`, which receives what the query resolves to, also `null` or `undefined` of a missing row:
+
+```ts
+const page = await db.form
+  .orderBy("id")
+  .limit(20)
+  .select("id", "name")
+  .transform(forms => ({
+    forms,
+    cursor: forms.at(-1)?.id,
+  }))
+// page: { forms: { id: string; name: string }[]; cursor: string | undefined }
+```
+
+Call `transform` after the other methods of a query, since they would change what it receives.
+Then execute the query, nest it in a selection, or call `transform` again.
+
+Both also convert the field of a nested query, such as of [related records](./relations):
+
+```ts
+const forms = await db.form.select(form => ({
+  name: form.name,
+  labels: form.fields.pluck("label").transform(labels => labels.join(", ")),
+  nextPosition: form.fields
+    .max("position")
+    .coalesce(0)
+    .transform(position => position + 1),
+}))
+// forms: { name: string; labels: string; nextPosition: number }[]
+```
+
+To apply `select` and `map` to several queries and mutations alike, define them in a [helper](./composing#helpers).
+To convert what a mutation returns, see [Inserting, Updating, and Deleting](./mutations#results).
+
+A callback that throws rejects the query with `ResultDecodeError`, whose `cause` is the error and whose `path` tells the field and the row, when there are any.

@@ -2,6 +2,7 @@ import type { CompiledQuery } from "../compiler/postgres/compile"
 import { compileStatement } from "../compiler/postgres/compile"
 import { toRawSqlNode } from "../expression/sql"
 import { lowerStatement } from "../lowering/lower"
+import type { TransformedQuery, TransformedQueryState } from "../query/conversion"
 import type { SelectQueryKind } from "../query/kind"
 import type { MutationQuery, MutationQueryState } from "../query/mutation"
 import type { RecordQuery, RecordQueryState, SelectionState } from "../query/record"
@@ -49,9 +50,10 @@ type DbEntries<T extends Tables, R extends SchemaRelations> = {
   readonly [K in keyof T]: BoundSelectQuery<InitialQueryState<T[K], TableContext<R, K>>>
 }
 
-/** Bound or unbound query over a table of `T`, of `$select`, or that changes the rows of a table of `T`, that selects records only of relations of `R`, or a query of SQL text. */
+/** Bound or unbound query over a table of `T`, also converted by `transform`, of `$select`, or that changes the rows of a table of `T`, that selects records only of relations of `R`, or a query of SQL text. */
 type DbQuery<T extends Tables, R extends SchemaRelations> =
   | QueryOf<DbQueryState<T[keyof T], UsableRelation<R>>>
+  | TransformedQuery<TransformedQueryState<T[keyof T], unknown, UsableRelation<R>>, SelectQueryKind>
   | RecordQuery<RecordQueryState<unknown, UsableRelation<R>>, SelectQueryKind>
   | MutationQuery<DbMutationState<T[keyof T], UsableRelation<R>>, SelectQueryKind>
   | SqlQuery<SqlQueryState>

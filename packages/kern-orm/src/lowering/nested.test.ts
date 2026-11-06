@@ -137,6 +137,15 @@ describe("packRows", () => {
       { key: "rows", nested: { fields: labels.projections, rows: "optional", value: true } },
     ])
   })
+
+  it("attaches the conversion of the query to its result plan", () => {
+    const labels = lower(allFields.pluck("label"))
+    const conversion = { map: String, transform: undefined }
+
+    expect(packRows({ ...labels, conversion }).projections).toMatchObject([
+      { key: "rows", nested: { conversion } },
+    ])
+  })
 })
 
 describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }) => {

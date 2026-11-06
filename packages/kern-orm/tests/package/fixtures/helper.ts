@@ -165,6 +165,35 @@ export const namesWithFields = schema.form.select("name").select(form => ({
   fields: form.fields.select("id"),
 }))
 
+/** Query of `map` and `transform`, also nested, whose state names the table of the query and the relations it selects; see the file header. */
+export const convertedFormCount = schema.form
+  .select(form => ({
+    fieldIds: form.fields.pluck("id").map(id => id.length),
+  }))
+  .map(record => record.fieldIds.length)
+  .transform(counts => counts.length)
+
+/** Helper that selects fields and maps them, which applies to a query of a table and to a mutation; see the file header. */
+export const withNameLength = defineHelper(schema.form, form =>
+  form.select("name").map(record => ({ ...record, length: record.name.length })),
+)
+
+/** Inserts a form and returns what a helper of `map` makes of it; see the file header. */
+export function insertFormWithLength(name: string) {
+  return schema.form.insert({ id: name, name }).use(withNameLength)
+}
+
+/** Query of `map` of a helper, with further clauses; see the file header. */
+export const firstFormByName = schema.form.use(withNameLength).orderBy("name").take()
+
+/** Deletes a form and returns whether it did; see the file header. */
+export function deleteForm(id: string) {
+  return schema.form
+    .find(id)
+    .delete()
+    .transform(count => count === 1)
+}
+
 /** Query of `$select` of a value of each form and of the records of a relation; see the file header. */
 export const formPage = schema.$select({
   names: schema.form.pluck("name"),

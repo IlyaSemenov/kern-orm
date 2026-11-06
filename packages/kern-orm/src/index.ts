@@ -124,6 +124,13 @@ export type {
 } from "./query/sql-query"
 export type { AnyRecordQuery, RecordQuery, RecordQueryState, SelectionState } from "./query/record"
 export type {
+  AnyTransformedQuery,
+  NotSynchronous,
+  SynchronousResult,
+  TransformedQuery,
+  TransformedQueryState,
+} from "./query/conversion"
+export type {
   FilteredRows,
   OneRow,
   OneValueRows,

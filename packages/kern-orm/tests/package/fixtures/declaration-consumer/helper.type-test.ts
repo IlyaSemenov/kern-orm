@@ -5,10 +5,14 @@ import { createDatabase, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import {
+  convertedFormCount,
+  deleteForm,
   deleteFormsWithFields,
+  firstFormByName,
   hasFieldId,
   insertForm,
   insertFormWithFieldIds,
+  insertFormWithLength,
   isNamed,
   namesWithFields,
   renameForm,
@@ -19,6 +23,7 @@ import {
   selectNameWithHelper,
   upsertForm,
   withFieldIds,
+  withNameLength,
 } from "../declarations/helper.js"
 
 describe("emitted query declarations", () => {
@@ -38,6 +43,42 @@ describe("emitted query declarations", () => {
     const query = selectNameWithHelper(schema.form.select("id"), "form-id")
 
     expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ id: string; name: string }>()
+  })
+})
+
+describe("emitted declarations of a converted query", () => {
+  test("keep its result and the relations it selects", () => {
+    const database = createDatabase({
+      driver: {
+        execute: () => Promise.reject(new Error("unused")),
+        executeScript: () => Promise.reject(new Error("unused")),
+        acquire: () => Promise.reject(new Error("unused")),
+        close: () => Promise.resolve(),
+      },
+    })
+
+    expectTypeOf(database.bind(schema).$execute(convertedFormCount)).toEqualTypeOf<
+      Promise<number>
+    >()
+    // @ts-expect-error The schema lacks the relations of the query.
+    void database.bind(defineSchema(schema.$tables)).$execute(convertedFormCount)
+  })
+
+  test("keep what a helper of map gives on a query of a table and on a mutation, without its marker", () => {
+    const db = createDatabase({
+      driver: {
+        execute: () => Promise.reject(new Error("unused")),
+        executeScript: () => Promise.reject(new Error("unused")),
+        acquire: () => Promise.reject(new Error("unused")),
+        close: () => Promise.resolve(),
+      },
+    }).bind(schema)
+    type View = { name: string; length: number }
+
+    expectTypeOf(db.$execute(schema.form.use(withNameLength))).toEqualTypeOf<Promise<View[]>>()
+    expectTypeOf(db.$execute(firstFormByName)).toEqualTypeOf<Promise<View>>()
+    expectTypeOf(db.$execute(insertFormWithLength("name"))).toEqualTypeOf<Promise<View>>()
+    expectTypeOf(db.$execute(deleteForm("id"))).toEqualTypeOf<Promise<boolean>>()
   })
 })
 

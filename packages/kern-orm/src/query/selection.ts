@@ -1,6 +1,8 @@
 import type { AnyExpression, TypedExpression } from "../expression/expression"
 import type { IsAny, Simplify } from "../utils/type-helpers"
 
+import type { TransformedQuery, TransformedQueryState } from "./conversion"
+import type { SelectQueryKind } from "./kind"
 import type { Literal } from "./literal"
 import type { QueryResult } from "./rows"
 import type { QueryOf } from "./select"
@@ -12,8 +14,10 @@ export interface Selection {
   readonly [key: symbol]: never
 }
 
-/** Query whose rows a selection nests as the value of a field: a query of any state and kind, such as a query of a relation. */
-export type NestedQuery = QueryOf<SelectQueryState>
+/** Query whose rows a selection nests as the value of a field: a query of any state and kind, such as a query of a relation, also converted by `map` or `transform`. */
+export type NestedQuery =
+  | QueryOf<SelectQueryState>
+  | TransformedQuery<TransformedQueryState, SelectQueryKind>
 
 /** Record of the values of the expressions, of the nested rows, and of the literals of a selection. */
 export type SelectionResult<S extends Selection> = {
@@ -46,6 +50,14 @@ declare const helperFields: unique symbol
 export interface HelperFields<Keys extends PropertyKey = PropertyKey> {
   readonly [helperFields]: Keys
 }
+
+/** Result `R` of a callback of a helper without the marker, which a record of the callback keeps, also through a spread, so that the declarations of a module exporting a helper never name it; `any` stays `any`. */
+export type WithoutHelperFields<R> =
+  IsAny<R> extends true
+    ? R
+    : R extends HelperFields
+      ? { [K in keyof R as K extends keyof HelperFields ? never : K]: R[K] }
+      : R
 
 /** Records with `Fields` added or replaced, for each branch of either record type; `any` stays `any`. */
 export type MergeSelection<Previous, Fields> = Previous extends unknown

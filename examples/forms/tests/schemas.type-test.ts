@@ -4,13 +4,17 @@ import type { DbOf, ResultOf } from "kern-orm"
 import { createDatabase, defineSchema } from "kern-orm"
 
 import {
+  createFormCard,
   formActivity,
   getField,
+  getFieldCountsById,
   getFieldLabels,
   getForm,
   getFormPage,
   getSubmissionReview,
   listFieldConditions,
+  listFormCards,
+  listFormHeadlines,
   listFormPreviews,
   listFormSummaries,
   listSubmissions,
@@ -75,6 +79,17 @@ describe("Db", () => {
         fieldCount: number
         labels: string
       }[]
+    >()
+  })
+
+  test("of a tenant and of the SaaS converts the results of its queries in code", async () => {
+    type Card = { id: string; name: string; fieldCount: number; title: string }
+
+    expectTypeOf(await listFormCards(database.bind(tenantSchema), 1)).toEqualTypeOf<Card[]>()
+    expectTypeOf(await createFormCard(database.bind(saasSchema), "name")).toEqualTypeOf<Card>()
+    expectTypeOf(await listFormHeadlines(database.bind(tenantSchema))).toEqualTypeOf<string[]>()
+    expectTypeOf(await getFieldCountsById(database.bind(saasSchema))).toEqualTypeOf<
+      Map<string, number>
     >()
   })
 

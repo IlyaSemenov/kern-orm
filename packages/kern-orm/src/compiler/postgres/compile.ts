@@ -60,6 +60,7 @@ export function compileStatement(
         // A projection is a result field, so the result needs no copy of the projections.
         fields: node.projections,
         recordTemplate: node.recordTemplate,
+        conversion: node.conversion,
         rows: node.rows,
         value: node.value,
         counted: undefined,
@@ -84,6 +85,7 @@ export function compileStatement(
         parameters: context.parameters,
         fields: returning ?? noFields,
         recordTemplate: node.recordTemplate,
+        conversion: node.conversion,
         rows: node.rows,
         value: node.value,
         // PostgreSQL rejects `RETURNING` without fields, so a mutation that returns records without fields counts them.

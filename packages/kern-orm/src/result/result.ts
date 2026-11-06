@@ -28,6 +28,14 @@ export interface RecordTemplateField {
   readonly value: unknown
 }
 
+/** How code converts the decoded result of a query, by `map` and `transform` of the query: `map` runs before `transform`, since `map` does not apply after `transform`. */
+export interface ResultConversion {
+  /** Converts each record or value, also `null` of a `NULL` value, and is not called for a missing row. */
+  readonly map: ((row: unknown) => unknown) | undefined
+  /** Converts the whole result, once: an array of rows, one row, or `null` or `undefined` of a missing row. */
+  readonly transform: ((result: unknown) => unknown) | undefined
+}
+
 /**
  * How a query returns its rows: `many` as an array; `one` as one row, rejecting without it; `nullable` as one row or `null` without it; `optional` as one row or `undefined` without it.
  *
@@ -55,6 +63,8 @@ export interface ResultPlan extends ResultMode {
    * A record starts from it, so its keys keep their order whichever of them a row holds.
    */
   readonly recordTemplate?: readonly RecordTemplateField[] | undefined
+  /** How code converts the result that the plan decodes; `undefined` for a query without `transform` and `map`. */
+  readonly conversion?: ResultConversion | undefined
 }
 
 /** Result plan of a compiled statement: the plan of its rows, and how a mutation that returns no fields reads the number of the rows it changes. */
@@ -98,13 +108,18 @@ export class RequiredRelationError extends Error {
   }
 }
 
-/** Error thrown when a row does not match the result fields or a value fails to decode; the failure of the value is its cause. */
+/** Error thrown when a row does not match the result fields, a value fails to decode, or a callback of `transform` or `map` fails; the failure is its cause. */
 export class ResultDecodeError extends Error {
   override readonly name = "ResultDecodeError"
 
   constructor(
     message: string,
-    /** Path of the value from its result field, such as `fields[2].label`, after the index of the row of an executed query of rows `many`, such as `[2].label`; `undefined` for a row of the driver of another width than the result fields. */
+    /**
+     * Path of the value from its result field, such as `fields[2].label`, after the index of the row of an executed query of rows `many`, such as `[2].label`.
+     *
+     * A callback of `map` that fails has the path of its row, such as `fields[2]` or `[2]`, and one of `transform` the path of the field of its nested rows, such as `fields`.
+     * It is `undefined` for a row of the driver of another width than the result fields, and for a callback that fails on the only row or the whole result of an executed query.
+     */
     readonly path: string | undefined,
     options?: ErrorOptions,
   ) {
@@ -123,11 +138,24 @@ export function isRecordKey(key: string): boolean {
  * A statement of one row that returns its number or a record without fields rejects as a query of one row does: with `NotFoundError` without a row, unless it is optional or nullable, and with several rows.
  */
 export function decodeStatement(plan: StatementPlan, result: DriverResult): unknown {
-  const { counted } = plan
+  const { counted, conversion } = plan
   if (counted === undefined) {
     return decodeResult(plan, plan.named ? selectColumns(plan, result) : result.rows)
   }
-  const { count } = result
+  const decoded = decodeCount(plan, counted, result.count)
+  // A mutation of a missing row that resolves to the number of the rows has that number as its result, so only records can be missing.
+  return conversion === undefined
+    ? decoded
+    : convertTopResult(
+        plan,
+        conversion,
+        decoded,
+        counted === "records" && plan.rows !== "many" && result.count === 0,
+      )
+}
+
+/** Returns what a statement resolves to by `count`, the number of the rows of its command tag, as `counted` tells: the number, or as many records without fields. */
+function decodeCount(plan: StatementPlan, counted: "number" | "records", count: number): unknown {
   if (plan.rows !== "many") {
     // The command tag of a statement of SQL text counts the rows that it changes or returns, whichever its command is.
     if (count > 1) {
@@ -209,11 +237,72 @@ function selectColumns(plan: ResultPlan, result: DriverResult): DriverResult["ro
 }
 
 /**
- * Decodes driver rows into the result of a query by its result plan.
+ * Decodes driver rows into the result of a query by its result plan, and converts the result as its conversion tells.
  *
  * It rejects a row whose values do not match the result fields, and names the path of the value that fails to decode from its result field, such as `fields[2].label`, after the index of the row of rows `many`, such as `[2].fields[2].label`.
  */
 export function decodeResult(plan: ResultPlan, rows: DriverResult["rows"]): unknown {
+  const result = decodeRows(plan, rows)
+  const { conversion } = plan
+  return conversion === undefined
+    ? result
+    : convertTopResult(plan, conversion, result, rows.length === 0)
+}
+
+/** Converts `result`, which `plan` decoded for a statement rather than for nested rows, as `convertResult` does, rejecting with the error of the statement. */
+function convertTopResult(
+  plan: ResultPlan,
+  conversion: ResultConversion,
+  result: unknown,
+  missing: boolean,
+): unknown {
+  try {
+    return convertResult(plan, conversion, result, missing)
+  } catch (error) {
+    // Only `map` of rows `many` tells a path here, the index of its row: the whole result and the only row have no field.
+    throw error instanceof NestedFailure
+      ? createRowError("", error)
+      : new ResultDecodeError(`Cannot convert the result${describeCause(error)}`, undefined, {
+          cause: error,
+        })
+  }
+}
+
+/**
+ * Converts `result`, which `plan` decoded, by `conversion`.
+ *
+ * It tells a missing row by `missing` rather than by the value, since a row may decode to `null` or `undefined`.
+ * A failure of `map` of rows `many` is a `NestedFailure` of the index of its row; any other failure is the error of the callback, which the enclosing field adds its path to.
+ */
+function convertResult(
+  plan: ResultPlan,
+  conversion: ResultConversion,
+  result: unknown,
+  missing: boolean,
+): unknown {
+  const { map, transform } = conversion
+  let converted = result
+  if (map !== undefined) {
+    if (plan.rows === "many") {
+      // Decoding creates the array of rows, so it is converted in place.
+      const rows = result as unknown[]
+      let index = 0
+      try {
+        for (; index < rows.length; index++) {
+          rows[index] = map(rows[index])
+        }
+      } catch (error) {
+        throw new NestedFailure(`[${index}]`, error)
+      }
+    } else if (!missing) {
+      converted = map(result)
+    }
+  }
+  return transform === undefined ? converted : transform(converted)
+}
+
+/** Decodes driver rows into the result of a query before its conversion: an array of rows `many`, one row, or the result of a missing row. */
+function decodeRows(plan: ResultPlan, rows: DriverResult["rows"]): unknown {
   if (plan.rows === "many") {
     const results: unknown[] = []
     // One try per query rather than per row; the index tells which row failed.
@@ -296,9 +385,19 @@ function createRowError(prefix: string, error: unknown): unknown {
       ? new NotFoundError(`Nested query of result field "${path}" returned no rows`, path)
       : new RequiredRelationError(cause.guaranteedBy, path)
   }
+  return new ResultDecodeError(
+    `Cannot decode result field "${path}"${describeCause(cause)}`,
+    path,
+    {
+      cause,
+    },
+  )
+}
+
+/** Describes the failure `cause` at the end of the message of an error. */
+function describeCause(cause: unknown): string {
   // Only an Error contributes its message: converting another thrown value to a string can throw itself.
-  const detail = cause instanceof Error ? `: ${cause.message}` : ""
-  return new ResultDecodeError(`Cannot decode result field "${path}"${detail}`, path, { cause })
+  return cause instanceof Error ? `: ${cause.message}` : ""
 }
 
 /**
@@ -378,8 +477,16 @@ function decodePackedValue(field: ResultField, value: unknown): unknown {
   return field.type.decode(value)
 }
 
-/** Decodes the rows of a nested query from JSON: an array of packed rows for rows `many`, and a packed row or `null` otherwise. */
+/** Decodes the rows of a nested query from JSON, as `decodeNestedRows` does, and converts them as the conversion of `plan` tells. */
 function decodeNested(plan: ResultPlan, json: unknown): unknown {
+  const result = decodeNestedRows(plan, json)
+  const { conversion } = plan
+  // The field that holds the rows adds its path to a failure.
+  return conversion === undefined ? result : convertResult(plan, conversion, result, json === null)
+}
+
+/** Decodes the rows of a nested query from JSON: an array of packed rows for rows `many`, and a packed row or `null` otherwise. */
+function decodeNestedRows(plan: ResultPlan, json: unknown): unknown {
   if (plan.rows === "many") {
     if (!Array.isArray(json)) {
       throw new TypeError(`Nested rows must be an array, not ${describeJson(json)}`)

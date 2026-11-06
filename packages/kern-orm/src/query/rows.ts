@@ -15,8 +15,8 @@ export type RelationRows<Kind extends RelationKind, Required extends boolean> = 
     : "nullable"
 
 // The relation guarantees only the record that it relates, not one that also passes a filter.
-/** Rows mode after a filter of a query whose row a required relation guarantees: `one` becomes `nullable`, or `optional` for a query of values; other modes stay. */
-export type FilteredRows<Rows extends ResultRows, Value extends boolean> = Rows extends "one"
+/** Rows mode after a filter of a query whose row a required relation guarantees: `one` becomes `nullable`, or `optional` for a query of values that `map` does not convert; other modes stay. */
+export type FilteredRows<Rows extends ResultRows, Value> = Rows extends "one"
   ? Value extends true
     ? "optional"
     : "nullable"

@@ -3,7 +3,8 @@
 - **AST** (`ast/`): the SQL AST, structural expression and statement nodes, and their pure transformations, such as Boolean simplification.
   A select statement nests queries in scalar subqueries, `EXISTS`, and derived sources of `FROM`, plain or `LATERAL`; nodes store no lexical scopes, which the compiler derives from the position of a query in the tree.
 - **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps a statement of SQL text as it is, except that it lowers the queries in its interpolated expressions; the compiler knows no relation definitions or semantic query nodes.
-  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query, of its statement, or `EXISTS` of its rows for a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries or literals in its fields keeps its fields as its projections.
+  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query without a [conversion](queries.md#converting-results), of its statement, or `EXISTS` of its rows for such a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries or literals in its fields keeps its fields as its projections.
+  A statement keeps the [conversion of its query](queries.md#converting-results), which SQL does not see, for the result plan.
   A query of `$select` has no source and becomes a statement without `FROM` of rows `one`, which PostgreSQL returns as exactly one row.
   A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, and has no order.
   An aggregate query becomes a statement of its aggregate without an order, which PostgreSQL rejects beside an aggregate unless it sorts by aggregates; `string_agg` takes the order of the query inside its call, and `coalesce` of the fallbacks of the query wraps the call.
@@ -27,7 +28,7 @@
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
   Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.
-- **Result** (`result/`): decodes driver rows and packed nested rows by the result plan of a compiled query, or the number of the rows of the command tag of a mutation without `RETURNING`, and decides which keys a record can have.
+- **Result** (`result/`): decodes driver rows and packed nested rows by the result plan of a compiled query, or the number of the rows of the command tag of a mutation without `RETURNING`, converts the result as the plan tells, and decides which keys a record can have.
   It reads the fields of a statement of SQL text from the result columns of their keys, as [queries of SQL text](sql-queries.md#results) describe.
   The result plan is internal: `toSQL` and `$compile` return only the text and parameters of a statement.
 - **Nested rows** (`lowering/nested.ts`): builds a query that packs the rows of a nested query as JSON, with the result plan that decodes them.
@@ -72,6 +73,11 @@
   - A row that does not match the result fields, and a value that fails to decode, is `ResultDecodeError`, with the error of the value as its cause.
 - An error has the path of the failing value or of the missing row from its result field, such as `title` or `fields[2].form`, as its `path`, after the index of the driver row of a query of rows `many`, such as `[2].fields[2].form`; a missing row of an executed query and a driver row of another width have none.
   Decoding builds the path only on a failure, as the failure passes up through the enclosing fields and the driver row, and creates the error once the path is complete, so that a missing row keeps its class.
+- A result plan converts the result of its rows after it decodes all of them, by `map` of each row and then `transform` of the whole result, in every rows mode and at any depth, so a missing row of rows `one` rejects before a conversion, and the decoded values do not depend on it.
+  A statement that reads the number of its rows from its command tag checks them first and converts what it resolves to in the same way: the number has no rows, which `map` rejects before the statement runs, and only records can be missing.
+  - A failure of a callback is `ResultDecodeError`, as of a decoder of a type, with the error as its cause, so that a bug in a callback names the value that it fails on; an error that a callback throws to reject a result needs `cause` to be told apart.
+  - Its `path` names the conversion by the fields before it, as the callbacks see them: the field of nested rows, such as `fields`, with the index of the row for `map` of rows `many`, such as `fields[2]`.
+    A failure of `map` of an executed query of rows `many` has the index, such as `[2]`, and one of the only row or the whole result of an executed query has no `path`.
 
 ## Nested rows
 
@@ -86,9 +92,10 @@
   A query without nested queries other than such sorted fields, also with queries in the expressions of its fields, which are scalar fields, or without an offset keeps its page on its table.
   So does a query whose nested queries that the page evaluates over its rows hold a SQL fragment that refers to a column of its table outside the queries nested in the fragment; a sorted field evaluated in the source is not checked, since the source evaluates it as the query would.
   PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, and lowering does not parse SQL fragments to identify their aggregates, so such a fragment, such as `sum` of a column of the parent row, may aggregate the rows of the query before its offset.
-- A nested aggregate query is selected as a scalar subquery of its statement, decoded by the type of the aggregate, rather than packed: it always returns one row of one value.
+- A nested aggregate query without a conversion is selected as a scalar subquery of its statement, decoded by the type of the aggregate, rather than packed: it always returns one row of one value.
   For a count of 1000 and 10000 parents of 10 rows each, PostgreSQL evaluates it in 20 to 25% less time than the packed number, and the round trips are within their noise ([benchmark](../benchmarks/suites/nested-count.ts)).
-- A nested query of `exists` is selected as `EXISTS` of its rows, decoded as a Boolean, rather than packed: it always has one value, which is never `NULL`.
+- A nested query of `exists` without a conversion is selected as `EXISTS` of its rows, decoded as a Boolean, rather than packed: it always has one value, which is never `NULL`.
+- A nested aggregate query or query of `exists` that [`map` or `transform` converts](queries.md#converting-results) is packed, since only a result plan holds a conversion, whereas a field of a value has only the type that decodes it.
 - Nested rows are packed as JSON in the row of their parent and decoded by the result plan of their query, at any depth:
   - Rows `many` are an array, `coalesce(json_agg(...), '[]')`, and the other rows modes are one packed row or `NULL`, which a nested query of rows `one` rejects.
     Several rows of a nested query of one row fail the statement in PostgreSQL with SQLSTATE `21000`, whose error names no field.

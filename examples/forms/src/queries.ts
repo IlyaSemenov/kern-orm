@@ -71,6 +71,58 @@ export async function getFieldLabels(db: DbOf<typeof formsSchema>, formId: strin
   return await db.field.where({ formId }).orderBy("position", "id").pluck("label")
 }
 
+/** Selects a form as a card of a list, the same for a form that a query reads and one that an insert creates. */
+export const selectFormCard = defineHelper(formsSchema.form, form =>
+  form
+    .select("id", "name")
+    .select(columns => ({
+      fieldCount: columns.fields.count(),
+    }))
+    .map(card => ({
+      ...card,
+      title: card.fieldCount === 0 ? `${card.name} (empty)` : card.name,
+    })),
+)
+
+/** Returns the cards of the published forms of a page through the `Db` of a tenant or of the SaaS. */
+export async function listFormCards(db: DbOf<typeof formsSchema>, limit: number) {
+  return await db.form
+    .use(selectFormCard)
+    .where({ published: true })
+    .orderBy("name", "id")
+    .limit(limit)
+}
+
+/** Creates a form and returns its card through the `Db` of a tenant or of the SaaS. */
+export async function createFormCard(db: DbOf<typeof formsSchema>, name: string) {
+  return await db.form.insert({ name, published: false }).use(selectFormCard)
+}
+
+/** Returns the numbers of the fields of each form by the identifier of the form through the `Db` of a tenant or of the SaaS. */
+export async function getFieldCountsById(db: DbOf<typeof formsSchema>) {
+  return await db.form
+    .select(form => ({
+      id: form.id,
+      fieldCount: form.fields.count(),
+    }))
+    .transform(forms => new Map(forms.map(form => [form.id, form.fieldCount])))
+}
+
+/** Returns a line of each form with the labels of its fields, for a list of forms, through the `Db` of a tenant or of the SaaS. */
+export async function listFormHeadlines(db: DbOf<typeof formsSchema>) {
+  return await db.form
+    .orderBy("name", "id")
+    .select(form => ({
+      name: form.name,
+      labels: form.fields
+        .orderBy("position", "id")
+        .pluck("label")
+        .map(label => label.toLowerCase())
+        .transform(labels => labels.join(", ")),
+    }))
+    .map(form => `${form.name}: ${form.labels}`)
+}
+
 /** Returns the labels of the fields of a form in their order, each with the label of the field it is shown after and the labels of the fields shown after it, through the `Db` of a tenant or of the SaaS. */
 export async function listFieldConditions(db: DbOf<typeof formsSchema>, formId: string) {
   return await db.field

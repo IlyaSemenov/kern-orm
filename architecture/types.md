@@ -96,7 +96,7 @@
   - The text must name the columns of a subquery in `FROM` after its alias, in the order of the fields of the query other than literals, such as `AS form (field_count)`, rather than by the SQL names of its projections, which differ from the keys of long fields.
   - PostgreSQL 18 parses a subquery in further parentheses as a subquery, such as in `EXISTS ((SELECT 1))`, `1 IN ((SELECT 1 UNION SELECT 2))`, `1 = ANY ((SELECT 1 UNION SELECT 2))`, and `FROM ((SELECT 1))`, so the text may put the query in parentheses of its own.
   - A query of `exists` is `EXISTS` of its rows rather than its statement, `(SELECT EXISTS (...))`, which PostgreSQL evaluates as a subquery for each row of a condition instead of joining the rows as a semi-join.
-  - It rejects a query of `$select`, a mutation, and a query of SQL text, which a parameter would encode as text.
+  - It rejects a query of `$select`, a [query of `map` or `transform`](queries.md#converting-results), a mutation, and a query of SQL text, which a parameter would encode as text.
 - `identifier` creates a fragment of a quoted name without parameters, so that the template of a script takes it.
   - Several names make a qualified name, such as of a schema and a table, each quoted and joined by dots.
   - It quotes each name whole and never splits it at dots, which a quoted name may contain.

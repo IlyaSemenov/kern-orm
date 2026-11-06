@@ -50,12 +50,18 @@ it("interpolates another query of a table, of any rows and value, as a query in 
   })
 })
 
-it("rejects a query of $select, a mutation, and a query of SQL text, which a parameter would encode as text", () => {
+it("rejects a query of $select, a mutation, a query of SQL text, and a query of map or transform, which a parameter would encode as text", () => {
   const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
 
-  for (const query of [schema.$select({}), schema.form.find(1).delete(), db.$query`SELECT 1`]) {
+  for (const query of [
+    schema.$select({}),
+    schema.form.find(1).delete(),
+    db.$query`SELECT 1`,
+    schema.form.count().map(String),
+    schema.form.count().transform(String),
+  ]) {
     expect(() => sql`SELECT ${query}`).toThrow(
-      "sql takes a query of a table, such as db.form or a query of its records, not a query of $select, a mutation, or a query of SQL text",
+      /^sql takes a query of a table, such as db\.form or a query of its records, not a query of (\$select, a mutation, a query of SQL text, or a query of )?map or transform$/,
     )
   }
 })
