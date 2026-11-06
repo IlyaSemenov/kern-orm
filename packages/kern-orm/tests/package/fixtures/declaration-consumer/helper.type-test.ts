@@ -1,11 +1,12 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import type { ResultOf } from "kern-orm"
+import type { ResultOf, TableKeys } from "kern-orm"
 import { createDatabase, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import {
   convertedFormCount,
+  defineSnakeCaseTable,
   deleteForm,
   deleteFormsWithFields,
   firstFormByName,
@@ -21,10 +22,13 @@ import {
   selectNameAsTitle,
   selectNames,
   selectNameWithHelper,
+  snakeCaseField,
   upsertForm,
   withFieldIds,
   withNameLength,
 } from "../declarations/helper.js"
+
+declare const flag: boolean
 
 describe("emitted query declarations", () => {
   test("preserves the input fields and selects a column through a generic function", () => {
@@ -158,6 +162,39 @@ describe("emitted relation declarations", () => {
     >()
     // @ts-expect-error The schema lacks the relations of the shared schema.
     void database.bind(defineSchema(schema.$tables)).$execute(namesWithFields)
+  })
+})
+
+describe("emitted declarations of a table factory", () => {
+  test("keep the type of defineTable", () => {
+    expectTypeOf(defineSnakeCaseTable).toEqualTypeOf<typeof defineTable>()
+  })
+
+  test("define tables with and without options, keeping their keys", () => {
+    const answer = defineSnakeCaseTable(
+      "form_answer",
+      {
+        submissionId: t.uuid,
+        fieldId: t.uuid,
+      },
+      { primaryKey: ["submissionId", "fieldId"] },
+    )
+    const log = defineSnakeCaseTable(
+      "log",
+      {
+        id: t.uuid.primaryKey(),
+        code: t.text,
+      },
+      flag ? { unique: [["id", "code"]] } : undefined,
+    )
+
+    expectTypeOf(snakeCaseField.keys).toEqualTypeOf<TableKeys<readonly ["id"], never>>()
+    expectTypeOf(answer.keys).toEqualTypeOf<
+      TableKeys<readonly ["submissionId", "fieldId"], never>
+    >()
+    expectTypeOf(log.keys).toEqualTypeOf<
+      TableKeys<readonly ["id"], never> | TableKeys<readonly ["id"], readonly ["id", "code"]>
+    >()
   })
 })
 

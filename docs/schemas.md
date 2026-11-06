@@ -17,7 +17,55 @@ export const form = defineTable("form", {
 
 See [Types](./types) for the built-in types, column attributes, and custom types.
 
-### Keys
+## Column names
+
+A column is named after its key.
+To name it differently, set the name with `columnName`:
+
+```ts
+export const field = defineTable("form_field", {
+  id: t.uuid.primaryKey(),
+  formId: t.uuid.columnName("form_id"),
+  label: t.text,
+})
+```
+
+### Naming conventions
+
+To name the columns of your tables in snake case, such as `form_id` for `formId`, create your own `defineTable` with `createTableFactory` and use it to define your tables:
+
+```ts
+// db/define-table.ts
+import { createTableFactory, toSnakeCase } from "kern-orm"
+
+export const defineTable = createTableFactory({ columnName: toSnakeCase })
+```
+
+```ts
+import * as t from "kern-orm/types"
+
+import { defineTable } from "./db/define-table"
+
+export const field = defineTable("form_field", {
+  id: t.uuid.primaryKey(),
+  formId: t.uuid, // form_id
+  createdAt: t.timestamptz, // created_at
+})
+```
+
+A run of capital letters is one word, such as `user_id` for `userID` and `json_data` for `JSONData`, and digits stay in their word, such as `line2`.
+`columnName` overrides the derived name of a column, such as `t.text.columnName("line_2")`.
+
+For another convention, pass your own function, which gets the key of each column and returns its name:
+
+```ts
+export const defineTable = createTableFactory({
+  // personCategoryId for person_category_id
+  columnName: key => key.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase()),
+})
+```
+
+## Keys
 
 Mark the primary key column with `primaryKey()` and each column of unique values with `unique()`:
 

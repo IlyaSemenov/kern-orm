@@ -214,8 +214,10 @@ export type {
   KeyColumns,
   Selectable,
   Table,
+  TableFactoryOptions,
   TableKeys,
   TableOptions,
   ToColumns,
 } from "./table/table"
-export { defineTable } from "./table/table"
+export { createTableFactory, defineTable } from "./table/table"
+export { toSnakeCase } from "./table/snake-case"

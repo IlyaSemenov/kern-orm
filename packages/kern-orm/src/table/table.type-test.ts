@@ -3,6 +3,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 import * as t from "../types"
 
 import type { Column } from "./column"
+import { toSnakeCase } from "./snake-case"
 import type {
   AnyTableKeys,
   ColumnDefinitions,
@@ -12,7 +13,7 @@ import type {
   TableKeys,
   TableOptions,
 } from "./table"
-import { defineTable } from "./table"
+import { createTableFactory, defineTable } from "./table"
 
 declare const flag: boolean
 
@@ -153,6 +154,39 @@ describe("defineTable", () => {
     expectTypeOf(choices[1].keys).toEqualTypeOf<AnyTableKeys>()
     expectTypeOf(choices[2].keys).toEqualTypeOf<AnyTableKeys>()
     expectTypeOf<ReturnType<typeof define>["keys"]>().toEqualTypeOf<AnyTableKeys>()
+  })
+})
+
+describe("createTableFactory", () => {
+  test("creates a function of the type of defineTable", () => {
+    expectTypeOf(createTableFactory({ columnName: toSnakeCase })).toEqualTypeOf<
+      typeof defineTable
+    >()
+  })
+
+  test("types the keys of a table as defineTable does", () => {
+    const defineSnakeCaseTable = createTableFactory({ columnName: toSnakeCase })
+    const field = defineSnakeCaseTable(
+      "form_field",
+      {
+        id: t.uuid.primaryKey(),
+        formId: t.uuid,
+        position: t.integer,
+      },
+      { unique: [["formId", "position"]] },
+    )
+
+    expectTypeOf(field.keys).toEqualTypeOf<
+      TableKeys<readonly ["id"], readonly ["formId", "position"]>
+    >()
+  })
+
+  test("requires a function from a key to a name", () => {
+    // @ts-expect-error A factory without the function would change nothing.
+    createTableFactory({})
+    // @ts-expect-error The function returns a name.
+    createTableFactory({ columnName: () => 1 })
+    createTableFactory({ columnName: key => key.toUpperCase() })
   })
 })
 

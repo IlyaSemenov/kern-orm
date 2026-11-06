@@ -78,6 +78,12 @@ export interface TableOptions<
   readonly unique?: readonly (readonly [Column, Column, ...Column[]])[]
 }
 
+/** Options of `createTableFactory`. */
+export interface TableFactoryOptions {
+  /** Returns the physical name of a column from its key, such as `toSnakeCase` does, for each column without an explicit `columnName()`. */
+  readonly columnName: (key: string) => string
+}
+
 /** Record shape returned when all columns of a table are selected. */
 export type Selectable<T extends AnyTable> = {
   [K in keyof T["columns"]]: TypeOutput<T["columns"][K]["type"]>
@@ -282,6 +288,30 @@ export function defineTable(
   definitions: ColumnDefinitions,
   options?: TableOptions,
 ): AnyTable {
+  return createTable(name, definitions, options, undefined)
+}
+
+/**
+ * Creates a table-definition function with the given naming convention, for an application to define its tables with.
+ *
+ * Its tables have the same types as those of `defineTable`.
+ */
+export function createTableFactory(factoryOptions: TableFactoryOptions): typeof defineTable {
+  const deriveColumnName = factoryOptions.columnName
+  if (typeof deriveColumnName !== "function") {
+    throw new TypeError("The columnName option of createTableFactory must be a function")
+  }
+  return ((name: string, definitions: ColumnDefinitions, options?: TableOptions) =>
+    createTable(name, definitions, options, deriveColumnName)) as typeof defineTable
+}
+
+/** Creates the table that `defineTable` defines, naming its columns by `deriveColumnName` if given. */
+function createTable(
+  name: string,
+  definitions: ColumnDefinitions,
+  options: TableOptions | undefined,
+  deriveColumnName: ((key: string) => string) | undefined,
+): AnyTable {
   const columns: ColumnShape = {}
   for (const [key, definition] of Object.entries(definitions)) {
     if (key.startsWith("$")) {
@@ -298,12 +328,54 @@ export function defineTable(
     }
     columns[key] = column
   }
+  if (deriveColumnName) {
+    nameColumns(name, columns, deriveColumnName)
+  }
   return Object.freeze({
     kind: "table",
     name,
     columns: Object.freeze(columns),
     keys: defineKeys(name, columns, options),
   })
+}
+
+/**
+ * Replaces unnamed columns of table `name` with copies whose physical names are derived from their keys, so that a column shared with other tables stays as it is.
+ *
+ * It calls `deriveColumnName`, which an application gives, once for each such column.
+ * It rejects a derived name that is not a non-empty string, which PostgreSQL rejects only when a query runs, and a derived name that another column has, since two keys would silently read one column.
+ * Duplicate names set with `columnName` are allowed, as in `defineTable`.
+ */
+function nameColumns(
+  name: string,
+  columns: ColumnShape,
+  deriveColumnName: (key: string) => string,
+): void {
+  const keys = Object.keys(columns)
+  const derivedKeys: string[] = []
+  for (const key of keys) {
+    const column = columns[key]!
+    if (column.attributes.name === undefined) {
+      const columnName: unknown = deriveColumnName(key)
+      if (typeof columnName !== "string" || columnName === "") {
+        throw new TypeError(
+          `The name derived for column "${key}" of table "${name}" must be a non-empty string`,
+        )
+      }
+      columns[key] = column.columnName(columnName)
+      derivedKeys.push(key)
+    }
+  }
+  for (const key of derivedKeys) {
+    const columnName = columns[key]!.attributes.name
+    for (const other of keys) {
+      if (other !== key && columns[other]!.attributes.name === columnName) {
+        throw new Error(
+          `Columns "${key}" and "${other}" of table "${name}" have one physical name "${columnName}"; set another name with columnName()`,
+        )
+      }
+    }
+  }
 }
 
 /**

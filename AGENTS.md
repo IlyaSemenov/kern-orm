@@ -207,6 +207,7 @@ Describe the user-visible change.
 - Record a scenario that another ORM fails or lacks while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>` or `// <ORM> <version> <what fails>`, or beside the decision in [architecture/](architecture/README.md) that it motivates.
 - Record a capability that another ORM has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of BACKLOG.md that would add it, or beside the decision in [architecture/](architecture/README.md) not to add it.
 - For a scenario of work not done yet, put the record in its item of BACKLOG.md, and move it to the test or the decision with the work.
+- Add a scenario worth showing in a comparison with other ORMs to "What to compare" in the item `## Comparison with other ORMs` of BACKLOG.md.
 
 ## Checks
 

@@ -3,8 +3,9 @@ import { describe, expect, it } from "bun:test"
 import * as t from "../types"
 
 import type { Column } from "./column"
+import { toSnakeCase } from "./snake-case"
 import type { TableOptions } from "./table"
-import { containsKey, defineTable, findColumn, isKey } from "./table"
+import { containsKey, createTableFactory, defineTable, findColumn, isKey } from "./table"
 
 describe("defineTable", () => {
   it("rejects column keys reserved for column reference members", () => {
@@ -230,6 +231,200 @@ describe("defineTable", () => {
         ),
       ).toThrow('Unique keys in the options of table "user" must be an array')
     })
+  })
+})
+
+describe("createTableFactory", () => {
+  const defineSnakeCaseTable = createTableFactory({ columnName: toSnakeCase })
+
+  it("names a type and a column by the function, keeping the other attributes", () => {
+    const field = defineSnakeCaseTable("form_field", {
+      id: t.uuid.primaryKey().hasDefault(),
+      formId: t.uuid,
+      createdAt: t.timestamptz.unique(),
+    })
+
+    expect(field.name).toBe("form_field")
+    expect(field.columns.id.attributes).toEqual({
+      name: "id",
+      keyKind: "primaryKey",
+      hasDefault: true,
+    })
+    expect(field.columns.formId.attributes).toEqual({
+      name: "form_id",
+      keyKind: undefined,
+      hasDefault: false,
+    })
+    expect(field.columns.createdAt.attributes).toEqual({
+      name: "created_at",
+      keyKind: "unique",
+      hasDefault: false,
+    })
+  })
+
+  it("names columns by any function", () => {
+    // Orchid ORM 1.78.47 has only its own snakeCase, and declined a function of names: https://github.com/romeerez/orchid-orm/issues/197
+    const defineCamelCaseTable = createTableFactory({
+      columnName: key => key.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase()),
+    })
+    const person = defineCamelCaseTable("person", {
+      person_category_id: t.uuid,
+    })
+
+    expect(person.columns.person_category_id.attributes.name).toBe("personCategoryId")
+  })
+
+  it("calls the function once for each column without a name", () => {
+    const keys: string[] = []
+    const defineRecordingTable = createTableFactory({
+      columnName: key => {
+        keys.push(key)
+        return key
+      },
+    })
+
+    defineRecordingTable("form", {
+      id: t.uuid,
+      formId: t.uuid,
+      lineTwo: t.text.columnName("line_2"),
+    })
+
+    expect(keys).toEqual(["id", "formId"])
+  })
+
+  it("keeps a name of columnName", () => {
+    const field = defineSnakeCaseTable("form_field", {
+      lineTwo: t.text.columnName("line_2"),
+    })
+
+    expect(field.columns.lineTwo.attributes.name).toBe("line_2")
+  })
+
+  it("leaves a column shared with other tables as it is", () => {
+    const formId = t.uuid.unique()
+    const field = defineSnakeCaseTable("form_field", {
+      formId,
+    })
+    const plain = defineTable("plain", {
+      formId,
+    })
+
+    expect(field.columns.formId.attributes.name).toBe("form_id")
+    expect(formId.attributes.name).toBeUndefined()
+    expect(plain.columns.formId).toBe(formId)
+  })
+
+  it("keeps column keys in the keys of the options", () => {
+    const answer = defineSnakeCaseTable(
+      "form_answer",
+      {
+        submissionId: t.uuid,
+        fieldId: t.uuid,
+      },
+      { primaryKey: ["submissionId", "fieldId"] },
+    )
+
+    expect(answer.keys.primaryKey).toEqual(["submissionId", "fieldId"])
+  })
+
+  it("keeps the checks of defineTable", () => {
+    expect(() =>
+      defineSnakeCaseTable("form", {
+        $name: t.text,
+      }),
+    ).toThrow('Column key "$name" of table "form" must not start with "$"')
+    expect(() =>
+      defineSnakeCaseTable("form", {
+        ["__proto__"]: t.text,
+      }),
+    ).toThrow('Column key "__proto__" of table "form" is not allowed')
+    expect(() =>
+      defineSnakeCaseTable("form", {
+        // @ts-expect-error A column definition is a type or a column.
+        id: "uuid",
+      }),
+    ).toThrow('Column "id" of table "form" must be a type or a column')
+    expect(() =>
+      defineSnakeCaseTable(
+        "form",
+        {
+          id: t.uuid,
+        },
+        // @ts-expect-error A key lists the columns of the table.
+        { unique: [["id", "form_id"]] },
+      ),
+    ).toThrow('A key in the options of table "form" lists unknown column "form_id"')
+  })
+
+  it("rejects two keys that derive one name", () => {
+    expect(() =>
+      defineSnakeCaseTable("form_field", {
+        formId: t.uuid,
+        form_id: t.uuid,
+      }),
+    ).toThrow(
+      'Columns "formId" and "form_id" of table "form_field" have one physical name "form_id"',
+    )
+  })
+
+  it("rejects a derived name that columnName gives another column, in either order", () => {
+    expect(() =>
+      defineSnakeCaseTable("form_submission", {
+        userId: t.uuid,
+        owner: t.uuid.columnName("user_id"),
+      }),
+    ).toThrow(
+      'Columns "userId" and "owner" of table "form_submission" have one physical name "user_id"',
+    )
+    expect(() =>
+      defineSnakeCaseTable("form_submission", {
+        owner: t.uuid.columnName("user_id"),
+        userId: t.uuid,
+      }),
+    ).toThrow(
+      'Columns "userId" and "owner" of table "form_submission" have one physical name "user_id"',
+    )
+  })
+
+  it("allows one name of columnName on two columns", () => {
+    const submission = defineSnakeCaseTable("form_submission", {
+      owner: t.uuid.columnName("user_id"),
+      author: t.uuid.columnName("user_id"),
+    })
+
+    expect(submission.columns.owner.attributes.name).toBe("user_id")
+    expect(submission.columns.author.attributes.name).toBe("user_id")
+  })
+
+  it("rejects a derived name that is not a non-empty string", () => {
+    const defineEmptyTable = createTableFactory({
+      columnName: () => "",
+    })
+    const defineUntypedTable = createTableFactory({
+      columnName: () => undefined as unknown as string,
+    })
+
+    expect(() =>
+      defineEmptyTable("form", {
+        id: t.uuid,
+      }),
+    ).toThrow('The name derived for column "id" of table "form" must be a non-empty string')
+    expect(() =>
+      defineUntypedTable("form", {
+        id: t.uuid,
+      }),
+    ).toThrow('The name derived for column "id" of table "form" must be a non-empty string')
+  })
+
+  it("rejects an option that is not a function", () => {
+    // @ts-expect-error The option is a function.
+    expect(() => createTableFactory({ columnName: "form_id" })).toThrow(
+      "The columnName option of createTableFactory must be a function",
+    )
+    // @ts-expect-error The option is required.
+    expect(() => createTableFactory({})).toThrow(
+      "The columnName option of createTableFactory must be a function",
+    )
   })
 })
 

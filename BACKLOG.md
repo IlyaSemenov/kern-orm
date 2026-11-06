@@ -58,14 +58,6 @@ Groups of the rows of a query, as `GROUP BY`, with the aggregates of each group,
 - A query of groups selects only the columns it groups by and aggregates; decide how types reject other columns.
 - Decide how lowering nests a query of groups in a selection and reads a page of groups after an offset.
 
-## Snake case column names
-
-Column names derived from their keys in snake case, such as `form_id` of `formId`, so that a table of such columns needs no `columnName` on each of them, as `snakeCase` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/base-table.md#snakecase)); `columnName` overrides the derived name.
-
-- `defineTable` takes the name of its table, so only column names are derived.
-- Decide where the option is given, such as to `defineTable` or to a function that creates `defineTable` for every table of a project, as `createTableFactory` of Orchid ORM.
-- Orchid ORM puts `_` before each capital letter, such as `user_i_d` of `userID`, and keeps digits ([`toSnakeCase`](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/utils.ts)); decide the conversion, and whether it matches that of Orchid ORM, so that tables moved from Orchid ORM keep their column names.
-
 ## Scopes and soft delete
 
 Predicates that a table applies to its queries, such as excluding soft-deleted records, kept as the `scope` filters of a query, like `scopes` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/scopes.md)).
@@ -195,10 +187,18 @@ A helper or an opt-in option of a query for inserts of more values than the 6553
 
 ## Comparison with other ORMs
 
-A "Why kern-orm" section of the README and a page of the site that compare kern-orm with other ORMs and query builders, such as Drizzle ORM, Kysely, Prisma, and Orchid ORM, in the scenarios where it differs: related records in one statement, ambient transactions, tables and queries reused across PostgreSQL schemas, and tests in transactions that roll back.
+A "Why kern-orm" section of the README and a page of the site that compare kern-orm with other ORMs and query builders, such as Drizzle ORM, Kysely, Prisma, and Orchid ORM, in the scenarios where it differs.
 
 - Collect the differences from the records of other ORMs in tests, [architecture/](architecture/README.md), and this backlog.
 - State each behavior of another ORM only as checked in its documentation, issues, or a named version, with a link.
+
+### What to compare (incomplete list)
+
+- Related records in one statement.
+- Ambient transactions.
+- Tables and queries reused across PostgreSQL schemas.
+- Tests in transactions that roll back.
+- Conventions of column names ([orchid-orm#197](https://github.com/romeerez/orchid-orm/issues/197)).
 
 ## Keyset pagination
 

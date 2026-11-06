@@ -17,6 +17,24 @@
   - `TableKeys` holds the keys only in a member that takes and returns them, so that it is invariant in them, and that is required and named by an unexported symbol, so that no assignment gives a table more or fewer keys, and a type that drops the member, such as `Pick` of `primaryKey` and `unique`, tells no keys.
     Its members `primaryKey` and `unique` have the types of `AnyTableKeys`, so that intersecting it with `AnyTableKeys`, as the `this` types of query methods do, compares no tuples.
   - `defineTable` computes the keys of a table before writing them as the arguments of `TableKeys`, since a deferred type reference, or a type parameter that `infer` leaves for `never`, makes the type of a table generic, which TypeScript instantiates with the query states over it again on each call, such as of `$execute` ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - `createTableFactory` creates a function of the type of `defineTable`, so that an application gives a convention of its tables in one place; a table outside the convention takes the plain `defineTable`.
+    Its `columnName` callback maps a column key to its physical name.
+    It applies only to columns without an explicit `columnName()`, creating copies so that shared columns remain unchanged.
+    Applications can use `toSnakeCase` or supply another conversion, such as for a legacy database.
+    Orchid ORM declined to allow that ([orchid-orm#197](https://github.com/romeerez/orchid-orm/issues/197)).
+    - The callback is called once for each such column and must return a non-empty string, which the table checks, since PostgreSQL rejects an empty name only when a query runs.
+    - The option belongs to the definition of tables rather than to a database, since a table knows no database and has one set of physical names in every schema.
+      Drizzle 0.45.4 has `casing` in the options of `drizzle` ([source](https://github.com/drizzle-team/drizzle-orm/blob/main/drizzle-orm/src/utils.ts)), and its documentation describes the builder `snakeCase.table` ([docs](https://orm.drizzle.team/docs/sql-schema-declaration#camel-and-snake-casing)).
+    - `toSnakeCase` (`table/snake-case.ts`) starts a word at a capital letter after a lowercase letter or a digit, so that digits stay in their word.
+      A run of capital letters is one word, such as `user_id` for `userID`, and its last letter starts the next word before a lowercase letter, such as `json_data` for `JSONData`, unless that letter is an `s` that ends the key, a plural, such as `user_ids` for `userIDs`.
+      Case does not tell a plural before another word from a word such as `Is`, as in `url_is_valid` for `URLIsValid`, so a key such as `IDsList`, which gives `i_ds_list`, requires `columnName`, and so does one that mixes cases in a word, such as `serverIPv4`, which gives `server_i_pv4`.
+    - It differs from the conversions of other ORMs for such keys:
+      - Orchid ORM 1.78.47 ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/utils.ts)) puts `_` before each capital letter, `user_i_d` for `userID`, so a table moved from it with such a key requires `columnName`.
+      - Drizzle 0.45.4 ([source](https://github.com/drizzle-team/drizzle-orm/blob/main/drizzle-orm/src/casing.ts)) gives `user_i_ds` for `userIDs`.
+      - Kysely 0.29.8 with its defaults ([source](https://github.com/kysely-org/kysely/blob/master/src/plugin/camel-case/camel-case.ts)) gives `jsondata` for `JSONData`.
+    - Only column names are derived, since `defineTable` takes the name of its table.
+    - A derived physical name must differ from the physical name of every other column of the table, such as with keys `formId` and `form_id`, since two keys would silently read one column.
+      Duplicate names set with `columnName` are allowed, as in `defineTable`.
 - **Schema** (`schema/`): immutable collection of tables and their relations with query entry points.
   `defineSchema` composes it of tables by their keys and of other schemas, whose table objects and relation definitions it includes as they are, so the same table belongs to several schemas and a query of an included schema runs on a `Db` of the composed one.
   A key has one table and a table has one key in a schema: composition rejects a key of two different tables and a table under two keys, and includes a table that several parts include under the same key once.

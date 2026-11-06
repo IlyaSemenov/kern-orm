@@ -5,6 +5,7 @@ import type { DbOf, QueryStateOf, SelectQuery, SelectQueryKind, WhereFilter } fr
 import {
   caseWhen,
   coalesce,
+  createTableFactory,
   defineExpression,
   defineHelper,
   defineSchema,
@@ -16,6 +17,7 @@ import {
   matches,
   one,
   param,
+  toSnakeCase,
 } from "kern-orm"
 import * as t from "kern-orm/types"
 
@@ -41,6 +43,15 @@ export const schema = defineSchema({ form, field }).$relations({
   field: {
     form: one(form, { from: "formId", to: "id", required: true }),
   },
+})
+
+/** Result of a table factory, which modules of tables import; see the file header. */
+export const defineSnakeCaseTable = createTableFactory({ columnName: toSnakeCase })
+
+/** Table defined through the exported factory result; see the file header. */
+export const snakeCaseField = defineSnakeCaseTable("form_field", {
+  id: t.uuid.primaryKey(),
+  formId: t.uuid,
 })
 
 /** Selects the names of all forms through a `Db` of the schema or of a schema that includes it; see the file header. */
