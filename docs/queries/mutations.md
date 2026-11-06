@@ -21,7 +21,7 @@ await db.field.insertMany([
 ```
 
 A column that a record omits gets its default, also when other records give it a value.
-Pass at least one record to `insertMany`.
+`insertMany` takes at least one record.
 
 A value is what the type of its column takes, `null` for `NULL`, or a [`sql` fragment](./filtering#sql-fragments):
 
@@ -52,7 +52,7 @@ await db.form.find(formId).update({ published: true })
 ```
 
 Omitted columns, and columns given as `undefined`, keep their values, so you can pass a partial object, such as the fields that a request changes.
-Pass at least one value other than `undefined`.
+`update` takes at least one value other than `undefined`.
 A value is anything that [`insert`](#inserting) takes, such as a query of one value.
 
 To compute a value from the columns of the record, pass a callback:

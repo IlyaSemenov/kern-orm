@@ -77,7 +77,7 @@ const form = await db.form.insert({ name: "Survey", published: false }).use(with
 // form: { id: string; name: string; slug: string }
 ```
 
-Define a helper for a mutation with `select` and `map` only: a mutation has no `where`, `orderBy`, or `take`.
+A helper for a mutation can call only `select` and `map`: a mutation has no `where`, `orderBy`, or `take`.
 
 When the code that defines a helper has no `Db`, such as with dependency injection or in code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
 Pass the table returned by `defineTable`, such as `form`, when the helper does not need the relations of the table.

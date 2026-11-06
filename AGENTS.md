@@ -135,7 +135,8 @@ Do not catalog files or restate information evident from their names and locatio
   This is a preference, not a rule: keep a description wherever it reads more clearly.
 - Do not restate in prose what users see in their editor's types or learn from a TypeScript or runtime error.
 - Mention an edge case in user documentation only when users must write different code because of it; record other edge cases, typing rules, and invariants in [architecture/](architecture/README.md) and cover them with tests.
-- Write a rule that users must follow as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
+- Write a rule of how users must do something as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
+- State a limitation, something that users cannot do, as a description, such as "A query with `distinct` cannot select related records", rather than as an instruction to avoid it, unless the description loses clarity.
 - In [architecture/](architecture/README.md), state what users must do as a requirement of the contract, such as "must be split" or "requires a key", rather than as a description of what users do, such as "users split".
 - Keep material for authors of extensions, such as custom types and operators, on Extending pages, separate from the guides for using the API.
 - When a change makes an existing statement false, fix that statement rather than add an explanation next to it.

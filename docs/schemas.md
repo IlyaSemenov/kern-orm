@@ -107,7 +107,7 @@ export const schema = defineSchema({ form, field })
 export const db = database.bind(schema)
 ```
 
-Do not start table keys with `$`, which schemas and `Db` reserve for their own members.
+Table keys cannot start with `$`, which schemas and `Db` reserve for their own members.
 
 The schema only describes the tables and their relations, and `db` executes queries on the database.
 Start queries from the tables of `db`, such as `db.form`; see [Queries](./queries/).
@@ -169,7 +169,7 @@ Include a [key](#keys) of the target in the columns `to` of `one`, such as its p
 Without the record, a query of a relation `one` gives `null`, and a query of a required relation rejects with `RequiredRelationError` unless it [filters the record](./queries/relations).
 Set `required: true` when the database guarantees the record, such as by a foreign key, and the columns `from` are not nullable.
 
-Name a relation differently from the columns of its table, and do not start its name with `$`: the callbacks of `select` and `where` get both columns and relations.
+The name of a relation cannot start with `$` or repeat a column of its table: the callbacks of `select` and `where` get both columns and relations.
 
 To load related records in queries, see [Related Records](./queries/relations), and to filter by them, see [Filtering](./queries/filtering#related-records).
 

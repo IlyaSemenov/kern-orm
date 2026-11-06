@@ -36,7 +36,7 @@ For keys of several columns, see [Keys](./schemas#keys).
 Changes of the type, such as `nullable` and `transform`, come before column attributes: `t.text.nullable().columnName("note")`.
 Types and columns are immutable, so you can reuse them across tables.
 
-Do not start column keys with `$`, which kern-orm reserves for its own members.
+Column keys cannot start with `$`, which kern-orm reserves for its own members.
 
 ## Built-in types
 
@@ -84,7 +84,7 @@ In an array, it applies to the level it is called on: `array(text.nullable())` a
 
 To work with values in another representation, such as `Date` or `Decimal`, derive a type with `transform`; it keeps the SQL type, operators, and nullability.
 `decode` receives the values of the type, and `encode` returns values that the type accepts; without `encode`, the new type accepts the same values as the type, such as a `Date` for `timestamptz`.
-Return a value other than `null` from `decode`: `null` stands for `NULL`, which [`nullable`](#nullable-values) adds.
+`decode` cannot return `null`: it stands for `NULL`, which [`nullable`](#nullable-values) adds.
 
 Every method of a type creates a new type that keeps the changes made before it, so a derived type can be shared and refined further where it is used, such as `decimal` below, or derived for a single column:
 
