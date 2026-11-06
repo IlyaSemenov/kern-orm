@@ -184,6 +184,14 @@ export async function listSubmissions(db: DbOf<typeof tenantSchema>, formId: str
     }))
 }
 
+/** Returns the names of the forms that have submissions through the `Db` of a tenant. */
+export async function listSubmittedFormNames(db: DbOf<typeof tenantSchema>) {
+  return await db.form
+    .where(form => form.id.in(db.submission.pluck("formId").distinct()))
+    .orderBy("name")
+    .pluck("name")
+}
+
 /** Returns a submission for its review through the `Db` of a tenant: its user and reviewer, the fields of its form in their order with their answers and the comments on them, and the comments on the whole submission. */
 export async function getSubmissionReview(db: DbOf<typeof tenantSchema>, submissionId: string) {
   return await db.submission.find(submissionId).select(submission => ({

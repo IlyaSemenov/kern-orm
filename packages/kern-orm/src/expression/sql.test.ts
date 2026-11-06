@@ -50,6 +50,16 @@ it("interpolates another query of a table, of any rows and value, as a query in 
   })
 })
 
+it("interpolates a query of distinct as a query in an expression rather than the name of its table", () => {
+  const unique = schema.form.distinct()
+
+  expect(toNode(sql`SELECT FROM ${unique}`)).toEqual({
+    kind: "raw",
+    fragments: ["SELECT FROM ", ""],
+    values: [{ kind: "nestedQuery", query: unique.node, db: undefined }],
+  })
+})
+
 it("rejects a query of $select, a mutation, a query of SQL text, and a query of map or transform, which a parameter would encode as text", () => {
   const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
 

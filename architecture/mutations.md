@@ -8,10 +8,10 @@
 
 ## Rows to change
 
-- `insert` and `insertMany` apply only to a query of a table without clauses: no relation, filters, selected fields, order, limit, offset, rows other than `many`, or `all`.
+- `insert` and `insertMany` apply only to a query of a table without clauses: no relation, filters, selected fields, order, limit, offset, `distinct`, rows other than `many`, or `all`.
   `insert` changes rows `one` and `insertMany` rows `many`.
 - `update` and `delete` change the rows that the filters of the query choose, in the rows mode of the query, such as `one` of `find` or `optional` after `optional`.
-  They reject a query of a relation, a query with selected fields, which a mutation selects after it, and a query with an order, a limit, or an offset: PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters.
+  They reject a query of a relation, a query with selected fields, which a mutation selects after it, and a query with an order, a limit, an offset, or `distinct`: PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters.
   `find` and `findBy` add no limit, since the values of a key match at most one row, so a mutation of their query changes its row, and tells it from a query of `take`; a value that depends on the row, such as ``find(sql`id`)``, may match several, which the mutation changes before it rejects them.
 - `update` and `delete` require an effective restriction or `all`: they reject a query whose filters combine into `TRUE`, such as of `where({})`, unless `all` allows it ([orchid-orm#847](https://github.com/romeerez/orchid-orm/issues/847), [#854](https://github.com/romeerez/orchid-orm/issues/854)).
   - A filter that matches no row, such as `in([])`, which is `FALSE`, restricts the rows, and so does a SQL fragment, whose text kern-orm does not read.
@@ -75,7 +75,7 @@
 
 - `use` takes a callback or a helper of [`defineHelper`](queries.md#helpers), so that one helper that selects fields and maps them serves a query of a table and a mutation alike; the callback returns the mutation it receives or one derived from it, in types and at runtime, as `use` of a query does.
   - The callback of a helper receives the mutation at runtime, typed as a query of a table, so it may call only what both have: `select` and `map`, with the columns and the relations of the changed rows.
-  - The effect of the helper tells whether it filters or takes one row, which types reject on a mutation, so that the error names what it can do; it does not tell `orderBy`, `limit`, and `offset`, which fail at runtime as a method the mutation lacks, as a helper of pagination fails on a query of one row.
+  - The effect of the helper tells whether it filters or takes one row, which types reject on a mutation, so that the error names what it can do; it does not tell `orderBy`, `limit`, `offset`, and `distinct`, which fail at runtime as a method the mutation lacks, as a helper of pagination fails on a query of one row.
   - Types also accept `map` without `select` in a helper, which rejects at runtime on a mutation without earlier fields, since the state does not keep the fields before `map`.
   - The effect does not tell a selection of no fields from no selection, so types keep the number of the rows, whereas that selection returns empty records; a selection that `use` adds to a mutation of the number of its rows must therefore have at least one field, also in a callback, which `use` does not tell from a helper, and `use` rejects it before the mutation runs.
   - The effect gives a mutation of the fields it selects or of what `map` gives, in the rows mode of the changed rows; a helper that does neither leaves the number of the rows.

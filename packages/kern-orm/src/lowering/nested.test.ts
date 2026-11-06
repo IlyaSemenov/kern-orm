@@ -85,6 +85,24 @@ describe("packRows", () => {
     )
   })
 
+  it("reads the rows of a query of distinct from its derived source, which PostgreSQL does not merge, so that it needs no barrier", () => {
+    const columns = createColumnRefs<typeof field>(allFields.node.from)
+    const upper = sql(t.text)`upper(${columns.label})`
+    const labels = lower(allFields.pluck(() => upper).distinct())
+
+    expect(compileStatement(packRows(labels)).text).toBe(
+      `SELECT coalesce(json_agg(json_build_array(CASE WHEN "subquery"."value" IS NOT DISTINCT FROM NULL THEN NULL ELSE format('%s', "subquery"."value") END)), '[]'::json) AS "rows" FROM (SELECT DISTINCT upper("form_field"."label") AS "value" FROM "form_field" AS "form_field") AS "subquery"`,
+    )
+  })
+
+  it("packs a query of distinct in its order, paginating it in the derived source by its sort keys, which are its projections", () => {
+    const labels = lower(allFields.pluck("label").distinct().orderBy("label").limit(2))
+
+    expect(compileStatement(packRows(labels)).text).toBe(
+      `SELECT coalesce(json_agg(json_build_array(CASE WHEN "subquery"."label" IS NOT DISTINCT FROM NULL THEN NULL ELSE format('%s', "subquery"."label") END) ORDER BY "subquery"."label"), '[]'::json) AS "rows" FROM (SELECT DISTINCT "form_field"."label" AS "label" FROM "form_field" AS "form_field" ORDER BY 1 LIMIT $1) AS "subquery"`,
+    )
+  })
+
   it("packs a query of one row without aggregating it", () => {
     const first = change(lower(allFields.select("label").take()), {
       orderBy: [createOrder(position)],

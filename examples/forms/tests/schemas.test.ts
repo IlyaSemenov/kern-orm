@@ -19,6 +19,7 @@ import {
   listFormsByFieldLabel,
   listFormSummaries,
   listSubmissions,
+  listSubmittedFormNames,
   publishedForms,
   publishWithFieldLabel,
   selectForm,
@@ -331,6 +332,15 @@ describePostgres("in PostgreSQL", ({ testTransaction, tenantDb, saasDb, inTenant
       ],
       saas: [{ name: "Contact", hasField: true }],
     })
+  })
+
+  it("filter by the distinct values of another query through the Db of a tenant", async () => {
+    const names = await testTransaction(() =>
+      inTenant("tenant_1", () => listSubmittedFormNames(tenantDb)),
+    )
+
+    // Without the unpublished `Archive`, which has no submissions, and with `Survey` once, which has two.
+    expect(names).toStrictEqual(["Feedback", "Survey"])
   })
 
   it("read a relation and call a shared expression in the callbacks of values through the Db of a tenant and of the SaaS", async () => {

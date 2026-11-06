@@ -18,6 +18,7 @@ import {
   listFormPreviews,
   listFormSummaries,
   listSubmissions,
+  listSubmittedFormNames,
   listUserActivity,
   publishedForms,
   useFormsDb,
@@ -124,6 +125,12 @@ describe("Db", () => {
     const submissions = await listSubmissions(database.bind(tenantSchema), "form-id")
 
     expectTypeOf(submissions).toEqualTypeOf<{ id: string; user: { id: string; email: string } }[]>()
+  })
+
+  test("of a tenant filters forms by the distinct values of another query", async () => {
+    const names = await listSubmittedFormNames(database.bind(tenantSchema))
+
+    expectTypeOf(names).toEqualTypeOf<string[]>()
   })
 
   test("of a tenant selects a submission with its user and reviewer, its answers by their key, and the comments", async () => {

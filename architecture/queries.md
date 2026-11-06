@@ -7,7 +7,7 @@
   At runtime, a query holds the context of its table in the schema or `Db` it starts from, which each of them creates once for each of its tables, whose relations the references of `select` start; a query of `from(table)` holds the context without relations.
   A query is covariant in its state and its kind, as `out` declares on `SelectQuery` and TypeScript checks: its methods take the query they are called on from `this`, and only `toSQL` reads the kind of the class, so that comparing two queries of different states, such as the entries of two `Db` types or a query passed to `$execute`, compares their states rather than their methods.
   Methods typed by the parameters of the class make TypeScript measure a query as invariant in its state, unreliably, and compare queries of different states member by member, which takes about 50 times the instantiations for the first comparison of two `Db` types of 2 shared tables and 200 times of 12 ([benchmark](../benchmarks/types/first-use.bench.ts)); inferring the query from `this` adds about 30 instantiations to each call of `where`.
-  - The methods that keep the state in types, `orderBy`, `limit`, `offset`, `where` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` of a guaranteed query changes its state.
+  - The methods that keep the state in types, `orderBy`, `limit`, `offset`, `distinct`, `where` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` of a guaranteed query changes its state.
   - A method that changes the state takes the state and the kind of the query, which TypeScript cannot infer from a union of queries of different states, so such a union rejects it.
     Two designs would apply such a method to a union of queries too, and both cost more than the contract is worth:
     - The method takes the whole query and returns a distributive conditional type of it, such as `Q extends SelectQuery<infer S, infer Kind> ? SelectQuery<ChangeState<S, …>, Kind> : never`.
@@ -124,7 +124,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 - `Operand`, the operand of the built-in operators, includes `ScalarQuery`, and `OperandValue` reads the value of a query without inferring it from `ScalarQuery`, which would add instantiations to each call of an operator.
   An object condition reads the operand of the `eq` of `equalityOperators` from the type of its column, rather than inferring it from the method of the column with a check that its result is a predicate, which adds about 165 instantiations, 42%, to a query of an object condition of a column used for the first time ([benchmark](../benchmarks/types/queries.bench.ts)).
   For another `eq`, such as one of `withOperators`, it infers the operand from the method and requires a predicate as its result.
-- `in` takes a query of values of a table of any rows, such as of `pluck`, beside a list, as `IN` of the statement of the query, which keeps its order, limit, and offset; the statement of a query of `exists` or of an aggregate has one row.
+- `in` takes a query of values of a table of any rows, such as of `pluck`, beside a list, as `IN` of the statement of the query, which keeps its order, limit, offset, and [`distinct`](#distinct-rows); the statement of a query of `exists` or of an aggregate has one row.
   - The query keeps its `Db`, as a query in an expression does.
   - At runtime, `in` rejects a query of records, and a value other than an array or a query of a table, such as an expression or a query of `$select`.
     It recognizes a query by the method of the symbol key `valuesQueryNode` of `expression/operators/equality.ts`, as an expression recognizes an operand by `operandNode`; only `SelectQuery` has the method, since `in` rejects every value other than an array and a query of a table, so the other classes need no method that rejects them.
@@ -179,9 +179,25 @@ Queries come in two kinds that share the query methods and differ only by execut
   A helper that paginates passes types when it is applied to a query of one row and fails at runtime, since its effect does not record pagination.
   Their counts are non-negative safe integers, sent as parameters; a later call replaces the earlier one.
 
+## Distinct rows
+
+- `distinct` makes a query remove the duplicates of its rows, as `SELECT DISTINCT`.
+  It applies only to a query of many rows, in types and at runtime, since a query of one row must find a second row to reject it, which `distinct` could hide.
+  - It compares the fields that the query selects when it compiles, as PostgreSQL compares a select list, so `select` and `pluck` apply before and after it, `get` after it, and `get` and `pluck` replace what it compares; a literal has no projection, so it is not compared.
+  - It keeps the state in types, as `limit` does, so that a conditional call assigns the query back to its variable and gives no union of states, which `select` and the other methods that change the state would reject.
+  - A helper that calls it passes types when it is applied to a query of one row and fails at runtime, as a helper that paginates does, since its effect does not record it.
+- A query of `distinct` that SQL cannot give the rows of rejects at lowering, wherever it is, with an error that names the reason:
+  - A query without fields that SQL selects, such as without a selection or of only literals: PostgreSQL has no `SELECT DISTINCT` without a select list, and such a query has nothing to compare.
+  - A field of nested rows, also of an aggregate or of `exists` that [`map` or `transform` converts](#converting-results): nested rows are JSON, which PostgreSQL cannot compare.
+    A field of an aggregate or of `exists` without a conversion is a scalar, compared by its value.
+  - A sort key other than a selected field, as [SQL generation](sql.md#statements) tells them by the same column or the same expression node: duplicates can differ in its value, so PostgreSQL rejects it, and in packed rows, whose sort keys become projections of their derived source, it would be compared too and leave duplicates.
+- The aggregate methods and `exists` reject a query of `distinct` when they are called, since they replace the fields that it compares, so nothing tells which rows they would read; `countDistinct` counts distinct values.
+  Types accept the call, since they keep no part of the state for `distinct`.
+  Orchid ORM 1.78.47 adds `DISTINCT` to any select list ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/sql/to-sql.ts)), so its `distinct().count()` compiles to `SELECT DISTINCT count(*)`, which counts every row.
+
 ## Aggregates
 
-- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of [`exists`](#exists): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
+- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of [`exists`](#exists), or a query of [`distinct`](#distinct-rows): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
   - `count` without an argument is `count(*)`; with a column or an expression, `count` and `countDistinct` count its values other than `NULL`, each distinct value once for `countDistinct`.
   - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `null` without values other than `NULL`.
   - The argument is a column key or a callback that returns an expression with a type or a query of one value, as of `get` and `pluck`.
@@ -205,7 +221,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Exists
 
-- `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of `exists`: it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
+- `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of `exists`, or a query of [`distinct`](#distinct-rows): it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
   - It checks the rows that the filters, the limit, and the offset of the query choose, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
   - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`; selected as a field, `EXISTS (...)` in the select list rather than a packed row, unless [`map` or `transform` converts it](#converting-results); and in a condition, `EXISTS (...)`.
   - The methods that keep the rows apply to it as they apply before it, as to an aggregate query: `where`, `find`, and `findBy` restrict the rows that it checks, and `coalesce` keeps it as it is, since `EXISTS` is never `NULL`.
@@ -274,7 +290,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     The rejection of a Promise that it fails on stays handled, since it would otherwise end the process after the query has reported the failure.
   - A callback that throws fails decoding, as a decoder of a type does ([SQL generation](sql.md#result-decoding)).
 - They apply to a query of a table and to a [mutation](mutations.md#results); a query of `$select` and a [query of SQL text](sql-queries.md) lack them.
-- `map` keeps a query of a table a `SelectQuery`, so that the methods that choose its rows apply after it, such as to define a query with a helper once and filter it where it runs: `where`, `find`, `findBy`, `orderBy`, `limit`, `offset`, `take`, `optional`, `nullable`, `required`, `all`, and `use`.
+- `map` keeps a query of a table a `SelectQuery`, so that the methods that choose its rows apply after it, such as to define a query with a helper once and filter it where it runs: `where`, `find`, `findBy`, `orderBy`, `limit`, `offset`, `distinct`, `take`, `optional`, `nullable`, `required`, `all`, and `use`.
   - The methods that read or change the fields reject it, in types and at runtime, since the fields are what its callback receives: `select`, `clearSelect`, `get`, `pluck`, the aggregate methods, `exists`, `coalesce`, and `expr`.
   - In types, `map` sets the `value` part of the state to `"mapped"` and the `aggregate` part to `true`, so that the states that those methods narrow reject it, with no part of its own.
     A part of its own adds about 4 instantiations to each method that changes the state, up to 3% of a query, as the `aggregate` part does ([benchmark](../benchmarks/types/queries.bench.ts)), and the narrowed states would need to name it, which also rejects a function generic over the state that narrows only `value` or `aggregate`.

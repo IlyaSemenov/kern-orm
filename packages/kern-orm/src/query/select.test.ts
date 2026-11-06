@@ -722,6 +722,67 @@ describe("limit and offset", () => {
   })
 })
 
+describe("distinct", () => {
+  const selected = from(post).select("title").distinct()
+
+  it("removes the duplicates of the rows, comparing the fields selected before or after it", () => {
+    const text = 'SELECT DISTINCT "post"."title" AS "title" FROM "post" AS "post"'
+
+    expect(selected.toSQL().text).toBe(text)
+    expect(from(post).distinct().select("title").toSQL().text).toBe(text)
+    expect(selected.distinct().toSQL().text).toBe(text)
+  })
+
+  it("compares the value of get and pluck, which replace the fields before them", () => {
+    const values = selected.select("id")
+
+    expect(values.pluck("title").toSQL().text).toBe(
+      'SELECT DISTINCT "post"."title" AS "title" FROM "post" AS "post"',
+    )
+    expect(values.get("title").toSQL().text).toBe(
+      'SELECT DISTINCT "post"."title" AS "title" FROM "post" AS "post" LIMIT 1',
+    )
+  })
+
+  it("keeps the filters, the limit, and the offset, and leaves the query it derives from unchanged", () => {
+    const base = from(post).where({ title: "First" }).select("title").limit(10).offset(20)
+
+    expect(base.distinct().toSQL()).toEqual({
+      text: 'SELECT DISTINCT "post"."title" AS "title" FROM "post" AS "post" WHERE "post"."title" = $1 LIMIT $2 OFFSET $3',
+      parameters: ["First", "10", "20"],
+    })
+    expect(base.toSQL().text).toStartWith('SELECT "post"."title"')
+  })
+
+  it("rejects a query of one row, which must find a second row to reject it", () => {
+    // Types reject these calls, which a query held as any query can still make.
+    const queries: AnySelectQuery[] = [
+      from(post).take(),
+      from(post).find("id"),
+      from(post).get("title"),
+      from(post).count(),
+      from(post).exists(),
+    ]
+
+    for (const query of queries) {
+      expect(() => query.distinct()).toThrow("distinct applies only to a query of many rows")
+    }
+  })
+
+  it("rejects the aggregate methods and exists after it, which replace the fields that it compares", () => {
+    const message = (method: string) =>
+      `${method} cannot be used after distinct, whose selected fields it replaces; to count distinct values, call countDistinct without distinct`
+
+    expect(() => selected.count()).toThrow(message("count"))
+    expect(() => selected.count("title")).toThrow(message("count"))
+    expect(() => selected.countDistinct("title")).toThrow(message("countDistinct"))
+    expect(() => selected.max("title")).toThrow(message("max"))
+    expect(() => selected.stringAgg("title", ", ")).toThrow(message("stringAgg"))
+    expect(() => selected.exists()).toThrow(message("exists"))
+    expect(() => selected.take().count()).toThrow(message("count"))
+  })
+})
+
 describe("optional", () => {
   it("applies to a query of one row whatever changes it before or after", () => {
     const before = from(post).take().optional().get("title").where({ title: "First" })

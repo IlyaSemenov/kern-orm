@@ -32,6 +32,16 @@ it("in takes queries of one value in its list as scalar subqueries", () => {
   })
 })
 
+it("in takes the distinct values of a query", () => {
+  expect(
+    from(user)
+      .where(columns => columns.id.in(from(user).pluck("id").distinct()))
+      .toSQL().text,
+  ).toBe(
+    'SELECT FROM "user" AS "user" WHERE "user"."id" IN (SELECT DISTINCT "user_2"."id" AS "id" FROM "user" AS "user_2")',
+  )
+})
+
 it("in takes the values of a query of any rows as a subquery of its statement, also of exists", () => {
   expect(
     from(user)

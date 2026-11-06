@@ -79,6 +79,7 @@ describe("insert", () => {
       schema.form.select("id"),
       schema.form.orderBy("id"),
       schema.form.limit(1),
+      schema.form.distinct(),
       schema.form.take(),
       schema.form.all(),
     ] as AnySelectQuery[]) {
@@ -279,9 +280,10 @@ describe("update and delete", () => {
         schema.form.all().orderBy("id"),
         schema.form.all().limit(1),
         schema.form.all().offset(1),
+        schema.form.all().distinct(),
       ]) {
         expect(() => mutate(query)).toThrow(
-          `${method} cannot sort or limit the rows it changes; choose them with where, find, or findBy instead of take, limit, offset, or orderBy`,
+          `${method} cannot sort or limit the rows it changes; choose them with where, find, or findBy instead of take, limit, offset, orderBy, or distinct`,
         )
       }
       expect(() => mutate(schema.form.find(1).select("id"))).toThrow(

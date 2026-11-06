@@ -87,6 +87,7 @@ describe("map of a query", () => {
       [fields.map(toId).orderBy({ name: "desc" }), fields.orderBy({ name: "desc" })],
       [fields.map(toId).orderBy(columns => columns.name), fields.orderBy(columns => columns.name)],
       [fields.map(toId).limit(2).offset(1), fields.limit(2).offset(1)],
+      [fields.map(toId).distinct(), fields.distinct()],
       [fields.map(toId).take(), fields.take()],
       [fields.map(toId).take().optional(), fields.take().optional()],
       [fields.map(toId).take().nullable(), fields.take().nullable()],

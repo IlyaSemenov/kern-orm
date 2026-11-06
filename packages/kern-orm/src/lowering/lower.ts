@@ -36,7 +36,7 @@ import { formatRelationName } from "../schema/relation"
 import { text } from "../type/builtins/text"
 
 import { projectRows } from "./nested"
-import { deriveOrderedSource, sortByPositions } from "./order"
+import { deriveOrderedSource, findSortProjection, sortByPositions } from "./order"
 
 const noJoins: readonly JoinNode[] = /* @__PURE__ */ Object.freeze([])
 
@@ -227,6 +227,9 @@ function lowerSelectStatement(
   const projections = lowerProjections(selected, context)
   const filters = lowerFilters(node.filters, context)
   const orderBy = lowerOrder(node.orderBy, context, selected, projections)
+  if (node.distinct) {
+    checkDistinct(projections, orderBy)
+  }
   const { relation } = node
   // Without its row, such a query breaks the promise of the relation rather than missing a record it looks up.
   const guaranteedBy =
@@ -234,8 +237,10 @@ function lowerSelectStatement(
       ? formatRelationName(relation.key, relation.name)
       : undefined
   // PostgreSQL evaluates the select list also for the rows that an offset skips, so the nested queries of a page after an offset read its rows from a derived source.
+  // A query of `distinct` compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway.
   const page =
     node.offset !== undefined &&
+    !node.distinct &&
     selected.some((field, index) => isPagedField(field, projections[index]!, orderBy))
       ? lowerPage(
           node,
@@ -260,11 +265,43 @@ function lowerSelectStatement(
     orderBy: positions && orderBy.length > 0 ? sortByPositions(orderBy, projections) : orderBy,
     limit: node.limit,
     offset: node.offset,
+    distinct: node.distinct,
     rows: node.rows,
     value: node.value,
     guaranteedBy,
     recordTemplate,
   })
+}
+
+/**
+ * Rejects a query of `distinct` of the lowered `projections` and `orderBy` that `SELECT DISTINCT` cannot give the rows of, with an error that does not depend on where the query is:
+ *
+ * - A query without projections, such as of only literals, has nothing to compare, and PostgreSQL has no syntax for it.
+ * - Nested rows are JSON, which PostgreSQL cannot compare.
+ * - PostgreSQL rejects a sort key that is not a projection, since duplicates can differ in its value, whereas a packed query would add it to the projections of its derived source and compare it too.
+ *   Only a projection of the same column or of the same expression node is sure to have its value, as in `findSortProjection`.
+ */
+function checkDistinct(
+  projections: readonly ProjectionNode[],
+  orderBy: readonly OrderNode[],
+): void {
+  if (projections.length === 0) {
+    throw new Error(
+      "distinct requires at least one selected column or SQL expression; literal fields are not compared",
+    )
+  }
+  for (const { key, nested } of projections) {
+    if (nested !== undefined) {
+      throw new Error(`distinct cannot compare the nested rows of the selected field "${key}"`)
+    }
+  }
+  for (const { expression } of orderBy) {
+    if (findSortProjection(projections, expression) === -1) {
+      throw new Error(
+        "A query of distinct sorts only by its selected fields, since duplicates can differ in any other value; select the value to sort by it",
+      )
+    }
+  }
 }
 
 /** Returns the fields of `selected` that a statement selects, or `selected` itself without literals. */
@@ -856,6 +893,7 @@ function lowerExpression(node: ExpressionNode, context: LoweringContext): Expres
  * Lowers a query in an expression to `EXISTS` of the rows of a query of `exists`, to a scalar subquery of the value of another query of one value, or to its statement in parentheses for a query of records or of rows `many`, which only SQL text holds.
  *
  * In SQL text, a query of `exists` stays `EXISTS` rather than a subquery of its value, so that PostgreSQL can join its rows in a condition, as a semi-join.
+ * A query of `distinct` sorts by the positions of its projections: PostgreSQL would not find a repeated sort expression with parameters of its own in the select list.
  */
 function lowerNestedQuery(node: NestedQueryNode, context: LoweringContext): ExpressionNode {
   checkDb(node.db, context, "A query in an expression")
@@ -865,14 +903,14 @@ function lowerNestedQuery(node: NestedQueryNode, context: LoweringContext): Expr
   }
   return createNode({
     kind: query.value && query.rows !== "many" ? "subquery" : "textSubquery",
-    query: lowerSelect(query, context, false),
+    query: lowerSelect(query, context, query.distinct),
   })
 }
 
-/** Lowers the query of the values of `IN` to its statement, whatever its rows. */
+/** Lowers the query of the values of `IN` to its statement, whatever its rows; a query of `distinct` sorts by positions, as in `lowerNestedQuery`. */
 function lowerQueryOfValues(node: NestedQueryNode, context: LoweringContext): SelectNode {
   checkDb(node.db, context, "A query in an expression")
-  return lowerSelect(node.query, context, false)
+  return lowerSelect(node.query, context, node.query.distinct)
 }
 
 /** Lowers each of `items` with `lower`; when none changes, it returns `items` itself. */

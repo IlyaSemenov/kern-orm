@@ -177,8 +177,8 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
     joinScopes.push(scope)
   }
 
-  // PostgreSQL accepts an empty select list and returns rows without columns.
-  let text = `SELECT${compileProjections(context, scope, node.projections)}`
+  // PostgreSQL accepts an empty select list and returns rows without columns, unless the query is distinct.
+  let text = `SELECT${node.distinct ? " DISTINCT" : ""}${compileProjections(context, scope, node.projections)}`
 
   if (fromScope !== undefined) {
     text += ` FROM ${compileSource(context, outer, fromScope)}`

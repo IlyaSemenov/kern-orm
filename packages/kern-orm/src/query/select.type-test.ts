@@ -881,6 +881,36 @@ describe("limit and offset", () => {
   })
 })
 
+describe("distinct", () => {
+  test("keeps the state of a query of many rows, so that a conditional call assigns back to its variable", () => {
+    const base = from(post).select("id")
+    expectTypeOf(base.distinct()).toEqualTypeOf<typeof base>()
+
+    let query = base
+    query = query.distinct()
+    expectTypeOf(query.select("title").take()).toEqualTypeOf(base.select("title").take())
+    expectTypeOf(from(post).distinct().pluck("title").distinct().get("id")).toEqualTypeOf(
+      from(post).pluck("title").get("id"),
+    )
+  })
+
+  test("applies to a union of queries", () => {
+    const query = Math.random() > 0.5 ? from(post).select("id") : from(post).select("title")
+    expectTypeOf(query.distinct()).toEqualTypeOf(query)
+  })
+
+  test("rejects a query of one row", () => {
+    // @ts-expect-error A query of one row must find a second row to reject it.
+    from(post).take().distinct()
+    // @ts-expect-error A query of one row must find a second row to reject it.
+    from(post).get("title").distinct()
+    // @ts-expect-error An aggregate query has one row.
+    from(post).count().distinct()
+    // @ts-expect-error A query of exists has one row.
+    from(post).exists().distinct()
+  })
+})
+
 describe("optional", () => {
   test("resolves to undefined without a row", () => {
     const record = from(post).select("id").take().optional()

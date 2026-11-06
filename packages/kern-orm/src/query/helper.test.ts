@@ -73,6 +73,18 @@ it("sorts and paginates the query it is applied to, which must be a query of man
   )
 })
 
+it("removes the duplicates of the rows of the query it is applied to, which must be a query of many rows", () => {
+  const unique = defineHelper(schema.form, form => form.select("name").distinct())
+
+  expect(schema.form.use(unique).toSQL().text).toBe(
+    'SELECT DISTINCT "form"."name" AS "name" FROM "form" AS "form"',
+  )
+  // Types accept the helper, since its effect does not record `distinct`.
+  expect(() => schema.form.take().use(unique)).toThrow(
+    "distinct applies only to a query of many rows",
+  )
+})
+
 it("applies a helper inside another helper", () => {
   const ownedNamesWithId = defineHelper(schema.form, (form, ownerId: string) =>
     form.use(ownedBy, ownerId).select("id"),

@@ -140,6 +140,7 @@ describe("map", () => {
       expectTypeOf(await names.orderBy("name", { id: "desc" })).toEqualTypeOf<number[]>()
       expectTypeOf(await names.orderBy(columns => columns.name)).toEqualTypeOf<number[]>()
       expectTypeOf(await names.limit(1).offset(2)).toEqualTypeOf<number[]>()
+      expectTypeOf(await names.distinct()).toEqualTypeOf<number[]>()
       expectTypeOf(await names.find(1)).toEqualTypeOf<number>()
       expectTypeOf(await names.findBy({ id: 1 })).toEqualTypeOf<number>()
       expectTypeOf(await names.take()).toEqualTypeOf<number>()

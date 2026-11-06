@@ -11,6 +11,7 @@
   An aggregate takes the rows before the limit and the offset of its own query, so with a limit or an offset it reads the rows of the page from a derived source that selects the first argument of the aggregate and its sort keys, as nested rows are packed; `count(*)` reads a derived source without projections or an order.
   PostgreSQL assigns an aggregate to the innermost query whose sources its arguments refer to, so an argument that does not refer to the source of its query outside nested queries, such as a column of the parent row, is read from such a derived source too.
   The statement of an executed query sorts by the positions of its projections, while the statement of a packed nested query keeps its sort expressions, which packing reads.
+  A query of [`distinct`](queries.md#distinct-rows) also sorts by positions as a subquery, of `IN`, of an expression, or in SQL text: PostgreSQL finds a sort expression of `SELECT DISTINCT` in the select list only when it is equal, and a repeated expression has parameters and aliases of its own.
   A mutation keeps its statement and packs the nested queries of the fields of its `RETURNING` as a select list does.
   For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
   An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
@@ -90,6 +91,7 @@
   The query reads them from the source and evaluates only its nested queries over the rows of the page, which it sorts again by the sort keys of the source, since the order of a derived source does not carry into the query that reads it.
   For a page of 20 of 1000 parents, it is 4 to 6 times faster after an offset of 100 and 26 to 45 times after 900, and within 4% after an offset of 0 ([benchmark](../benchmarks/suites/offset-page.ts)).
   A query without nested queries other than such sorted fields, also with queries in the expressions of its fields, which are scalar fields, or without an offset keeps its page on its table.
+  So does a query of [`distinct`](queries.md#distinct-rows), which compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway.
   So does a query whose nested queries that the page evaluates over its rows hold a SQL fragment that refers to a column of its table outside the queries nested in the fragment; a sorted field evaluated in the source is not checked, since the source evaluates it as the query would.
   PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, and lowering does not parse SQL fragments to identify their aggregates, so such a fragment, such as `sum` of a column of the parent row, may aggregate the rows of the query before its offset.
 - A nested aggregate query without a conversion is selected as a scalar subquery of its statement, decoded by the type of the aggregate, rather than packed: it always returns one row of one value.
@@ -107,9 +109,9 @@
   - SQL `NULL` is JSON `null` through `IS NOT DISTINCT FROM NULL`, since `format` turns it into an empty string, and `IS NULL` also holds for a composite whose fields are all `NULL`.
   - Nested rows stay JSON inside a packed row and never pass through `format`.
   - Packing reads the projections of the nested query through a derived source, whose expressions are evaluated once per row as long as PostgreSQL does not merge the source into the aggregating query, where packing refers to a scalar twice.
-    This relies on the planner, which merges no derived source with a limit, an offset, or a volatile function in its select list ([PostgreSQL](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/optimizer/prep/prepjointree.c)):
+    This relies on the planner, which merges no derived source with `DISTINCT`, a limit, an offset, or a volatile function in its select list ([PostgreSQL](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/optimizer/prep/prepjointree.c)):
     - A volatile expression, such as `random()`, is evaluated once per row in any derived source.
-    - A derived source that selects scalar expressions other than table columns gets `OFFSET 0` unless it has a limit or an offset, so that a stable expression, such as a correlated subquery, is not evaluated twice.
+    - A derived source that selects scalar expressions other than table columns gets `OFFSET 0` unless it has `DISTINCT`, a limit, or an offset, so that a stable expression, such as a correlated subquery, is not evaluated twice.
       The aggregating query has no conditions of its own, so the barrier keeps nothing from being pushed down, and the conditions of the nested query and their indexes stay inside the source.
       A source of table columns has no barrier, which would add up to 8% there; with `md5` of each column instead, the barrier makes the query 38 to 45% faster ([benchmark](../benchmarks/suites/offset-barrier.ts)).
   - The order of the query is read from sort keys, projections of the derived source that stay out of the records, so each sort expression is evaluated once:

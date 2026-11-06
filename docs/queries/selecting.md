@@ -148,6 +148,32 @@ const draftFlags = await db.form.pluck(form => form.name.ilike("draft%"))
 
 The callback also receives the [relations](./relations#values-of-related-records) of the table, as do those of `get` and of aggregates.
 
+## Distinct rows
+
+To remove duplicate rows, such as to list the labels of the fields once each, call `distinct`:
+
+```ts
+const labels = await db.field.pluck("label").distinct()
+// labels: string[]
+```
+
+`distinct` compares the selected fields, so select the ones that tell the rows apart:
+
+```ts
+const placements = await db.field.select("formId", "position").distinct()
+```
+
+To sort the rows, sort by the selected fields, since duplicates can differ in any other column:
+
+```ts
+const labels = await db.field.pluck("label").distinct().orderBy("label")
+```
+
+A query with `distinct` cannot select [related records](./relations).
+
+Aggregates and `exists` cannot be called after `distinct`.
+To count distinct values, call [`countDistinct`](#aggregates).
+
 ## One value
 
 To get one value, such as the ID of a form, call `get` with a column or an expression:

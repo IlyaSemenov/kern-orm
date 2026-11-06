@@ -24,7 +24,7 @@ A migration whose `down` cannot restore the structure, such as one that adds a v
 
 Locking the rows that a query reads, as `SELECT ... FOR UPDATE`, `FOR NO KEY UPDATE`, `FOR SHARE`, or `FOR KEY SHARE`, with `NOWAIT` or `SKIP LOCKED`, such as for a queue of jobs.
 
-- PostgreSQL rejects a locking clause in a query of aggregates, `DISTINCT`, or `GROUP BY`, so reject it in a query of an aggregate method.
+- PostgreSQL rejects a locking clause in a query of aggregates, `DISTINCT`, or `GROUP BY`, so reject it in a query of an aggregate method or of `distinct`.
 - The clause locks the rows of the tables in `FROM` of its query, including those of a derived source, but not the related records of nested queries in the select list; decide whether lowering keeps the clause when it packs the query into a derived source, such as a page after an offset.
 - A nested query and a query of an expression lock their own rows, such as a query of one value in the values of an insert that locks the record that the inserted one belongs to.
   Lowering puts the clause of packed nested rows into the derived source that reads their rows, since PostgreSQL rejects it beside their aggregate.
@@ -96,11 +96,19 @@ Two independent goals:
    - Orchid ORM 1.78.47 resolves a query of `whereIn` of an empty list without querying the database ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/where.md#wherein)), and code that filters by a list from a request relies on it.
    - Decide what `toSQL` and `$compile` give for a query without a statement.
 
-## Distinct rows
+## First row of each group
 
-Rows of a query without duplicates, as `SELECT DISTINCT`, such as of `pluck` of the users of notifications for `in` of a query, and possibly the first row of each group in the order of the query, as `DISTINCT ON`, as `distinct` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#distinct)).
+The first row of each group in the order of the query, as `DISTINCT ON`, as `distinct` of columns of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#distinct)).
 
-- PostgreSQL requires the sort expressions of `SELECT DISTINCT` in its select list, and packing adds the sort keys of nested rows to the projections of their derived source, where `DISTINCT` would compare them too; decide how lowering keeps distinct rows sorted by an expression that the query does not select.
+- PostgreSQL requires the expressions of `DISTINCT ON` to start the order of the query, and takes sort keys outside the select list, so packing can add them to the projections of its derived source.
+- Decide what a query of it does with a page after an offset, which [`distinct`](architecture/queries.md#distinct-rows) keeps on its table, and with the aggregate methods and `exists`, which `distinct` rejects.
+
+## Aggregates of distinct rows
+
+The aggregate methods and `exists` after `distinct`, which [reject](architecture/queries.md#distinct-rows), such as the number of distinct pairs of columns for the total of a page of `distinct`, as `SELECT count(*) FROM (SELECT DISTINCT ...)`, which `countDistinct` of one column does not give.
+
+- They replace the fields that `distinct` compares, so the node of the query needs to keep them.
+- Decide what an aggregate of an argument compares: only its argument, or the selected fields too, since the argument may not be among them.
 
 ## Arithmetic operators
 

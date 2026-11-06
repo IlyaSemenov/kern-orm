@@ -109,6 +109,9 @@ test("in takes a query of values of its type, nullable as the expression or the 
   const nullable = param(t.integer.nullable(), null)
 
   expectTypeOf(value.in(from(account).pluck("rank"))).toEqualTypeOf<Expression<boolean>>()
+  expectTypeOf(value.in(from(account).pluck("rank").distinct())).toEqualTypeOf<
+    Expression<boolean>
+  >()
   expectTypeOf(value.in(from(account).get("rank"))).toEqualTypeOf<Expression<boolean>>()
   expectTypeOf(value.in(from(account).count())).toEqualTypeOf<Expression<boolean>>()
   expectTypeOf(value.in(from(account).pluck("score"))).toEqualTypeOf<Expression<boolean | null>>()

@@ -134,6 +134,13 @@ describe("defineHelper", () => {
     expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ id: string; name: string }[]>()
   })
 
+  test("removes the duplicates of the rows of the query", () => {
+    const unique = defineHelper(schema.form, form => form.select("name").distinct())
+
+    const forms = db.form.use(unique)
+    expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ name: string }[]>()
+  })
+
   test("applies a helper that adds fields to a query of any result", () => {
     /** State of a query over forms of any result. */
     interface AnyResultState extends InitialQueryState<typeof form> {

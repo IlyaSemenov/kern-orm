@@ -48,6 +48,8 @@ export interface QueryNode extends ResultMode {
   readonly orderBy: readonly OrderNode[]
   readonly limit: ExpressionNode | undefined
   readonly offset: ExpressionNode | undefined
+  /** Whether `distinct` removes the duplicates of the rows, comparing the fields that the query selects when it compiles. */
+  readonly distinct: boolean
   /** Whether a required relation guarantees the row of the query, so that a filter makes a query of rows `one` resolve without it; see `SelectQueryState`. */
   readonly guaranteed: boolean
   /** Whether `all` allows a mutation of the query to change every row of the table without a filter. */
@@ -85,6 +87,7 @@ export function createQueryNode(
     orderBy: [],
     limit: undefined,
     offset: undefined,
+    distinct: false,
     rows: relation === undefined ? "many" : getRelationRows(relation),
     value: false,
     guaranteed: relation?.required ?? false,
@@ -93,7 +96,7 @@ export function createQueryNode(
   })
 }
 
-/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, order, limit, offset, rows other than `many`, `all`, or conversion. */
+/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, order, limit, offset, `distinct`, rows other than `many`, `all`, or conversion. */
 export function isTableQuery(node: QueryNode): boolean {
   return (
     node.relation === undefined &&
@@ -104,6 +107,7 @@ export function isTableQuery(node: QueryNode): boolean {
     node.orderBy.length === 0 &&
     node.limit === undefined &&
     node.offset === undefined &&
+    !node.distinct &&
     node.rows === "many" &&
     !node.all &&
     node.conversion === undefined

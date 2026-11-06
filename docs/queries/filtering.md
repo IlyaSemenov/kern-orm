@@ -133,6 +133,14 @@ await db.form
 
 Start the query from the same `Db` as the query that it filters.
 
+A query passed to `in` can also use [`distinct`](./selecting#distinct-rows):
+
+```ts
+await db.form
+  .where(form => form.id.in(db.submission.where({ userId }).pluck("formId").distinct()))
+  .select("id")
+```
+
 ## SQL fragments
 
 For a condition that operators do not cover, write it with the `sql` template; interpolated values become query parameters:

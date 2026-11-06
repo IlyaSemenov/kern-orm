@@ -103,6 +103,23 @@ describe("compileStatement", () => {
     expect(compiled.fields).toBe(node.projections)
   })
 
+  it("compiles DISTINCT before the projections, numbering parameters in the order of the text", () => {
+    const node: SelectNode = {
+      ...lower(
+        from(post).select(() => ({
+          marked: sql(t.text)`${"marked"}`,
+        })),
+      ),
+      distinct: true,
+      limit: createParameter(1),
+    }
+
+    expect(compileStatement(node)).toMatchObject({
+      text: 'SELECT DISTINCT $1 AS "marked" FROM "post" AS "post" LIMIT $2',
+      parameters: ["marked", "1"],
+    })
+  })
+
   it("rejects a query in an expression, also of the values of IN, which lowering replaces", () => {
     const exists = createNode({
       kind: "nestedQuery",

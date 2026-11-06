@@ -8,8 +8,11 @@ import type { AnyExpression } from "../expression/expression"
 import { and, not } from "../expression/predicates"
 import { sql } from "../expression/sql"
 import { countType } from "../query/aggregate"
+import { literal } from "../query/literal"
 import { desc } from "../query/order"
+import type { AnySelectQuery } from "../query/select"
 import type { NestedField } from "../result/result"
+import { NotFoundError } from "../result/result"
 import { collectDefinitions, many, one } from "../schema/relation"
 import { defineSchema, schemaRelations } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -596,6 +599,125 @@ describe("lowerQuery", () => {
   })
 })
 
+describe("query of distinct", () => {
+  const compile = (query: AnySelectQuery) => compileStatement(lowerStatement(query.node)).text
+
+  it("sorts by the positions of its projections, also as a subquery, whose repeated sort expression would get parameters of its own", () => {
+    const shifted = schema.field
+      .pluck(field => sql(t.integer)`${field.id} + ${1}`)
+      .distinct()
+      .orderBy((_field, value) => desc(value))
+      .limit(2)
+    const subquery =
+      'SELECT DISTINCT "form_field"."id" + $1 AS "value" FROM "form_field" AS "form_field" ORDER BY 1 DESC LIMIT $2'
+
+    expect(compile(shifted)).toBe(subquery)
+    expect(compile(schema.form.where(form => form.id.in(shifted)))).toBe(
+      `SELECT FROM "form" AS "form" WHERE "form"."id" IN (${subquery})`,
+    )
+    expect(compile(schema.form.where(form => form.id.eq(shifted.take())))).toBe(
+      `SELECT FROM "form" AS "form" WHERE "form"."id" = (${subquery.replace("LIMIT $2", "LIMIT 1")})`,
+    )
+    expect(compile(schema.form.where(form => sql<boolean>`${form.id} IN ${shifted}`))).toBe(
+      `SELECT FROM "form" AS "form" WHERE "form"."id" IN (${subquery})`,
+    )
+  })
+
+  it("compares the values of fields of an aggregate and of exists, also of a page after an offset, which stays on its table", () => {
+    const { node } = schema.form
+      .select(form => ({
+        fieldCount: form.fields.count(),
+        hasFields: form.fields.exists(),
+      }))
+      .distinct()
+      .orderBy((_form, selected) => selected.fieldCount)
+      .offset(1)
+
+    expect(compileStatement(lowerStatement(node)).text).toBe(
+      'SELECT DISTINCT (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "fieldCount", EXISTS (SELECT FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form"."id") AS "hasFields" FROM "form" AS "form" ORDER BY 1 OFFSET $1',
+    )
+  })
+
+  it("rejects a query without fields that SQL selects, which PostgreSQL has no syntax for", () => {
+    const message =
+      "distinct requires at least one selected column or SQL expression; literal fields are not compared"
+
+    for (const { node } of [
+      schema.form.distinct(),
+      schema.form.select("id").distinct().clearSelect(),
+      schema.form
+        .select(() => ({
+          kind: literal("form"),
+        }))
+        .distinct(),
+    ]) {
+      expect(() => lowerStatement(node)).toThrow(message)
+      expect(() => lowerQuery(node)).toThrow(message)
+    }
+  })
+
+  it("rejects nested rows, which are JSON, at any depth, also of a converted aggregate", () => {
+    const message = (key: string) =>
+      `distinct cannot compare the nested rows of the selected field "${key}"`
+
+    expect(() =>
+      lowerStatement(
+        schema.form
+          .select(form => ({
+            labels: form.fields.pluck("label"),
+          }))
+          .distinct().node,
+      ),
+    ).toThrow(message("labels"))
+    expect(() =>
+      lowerStatement(
+        schema.form
+          .select(form => ({
+            fieldCount: form.fields.count().map(String),
+          }))
+          .distinct().node,
+      ),
+    ).toThrow(message("fieldCount"))
+    expect(() =>
+      lowerStatement(
+        schema.form.select(form => ({
+          fields: form.fields
+            .select(field => ({
+              values: field.options.pluck("fieldId"),
+            }))
+            .distinct(),
+        })).node,
+      ),
+    ).toThrow(message("values"))
+  })
+
+  it("rejects a sort key that it does not select, also when nested, where packing would compare it too", () => {
+    const message =
+      "A query of distinct sorts only by its selected fields, since duplicates can differ in any other value; select the value to sort by it"
+    const labels = schema.field.pluck("label").distinct()
+    const upper = schema.field.pluck(field => sql(t.text)`upper(${field.label})`).distinct()
+
+    expect(() => lowerStatement(labels.orderBy("id").node)).toThrow(message)
+    // Only the same node is sure to have the value of the sort expression.
+    expect(() =>
+      lowerStatement(upper.orderBy(field => sql(t.text)`upper(${field.label})`).node),
+    ).toThrow(message)
+    expect(() =>
+      lowerStatement(
+        schema.form.select(form => ({
+          labels: form.fields.pluck("label").distinct().orderBy("id"),
+        })).node,
+      ),
+    ).toThrow(message)
+    expect(() =>
+      lowerStatement(
+        schema.form.where(form => form.id.in(schema.field.pluck("id").distinct().orderBy("label")))
+          .node,
+      ),
+    ).toThrow(message)
+  })
+})
+
 describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }) => {
   useTestFixture(() =>
     database.script(`
@@ -774,6 +896,183 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
 
     expect(results).toStrictEqual([[{ nested: [{ total: 210, mixed: 211, composed: 211 }] }], []])
+  })
+
+  describe("query of distinct", () => {
+    const residue = (form: { id: AnyExpression<number> }) => sql(t.integer)`${form.id} % ${3}`
+    const residues = db.form
+      .pluck(residue)
+      .distinct()
+      .orderBy((_form, value) => desc(value))
+
+    it("removes the duplicates of the values and the records of an executed query, in its order", async () => {
+      const results = await testTransaction(async () => ({
+        values: await residues,
+        page: await residues.offset(1).limit(1),
+        first: await residues.take(),
+        records: await db.form
+          .select(form => ({
+            residue: residue(form),
+            kind: literal("residue"),
+          }))
+          .distinct()
+          .orderBy((_form, selected) => selected.residue),
+      }))
+
+      expect(results).toEqual({
+        values: [2, 1, 0],
+        page: [1],
+        first: 2,
+        records: [
+          { residue: 0, kind: "residue" },
+          { residue: 1, kind: "residue" },
+          { residue: 2, kind: "residue" },
+        ],
+      })
+    })
+
+    it("removes the duplicates of the values of in and of a subquery, sorted by an expression with parameters", async () => {
+      const results = await testTransaction(async () => ({
+        in: await db.form
+          .where(form => form.id.in(residues))
+          .orderBy("id")
+          .pluck("id"),
+        page: await db.form.where(form => form.id.in(residues.limit(1))).pluck("id"),
+        scalar: await db.form.where(form => form.id.eq(residues.take())).pluck("id"),
+        text: await db.form
+          .where(form => sql<boolean>`${form.id} IN ${residues.limit(1)}`)
+          .pluck("id"),
+      }))
+
+      expect(results).toEqual({ in: [1, 2], page: [2], scalar: [2], text: [2] })
+    })
+
+    it("removes the duplicates of nested rows in their order, also of a page", async () => {
+      const query = db.form
+        .where({ id: 5 })
+        .select(form => {
+          const others = db.form.where(other => other.id.lte(form.id))
+          const values = others
+            .pluck(residue)
+            .distinct()
+            .orderBy((_other, value) => desc(value))
+          return {
+            values,
+            page: values.limit(1),
+            records: others
+              .select(other => ({
+                residue: residue(other),
+              }))
+              .distinct()
+              .orderBy((_other, selected) => selected.residue),
+          }
+        })
+        .take()
+
+      expect(await testTransaction(async () => await query)).toEqual({
+        values: [2, 1, 0],
+        page: [2],
+        records: [{ residue: 0 }, { residue: 1 }, { residue: 2 }],
+      })
+    })
+
+    it("keeps the rows mode of a nested query, also without a limit", async () => {
+      const query = db.form
+        .where({ id: 5 })
+        .select(form => {
+          const others = db.form.where(other => other.id.lte(form.id))
+          const records = others
+            .select(other => ({
+              residue: residue(other),
+            }))
+            .distinct()
+            .orderBy((_other, selected) => desc(selected.residue))
+          const missing = others.where(other => other.id.gt(20))
+          return {
+            first: records.take(),
+            value: others
+              .pluck(residue)
+              .distinct()
+              .orderBy((_other, value) => desc(value))
+              .take(),
+            found: db.form.pluck(residue).distinct().find(5),
+            optional: missing.pluck(residue).distinct().take().optional(),
+            nullable: missing
+              .select(other => ({
+                residue: residue(other),
+              }))
+              .distinct()
+              .take()
+              .nullable(),
+          }
+        })
+        .take()
+
+      expect(await testTransaction(async () => await query)).toStrictEqual({
+        first: { residue: 2 },
+        value: 2,
+        found: 2,
+        optional: undefined,
+        nullable: null,
+      })
+    })
+
+    it("rejects without the row of a nested query of one row", async () => {
+      const query = db.form
+        .where({ id: 5 })
+        .select(() => ({
+          required: db.form
+            .where(other => other.id.gt(20))
+            .pluck(residue)
+            .distinct()
+            .take(),
+        }))
+        .take()
+
+      await expect(testTransaction(async () => await query)).rejects.toThrow(NotFoundError)
+    })
+
+    it("gives its distinct rows in the fields of $select and in RETURNING of a mutation", async () => {
+      const results = await testTransaction(async () => ({
+        record: await db.$select({
+          values: residues,
+          first: residues.take(),
+        }),
+        returned: await db.form
+          .where({ id: 1 })
+          .update({ id: 1 })
+          .pluck(() => residues.take()),
+        nested: await db.form
+          .where({ id: 1 })
+          .update({ id: 1 })
+          .select(() => ({
+            values: residues,
+          })),
+      }))
+
+      expect(results).toEqual({
+        record: { values: [2, 1, 0], first: 2 },
+        returned: [2],
+        nested: [{ values: [2, 1, 0] }],
+      })
+    })
+
+    it("chooses a page after an offset among the distinct rows, comparing a field of an aggregate", async () => {
+      const rows = await testTransaction(
+        async () =>
+          await db.form
+            .select(form => ({
+              residue: residue(form),
+              count: db.form.where(other => other.id.eq(form.id)).count(),
+            }))
+            .distinct()
+            .orderBy((_form, selected) => selected.residue)
+            .limit(1)
+            .offset(1),
+      )
+
+      expect(rows).toEqual([{ residue: 1, count: 1 }])
+    })
   })
 
   it("counts the rows that the filters choose, also of a page", async () => {

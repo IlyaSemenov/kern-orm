@@ -251,6 +251,8 @@ export interface SelectNode<
   // PostgreSQL evaluates them before the rows of the query, so they see only the sources of enclosing queries.
   readonly limit: ExpressionNode | undefined
   readonly offset: ExpressionNode | undefined
+  /** Whether the query removes the duplicates of its rows, as `SELECT DISTINCT`; it requires a projection, as PostgreSQL does. */
+  readonly distinct?: boolean | undefined
   /** Required relation that guarantees the row of the query, such as `field.form`; see `ResultPlan`. */
   readonly guaranteedBy: string | undefined
   /** Template of the records of a query with literals; see `ResultPlan`. */

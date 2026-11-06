@@ -545,7 +545,7 @@ export class SelectQuery<
     if (arg !== undefined) {
       return this.aggregateBy("count", arg)
     }
-    this.rejectAggregate("count")
+    this.rejectAggregation("count")
     return this.deriveAggregate(countProjection)
   }
 
@@ -720,7 +720,7 @@ export class SelectQuery<
     this: SelectQuery<S, Kind>,
   ): SelectQuery<AggregateState<S, boolean, ExistsValueType>, Kind>
   exists(): unknown {
-    this.rejectAggregate("exists")
+    this.rejectAggregation("exists")
     return this.deriveAggregate(getExistsProjection())
   }
 
@@ -824,6 +824,23 @@ export class SelectQuery<
   offset<Q extends QueryOf<ManyRowsQueryState>>(this: Q, count: number): Q
   offset(count: number): unknown {
     return this.derive({ offset: createPageCount(this.node, "offset", count) })
+  }
+
+  // It keeps the state, as `orderBy` and `limit` do, so that a conditional call can assign the query back to its variable and gives no union of states that `select` rejects.
+  /**
+   * Removes the duplicate rows of a query of many rows, such as of `pluck` for `in`, comparing the fields that the query selects, also those selected after it.
+   *
+   * Sort the query only by its selected fields.
+   * The query cannot select nested rows, which `distinct` cannot compare.
+   * The aggregate methods and `exists` reject the query after it, since they replace the fields that it compares; `countDistinct` counts distinct values.
+   */
+  distinct<Q extends QueryOf<ManyRowsQueryState>>(this: Q): Q
+  distinct(): unknown {
+    // Rows `one` must find a second row to reject it, which `distinct` could hide, as a limit would.
+    if (this.node.rows !== "many") {
+      throw new Error("distinct applies only to a query of many rows")
+    }
+    return this.derive({ distinct: true })
   }
 
   /** Makes a query of one row, such as one of `take` or `get`, resolve to `undefined` without a row. */
@@ -1098,7 +1115,7 @@ export class SelectQuery<
 
   /** Creates the query of the aggregate of `method` over `arg`, a column key or a callback that receives the columns and the relations and returns an expression or a query of one value; `delimiter` is the delimiter of `stringAgg`. */
   private aggregateBy(method: AggregateMethod, arg: unknown, delimiter?: string): AnySelectQuery {
-    this.rejectAggregate(method)
+    this.rejectAggregation(method)
     return this.deriveAggregate(
       projectAggregate(method, projectValue(this.node.from, arg, method, this.context), delimiter),
     )
@@ -1164,6 +1181,17 @@ export class SelectQuery<
     }
     if (isExistsQuery(node)) {
       throw new Error(`${method} cannot be used after exists`)
+    }
+  }
+
+  // They replace the fields that `distinct` compares, so nothing tells which rows they would read.
+  /** Rejects `method`, an aggregate method or `exists`, on a query made by one of them or of `distinct`. */
+  private rejectAggregation(method: string): void {
+    this.rejectAggregate(method)
+    if (this.node.distinct) {
+      throw new Error(
+        `${method} cannot be used after distinct, whose selected fields it replaces; to count distinct values, call countDistinct without distinct`,
+      )
     }
   }
 }
