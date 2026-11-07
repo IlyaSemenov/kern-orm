@@ -1,5 +1,28 @@
 # kern-orm
 
+## 0.6.0
+
+### Minor Changes
+
+- 6d7d67b: Add a `filter` option to aggregate functions and a `stringAgg` function with an optional `orderBy`.
+- 9c1ce64: Add aggregate functions of expressions, `count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, and `some`, which select several aggregates in one statement.
+- 674f7e3: Allow aggregate methods and `exists` after `distinct` and `distinctOn`, such as `count` of the distinct rows for the total of a page or of the first rows of `distinctOn` for the number of groups.
+- 86719d7: Add query method `distinctOn`, which keeps the first row of each group of rows, such as the latest submission of each user.
+- c328400: Add query method `distinct`, which removes duplicate rows, such as of `pluck` for `in`.
+- 6eaf63b: Remove unnecessary `null` from grouped aggregate results and require nullable SQL for aggregates of enclosing queries.
+- a5c7c03: Add query methods `groupBy` and `having`, which group the rows of a query and filter the groups by their aggregates.
+- d118398: Read a key with parameters of a query of `groupBy` in `having`, and sort by it without selecting it, when every copy of the key uses the same `param(type, value)`.
+- 111f87a: Pass the selected fields to the callback of `having` as its second parameter, with the operators of their types, such as `having((submission, selected) => selected.submissions.gt(1))`, or the value of a query made by `get` or `pluck`.
+- 96bf6be: Add `use` of an insert, an update, and a delete, which takes a callback or a helper of `defineHelper` that selects fields, so that one helper serves a query and a mutation alike.
+- 0af439c: Add query methods `forUpdate`, `forNoKeyUpdate`, `forShare`, and `forKeyShare`, which lock the rows that a query reads, including nested queries, until its transaction ends, with options `noWait` and `skipLocked`.
+- 32631f1: Add `createTableFactory({ columnName })` to derive column names from their keys with `toSnakeCase` or any other function, such as `form_id` from `formId`, while preserving explicit `columnName` values.
+- 89688cf: Add query methods `transform` and `map` to convert results in code, including results of nested queries and of inserts, updates, and deletes; a helper of `defineHelper` can call `map`.
+
+### Patch Changes
+
+- ae45149: Fix a query with an offset that returned a row its offset should skip when a nested query aggregated the rows of the query in a SQL fragment through a query in the fragment, such as ``sql`count(${db.form.where({ id }).get(() => form.id)})` ``.
+- 9e3410f: Fix the type of `command` of `DriverResult`, which omitted `null` for a statement without a command tag, such as an empty text, and check that value in `describeDriverContract`.
+
 ## 0.5.0
 
 ### Minor Changes

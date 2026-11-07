@@ -50,7 +50,7 @@
     },
     "packages/kern-orm": {
       "name": "kern-orm",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
         "kern-orm-0.2.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
