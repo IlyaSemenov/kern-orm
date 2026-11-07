@@ -13,6 +13,7 @@ import { countProjection } from "../query/aggregate"
 import type { QueryNode } from "../query/node"
 
 import type { LoweringContext } from "./context"
+import { lowerDistinctRows } from "./distinct"
 import {
   lowerEach,
   lowerExpression,
@@ -24,36 +25,52 @@ import {
 import { deriveOrderedSource } from "./order"
 
 // PostgreSQL rejects sorting by a column beside an aggregate, so the statement has no order: the order only chooses the rows of a page and orders the input of an ordered aggregate.
-/** Lowers an aggregate query to a statement of the value of its aggregate over the rows that its filters, limit, and offset choose. */
+/** Lowers an aggregate query to a statement of the value of its aggregate over the rows that its filters, limit, and offset choose, also the distinct rows of `distinct` and the first rows of `distinctOn`. */
 export function lowerAggregate(node: QueryNode, context: LoweringContext): SelectNode<SourceNode> {
   // The only projection of an aggregate query is the projection of the aggregate.
   const field = node.projections[0] as AggregateProjection
   const aggregate = field.expression
-  const orderBy = lowerOrder(node.orderBy, context)
-  let from: SourceNode = node.from
-  const groupBy = lowerKeys(node.groupBy, context)
-  let filters = lowerFilters(node.filters, context)
-  let args = lowerEach(aggregate.arguments, context, lowerExpression)
-  let order = field.ordered ? orderBy : noOrder
   // The projection of `count(*)` is replaced when a fallback is added, while its call stays.
   const counted = aggregate === countProjection.expression
-  // An aggregate takes the rows before the limit and the offset of its own query, so it reads the rows of a page from a derived source of them.
-  // PostgreSQL assigns an aggregate to the innermost query whose sources its arguments refer to, so an argument that refers only to the sources of enclosing queries, such as a column of the parent row, is read from a derived source as well, whose column the aggregate takes.
-  // It aggregates the groups of a query of groups, one row each, as such a source reads them.
-  if (
-    groupBy !== undefined ||
-    node.limit !== undefined ||
-    node.offset !== undefined ||
-    (!counted && !refersToSource(args[0]!, node.from))
-  ) {
-    // `count(*)` reads no values of the rows, and the number of the rows of a page does not depend on their order.
-    const projections: ScalarProjection[] = []
-    if (!counted) {
-      // The source names the value of the first argument by the key of its projection, whose type is never decoded there.
-      projections.push(Object.freeze({ key: "value", expression: args[0]!, type: field.type }))
-    }
-    const rows = deriveOrderedSource(
-      {
+  let from: SourceNode = node.from
+  let filters = noFilters
+  let args = aggregate.arguments
+  let order = noOrder
+  // Statement of the rows that the aggregate reads from a derived source, and the key of the projection of its first argument there.
+  let rows: SelectNode | undefined
+  let valueKey: string | undefined
+  if (node.distinctFields !== undefined) {
+    // `count(*)` reads no values of the rows, and the number of the rows does not depend on their order.
+    const distinctRows = lowerDistinctRows(
+      node,
+      context,
+      counted ? undefined : aggregate.arguments[0],
+      !counted,
+    )
+    rows = distinctRows.query
+    valueKey = distinctRows.valueKey
+  } else {
+    const orderBy = lowerOrder(node.orderBy, context)
+    const groupBy = lowerKeys(node.groupBy, context)
+    filters = lowerFilters(node.filters, context)
+    args = lowerEach(aggregate.arguments, context, lowerExpression)
+    order = field.ordered ? orderBy : noOrder
+    // An aggregate takes the rows before the limit and the offset of its own query, so it reads the rows of a page from a derived source of them.
+    // PostgreSQL assigns an aggregate to the innermost query whose sources its arguments refer to, so an argument that refers only to the sources of enclosing queries, such as a column of the parent row, is read from a derived source as well, whose column the aggregate takes.
+    // It aggregates the groups of a query of groups, one row each, as such a source reads them.
+    if (
+      groupBy !== undefined ||
+      node.limit !== undefined ||
+      node.offset !== undefined ||
+      (!counted && !refersToSource(args[0]!, node.from))
+    ) {
+      const projections: ScalarProjection[] = []
+      if (!counted) {
+        // The source names the value of the first argument by the key of its projection, whose type is never decoded there.
+        valueKey = "value"
+        projections.push(Object.freeze({ key: valueKey, expression: args[0]!, type: field.type }))
+      }
+      rows = {
         kind: "select",
         from: node.from,
         joins: noJoins,
@@ -61,28 +78,31 @@ export function lowerAggregate(node: QueryNode, context: LoweringContext): Selec
         filters,
         groupBy,
         having: lowerValue(node.having, context),
+        // `count(*)` reads no values of the rows, and the number of the rows of a page does not depend on their order.
         orderBy: counted ? noOrder : orderBy,
         limit: node.limit,
         offset: node.offset,
         rows: "many",
         value: false,
         guaranteedBy: undefined,
-      },
-      field.ordered,
-    )
-    from = rows.source
+      }
+    }
+  }
+  if (rows !== undefined) {
+    const derived = deriveOrderedSource(rows, field.ordered)
+    from = derived.source
     filters = noFilters
-    if (!counted) {
+    if (valueKey !== undefined) {
       // The arguments after the first are parameters that do not depend on the row, so they stay in the call.
       const sourceArgs: ExpressionNode[] = [
-        createNode({ kind: "column", source: from, key: "value" }),
+        createNode({ kind: "column", source: from, key: valueKey }),
       ]
       for (let index = 1; index < args.length; index++) {
         sourceArgs.push(args[index]!)
       }
       args = sourceArgs
     }
-    order = rows.order
+    order = derived.order
   }
   const call: AggregateNode =
     args === aggregate.arguments && order.length === 0

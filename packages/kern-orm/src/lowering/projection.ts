@@ -10,7 +10,7 @@ import type { RecordTemplateField } from "../result/result"
 
 import type { LoweringContext } from "./context"
 import { checkDb } from "./context"
-import { lowerExists, lowerExpression } from "./expression"
+import { lowerExpression } from "./expression"
 import { projectRows } from "./nested"
 
 /**
@@ -65,7 +65,7 @@ export function projectExists(
 ): ProjectionNode {
   return Object.freeze({
     key,
-    expression: lowerExists(node, context),
+    expression: context.lowerExists(node),
     type: (node.projections[0] as ScalarProjection).type,
   })
 }

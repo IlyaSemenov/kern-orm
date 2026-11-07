@@ -191,9 +191,12 @@ Queries come in two kinds that share the query methods and differ only by execut
   - A field of nested rows, also of an aggregate or of `exists` that [`map` or `transform` converts](#converting-results): nested rows are JSON, which PostgreSQL cannot compare.
     A field of an aggregate or of `exists` without a conversion is a scalar, compared by its value.
   - A sort key other than a selected field, as [SQL generation](sql.md#statements) tells them by the same column or the same expression node: duplicates can differ in its value, so PostgreSQL rejects it, and in packed rows, whose sort keys become projections of their derived source, it would be compared too and leave duplicates.
-- The aggregate methods and `exists` reject a query of `distinct` when they are called, since they replace the fields that it compares, so nothing tells which rows they would read; `countDistinct` counts distinct values.
-  Types accept the call, since they keep no part of the state for `distinct`.
+- The [aggregate methods](#aggregates) and [`exists`](#exists) read the distinct rows of the fields that the query selects when they are called, such as the number of the distinct pairs of two columns for the total of a page, which `countDistinct` of one column does not give.
+  They replace the fields, so the node of the query keeps them in `distinctFields`, from which lowering builds a derived source of the rows, as [SQL generation](sql.md) tells.
   Orchid ORM 1.78.47 adds `DISTINCT` to any select list ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/sql/to-sql.ts)), so its `distinct().count()` compiles to `SELECT DISTINCT count(*)`, which counts every row.
+  - The argument of an aggregate must be a selected field, by the same column or the same expression node, as a sort key must be, since duplicates can differ in any other value; lowering rejects another argument wherever the query is.
+    The callback of an aggregate method does not receive the selected fields, so it gives a selected expression only by the node of the expression held apart.
+  - Lowering checks the query of those fields as it checks the query that selects them, also its order, which `count()` and `exists` do not depend on.
 
 ## First row of each group
 
@@ -210,7 +213,12 @@ Queries come in two kinds that share the query methods and differ only by execut
 - The fields are not compared, so the query selects nested rows and literals; a query without a field that SQL selects rejects at lowering, since PostgreSQL requires a select list with `DISTINCT ON`.
 - A query of `distinctOn` that selects nested queries reads its first rows from a derived source where [SQL generation](sql.md#nested-rows) tells, so that its nested queries run only for the first rows.
 - With [`groupBy`](#groups), it keeps the first group of each key, such as the most common value of each key.
-- `distinct` and `distinctOn` reject each other, and so do a [row lock](#row-locks) and `distinctOn`, since PostgreSQL rejects a lock with `DISTINCT ON`; the aggregate methods and `exists` reject a query of `distinctOn` when they are called ([backlog](../BACKLOG.md#aggregates-of-distinct-rows)).
+- The [aggregate methods](#aggregates) and [`exists`](#exists) read the first rows, such as the number of the groups, or the sum of a column of the first rows in the order of the query, from a derived source of them, as [SQL generation](sql.md) tells.
+  - They replace the fields, as of another query, and read the fields that the keys, the order, and the argument of an aggregate read through their projections, so that the node of the query keeps them in `distinctFields`; the source selects no other field.
+    The source selects the keys, so an aggregate or `exists` needs no field that SQL selects, which the rows of the query need.
+  - Lowering checks the order as it checks the order of the query that selects those fields; `count()` and `exists` do not depend on it.
+  - The source evaluates the argument for every row that `DISTINCT ON` reads, also a query in it ([backlog](../BACKLOG.md#queries-in-aggregates-of-first-rows)).
+- `distinct` and `distinctOn` reject each other, and so do a [row lock](#row-locks) and `distinctOn`, since PostgreSQL rejects a lock with `DISTINCT ON`.
   Types accept these calls, since they keep no part of the state for `distinctOn`.
 - [`update` and `delete`](mutations.md#rows-to-change) reject a query of `distinctOn`, and `isTableQuery` is false for it.
 - A helper that calls it passes types when it is applied to a query of one row and fails at runtime, as one of `distinct` does.
@@ -250,7 +258,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Aggregates
 
-- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of [`exists`](#exists), or a query of [`distinct`](#distinct-rows) or [`distinctOn`](#first-row-of-each-group): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
+- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of [`exists`](#exists): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
   - `count` without an argument is `count(*)`; with a column or an expression, `count` and `countDistinct` count its values other than `NULL`, each distinct value once for `countDistinct`.
   - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `null` without values other than `NULL`.
   - The argument is a column key or a callback that returns an expression with a type or a query of one value, as of `get` and `pluck`.
@@ -263,7 +271,8 @@ Queries come in two kinds that share the query methods and differ only by execut
   - The sum of `smallint` and `integer` values is a `bigint`, which their `Number` decodes, so a sum outside the safe integer range of numbers fails to decode with `ResultDecodeError`, as a count does, before a type derived with `transform` decodes it.
     Its type has the operators of their type.
 - It aggregates the rows that the filters, the limit, and the offset of the query choose, so a limit or an offset gives the aggregate of the rows of the page, which the order of the query chooses, and the limit of `take` before it gives the aggregate of at most one row, as does the key of `find` or `findBy` unless a value depends on the row.
-  A query of [`groupBy`](#groups) has one such row for each group.
+  A query of [`groupBy`](#groups) has one such row for each group, a query of [`distinct`](#distinct-rows) one for each distinct row of its fields, and a query of [`distinctOn`](#first-row-of-each-group) its first rows.
+  - The rows are those of the source of the query rather than of its select list, so a selected aggregate function or set-returning function, which changes the rows of the query, does not change the rows that it aggregates, also after `distinctOn`; after `distinct`, the fields that it compares choose the rows.
   - `count()` ignores the order, since the number of the rows of a page does not depend on it.
   - `stringAgg` joins the values in the order of the query; the other aggregates do not depend on the order of their rows.
 - The methods that keep the rows apply to an aggregate query as they apply before it: `where`, `find`, and `findBy` restrict the aggregated rows, and `orderBy` changes the rows of a page and the order of `stringAgg`; `limit` and `offset` reject it as a query of one row, so they come before the aggregate.
@@ -320,9 +329,9 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Exists
 
-- `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of `exists`, or a query of [`distinct`](#distinct-rows) or [`distinctOn`](#first-row-of-each-group): it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
-  - It checks the rows that the filters, the limit, and the offset of the query choose, or the groups of a query of [`groupBy`](#groups) with its keys and `having`, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
-  - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`; selected as a field, `EXISTS (...)` in the select list rather than a packed row, unless [`map` or `transform` converts it](#converting-results); and in a condition, `EXISTS (...)`.
+- `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of `exists`: it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
+  - It checks the rows that the filters, the limit, and the offset of the query choose, the groups of a query of [`groupBy`](#groups) with its keys and `having`, the distinct rows of a query of [`distinct`](#distinct-rows), or the first rows of a query of [`distinctOn`](#first-row-of-each-group), and ignores the selected fields other than those that `distinct` compares, nested queries among them, and the order, which the number of the rows of a page does not depend on.
+  - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`, whose subquery selects the fields of `distinct` or the keys of `distinctOn`, since PostgreSQL requires a select list with them; selected as a field, `EXISTS (...)` in the select list rather than a packed row, unless [`map` or `transform` converts it](#converting-results); and in a condition, `EXISTS (...)`.
   - The methods that keep the rows apply to it as they apply before it, as to an aggregate query: `where`, `find`, and `findBy` restrict the rows that it checks, and `coalesce` keeps it as it is, since `EXISTS` is never `NULL`.
   - In types, it is marked as an aggregate query, `aggregate: true`, so that `get`, `pluck`, the aggregate methods, and `exists` reject it, as does the callback of a helper.
   - At runtime, the methods and lowering recognize a query of `exists` by the projection of `exists`, which only `exists` selects and `coalesce` keeps, as they recognize an aggregate query.

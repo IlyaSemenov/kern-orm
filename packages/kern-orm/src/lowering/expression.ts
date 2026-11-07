@@ -1,7 +1,6 @@
 // Lowering of the expressions of a statement and of the clauses of a query that hold them, which replaces each query in an expression with its SQL.
 
 import type {
-  ExistsNode,
   ExpressionNode,
   NestedQueryNode,
   OrderNode,
@@ -9,13 +8,13 @@ import type {
   QueryFilters,
   SelectNode,
 } from "../ast/nodes"
-import { createNode, noJoins, noOrder, noProjections } from "../ast/nodes"
+import { createNode } from "../ast/nodes"
 import { isExistsQuery } from "../query/exists"
 import type { QueryNode, SqlSelectedNode } from "../query/node"
 import { isNestedSelection } from "../query/node"
 
 import type { LoweringContext } from "./context"
-import { checkDb, checkRelation } from "./context"
+import { checkDb } from "./context"
 
 /**
  * Lowers an expression, replacing each query in it and checking the query as a nested query.
@@ -121,7 +120,7 @@ function lowerNestedQuery(node: NestedQueryNode, context: LoweringContext): Expr
   checkDb(node.db, context, "A query in an expression")
   const { query } = node
   if (isExistsQuery(query)) {
-    return lowerExists(query, context)
+    return context.lowerExists(query)
   }
   return createNode({
     kind: query.value && query.rows !== "many" ? "subquery" : "textSubquery",
@@ -138,30 +137,6 @@ function lowerQueryOfValues(node: NestedQueryNode, context: LoweringContext): Se
 /** Tells whether the statement of `node` in a subquery sorts by the positions of its projections: PostgreSQL finds a sort expression of `SELECT DISTINCT` or `GROUP BY` only when it is equal to a selected one or a key, and the keys of `DISTINCT ON` with the order only when they are equal, while a repeated expression has aliases of its own and, apart from the parameters of casts in a query of groups, parameters of its own. */
 function sortsByPositions(node: QueryNode): boolean {
   return node.distinct || node.distinctOn.length > 0 || node.groupBy.length > 0
-}
-
-// Whether a row exists depends on neither the selected fields, including nested queries, nor the order, even of the rows of a page, so the query of `EXISTS` has neither.
-/** Lowers a query of `exists` to `EXISTS` of the rows that its filters, limit, and offset choose. */
-export function lowerExists(node: QueryNode, context: LoweringContext): ExistsNode {
-  checkRelation(node, context)
-  return createNode({
-    kind: "exists",
-    query: Object.freeze({
-      kind: "select",
-      from: node.from,
-      joins: noJoins,
-      projections: noProjections,
-      filters: lowerFilters(node.filters, context),
-      groupBy: lowerKeys(node.groupBy, context),
-      having: lowerValue(node.having, context),
-      orderBy: noOrder,
-      limit: node.limit,
-      offset: node.offset,
-      rows: "many",
-      value: false,
-      guaranteedBy: undefined,
-    }),
-  })
 }
 
 /** Lowers the filters of a query, replacing the queries in their expressions; without queries, it returns `filters` itself. */
@@ -234,12 +209,12 @@ export function lowerKeys(
 }
 
 /**
- * Lowers `expression`, a sort key or a key of a group: the value of a field of `selected` gets the expression of its lowered projection among `projections`, and another expression is lowered as it is.
+ * Lowers `expression`, a sort key, a key of a group, or the argument of an aggregate: the value of a field of `selected` gets the expression of its lowered projection among `projections`, and another expression is lowered as it is.
  *
  * Lowering a field that holds a query gives its projection a new node, so reusing that node keeps the projection identifiable by its position.
  * A field of an aggregate or of `exists` is identified by the node of its reference, which holds the field.
  */
-function lowerSelectedValue(
+export function lowerSelectedValue(
   expression: ExpressionNode,
   context: LoweringContext,
   selected?: readonly SqlSelectedNode[],
@@ -252,7 +227,7 @@ function lowerSelectedValue(
   return position === -1 ? lowerExpression(expression, context) : projections![position]!.expression
 }
 
-/** Tells whether `expression`, a sort key or a key of a group, is the value of `field`: its expression, or for a field of an aggregate or of `exists`, the node of its reference in the callback of `orderBy` or `groupBy`. */
+/** Tells whether `expression`, a sort key, a key of a group, or the argument of an aggregate, is the value of `field`: its expression, or for a field of an aggregate or of `exists`, the node of its reference in the callback of `orderBy` or `groupBy`. */
 function isFieldValue(field: SqlSelectedNode, expression: ExpressionNode): boolean {
   return isNestedSelection(field)
     ? expression.kind === "nestedQuery" && expression.field === field

@@ -6,10 +6,14 @@
   Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query without a [conversion](queries.md#converting-results), of its statement, or `EXISTS` of its rows for such a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries or literals in its fields keeps its fields as its projections.
   A statement keeps the [conversion of its query](queries.md#converting-results), which SQL does not see, for the result plan.
   A query of `$select` has no source and becomes a statement without `FROM` of rows `one`, which PostgreSQL returns as exactly one row.
-  A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, and has no order.
+  A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, apart from the rows of `distinct` and `distinctOn` below, and has no order.
   An aggregate query becomes a statement of its aggregate without an order, which PostgreSQL rejects beside an aggregate unless it sorts by aggregates; `string_agg` takes the order of the query inside its call, and `coalesce` of the fallbacks of the query wraps the call.
   An aggregate takes the rows before the limit and the offset of its own query, so with a limit or an offset it reads the rows of the page from a derived source that selects the first argument of the aggregate and its sort keys, as nested rows are packed; `count(*)` reads a derived source without projections or an order.
   An aggregate method of a query of [`groupBy`](queries.md#groups) reads the groups from such a source, which has the keys and `having` of the query, as a query of `exists` keeps them in `EXISTS`.
+  An aggregate method of a query of [`distinct`](queries.md#distinct-rows) or [`distinctOn`](queries.md#first-row-of-each-group) reads the rows from a source that `lowerDistinctRows` lowers from the fields that the query kept, through which it lowers the keys, the order, and the argument, so that each value of a selected field is its projection, and `EXISTS` of such a query holds the same source.
+  The source of `distinct` selects the fields, which `DISTINCT` compares, and the aggregate reads the projection of the selected field that is its argument.
+  The source of `distinctOn` selects the argument as `value`, each key that it does not select otherwise, since PostgreSQL requires a select list with `DISTINCT ON`, and the sort keys, and lowers no field of nested rows, which neither a key nor a sort key reads.
+  The source of `count(*)` and of `EXISTS` has no order, since the number of the rows does not depend on it.
   PostgreSQL assigns an aggregate to the innermost query whose sources its arguments and its filter refer to, so an argument that does not refer to the source of its query outside nested queries, such as a column of the parent row, is read from such a derived source too.
   An [aggregate function](queries.md#aggregate-functions) is an expression of its query rather than the statement of an aggregate query, so its call stays where it is written, without a derived source.
   The statement of an executed query sorts by the positions of its projections, while the statement of a packed nested query keeps its sort expressions, which packing reads.
@@ -28,7 +32,7 @@
     - for a tree of 256 conditions, 12% (7 to 18%) on Bun and 15% (7 to 18%) on Node.js;
     - for a select of a few conditions, an insert of 1000 records, and nested relations, the medians of 3 to 8% are inconclusive.
   - A sort key of a selected expression, or of the query of a selected field of an aggregate or of `exists`, takes the node of the lowered projection, so the statement still finds the projection that has its value.
-  - The lowering of expressions and projections reaches the lowering of a query, which nested queries recurse into, only through the context of the statement (`lowering/context.ts`), so that the modules of `lowering/` import one another without cycles.
+  - The lowering of expressions and projections reaches the lowering of a query and of a query of `exists`, which nested queries recurse into, only through the context of the statement (`lowering/context.ts`), so that the modules of `lowering/` import one another without cycles.
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
   Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.

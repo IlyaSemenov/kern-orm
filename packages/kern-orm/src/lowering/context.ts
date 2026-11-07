@@ -1,12 +1,12 @@
 // What lowering checks the queries of a statement against at any depth, and the checks themselves.
 
-import type { SelectNode } from "../ast/nodes"
+import type { ExistsNode, SelectNode } from "../ast/nodes"
 import type { AnyDb } from "../execution/db"
 import type { QueryNode } from "../query/node"
 import type { RelationDefinition } from "../schema/relation"
 import { formatRelationName } from "../schema/relation"
 
-/** Context of lowering a statement: what it checks its queries against at any depth, and the lowering of a query that the lowering of its expressions and projections recurses into. */
+/** Context of lowering a statement: what it checks its queries against at any depth, and the lowering of the queries that the lowering of its expressions and projections recurses into. */
 export interface LoweringContext {
   /** Relation definitions whose records the queries may select, such as the relations of the schema of a `Db`, or `undefined` for any. */
   readonly definitions: ReadonlySet<RelationDefinition> | undefined
@@ -18,6 +18,8 @@ export interface LoweringContext {
    * The context carries it so that the modules of the lowering of expressions and projections do not import the lowering of queries, which imports them.
    */
   readonly lowerSelect: (node: QueryNode, positions: boolean) => SelectNode
+  /** Lowers a query of `exists` nested in the statement to `EXISTS` of its rows, as `lowerExists` does; the context carries it for the same reason as `lowerSelect`. */
+  readonly lowerExists: (node: QueryNode) => ExistsNode
 }
 
 /** Rejects a query of a relation outside the definitions of `context`. */

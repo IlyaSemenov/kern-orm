@@ -364,7 +364,7 @@ export class SelectQuery<
   /**
    * Replaces the selected fields with the number of rows of the query and returns the number instead of the rows.
    *
-   * It keeps the filters and ignores the order; with `limit` or `offset`, it counts the rows of that page, and after `groupBy`, the groups.
+   * It keeps the filters and ignores the order; with `limit` or `offset`, it counts the rows of that page, after `groupBy`, the groups, after `distinct`, the distinct rows of the selected fields, and after `distinctOn`, the first rows.
    */
   count<S extends UnaggregatedQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
@@ -557,7 +557,7 @@ export class SelectQuery<
   /**
    * Replaces the selected fields with whether the query has a row and returns it instead of the rows, such as to filter by related records in `where`.
    *
-   * It keeps the filters, the limit, and the offset, and ignores the order; after `groupBy`, it tells whether the query has a group.
+   * It keeps the filters, the limit, and the offset, and ignores the order; after `groupBy`, it tells whether the query has a group, and after `distinct` and `distinctOn`, it checks the distinct rows and the first rows.
    */
   exists<S extends UnaggregatedQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
@@ -742,7 +742,7 @@ export class SelectQuery<
    *
    * Sort the query only by its selected fields.
    * The query cannot select nested rows, which `distinct` cannot compare.
-   * The aggregate methods and `exists` reject the query after it, since they replace the fields that it compares; `countDistinct` counts distinct values.
+   * The aggregate methods and `exists` after it read the distinct rows of the fields selected before them, and an aggregate method takes only a selected column or expression.
    */
   distinct<Q extends QueryOf<ManyRowsQueryState>>(this: Q): Q
   distinct(): unknown {
@@ -768,7 +768,7 @@ export class SelectQuery<
    * `callback` receives the columns with the queries of the relations of the table, and the fields selected so far, and returns an expression or a query of one value, or an array of them; a field of nested rows or of a literal cannot be a key.
    * Sort the query by the keys first, then by the order that chooses the first row of each group; the rows keep that order.
    * To sort by a key of an expression, select it and take it from the second parameter of the callbacks of `distinctOn` and `orderBy`.
-   * The aggregate methods and `exists` reject the query after it.
+   * The aggregate methods and `exists` after it read the first rows, such as `count` for the number of the groups.
    */
   distinctOn<Q extends QueryOf<RecordQueryState & ManyRowsQueryState>>(
     this: Q,
@@ -1133,9 +1133,23 @@ export class SelectQuery<
     return this.derive(changes)
   }
 
-  /** Creates the query of the value of `projection`, of an aggregate or of `exists` over the rows of this query, which always returns one row. */
+  /**
+   * Creates the query of the value of `projection`, of an aggregate or of `exists` over the rows of this query, which always returns one row.
+   *
+   * A query of `distinct` or `distinctOn` keeps the fields that `projection` replaces: `distinct` compares them, and the keys, the order, and the argument of an aggregate read a selected field through its projection.
+   */
   private deriveAggregate(projection: ScalarProjection): AnySelectQuery {
-    return this.derive({ projections: [projection], rows: "one", value: true, guaranteed: false })
+    const { node } = this
+    const changes: NodeChanges = {
+      projections: [projection],
+      rows: "one",
+      value: true,
+      guaranteed: false,
+    }
+    if (node.distinct || node.distinctOn.length > 0) {
+      changes.distinctFields = node.projections
+    }
+    return this.derive(changes)
   }
 
   /** Creates the query of the aggregate of `method` over `arg`, a column key or a callback that receives the columns and the relations and returns an expression or a query of one value; `delimiter` is the delimiter of `stringAgg`. */
@@ -1215,20 +1229,10 @@ export class SelectQuery<
     }
   }
 
-  // They replace the fields that `distinct` compares, so nothing tells which rows they would read.
-  // An aggregate of the first rows of `distinctOn` would need a derived source of them, which lowering builds only for nested queries.
   // PostgreSQL rejects a lock beside an aggregate, and `EXISTS` would lock only the first row that it finds.
-  /** Rejects `method`, an aggregate method or `exists`, on a query made by one of them, of `distinct` or `distinctOn`, or with a row lock. */
+  /** Rejects `method`, an aggregate method or `exists`, on a query made by one of them or with a row lock. */
   private rejectAggregation(method: string): void {
     this.rejectAggregate(method)
-    if (this.node.distinct) {
-      throw new Error(
-        `${method} cannot be used after distinct, whose selected fields it replaces; to count distinct values, call countDistinct without distinct`,
-      )
-    }
-    if (this.node.distinctOn.length > 0) {
-      throw new Error(`${method} cannot be used after distinctOn`)
-    }
     if (this.node.lock !== undefined) {
       throw new Error(
         `${method} cannot be used after a row lock, since it returns no rows of the table to lock`,

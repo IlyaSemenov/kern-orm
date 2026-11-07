@@ -171,8 +171,22 @@ const labels = await db.field.pluck("label").distinct().orderBy("label")
 
 A query with `distinct` cannot select [related records](./relations).
 
-Aggregates and `exists` cannot be called after `distinct`.
-To count distinct values, call [`countDistinct`](#aggregates).
+To count the distinct rows, such as for the number of the rows of all [pages](./sorting#pagination), call `count` after `distinct`:
+
+```ts
+const total = await db.field.select("formId", "position").distinct().count()
+// total: number
+```
+
+The other [aggregates](#aggregates) and `exists` read the distinct rows too.
+An aggregate of a column takes only a selected column, since duplicates can differ in any other column:
+
+```ts
+const labels = await db.field.pluck("label").distinct().orderBy("label").stringAgg("label", ", ")
+// labels: string | null
+```
+
+To count the distinct values of one column, call [`countDistinct`](#aggregates) without `distinct`.
 
 ## First row of each group
 
@@ -203,7 +217,16 @@ const firstOfDay = await db.submission
   .orderBy((submission, selected) => [selected.day, submission.createdAt])
 ```
 
-Aggregates and `exists` cannot be called after `distinctOn`.
+To count the groups, such as the users who submitted, call `count` after `distinctOn`:
+
+```ts
+const latest = db.submission.distinctOn("userId").orderBy("userId", { createdAt: "desc" })
+
+const users = await latest.count()
+// users: number
+```
+
+The other [aggregates](#aggregates) and `exists` read the first rows too, in the order of the query, such as `latest.min("createdAt")` for the latest submission of the user who submitted least recently.
 
 ## One value
 
@@ -273,7 +296,7 @@ const lastPosition = await db.field.where({ formId }).max("position").coalesce(0
 
 `coalesce` also takes an expression of the values of the aggregate, such as a column of the parent row of [related records](./relations#aggregates-of-related-records), or a query of one such value.
 
-An aggregate keeps the filters of the query and ignores its selected fields.
+An aggregate keeps the filters of the query and ignores its selected fields, apart from those that [`distinct`](#distinct-rows) compares.
 With [`limit` and `offset`](./sorting#pagination), it aggregates the rows of the page, which the order of the query chooses.
 
 ### Several aggregates at once
@@ -342,7 +365,7 @@ const hasPublished = await db.form.where({ published: true }).exists()
 // hasPublished: boolean
 ```
 
-`exists` keeps the filters of the query and ignores its selected fields; with [`limit` and `offset`](./sorting#pagination), it checks the rows of the page.
+`exists` keeps the filters of the query and ignores its selected fields, apart from those that [`distinct`](#distinct-rows) compares; with [`limit` and `offset`](./sorting#pagination), it checks the rows of the page.
 
 To filter records by whether related records exist, see [Filtering](./filtering#related-records).
 

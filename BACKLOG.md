@@ -77,15 +77,6 @@ Two independent goals:
    - Orchid ORM 1.78.47 resolves a query of `whereIn` of an empty list without querying the database ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/where.md#wherein)), and code that filters by a list from a request relies on it.
    - Decide what `toSQL` and `$compile` give for a query without a statement.
 
-## Aggregates of distinct rows
-
-The aggregate methods and `exists` after `distinct` and [`distinctOn`](architecture/queries.md#first-row-of-each-group), which [reject](architecture/queries.md#distinct-rows), such as the number of distinct pairs of columns for the total of a page of `distinct`, as `SELECT count(*) FROM (SELECT DISTINCT ...)`, which `countDistinct` of one column does not give, and the number of the groups of `distinctOn`.
-
-- They replace the fields that `distinct` compares, so the node of the query needs to keep them.
-- Decide what an aggregate of an argument compares: only its argument, or the selected fields too, since the argument may not be among them.
-- Reading the rows from a derived source, as aggregate methods read the groups of [`groupBy`](architecture/queries.md#groups), gives `SELECT count(*) FROM (SELECT DISTINCT ...)`.
-- A derived source of `distinctOn` selects its keys, since PostgreSQL requires a select list with `DISTINCT ON`, and keeps its order, which chooses the first rows whose argument an aggregate reads.
-
 ## Queries repeated in a statement
 
 An expression that holds a query is not one expression for PostgreSQL at two places of a statement, since the compiler gives each occurrence of a source its own alias: a key of a [query of groups](architecture/queries.md#groups) that holds a query fails with `subquery uses ungrouped column` in `HAVING`, also beside an aggregate under `OR`, which `where` cannot replace, and in `ORDER BY` when the query does not select it, so only the position of its projection refers to it.
@@ -103,6 +94,13 @@ The callback of `having` takes the selected fields as its second parameter, as t
 ## Pages of groups after an offset
 
 A [query of groups](architecture/queries.md#groups) with nested queries evaluates them for the groups that an offset skips, and with [`distinctOn`](architecture/queries.md#first-row-of-each-group) without a limit for every group, since it stays on its table; a derived page of groups would evaluate them only over its rows, as `lowerPage` does for other queries.
+
+## Queries in aggregates of first rows
+
+An aggregate method of a query of [`distinctOn`](architecture/queries.md#first-row-of-each-group) whose argument holds a query, such as the sum of the numbers of the fields of the latest version of each form, evaluates the query for every row that `DISTINCT ON` reads, since its derived source selects the argument.
+
+- A source of the first rows that selects the columns that the argument reads and replaces the table, as `lowerPage` does, would let the aggregate evaluate the argument only over the first rows.
+- An argument that may aggregate the rows, such as an aggregate function of a query of groups or a SQL fragment of the columns, must stay in the source, as `mayAggregateSource` tells for a page.
 
 ## Nullability of aggregates in groups
 

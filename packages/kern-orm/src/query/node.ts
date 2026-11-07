@@ -57,6 +57,12 @@ export interface QueryNode extends ResultMode {
   readonly distinct: boolean
   /** Keys of `distinctOn`, whose equal values give one row, the first in the order of the query; none without `distinctOn`. */
   readonly distinctOn: readonly ExpressionNode[]
+  /**
+   * Fields of a query of `distinct` or `distinctOn` that an aggregate method or `exists` replaced, or `undefined` otherwise.
+   *
+   * `distinct` compares them, and the keys, the order, and the argument of the aggregate read a selected field through its projection.
+   */
+  readonly distinctFields: readonly SelectedNode[] | undefined
   /** Lock of the rows that the query reads. */
   readonly lock: RowLockNode | undefined
   /** Whether a required relation guarantees the row of the query, so that a filter makes a query of rows `one` resolve without it; see `SelectQueryState`. */
@@ -100,6 +106,7 @@ export function createQueryNode(
     offset: undefined,
     distinct: false,
     distinctOn: [],
+    distinctFields: undefined,
     lock: undefined,
     rows: relation === undefined ? "many" : getRelationRows(relation),
     value: false,

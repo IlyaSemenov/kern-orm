@@ -13,6 +13,7 @@ import { lowerAggregate } from "./aggregate"
 import type { LoweringContext } from "./context"
 import { checkRelation } from "./context"
 import { checkDistinct, checkDistinctOn } from "./distinct"
+import { lowerExists } from "./exists"
 import { lowerExpression, lowerFilters, lowerKeys, lowerOrder, lowerValue } from "./expression"
 import { lowerMutation } from "./mutation"
 import { sortByPositions } from "./order"
@@ -78,6 +79,7 @@ function createContext(
     definitions,
     db,
     lowerSelect: (node, positions) => lowerSelect(node, context, positions),
+    lowerExists: node => lowerExists(node, context),
   }
   return context
 }

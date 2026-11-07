@@ -770,17 +770,16 @@ describe("distinct", () => {
     }
   })
 
-  it("rejects the aggregate methods and exists after it, which replace the fields that it compares", () => {
-    const message = (method: string) =>
-      `${method} cannot be used after distinct, whose selected fields it replaces; to count distinct values, call countDistinct without distinct`
-
-    expect(() => selected.count()).toThrow(message("count"))
-    expect(() => selected.count("title")).toThrow(message("count"))
-    expect(() => selected.countDistinct("title")).toThrow(message("countDistinct"))
-    expect(() => selected.max("title")).toThrow(message("max"))
-    expect(() => selected.stringAgg("title", ", ")).toThrow(message("stringAgg"))
-    expect(() => selected.exists()).toThrow(message("exists"))
-    expect(() => selected.take().count()).toThrow(message("count"))
+  it("keeps the fields that it compares in the aggregate methods and exists, which replace them", () => {
+    for (const query of [
+      selected.count(),
+      selected.max("title"),
+      selected.exists(),
+      selected.take().count().coalesce(0),
+    ]) {
+      expect(query.node.distinctFields).toBe(selected.node.projections)
+    }
+    expect(from(post).select("title").count().node.distinctFields).toBeUndefined()
   })
 
   it("rejects distinctOn before or after it", () => {
@@ -870,16 +869,11 @@ describe("distinctOn", () => {
     }
   })
 
-  it("rejects the aggregate methods and exists after it", () => {
+  it("keeps the fields that its keys and order may read in the aggregate methods and exists, which replace them", () => {
     const query = from(post).distinctOn("title").orderBy("title").select("id")
 
-    for (const [method, aggregate] of [
-      ["count", () => query.count()],
-      ["max", () => query.max("id")],
-      ["stringAgg", () => query.stringAgg("title", ", ")],
-      ["exists", () => query.exists()],
-    ] as const) {
-      expect(aggregate).toThrow(`${method} cannot be used after distinctOn`)
+    for (const aggregate of [query.count(), query.stringAgg("title", ", "), query.exists()]) {
+      expect(aggregate.node.distinctFields).toBe(query.node.projections)
     }
   })
 })
