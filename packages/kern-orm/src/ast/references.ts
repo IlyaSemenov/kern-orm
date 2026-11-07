@@ -18,7 +18,7 @@ export function collectColumnKeys(
 /**
  * Tells whether `node` holds, at any depth, what may aggregate the rows of the query of `source`: an `aggregate` node or a SQL fragment that refers to a column of `source` at any depth, also in the queries nested in it.
  *
- * PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, also through a query nested in an argument ([PostgreSQL](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)), so such a call in a nested query, such as `sum` of a column of the parent row, aggregates the rows of the query of `source`.
+ * PostgreSQL assigns an aggregate whose arguments and filter refer only to the sources of an enclosing query to that query, also through a query nested in them ([PostgreSQL](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)), so such a call in a nested query, such as `sum` of a column of the parent row, aggregates the rows of the query of `source`.
  * Lowering does not parse SQL fragments to identify their aggregates, so a fragment counts as such a call.
  *
  * It is conservative: an aggregate whose arguments read both `source` and its own query belongs to its own query, yet it counts, since this walk cannot tell a source of the query that holds the aggregate from one of an enclosing query.
@@ -94,6 +94,9 @@ function visitNodes(node: ExpressionNode, visit: (node: ExpressionNode) => void)
       }
       for (const order of node.orderBy) {
         visitNodes(order.expression, visit)
+      }
+      if (node.filter !== undefined) {
+        visitNodes(node.filter, visit)
       }
       return
     default:

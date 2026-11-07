@@ -174,6 +174,8 @@ export interface AggregateNode {
   readonly distinct: boolean
   readonly arguments: readonly ExpressionNode[]
   readonly orderBy: readonly OrderNode[]
+  /** Condition of the rows that the function takes, as `FILTER (WHERE ...)`, or `undefined` for every row. */
+  readonly filter: ExpressionNode | undefined
 }
 
 export type ExpressionNode =
@@ -363,6 +365,9 @@ export function createList(
 
 /** Filters of a query without conditions. */
 export const noFilters: QueryFilters = /* @__PURE__ */ Object.freeze({})
+
+/** Order without sort keys. */
+export const noOrder: readonly OrderNode[] = /* @__PURE__ */ Object.freeze([])
 
 /** Creates a query of all rows of `from` with `projections`. */
 export function createSelectNode<From extends SourceNode>(

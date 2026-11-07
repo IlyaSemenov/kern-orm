@@ -6,15 +6,17 @@ import { createDatabase } from "../execution/database"
 import { countType } from "../query/aggregate"
 import { desc } from "../query/order"
 import { from } from "../query/select"
+import { createColumnRefs } from "../query/testing"
 import { ResultDecodeError } from "../result/result"
 import { many } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { avg, count, countDistinct, every, max, min, some, sum } from "./aggregates"
+import { avg, count, countDistinct, every, max, min, some, stringAgg, sum } from "./aggregates"
 import { getType, toNode } from "./expression"
 import { caseWhen, coalesce } from "./functions"
+import { not } from "./predicates"
 import { sql } from "./sql"
 
 const scoreType = t.integer.transform({
@@ -83,6 +85,52 @@ describe("the SQL of an aggregate function", () => {
     )
   })
 
+  it("takes a condition of its rows as FILTER after the call, also a query of one Boolean value, which lowering replaces", () => {
+    const query = from(field).select(field => ({
+      required: count({ filter: field.required }),
+      labelled: count(field.label, { filter: field.position.gt(1) }),
+      labels: countDistinct(field.label, { filter: field.required }),
+      first: min(field.position, { filter: field.required }),
+      last: max(field.position, { filter: field.required }),
+      positions: sum(field.position, { filter: field.required }),
+      average: avg(field.position, { filter: field.required }),
+      allRequired: every(field.required, { filter: field.position.gt(2) }),
+      anyRequired: some(field.required, { filter: field.position.gt(3) }),
+    }))
+    const nested = schema.form.select(form => ({
+      withFields: count({ filter: form.fields.exists() }),
+    }))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT count(*) FILTER (WHERE "field"."required") AS "required", count("field"."label") FILTER (WHERE "field"."position" > $1) AS "labelled", count(DISTINCT "field"."label") FILTER (WHERE "field"."required") AS "labels", min("field"."position") FILTER (WHERE "field"."required") AS "first", max("field"."position") FILTER (WHERE "field"."required") AS "last", sum("field"."position") FILTER (WHERE "field"."required") AS "positions", avg("field"."position") FILTER (WHERE "field"."required") AS "average", bool_and("field"."required") FILTER (WHERE "field"."position" > $2) AS "allRequired", bool_or("field"."required") FILTER (WHERE "field"."position" > $3) AS "anyRequired" FROM "field" AS "field"',
+      parameters: ["1", "2", "3"],
+    })
+    expect(nested.toSQL().text).toBe(
+      'SELECT count(*) FILTER (WHERE EXISTS (SELECT FROM "field" AS "field" WHERE "field"."formId" = "form"."id")) AS "withFields" FROM "form" AS "form"',
+    )
+  })
+
+  it("joins the values of stringAgg with its delimiter in the order of its option, also of a query, with its parameters in the order of the text", () => {
+    const query = from(field).select(field => ({
+      joined: stringAgg(field.label, ", "),
+      ordered: stringAgg(field.label, "; ", {
+        orderBy: [desc(field.position), field.id],
+        filter: field.position.gt(1),
+      }),
+    }))
+    const nested = schema.form.select(form => ({
+      names: stringAgg(form.name, ", ", { orderBy: form.fields.count() }),
+    }))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT string_agg("field"."label", $1) AS "joined", string_agg("field"."label", $2 ORDER BY "field"."position" DESC, "field"."id") FILTER (WHERE "field"."position" > $3) AS "ordered" FROM "field" AS "field"',
+      parameters: [", ", "; ", "1"],
+    })
+    expect(nested.toSQL().text).toBe(
+      'SELECT string_agg("form"."name", $1 ORDER BY (SELECT count(*) AS "count" FROM "field" AS "field" WHERE "field"."formId" = "form"."id")) AS "names" FROM "form" AS "form"',
+    )
+  })
+
   it("is an operand of a function, of an operator, and of caseWhen, and a sort key by its selected field", () => {
     const query = from(field)
       .select(field => ({
@@ -125,6 +173,33 @@ describe("the SQL of an aggregate function", () => {
 
     expect(() => sum(from(field).pluck("position") as never)).toThrow(message)
     expect(() => sum(from(field).select("position").take() as never)).toThrow(message)
+  })
+
+  it("rejects options other than an object of its options, a filter other than an expression or a query, and a delimiter other than a string", () => {
+    const columns = createColumnRefs<typeof field>(from(field).node.from)
+
+    // An object of column values or another object passed instead of an argument must not count every row.
+    expect(() => count({ required: true } as never)).toThrow('count has no option "required"')
+    for (const value of [new Date(), /required/, Object(4)]) {
+      expect(() => count(value as never)).toThrow("The argument of count")
+    }
+    expect(() => sum(columns.position, { orderBy: columns.id } as never)).toThrow(
+      'sum has no option "orderBy"',
+    )
+    for (const value of [true, new Date()]) {
+      expect(() => sum(columns.position, value as never)).toThrow(
+        "The options of sum must be a plain object",
+      )
+    }
+    expect(() => count({ filter: { required: true } } as never)).toThrow(
+      "The filter of count must be an expression or a query of one Boolean value",
+    )
+    expect(() => stringAgg(columns.label, { orderBy: columns.id } as never)).toThrow(
+      "The delimiter of stringAgg must be a string",
+    )
+    expect(() => stringAgg(columns.label, ", ", { orderBy: "position" } as never)).toThrow(
+      "The option orderBy of stringAgg takes expressions, queries of one value, or sort keys of asc, desc, and orderBy",
+    )
   })
 
   it("runs a query of a Db only in a statement of the same Db", () => {
@@ -257,6 +332,70 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
         bestScore: null,
       },
     ])
+  })
+
+  it("aggregates the rows of a condition beside each other, giving 0 of a count and null of another aggregate without such rows", async () => {
+    const result = await testTransaction(
+      async () =>
+        await fields
+          .select(field => ({
+            required: count({ filter: field.required }),
+            optional: count({ filter: not(field.required) }),
+            optionalPositions: sum(field.position, { filter: not(field.required) }),
+            none: count({ filter: field.position.gt(10) }),
+            noPositions: sum(field.position, { filter: field.position.gt(10) }),
+          }))
+          .take(),
+    )
+
+    expect(result).toEqual({
+      required: 1,
+      optional: 2,
+      optionalPositions: 6,
+      none: 0,
+      noPositions: null,
+    })
+  })
+
+  describe("query of groups", () => {
+    const groups = db.field.groupBy("required")
+
+    it("aggregates the rows of a condition of each group, and joins its values in the order of stringAgg", async () => {
+      const rows = await testTransaction(
+        async () =>
+          await groups.orderBy("required").select(field => ({
+            required: field.required,
+            labelled: count({ filter: not(field.label.isNull()) }),
+            positions: stringAgg(sql(t.text)`${field.position}::text`, ",", {
+              orderBy: desc(field.position),
+            }),
+            labelledPositions: stringAgg(sql(t.text)`${field.position}::text`, ",", {
+              orderBy: field.position,
+              filter: not(field.label.isNull()),
+            }),
+          })),
+      )
+
+      expect(rows).toEqual([
+        { required: false, labelled: 1, positions: "4,2", labelledPositions: "2" },
+        { required: true, labelled: 1, positions: "1", labelledPositions: "1" },
+      ])
+    })
+
+    it("filters and sorts the groups by an aggregate of a condition, and aggregates it over the groups", async () => {
+      const results = await testTransaction(async () => ({
+        having: await groups
+          .having(field => count({ filter: field.label.isNull() }).eq(1))
+          .pluck("required"),
+        sorted: await groups
+          .orderBy(field => desc(count({ filter: field.required })))
+          .pluck("required"),
+        largest: await groups.max(field => count({ filter: field.position.gt(2) })),
+      }))
+
+      // Without the filters, the groups of 1 and 2 rows would give [true], [false, true], and 2.
+      expect(results).toEqual({ having: [false], sorted: [true, false], largest: 1 })
+    })
   })
 
   it("gives one row in an array without take", async () => {

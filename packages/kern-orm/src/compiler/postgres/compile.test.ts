@@ -156,6 +156,7 @@ describe("compileStatement", () => {
             distinct: true,
             arguments: [createRef(posts.node.from, "title")],
             orderBy: [],
+            filter: undefined,
           }),
           type: t.bigint,
         },
@@ -779,7 +780,7 @@ describe("ordering and pagination", () => {
     )
   })
 
-  it("orders the input rows of an aggregate, numbering parameters in the order of the text", () => {
+  it("orders and filters the input rows of an aggregate, numbering parameters in the order of the text", () => {
     const fallback = toNode(
       sql`coalesce(${toExpression(createRef(postSource, "title"))}, ${"untitled"})`,
     )
@@ -797,6 +798,7 @@ describe("ordering and pagination", () => {
               createOrder(fallback, "desc", "last"),
               createOrder(createRef(postSource, "id")),
             ],
+            filter: toNode(sql<boolean>`${toExpression(createRef(postSource, "title"))} <> ${""}`),
           }),
           type: t.text,
         },
@@ -804,8 +806,8 @@ describe("ordering and pagination", () => {
     }
 
     expect(compileStatement(node)).toMatchObject({
-      text: 'SELECT string_agg("post"."title", $1 ORDER BY coalesce("post"."title", $2) DESC NULLS LAST, "post"."id") AS "titles" FROM "post" AS "post"',
-      parameters: [", ", "untitled"],
+      text: 'SELECT string_agg("post"."title", $1 ORDER BY coalesce("post"."title", $2) DESC NULLS LAST, "post"."id") FILTER (WHERE "post"."title" <> $3) AS "titles" FROM "post" AS "post"',
+      parameters: [", ", "untitled", ""],
     })
   })
 

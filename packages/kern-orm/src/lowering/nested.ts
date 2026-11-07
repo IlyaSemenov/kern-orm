@@ -88,6 +88,7 @@ export function packRows(query: SelectNode): SelectNode {
           distinct: false,
           arguments: [row],
           orderBy: order,
+          filter: undefined,
         }),
       ],
     })

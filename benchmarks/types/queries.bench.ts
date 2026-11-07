@@ -13,6 +13,7 @@ import {
   matches,
   max,
   not,
+  stringAgg,
   sum,
 } from "kern-orm"
 import * as t from "kern-orm/types"
@@ -54,6 +55,10 @@ bench.baseline(async () => {
   await tenantDb.field.select(field => ({
     total: count(),
     last: max(field.position),
+  }))
+  await tenantDb.field.select(field => ({
+    labelled: count({ filter: field.label.eq("baseline") }),
+    labels: stringAgg(field.label, ", ", { orderBy: field.position }),
   }))
   await tenantDb.field
     .groupBy("position")
@@ -243,7 +248,7 @@ bench("aggregate with a fallback", async () => {
 
 bench("function of a column", async () => {
   await tenantDb.form.pluck(form => coalesce(form.name, "x"))
-}).types([242, "instantiations"])
+}).types([228, "instantiations"])
 
 bench("case conversion of a column", async () => {
   await tenantDb.form.pluck(form => form.name.lower())
@@ -282,7 +287,7 @@ bench("case of two branches", async () => {
       "b",
     ),
   )
-}).types([586, "instantiations"])
+}).types([583, "instantiations"])
 
 bench("count function", async () => {
   await tenantDb.form.select(() => ({
@@ -294,7 +299,19 @@ bench("aggregate function of a column", async () => {
   await tenantDb.form.select(form => ({
     last: max(form.name),
   }))
-}).types([312, "instantiations"])
+}).types([280, "instantiations"])
+
+bench("count function with a filter", async () => {
+  await tenantDb.form.select(form => ({
+    published: count({ filter: form.published }),
+  }))
+}).types([316, "instantiations"])
+
+bench("stringAgg of a column in an order", async () => {
+  await tenantDb.form.select(form => ({
+    names: stringAgg(form.name, ", ", { orderBy: form.id }),
+  }))
+}).types([294, "instantiations"])
 
 bench("operator of an aggregate function of an operator", async () => {
   await tenantDb.form.select(form => ({

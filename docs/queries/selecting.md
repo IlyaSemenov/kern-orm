@@ -265,6 +265,35 @@ const stats = await db.field
 `count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, and `some` take an expression or a query of one value, such as a column or an aggregate of related records, and give the values that the methods give.
 `count()` without an argument counts the rows.
 
+To aggregate only some of the rows, such as to count the published forms beside the total, pass a condition as `filter`:
+
+```ts
+const stats = await db.form
+  .select(form => ({
+    total: count(),
+    published: count({ filter: form.published }),
+  }))
+  .take()
+// stats: { total: number; published: number }
+```
+
+To join text values, select `stringAgg` with a delimiter, and pass `orderBy` with what the callback of [`orderBy`](./sorting) returns to join them in that order:
+
+```ts
+import { count, stringAgg } from "kern-orm"
+
+const summary = await db.field
+  .where({ formId })
+  .select(field => ({
+    total: count(),
+    labels: stringAgg(field.label, ", ", { orderBy: field.position }),
+  }))
+  .take()
+// summary: { total: number; labels: string | null }
+```
+
+Without `orderBy`, PostgreSQL joins the values in any order.
+
 Each returns an expression with the operators of its type, so pass it to a function or call an operator on it, such as `coalesce(sum(field.position), 0)` or `count().gt(1)`.
 
 Such a query returns one row, so call `take` to get the record instead of an array of it.

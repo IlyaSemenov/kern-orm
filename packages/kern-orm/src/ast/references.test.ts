@@ -108,11 +108,28 @@ describe("mayAggregateSource", () => {
   const createFragment = (...values: ExpressionNode[]): ExpressionNode =>
     createList("f(", values, ")")
   const createAggregate = (...args: ExpressionNode[]): ExpressionNode =>
-    createNode({ kind: "aggregate", name: "f", distinct: false, arguments: args, orderBy: [] })
+    createNode({
+      kind: "aggregate",
+      name: "f",
+      distinct: false,
+      arguments: args,
+      orderBy: [],
+      filter: undefined,
+    })
+  const createFilteredAggregate = (...values: ExpressionNode[]): ExpressionNode =>
+    createNode({
+      kind: "aggregate",
+      name: "f",
+      distinct: false,
+      arguments: [],
+      orderBy: [],
+      filter: values.length === 0 ? undefined : createNode({ kind: "and", operands: values }),
+    })
 
   it.each([
     ["a SQL fragment", createFragment],
     ["an aggregate", createAggregate],
+    ["the filter of an aggregate", createFilteredAggregate],
   ] as const)(
     "finds the columns of a source in %s at any depth, also in the queries nested in it",
     (_kind, create) => {

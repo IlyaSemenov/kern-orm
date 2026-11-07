@@ -18,6 +18,19 @@ Select only the keys of the groups and aggregates; with the primary key of the t
 Each `groupBy` adds its keys after those of earlier calls, such as `groupBy("formId").groupBy("userId")`, which is the same as `groupBy("formId", "userId")`.
 `where` chooses the rows to group, wherever you call it.
 
+To aggregate only some rows of each group, such as the recent submissions of each form, pass a condition as `filter` of an aggregate function:
+
+```ts
+const totals = await db.submission.groupBy("formId").select(submission => ({
+  formId: submission.formId,
+  submissions: count(),
+  recent: count({ filter: submission.createdAt.gt(weekAgo) }),
+}))
+// totals: { formId: string; submissions: number; recent: number }[]
+```
+
+To join the text values of each group in an order, select [`stringAgg`](./selecting#several-aggregates-at-once) with `orderBy`.
+
 `sum` and the other aggregates keep `null` in their types in a group too.
 To remove it, pass them to [`coalesce`](./expressions#replacing-null), such as `coalesce(sum(field.position), 0)`.
 

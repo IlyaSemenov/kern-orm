@@ -420,7 +420,7 @@ function compileExpression(
     case "textSubquery":
       return `(${compileQuery(context, scope, node.query)})`
     case "aggregate": {
-      // Arguments precede the order in the text, so their parameters are numbered first.
+      // Arguments precede the order and the order precedes the filter in the text, so their parameters are numbered in this order.
       let text = `${node.name}(${node.distinct ? "DISTINCT " : ""}`
       for (let index = 0; index < node.arguments.length; index++) {
         text += `${index === 0 ? "" : ", "}${compileExpression(context, scope, node.arguments[index]!)}`
@@ -428,7 +428,11 @@ function compileExpression(
       if (node.orderBy.length > 0) {
         text += ` ${compileOrderBy(context, scope, node.orderBy)}`
       }
-      return `${text})`
+      text += ")"
+      if (node.filter !== undefined) {
+        text += ` FILTER (WHERE ${compileExpression(context, scope, node.filter)})`
+      }
+      return text
     }
     default:
       return node satisfies never

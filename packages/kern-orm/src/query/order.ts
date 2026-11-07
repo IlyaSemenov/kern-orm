@@ -123,13 +123,7 @@ export function addOrder(
       createSelectionRefs(node.from, context),
       createSelectedRefs(node, "sorted"),
     )
-    if (Array.isArray(terms)) {
-      for (const term of terms) {
-        order.push(readTerm(term))
-      }
-    } else {
-      order.push(readTerm(terms))
-    }
+    addTerms(order, terms, "The callback of orderBy must return")
     return order
   }
   for (const arg of args) {
@@ -149,12 +143,23 @@ export function addOrder(
   return order
 }
 
+/** Adds to `order` the sort key nodes of `terms`, `OrderTerms` checked at runtime; `subject` starts the error of another value, such as `The callback of orderBy must return`. */
+export function addTerms(order: OrderNode[], terms: unknown, subject: string): void {
+  if (Array.isArray(terms)) {
+    for (const term of terms) {
+      order.push(readTerm(term, subject))
+    }
+  } else {
+    order.push(readTerm(terms, subject))
+  }
+}
+
 /**
- * Creates the sort key node of a sort key returned by the callback of `orderBy`.
+ * Creates the sort key node of a sort key, `OrderTerm` checked at runtime, whose error starts with `subject`.
  *
  * A query is converted by the method of `operandNode`, which rejects a query other than of one value.
  */
-function readTerm(term: unknown): OrderNode {
+function readTerm(term: unknown, subject: string): OrderNode {
   if (term instanceof OrderingObject) {
     return term[orderingNode]
   }
@@ -162,7 +167,7 @@ function readTerm(term: unknown): OrderNode {
     return createOrderNode(term[operandNode](), "asc")
   }
   throw new TypeError(
-    "The callback of orderBy must return expressions, queries of one value, or sort keys of asc, desc, and orderBy",
+    `${subject} expressions, queries of one value, or sort keys of asc, desc, and orderBy`,
   )
 }
 

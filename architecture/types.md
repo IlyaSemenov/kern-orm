@@ -55,7 +55,7 @@
   The following operands are `const`, since TypeScript otherwise widens a literal of a union of literals, such as of an enum, which fails the constraint and leaves the constraint itself, whose operands can be `NULL`; a plain array, which the mutable values of an array type do not take as `const`, keeps `null` in the same way, unlike the expression of `param`.
 - Unlike the method `coalesce` of a query, which keeps a missing row missing, a query among the operands of `coalesce` is `NULL` without its row, as in any expression, so the function replaces a missing row too.
 - A call is a raw node of `createList`, so lowering takes it for a SQL fragment in a page after an offset ([SQL generation](sql.md#nested-rows)), which only costs the speed of the page.
-- A call of a function adds about 70 instantiations to a query of a column and about 140 to one of an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
+- A call of a function adds about 50 instantiations to a query of a column and about 140 to one of an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
 - `caseWhen` is a searched SQL `CASE` expression of its branches in order, of a type given as its first argument rather than read from an operand, since its values are often plain values, which have no SQL type.
   - The type decodes the result and gives it its operators.
     It casts each plain value to the cast type, as `param` with a type does, since PostgreSQL resolves `CASE` of parameters alone as `text`, whose `max` compares strings, so that `50` is above `100`.
@@ -71,13 +71,19 @@
 
 ## Aggregate functions
 
-- `count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, and `some` (`expression/aggregates.ts`) are [functions of expressions](#functions-of-expressions) whose call is an `aggregate` node, of the definitions that the aggregate methods read from `query/aggregate.ts`; [queries](queries.md#aggregate-functions) tell what a query that holds one does.
+- `count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` (`expression/aggregates.ts`) are [functions of expressions](#functions-of-expressions) whose call is an `aggregate` node, of the definitions that the aggregate methods read from `query/aggregate.ts`; [queries](queries.md#aggregate-functions) tell what a query that holds one does.
 - The argument is what the first operand of a function is: an expression with a type or a query of one value, in types and at runtime.
   `count` takes a call without an argument as `count(*)` and rejects an argument of `undefined`, which would count the rows silently.
-- The values follow the aggregate methods: `count` and `countDistinct` give a number, and the others the value of the argument or `null`.
+  `stringAgg` requires a delimiter after it, as the method does.
+- Each takes options as its last argument: `filter`, and for `stringAgg` also `orderBy`.
+  - `filter` is a Boolean expression or a query of one Boolean value, the condition of the rows that the function takes, compiled as `FILTER (WHERE ...)` after the call; an object of column values, which `where` resolves against its table, has no table there, so types and the runtime reject it.
+  - `orderBy` takes `OrderTerms`, as the callback of `orderBy` of a query returns them, compiled as `ORDER BY` in the call; without it, `stringAgg` joins the values in an order that PostgreSQL chooses, and the other functions take no order, since their values do not depend on it.
+  - At runtime, `count` takes a plain object as its options and any other value as its argument, and each function rejects options other than a plain object and a key other than its options, so that an object of column values passed instead of an argument, such as `count({ status: "approved" })`, rejects rather than counts every row.
+  - The aggregate methods take no options: `where` chooses the rows of a method, and `stringAgg` of a query joins them in the order of the query.
+- The values follow the aggregate methods: `count` and `countDistinct` give a number, and the others the value of the argument or `null`, also without rows that `filter` takes.
   The type of the expression is the one of the method, so it decodes the value and gives it its operators; `sum` of `smallint` and `integer` values rejects a sum outside the safe integer range of numbers, and `avg` of a type of the cast type `bigint` rejects when it is called.
   Types do not check that PostgreSQL has the aggregate for the type of the argument, as for the methods.
-- A query of one field of `count()` takes about 250 instantiations, of `max` of a column about 310, and of `max` of an aggregate of a relation about 600 ([benchmark](../benchmarks/types/queries.bench.ts)).
+- A query of one field of `count()` takes about 250 instantiations, of `count` with a filter of a column about 320, of `max` of a column about 280, of `stringAgg` of a column in an order about 290, and of `max` of an aggregate of a relation about 600 ([benchmark](../benchmarks/types/queries.bench.ts)).
 
 ## Text functions
 

@@ -1,7 +1,13 @@
 // Aggregate queries: the value of an aggregate function over the rows of a query as its only value, which lowering recognizes by the projection of the aggregate.
 
-import type { AggregateNode, ExpressionNode, RawSqlNode, ScalarProjection } from "../ast/nodes"
-import { createNode } from "../ast/nodes"
+import type {
+  AggregateNode,
+  ExpressionNode,
+  OrderNode,
+  RawSqlNode,
+  ScalarProjection,
+} from "../ast/nodes"
+import { createNode, noOrder } from "../ast/nodes"
 import { orderingOperators } from "../expression/operators/ordering"
 import type { AnyType, TypeInput, TypeOperators } from "../type/type"
 import { defineType } from "../type/type"
@@ -95,7 +101,8 @@ export const countProjection: AggregateProjection = /* @__PURE__ */ Object.freez
     name: "count",
     distinct: false,
     arguments: [allRowsNode],
-    orderBy: [],
+    orderBy: noOrder,
+    filter: undefined,
   }),
   type: countType,
   ordered: false,
@@ -121,11 +128,17 @@ export function projectAggregate(
   })
 }
 
-/** Creates the call of the aggregate function of `method` over the values of `argument`, without an order; `delimiter` is the delimiter of `stringAgg`, sent as a parameter. */
+/**
+ * Creates the call of the aggregate function of `method` over the values of `argument`.
+ *
+ * `delimiter` is the delimiter of `stringAgg`, sent as a parameter, `orderBy` the order of the rows that the function takes, and `filter` their condition.
+ */
 export function createAggregateCall(
   method: AggregateMethod,
   argument: ExpressionNode,
   delimiter?: string,
+  orderBy: readonly OrderNode[] = noOrder,
+  filter?: ExpressionNode,
 ): AggregateNode {
   const definition = aggregateDefinitions[method]
   const args: ExpressionNode[] = [argument]
@@ -137,7 +150,20 @@ export function createAggregateCall(
     name: definition.name,
     distinct: definition.distinct,
     arguments: args,
-    orderBy: [],
+    orderBy,
+    filter,
+  })
+}
+
+/** Creates the call of `count(*)` over the rows that `filter` takes. */
+export function createCountCall(filter: ExpressionNode): AggregateNode {
+  return createNode({
+    kind: "aggregate",
+    name: "count",
+    distinct: false,
+    arguments: [allRowsNode],
+    orderBy: noOrder,
+    filter,
   })
 }
 

@@ -1,5 +1,6 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
+import { desc } from "../query/order"
 import type { ResultOf } from "../query/select"
 import { from } from "../query/select"
 import { many } from "../schema/relation"
@@ -7,7 +8,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { avg, count, countDistinct, every, max, min, some, sum } from "./aggregates"
+import { avg, count, countDistinct, every, max, min, some, stringAgg, sum } from "./aggregates"
 import { caseWhen, coalesce } from "./functions"
 import { sql } from "./sql"
 
@@ -159,5 +160,53 @@ describe("the argument of an aggregate function", () => {
     countDistinct()
     // @ts-expect-error max takes a value.
     max()
+  })
+})
+
+describe("the options of an aggregate function", () => {
+  test("take a Boolean condition, an expression or a query of one value, and the order of stringAgg", () => {
+    const query = from(field).select(field => ({
+      required: count({ filter: field.required }),
+      labels: countDistinct(field.label, { filter: field.required }),
+      last: max(field.position, { filter: field.label.isNull() }),
+      joined: stringAgg(field.label, ", "),
+      ordered: stringAgg(field.label, ", ", {
+        orderBy: [desc(field.position), field.id],
+        filter: field.required,
+      }),
+    }))
+    schema.form.select(form => ({
+      withFields: count({ filter: form.fields.exists() }),
+      names: stringAgg(form.name, ", ", { orderBy: form.fields.count() }),
+    }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{
+      required: number
+      labels: number
+      last: number | null
+      joined: string | null
+      ordered: string | null
+    }>()
+  })
+
+  test("reject a condition that is not Boolean, an object of column values, and an option of another function", () => {
+    from(field).select(field => ({
+      // @ts-expect-error A condition is Boolean.
+      total: count({ filter: field.position }),
+    }))
+    from(field).select(() => ({
+      // @ts-expect-error An object of column values has no table to be checked against here.
+      total: count({ filter: { required: true } }),
+    }))
+    from(field).select(field => ({
+      // @ts-expect-error Only stringAgg takes an order.
+      last: max(field.position, { orderBy: field.id }),
+    }))
+    from(field).select(field => ({
+      // @ts-expect-error stringAgg takes a delimiter before its options.
+      labels: stringAgg(field.label, { orderBy: field.id }),
+    }))
+    // @ts-expect-error An object of column values is not the options of count.
+    count({ required: true })
   })
 })

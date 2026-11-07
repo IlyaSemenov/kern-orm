@@ -112,11 +112,11 @@ A [query of groups](architecture/queries.md#groups) with nested queries evaluate
 
 ## Nullability of aggregates in groups
 
-`sum` and the others of a column that cannot be `NULL` are never `NULL` in a [group](architecture/queries.md#groups), which has a row, while types give `null`; decide whether that is worth a part of the state.
+`sum` and the others of a column that cannot be `NULL`, without `filter`, are never `NULL` in a [group](architecture/queries.md#groups), which has a row, while types give `null`; decide whether that is worth a part of the state.
 
-## Options of aggregate functions
+## Other options of aggregate functions
 
-Options of the [aggregate functions](architecture/queries.md#aggregate-functions), which SQL fragments cover until then: a condition of their rows as `FILTER (WHERE ...)`, an order of their rows, and a function form of `stringAgg`, which needs that order, since the order of a query of groups is that of the groups.
+Options of the [aggregate functions](architecture/types.md#aggregate-functions) beside `filter` and the `orderBy` of `stringAgg`, which SQL fragments cover until then: `distinct` of any aggregate, ordered-set aggregates as `WITHIN GROUP`, and window functions as `OVER`.
 Orchid ORM 1.78.47 takes `distinct`, `order`, `filter`, `filterOr`, `withinGroup`, and `over` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/aggregate.md)).
 
 ## Arithmetic operators

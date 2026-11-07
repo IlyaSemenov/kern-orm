@@ -16,7 +16,7 @@ import type {
   StatementNode,
   TextStatementNode,
 } from "../ast/nodes"
-import { createList, createNode, noFilters } from "../ast/nodes"
+import { createList, createNode, noFilters, noOrder } from "../ast/nodes"
 import { findValueProjection } from "../ast/projections"
 import { collectColumnKeys, mayAggregateSource } from "../ast/references"
 import type { AnyDb } from "../execution/db"
@@ -40,8 +40,6 @@ import { projectRows } from "./nested"
 import { deriveOrderedSource, sortByPositions } from "./order"
 
 const noJoins: readonly JoinNode[] = /* @__PURE__ */ Object.freeze([])
-
-const noOrder: readonly OrderNode[] = /* @__PURE__ */ Object.freeze([])
 
 const noProjections: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
 
@@ -562,6 +560,7 @@ function lowerAggregate(node: QueryNode, context: LoweringContext): SelectNode<S
           distinct: aggregate.distinct,
           arguments: args,
           orderBy: order,
+          filter: aggregate.filter,
         })
   const fallbacks = lowerEach(field.fallbacks, context, lowerExpression)
   let value: ExpressionNode = call
@@ -626,7 +625,11 @@ function refersToSource(node: ExpressionNode, source: SourceNode): boolean {
     case "raw":
       return node.values.some(value => refersToSource(value, source))
     case "aggregate":
-      return node.arguments.some(argument => refersToSource(argument, source))
+      // PostgreSQL assigns an aggregate to a query by the sources of its arguments and its filter.
+      return (
+        node.arguments.some(argument => refersToSource(argument, source)) ||
+        (node.filter !== undefined && refersToSource(node.filter, source))
+      )
     default:
       return node satisfies never
   }
@@ -919,7 +922,8 @@ function lowerExpression(node: ExpressionNode, context: LoweringContext): Expres
     case "aggregate": {
       const args = lowerEach(node.arguments, context, lowerExpression)
       const orderBy = lowerOrder(node.orderBy, context)
-      return args === node.arguments && orderBy === node.orderBy
+      const filter = lowerValue(node.filter, context)
+      return args === node.arguments && orderBy === node.orderBy && filter === node.filter
         ? node
         : createNode({
             kind: "aggregate",
@@ -927,6 +931,7 @@ function lowerExpression(node: ExpressionNode, context: LoweringContext): Expres
             distinct: node.distinct,
             arguments: args,
             orderBy,
+            filter,
           })
     }
     default:

@@ -189,7 +189,7 @@ describe("lowerStatement", () => {
     )
   })
 
-  it("derives a page after an offset only when the aggregates of its nested queries read no column of its table", () => {
+  it("derives a page after an offset only when the arguments and the filters of the aggregates of its nested queries read no column of its table", () => {
     const page = schema.form.orderBy("id").offset(20)
     const parentColumn = page.select(form => ({
       total: schema.field.select(() => ({
@@ -201,19 +201,29 @@ describe("lowerStatement", () => {
         every: every(field.id.eq(form.id)),
       })),
     }))
+    const parentFilter = page.select(form => ({
+      total: schema.field.select(() => ({
+        count: count({ filter: form.id.isNull() }),
+      })),
+    }))
+    const bothFilter = page.select(form => ({
+      total: schema.field.select(field => ({
+        count: count({ filter: field.id.eq(form.id) }),
+      })),
+    }))
     const ownColumn = page.select(form => ({
       total: form.fields.select(field => ({
         fields: count(),
         sum: sum(field.id),
+        labelled: count({ filter: field.label.isNull() }),
       })),
     }))
 
-    expect(compileStatement(lowerStatement(parentColumn.node)).text).toEndWith(
-      ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
-    )
-    expect(compileStatement(lowerStatement(bothColumns.node)).text).toEndWith(
-      ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
-    )
+    for (const query of [parentColumn, bothColumns, parentFilter, bothFilter]) {
+      expect(compileStatement(lowerStatement(query.node)).text).toEndWith(
+        ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
+      )
+    }
     expect(compileStatement(lowerStatement(ownColumn.node)).text).toEndWith(
       ' FROM (SELECT "form_2"."id" AS "id" FROM "form" AS "form_2" ORDER BY 1 OFFSET $1) AS "form" ORDER BY "form"."id"',
     )
@@ -1131,6 +1141,54 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
 
     expect(results).toStrictEqual([[{ nested: [{ total: 20 }] }], []])
+  })
+
+  it("aggregates the rows of a query before its offset in the filter of an aggregate of a nested query, also through a query in the filter, and the rows of the nested query when the filter also reads them", async () => {
+    const parent = (query: typeof db.form) =>
+      query.select(form => ({
+        nested: db.form.where({ id: 1 }).select(() => ({
+          total: count({ filter: form.id.gt(10) }),
+        })),
+      }))
+    const throughQuery = (query: typeof db.form) =>
+      query.select(form => ({
+        nested: db.form.where({ id: 1 }).select(() => ({
+          total: count({
+            filter: db.form
+              .where({ id: 1 })
+              .get(() => form.id)
+              .expr()
+              .gt(10),
+          }),
+        })),
+      }))
+    const both = (query: typeof db.form) =>
+      query.orderBy("id").select(form => ({
+        nested: db.form.where({ id: 1 }).select(child => ({
+          total: count({ filter: and(form.id.gt(10), child.id.eq(1)) }),
+        })),
+      }))
+    const totals = Array.from({ length: 20 }, (_, index) => ({
+      nested: [{ total: index < 10 ? 0 : 1 }],
+    }))
+
+    const results = await testTransaction(async () => [
+      await parent(db.form.offset(0)),
+      await parent(db.form.offset(1)),
+      await throughQuery(db.form.offset(0)),
+      await throughQuery(db.form.offset(1)),
+      await both(db.form.offset(0)),
+      await both(db.form.offset(1)),
+    ])
+
+    expect(results).toStrictEqual([
+      [{ nested: [{ total: 10 }] }],
+      [],
+      [{ nested: [{ total: 10 }] }],
+      [],
+      totals,
+      totals.slice(1),
+    ])
   })
 
   it("aggregates the rows of a query before its offset through a query in a SQL fragment of a nested query", async () => {
