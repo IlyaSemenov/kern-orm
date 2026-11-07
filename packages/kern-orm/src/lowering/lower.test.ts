@@ -1133,6 +1133,22 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     expect(results).toStrictEqual([[{ nested: [{ total: 20 }] }], []])
   })
 
+  it("aggregates the rows of a query before its offset through a query in a SQL fragment of a nested query", async () => {
+    const select = (query: typeof db.form) =>
+      query.select(form => ({
+        nested: db.form.where({ id: 1 }).select(() => ({
+          total: sql(t.integer)`count(${db.form.where({ id: 1 }).get(() => form.id)})`,
+        })),
+      }))
+
+    const results = await testTransaction(async () => [
+      await select(db.form.offset(0)),
+      await select(db.form.offset(1)),
+    ])
+
+    expect(results).toStrictEqual([[{ nested: [{ total: 20 }] }], []])
+  })
+
   describe("query of groups", () => {
     const residue = (form: { id: AnyExpression<number> }) => sql(t.integer)`${form.id} % ${3}`
     it("takes a query of the values of a parameterized expression, grouped and sorted by its value, in IN, after take, and in SQL text", async () => {

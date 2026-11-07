@@ -329,10 +329,10 @@ A query of `$select` as a field of a selection, such as of `select` or of anothe
 
 ## Scalar fragments of kern-orm in pages after an offset
 
-A page after an offset keeps the nested queries on its table when a nested query holds a SQL fragment that refers to a column of the table, as [architecture/sql.md](architecture/sql.md#nested-rows) states, since a fragment may aggregate the rows of the query.
+A page after an offset keeps the nested queries on its table when a nested query holds a SQL fragment that refers to a column of the table, also through a query nested in the fragment, as [architecture/sql.md](architecture/sql.md#nested-rows) states, since a fragment may aggregate the rows of the query.
 Fragments that kern-orm builds are known to be scalar, such as the `coalesce` of the fallbacks of an aggregate in `form.fields.max("id").coalesce(form.id)` and the [functions of expressions](architecture/types.md#functions-of-expressions), yet they keep the page on its table too.
 
-- Mark such fragments, such as by a flag of a raw node or a node kind of a function call, so that the check skips them.
+- Mark such fragments, such as by a flag of a raw node or a node kind of a function call, so that the check skips them while still walking their operands, which may hold a fragment of a user or an aggregate.
 - Research first which fragments refer to the columns of a parent row: the fallbacks of aggregates, and possibly generic operators and the operators of custom types.
 - Aggregates of a nested query whose arguments read both its source and a column of the table also keep the page on its table; telling them apart needs the sources of the query that holds them.
 
@@ -342,8 +342,7 @@ Research and a decision: whether a SQL fragment of a user in a nested query can 
 
 - A contract that a fragment in a nested query never aggregates the rows of an enclosing query, for which the aggregate methods exist, would drop the check, but breaking it would change results silently rather than fail.
 - A variant of `sql` for fragments that are known to be scalar would keep the check for other fragments, at the cost of a public API for a rare case.
-- A fragment that does aggregate the parent rows makes the parent query return one row, so the nested queries run once anyway; only scalar fragments lose the speed-up.
-- A fragment of an aggregate whose argument reads a column of the table only through a query nested in it, such as ``sql`count(${db.form.where({ id }).get(() => form.id)})` `` in a nested query of a page after an offset, gives a wrong result: PostgreSQL assigns the aggregate to the parent, which the check misses, since a query nested in a fragment does not count, so the page moves to a derived source and gives a row that the offset of the parent would remove. Counting such a query would keep every fragment of a correlated query on its table, such as ``sql`${form.fields.count()} > 1` ``.
+- A fragment that does aggregate the parent rows makes the parent query return one row, so the nested queries run once anyway; only scalar fragments lose the speed-up, also those that read the parent table only through a query correlated with it, such as ``sql`${field.position} < ${form.fields.count()}` ``.
 
 ## Union of queries of several tables
 

@@ -105,48 +105,30 @@ describe("mayAggregateSource", () => {
       ),
     )
 
-  it("detects a SQL fragment at any depth that refers to a column of a source outside the queries nested in it", () => {
-    const createFragment = (...values: ExpressionNode[]) => createList("f(", values, ")")
+  const createFragment = (...values: ExpressionNode[]): ExpressionNode =>
+    createList("f(", values, ")")
+  const createAggregate = (...args: ExpressionNode[]): ExpressionNode =>
+    createNode({ kind: "aggregate", name: "f", distinct: false, arguments: args, orderBy: [] })
 
-    expect(mayAggregateSource(nest(createFragment(createRef(outer, "id"))), outer)).toBe(true)
-    expect(mayAggregateSource(nest(nest(createFragment(createRef(outer, "id")))), outer)).toBe(true)
-    expect(
-      mayAggregateSource(
-        nest(createFragment(createRef(outer, "id"), createRef(inner, "id"))),
-        outer,
-      ),
-    ).toBe(true)
-    expect(mayAggregateSource(nest(createFragment(createRef(inner, "id"))), outer)).toBe(false)
-    expect(mayAggregateSource(nest(createFragment()), outer)).toBe(false)
+  it.each([
+    ["a SQL fragment", createFragment],
+    ["an aggregate", createAggregate],
+  ] as const)(
+    "finds the columns of a source in %s at any depth, also in the queries nested in it",
+    (_kind, create) => {
+      expect(mayAggregateSource(nest(create(createRef(outer, "id"))), outer)).toBe(true)
+      expect(mayAggregateSource(nest(nest(create(createRef(outer, "id")))), outer)).toBe(true)
+      expect(
+        mayAggregateSource(nest(create(createRef(outer, "id"), createRef(inner, "id"))), outer),
+      ).toBe(true)
+      expect(mayAggregateSource(nest(create(nest(createRef(outer, "id")))), outer)).toBe(true)
+      expect(mayAggregateSource(nest(create(createRef(inner, "id"))), outer)).toBe(false)
+      expect(mayAggregateSource(nest(create(nest(createRef(inner, "id")))), outer)).toBe(false)
+      expect(mayAggregateSource(nest(create()), outer)).toBe(false)
+    },
+  )
+
+  it("does not count a column of a source outside an aggregate and a SQL fragment", () => {
     expect(mayAggregateSource(nest(createRef(outer, "id")), outer)).toBe(false)
-  })
-
-  it("finds the columns of a source in the arguments of an aggregate at any depth, also in the queries nested in them", () => {
-    const createAggregate = (...args: ExpressionNode[]) =>
-      createNode({ kind: "aggregate", name: "f", distinct: false, arguments: args, orderBy: [] })
-
-    expect(mayAggregateSource(nest(createAggregate(createRef(outer, "id"))), outer)).toBe(true)
-    expect(mayAggregateSource(nest(nest(createAggregate(createRef(outer, "id")))), outer)).toBe(
-      true,
-    )
-    expect(
-      mayAggregateSource(
-        nest(createAggregate(createRef(outer, "id"), createRef(inner, "id"))),
-        outer,
-      ),
-    ).toBe(true)
-    expect(mayAggregateSource(nest(createAggregate(nest(createRef(outer, "id")))), outer)).toBe(
-      true,
-    )
-    expect(mayAggregateSource(nest(createAggregate(createRef(inner, "id"))), outer)).toBe(false)
-    expect(mayAggregateSource(nest(createAggregate(nest(createRef(inner, "id")))), outer)).toBe(
-      false,
-    )
-  })
-
-  it("does not count a query nested in a SQL fragment", () => {
-    const fragment = createList("f(", [nest(createRef(outer, "id"))], ")")
-
-    expect(mayAggregateSource(nest(fragment), outer)).toBe(false)
   })
 })

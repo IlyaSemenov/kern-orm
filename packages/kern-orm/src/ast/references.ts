@@ -8,7 +8,7 @@ export function collectColumnKeys(
   source: SourceNode,
   keys: Set<string>,
 ): void {
-  visitNodes(node, true, child => {
+  visitNodes(node, child => {
     if (child.kind === "column" && child.source === source) {
       keys.add(child.key)
     }
@@ -16,12 +16,13 @@ export function collectColumnKeys(
 }
 
 /**
- * Tells whether `node` holds, at any depth, what may aggregate the rows of the query of `source`: an `aggregate` node that refers to a column of `source` at any depth of its arguments, also in the queries nested in them, or a SQL fragment that refers to one outside the queries nested in the fragment.
+ * Tells whether `node` holds, at any depth, what may aggregate the rows of the query of `source`: an `aggregate` node or a SQL fragment that refers to a column of `source` at any depth, also in the queries nested in it.
  *
  * PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, also through a query nested in an argument ([PostgreSQL](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)), so such a call in a nested query, such as `sum` of a column of the parent row, aggregates the rows of the query of `source`.
- * Lowering does not parse SQL fragments to identify their aggregates, and a query nested in a fragment does not count, since a scalar query correlated with `source`, such as of a relation, would count too.
+ * Lowering does not parse SQL fragments to identify their aggregates, so a fragment counts as such a call.
  *
  * It is conservative: an aggregate whose arguments read both `source` and its own query belongs to its own query, yet it counts, since this walk cannot tell a source of the query that holds the aggregate from one of an enclosing query.
+ * So does a scalar fragment, also one that reads `source` only through a query correlated with it, such as of a relation.
  */
 export function mayAggregateSource(node: ExpressionNode, source: SourceNode): boolean {
   let found = false
@@ -30,25 +31,16 @@ export function mayAggregateSource(node: ExpressionNode, source: SourceNode): bo
       found = true
     }
   }
-  visitNodes(node, true, child => {
-    if (found) {
-      return
-    }
-    if (child.kind === "aggregate") {
-      visitNodes(child, true, check)
-    } else if (child.kind === "raw") {
-      visitNodes(child, false, check)
+  visitNodes(node, child => {
+    if (!found && (child.kind === "aggregate" || child.kind === "raw")) {
+      visitNodes(child, check)
     }
   })
   return found
 }
 
-/** Calls `visit` for `node` and each expression node in it, also in the queries nested in it when `deep` is set. */
-function visitNodes(
-  node: ExpressionNode,
-  deep: boolean,
-  visit: (node: ExpressionNode) => void,
-): void {
+/** Calls `visit` for `node` and each expression node in it at any depth, including the queries nested in it. */
+function visitNodes(node: ExpressionNode, visit: (node: ExpressionNode) => void): void {
   visit(node)
   switch (node.kind) {
     case "column":
@@ -62,48 +54,46 @@ function visitNodes(
     case "cast":
     case "not":
     case "isNull":
-      visitNodes(node.operand, deep, visit)
+      visitNodes(node.operand, visit)
       return
     case "and":
     case "or":
       for (const operand of node.operands) {
-        visitNodes(operand, deep, visit)
+        visitNodes(operand, visit)
       }
       return
     case "comparison":
-      visitNodes(node.left, deep, visit)
-      visitNodes(node.right, deep, visit)
+      visitNodes(node.left, visit)
+      visitNodes(node.right, visit)
       return
     case "in":
-      visitNodes(node.operand, deep, visit)
+      visitNodes(node.operand, visit)
       for (const item of node.list) {
-        visitNodes(item, deep, visit)
+        visitNodes(item, visit)
       }
       return
     case "inQuery":
-      visitNodes(node.operand, deep, visit)
-      if (deep && node.query.kind === "select") {
+      visitNodes(node.operand, visit)
+      if (node.query.kind === "select") {
         visitQuery(node.query, visit)
       }
       return
     case "raw":
       for (const value of node.values) {
-        visitNodes(value, deep, visit)
+        visitNodes(value, visit)
       }
       return
     case "subquery":
     case "exists":
     case "textSubquery":
-      if (deep) {
-        visitQuery(node.query, visit)
-      }
+      visitQuery(node.query, visit)
       return
     case "aggregate":
       for (const argument of node.arguments) {
-        visitNodes(argument, deep, visit)
+        visitNodes(argument, visit)
       }
       for (const order of node.orderBy) {
-        visitNodes(order.expression, deep, visit)
+        visitNodes(order.expression, visit)
       }
       return
     default:
@@ -121,35 +111,35 @@ function visitQuery(query: SelectNode, visit: (node: ExpressionNode) => void): v
     if (join.source.kind === "derived") {
       visitQuery(join.source.query, visit)
     }
-    visitNodes(join.on, true, visit)
+    visitNodes(join.on, visit)
   }
   for (const projection of query.projections) {
-    visitNodes(projection.expression, true, visit)
+    visitNodes(projection.expression, visit)
   }
   if (filters.relation !== undefined) {
-    visitNodes(filters.relation, true, visit)
+    visitNodes(filters.relation, visit)
   }
   if (filters.scope !== undefined) {
-    visitNodes(filters.scope, true, visit)
+    visitNodes(filters.scope, visit)
   }
   if (filters.user !== undefined) {
-    visitNodes(filters.user, true, visit)
+    visitNodes(filters.user, visit)
   }
   if (query.groupBy !== undefined) {
     for (const key of query.groupBy) {
-      visitNodes(key, true, visit)
+      visitNodes(key, visit)
     }
   }
   if (query.having !== undefined) {
-    visitNodes(query.having, true, visit)
+    visitNodes(query.having, visit)
   }
   for (const order of query.orderBy) {
-    visitNodes(order.expression, true, visit)
+    visitNodes(order.expression, visit)
   }
   if (query.limit !== undefined) {
-    visitNodes(query.limit, true, visit)
+    visitNodes(query.limit, visit)
   }
   if (query.offset !== undefined) {
-    visitNodes(query.offset, true, visit)
+    visitNodes(query.offset, visit)
   }
 }
