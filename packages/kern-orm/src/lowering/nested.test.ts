@@ -127,6 +127,16 @@ describe("packRows", () => {
     )
   })
 
+  it("packs a query of distinctOn in its order, choosing the first rows in the derived source by the positions of its sort keys also without a limit, without a barrier", () => {
+    const labels = lower(
+      allFields.distinctOn("formId").orderBy("formId", { label: "desc" }).pluck("id"),
+    )
+
+    expect(compileStatement(packRows(labels)).text).toBe(
+      `SELECT coalesce(json_agg(json_build_array(CASE WHEN "subquery"."id" IS NOT DISTINCT FROM NULL THEN NULL ELSE format('%s', "subquery"."id") END) ORDER BY "subquery"."$order1", "subquery"."$order2" DESC), '[]'::json) AS "rows" FROM (SELECT DISTINCT ON (2) "form_field"."id" AS "id", "form_field"."form_id" AS "$order1", "form_field"."label" AS "$order2" FROM "form_field" AS "form_field" ORDER BY 2, 3 DESC) AS "subquery"`,
+    )
+  })
+
   it("packs a query of one row without aggregating it", () => {
     const first = change(lower(allFields.select("label").take()), {
       orderBy: [createOrder(position)],

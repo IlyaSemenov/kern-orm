@@ -54,7 +54,7 @@ export type OrderTerm = AnyExpression | ScalarQuery | Ordering
 
 // A conditional type of the query state here would keep a query from being assigned to a query of a wider state, such as one that a `Db` executes, so queries of records and of values get their references from overloads of `orderBy`.
 /**
- * References of the callbacks of `orderBy` and `groupBy` to the fields of records `R` selected by a query: their expressions by key.
+ * References of the callbacks of `orderBy`, `groupBy`, and `distinctOn` to the fields of records `R` selected by a query: their expressions by key.
  *
  * A field of nested rows or of a literal is among them in types, but reading it throws; a field of an aggregate or of `exists` gives its value.
  */
@@ -121,7 +121,7 @@ export function addOrder(
   if (typeof first === "function") {
     const terms: unknown = (first as (columns: unknown, selected: unknown) => unknown)(
       createSelectionRefs(node.from, context),
-      createSelectedRefs(node, "sorted"),
+      createSelectedRefs(node, "sorted by"),
     )
     addTerms(order, terms, "The callback of orderBy must return")
     return order
@@ -190,12 +190,12 @@ export function createColumnNode(source: TableSourceNode, key: string): Expressi
 }
 
 /**
- * Creates the references of the callback of `orderBy` or `groupBy` to the fields selected by `node`, for what `purpose` tells of a field that cannot be read.
+ * Creates the references of the callback of `orderBy`, `groupBy`, or `distinctOn` to the fields selected by `node`; `purpose` completes the error of a field that cannot be read, such as `sorted by`.
  *
  * Each is an expression over the node of its projection, so that a sort key or a key of a group of it is the projection itself.
  * A field of an aggregate or of `exists` is an expression of its query that holds the field, by which lowering finds the projection of the field.
  */
-export function createSelectedRefs(node: QueryNode, purpose: "sorted" | "grouped"): unknown {
+export function createSelectedRefs(node: QueryNode, purpose: string): unknown {
   const { projections } = node
   if (node.value) {
     // `get`, `pluck`, and the aggregate methods select one expression.
@@ -208,7 +208,7 @@ export function createSelectedRefs(node: QueryNode, purpose: "sorted" | "grouped
       // PostgreSQL does not see a literal, and every row has the same value of it.
       Object.defineProperty(refs, key, {
         get() {
-          throw new Error(`Field "${key}" holds a literal and cannot be ${purpose} by`)
+          throw new Error(`Field "${key}" holds a literal and cannot be ${purpose}`)
         },
         enumerable: true,
       })
@@ -219,7 +219,7 @@ export function createSelectedRefs(node: QueryNode, purpose: "sorted" | "grouped
         // Nested rows are JSON, which PostgreSQL can neither sort nor group by.
         Object.defineProperty(refs, key, {
           get() {
-            throw new Error(`Field "${key}" holds nested rows and cannot be ${purpose} by`)
+            throw new Error(`Field "${key}" holds nested rows and cannot be ${purpose}`)
           },
           enumerable: true,
         })

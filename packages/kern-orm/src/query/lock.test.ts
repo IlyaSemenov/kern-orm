@@ -110,6 +110,10 @@ describe("the clause of a query", () => {
         "forUpdate cannot be used after distinct, since a row without duplicates comes from several rows of the table",
       ],
       [
+        forms.distinctOn("published"),
+        "forUpdate cannot be used after distinctOn; PostgreSQL does not allow row locks with DISTINCT ON",
+      ],
+      [
         forms.groupBy("id"),
         "forUpdate cannot be used after groupBy, since a group comes from several rows of the table",
       ],
@@ -127,6 +131,9 @@ describe("the clause of a query", () => {
     expect(() => locked.exists()).toThrow(rejection("exists"))
     expect(() => locked.distinct()).toThrow(
       "distinct cannot be used after a row lock, since a row without duplicates comes from several rows of the table",
+    )
+    expect(() => locked.distinctOn("published")).toThrow(
+      "distinctOn cannot be used after a row lock; PostgreSQL does not allow row locks with DISTINCT ON",
     )
     expect(() => locked.groupBy("id")).toThrow(
       "groupBy cannot be used after a row lock, since a group comes from several rows of the table",

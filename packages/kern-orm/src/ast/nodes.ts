@@ -267,6 +267,8 @@ export interface SelectNode<
   readonly offset: ExpressionNode | undefined
   /** Whether the query removes the duplicates of its rows, as `SELECT DISTINCT`; it requires a projection, as PostgreSQL does. */
   readonly distinct?: boolean | undefined
+  /** Keys of `DISTINCT ON`, at least one, whose equal values give one row, the first in the order; a key that a projection has is compiled as the position of the projection, as a key of `groupBy` is. */
+  readonly distinctOn?: readonly ExpressionNode[] | undefined
   /** Lock of the rows of the source of the statement, which does not reach the subqueries of its other clauses; it requires a source of rows, as PostgreSQL does. */
   readonly lock?: RowLockNode | undefined
   /** Required relation that guarantees the row of the query, such as `field.form`; see `ResultPlan`. */

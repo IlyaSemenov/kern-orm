@@ -19,6 +19,7 @@ import {
   listFormHeadlines,
   listFormPreviews,
   listFormSummaries,
+  listLatestComments,
   listSubmissions,
   listSubmittedFormNames,
   listSubmittedForms,
@@ -184,6 +185,12 @@ describe("Db", () => {
         comments: { text: string; answer: string | undefined }[]
       }[]
     >()
+  })
+
+  test("of a tenant gives the latest comment on each submission with its author", async () => {
+    const comments = await listLatestComments(database.bind(tenantSchema))
+
+    expectTypeOf(comments).toEqualTypeOf<{ text: string; author: string }[]>()
   })
 
   test("of a tenant executes a page of the activity of its forms, which the SaaS lacks", async () => {

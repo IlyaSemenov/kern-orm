@@ -7,7 +7,7 @@
   At runtime, a query holds the context of its table in the schema or `Db` it starts from, which each of them creates once for each of its tables, whose relations the references of `select` start; a query of `from(table)` holds the context without relations.
   A query is covariant in its state and its kind, as `out` declares on `SelectQuery` and TypeScript checks: its methods take the query they are called on from `this`, and only `toSQL` reads the kind of the class, so that comparing two queries of different states, such as the entries of two `Db` types or a query passed to `$execute`, compares their states rather than their methods.
   Methods typed by the parameters of the class make TypeScript measure a query as invariant in its state, unreliably, and compare queries of different states member by member, which takes about 50 times the instantiations for the first comparison of two `Db` types of 2 shared tables and 200 times of 12 ([benchmark](../benchmarks/types/first-use.bench.ts)); inferring the query from `this` adds about 30 instantiations to each call of `where`.
-  - The methods that keep the state in types, `groupBy`, `orderBy`, `limit`, `offset`, `distinct`, `where` and `having` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` and `having` of a guaranteed query change its state.
+  - The methods that keep the state in types, `groupBy`, `orderBy`, `limit`, `offset`, `distinct`, `distinctOn`, `where` and `having` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` and `having` of a guaranteed query change its state.
   - A method that changes the state takes the state and the kind of the query, which TypeScript cannot infer from a union of queries of different states, so such a union rejects it.
     Two designs would apply such a method to a union of queries too, and both cost more than the contract is worth:
     - The method takes the whole query and returns a distributive conditional type of it, such as `Q extends SelectQuery<infer S, infer Kind> ? SelectQuery<ChangeState<S, …>, Kind> : never`.
@@ -124,7 +124,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 - `Operand`, the operand of the built-in operators, includes `ScalarQuery`, and `OperandValue` reads the value of a query without inferring it from `ScalarQuery`, which would add instantiations to each call of an operator.
   An object condition reads the operand of the `eq` of `equalityOperators` from the type of its column, rather than inferring it from the method of the column with a check that its result is a predicate, which adds about 165 instantiations, 42%, to a query of an object condition of a column used for the first time ([benchmark](../benchmarks/types/queries.bench.ts)).
   For another `eq`, such as one of `withOperators`, it infers the operand from the method and requires a predicate as its result.
-- `in` takes a query of values of a table of any rows, such as of `pluck`, beside a list, as `IN` of the statement of the query, which keeps its order, limit, offset, and [`distinct`](#distinct-rows); the statement of a query of `exists` or of an aggregate has one row.
+- `in` takes a query of values of a table of any rows, such as of `pluck`, beside a list, as `IN` of the statement of the query, which keeps its order, limit, offset, [`distinct`](#distinct-rows), and [`distinctOn`](#first-row-of-each-group); the statement of a query of `exists` or of an aggregate has one row.
   - The query keeps its `Db`, as a query in an expression does.
   - At runtime, `in` rejects a query of records, and a value other than an array or a query of a table, such as an expression or a query of `$select`.
     It recognizes a query by the method of the symbol key `valuesQueryNode` of `expression/operators/equality.ts`, as an expression recognizes an operand by `operandNode`; only `SelectQuery` has the method, since `in` rejects every value other than an array and a query of a table, so the other classes need no method that rejects them.
@@ -195,6 +195,27 @@ Queries come in two kinds that share the query methods and differ only by execut
   Types accept the call, since they keep no part of the state for `distinct`.
   Orchid ORM 1.78.47 adds `DISTINCT` to any select list ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/sql/to-sql.ts)), so its `distinct().count()` compiles to `SELECT DISTINCT count(*)`, which counts every row.
 
+## First row of each group
+
+- `distinctOn` makes a query keep the first row of each group of its rows with equal values of its keys, in the order of the query, as `SELECT DISTINCT ON`, such as the latest submission of each user, as `distinct` of columns of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#distinct)).
+  - Its keys are column keys, or a callback that returns a key or an array of them, each an expression or a query of one value, with the second parameter as in [`groupBy`](#groups); each call adds keys after those of earlier calls, and a call without keys rejects at runtime, since an empty list built in code would keep every row.
+  - `NULL` values of a key are one group, as PostgreSQL compares them.
+  - It applies only to a query of many rows, in types and at runtime, and keeps the state in types, as `distinct` does.
+  - It is a method apart from `distinct`, rather than `distinct` of keys: `distinct` of an empty list of keys built in code would compare every field, and the two differ in what they compare, how the query sorts, and whether it selects nested rows.
+- The order of the query chooses the first row of each group and is the order of the rows, so an order that sorts by a value other than the keys must sort by all the keys before it, in any order and directions, as PostgreSQL requires; lowering rejects another order, wherever the query is, with an error that names the rule.
+  Without an order, each group gives any of its rows, and an order of only keys may omit some, which PostgreSQL adds.
+  - A sort key is a key when it is the same column, or the same expression node that a projection of the query has, as [SQL generation](sql.md#statements) tells them, so that both compile to the same column or position.
+    Another expression may compile at each place with parameters and aliases of its own, so PostgreSQL may find the two unequal; lowering checks the order before packing, which would add the expression to the projections of its derived source and make both positions, so that the contract is the same wherever the query is: a key of an expression that the query sorts by requires the query to select it, and a field that `clearSelect` or a later selection removes is no longer selected.
+  - Lowering does not add the keys to the start of the order, which would hide that the rows are sorted by the keys first; rows in another order, such as the latest submission of each user, newest first, need a derived source of the first rows ([backlog](../BACKLOG.md#first-rows-in-another-order)).
+- The fields are not compared, so the query selects nested rows and literals; a query without a field that SQL selects rejects at lowering, since PostgreSQL requires a select list with `DISTINCT ON`.
+- A query of `distinctOn` that selects nested queries reads its first rows from a derived source where [SQL generation](sql.md#nested-rows) tells, so that its nested queries run only for the first rows.
+- With [`groupBy`](#groups), it keeps the first group of each key, such as the most common value of each key.
+- `distinct` and `distinctOn` reject each other, and so do a [row lock](#row-locks) and `distinctOn`, since PostgreSQL rejects a lock with `DISTINCT ON`; the aggregate methods and `exists` reject a query of `distinctOn` when they are called ([backlog](../BACKLOG.md#aggregates-of-distinct-rows)).
+  Types accept these calls, since they keep no part of the state for `distinctOn`.
+- [`update` and `delete`](mutations.md#rows-to-change) reject a query of `distinctOn`, and `isTableQuery` is false for it.
+- A helper that calls it passes types when it is applied to a query of one row and fails at runtime, as one of `distinct` does.
+- Its four overloads, as those of `orderBy`, add about 3 instantiations, 0.3%, to a [helper](#helpers) and about 6, 0.7%, to a helper of `map`; a call of a column takes about as many as one of `groupBy` or `orderBy` ([benchmark](../benchmarks/types/queries.bench.ts)).
+
 ## Row locks
 
 - `forUpdate`, `forNoKeyUpdate`, `forShare`, and `forKeyShare` make a query lock the rows it reads until its transaction ends, as the clauses of the same names of PostgreSQL ([PostgreSQL](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)); a later call replaces an earlier one.
@@ -220,7 +241,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     A nested query reads it too, so it does not find a record created after the statement started, which a concurrent transaction points a key at, and a required relation rejects with `RequiredRelationError`.
 - A row lock applies only to a query that returns rows of its table:
   - The methods reject an aggregate query and a query of `exists`, as types do by the `aggregate` part of the state; `map` sets that part too while it keeps the rows, so `LockableQueryState` also takes a query of `map`, and only the methods reject a conversion of an aggregate.
-  - They reject a query of `distinct` or [`groupBy`](#groups), and `distinct`, `groupBy`, the aggregate methods, and `exists` reject a query with a lock when they are called; types accept these calls, since they keep no part of the state for a lock.
+  - They reject a query of `distinct`, [`distinctOn`](#first-row-of-each-group), or [`groupBy`](#groups), and `distinct`, `distinctOn`, `groupBy`, the aggregate methods, and `exists` reject a query with a lock when they are called; types accept these calls, since they keep no part of the state for a lock.
     PostgreSQL rejects a lock beside an aggregate, `DISTINCT`, and `GROUP BY`, and takes it in `EXISTS`, where it would lock only the first row found.
   - [Mutations](mutations.md#rows-to-change) reject a query with a lock.
 - `$execute` rejects a select statement that locks rows at any depth without a statement where `isInTransaction` is `false`, as [`$lock`](transactions.md#locks) does; `compileStatement` tells it in `locksRows`.
@@ -229,7 +250,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Aggregates
 
-- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of [`exists`](#exists), or a query of [`distinct`](#distinct-rows): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
+- An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of [`exists`](#exists), or a query of [`distinct`](#distinct-rows) or [`distinctOn`](#first-row-of-each-group): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
   - `count` without an argument is `count(*)`; with a column or an expression, `count` and `countDistinct` count its values other than `NULL`, each distinct value once for `countDistinct`.
   - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `null` without values other than `NULL`.
   - The argument is a column key or a callback that returns an expression with a type or a query of one value, as of `get` and `pluck`.
@@ -277,7 +298,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 - Types do not check the columns outside the keys, which PostgreSQL rejects with SQLSTATE `42803`, naming the column.
   Types cannot decide what is valid: a key can be an expression over a column that is itself no key, a primary key makes the other columns of its table valid, and fragments are opaque; a partial check needs a new part of the state on every query.
 - `sum` and the others stay `T | null` in a group too, and `coalesce(sum(x), 0)` removes `null` ([backlog](../BACKLOG.md#nullability-of-aggregates-in-groups)).
-- The methods that choose rows and read values apply to the groups, as `limit`, `offset`, `take`, `get`, `pluck`, `distinct`, `map`, `transform`, and `use` do, and so do `in`, a nested selection, and `$select`.
+- The methods that choose rows and read values apply to the groups, as `limit`, `offset`, `take`, `get`, `pluck`, `distinct`, `distinctOn`, `map`, `transform`, and `use` do, and so do `in`, a nested selection, and `$select`.
   - `exists` tells whether the query has a group.
   - An aggregate method aggregates the groups: `.groupBy("a").count()` is the number of the groups, as `SELECT count(*) FROM (SELECT FROM t GROUP BY a HAVING ...) AS subquery`, and `.groupBy("a").max(p => sum(p.b))` is the largest sum of a group.
 - A [row lock](#row-locks) rejects a query of `groupBy`, and `groupBy` rejects a query with a row lock; [`update` and `delete`](mutations.md#rows-to-change) reject a query of `groupBy`, and `isTableQuery` is false for it.
@@ -299,7 +320,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Exists
 
-- `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of `exists`, or a query of [`distinct`](#distinct-rows): it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
+- `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of `exists`, or a query of [`distinct`](#distinct-rows) or [`distinctOn`](#first-row-of-each-group): it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
   - It checks the rows that the filters, the limit, and the offset of the query choose, or the groups of a query of [`groupBy`](#groups) with its keys and `having`, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
   - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`; selected as a field, `EXISTS (...)` in the select list rather than a packed row, unless [`map` or `transform` converts it](#converting-results); and in a condition, `EXISTS (...)`.
   - The methods that keep the rows apply to it as they apply before it, as to an aggregate query: `where`, `find`, and `findBy` restrict the rows that it checks, and `coalesce` keeps it as it is, since `EXISTS` is never `NULL`.
@@ -368,7 +389,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     The rejection of a Promise that it fails on stays handled, since it would otherwise end the process after the query has reported the failure.
   - A callback that throws fails decoding, as a decoder of a type does ([SQL generation](sql.md#result-decoding)).
 - They apply to a query of a table and to a [mutation](mutations.md#results); a query of `$select` and a [query of SQL text](sql-queries.md) lack them.
-- `map` keeps a query of a table a `SelectQuery`, so that the methods that choose its rows apply after it, such as to define a query with a helper once and filter it where it runs: `where`, `find`, `findBy`, `orderBy`, `limit`, `offset`, `distinct`, `take`, `optional`, `nullable`, `required`, `all`, and `use`.
+- `map` keeps a query of a table a `SelectQuery`, so that the methods that choose its rows apply after it, such as to define a query with a helper once and filter it where it runs: `where`, `find`, `findBy`, `orderBy`, `limit`, `offset`, `distinct`, `distinctOn`, `take`, `optional`, `nullable`, `required`, `all`, and `use`.
   - The methods that read or change the fields reject it, in types and at runtime, since the fields are what its callback receives: `select`, `clearSelect`, `get`, `pluck`, the aggregate methods, `exists`, `coalesce`, and `expr`.
   - In types, `map` sets the `value` part of the state to `"mapped"` and the `aggregate` part to `true`, so that the states that those methods narrow reject it, with no part of its own.
     A part of its own adds about 4 instantiations to each method that changes the state, up to 3% of a query, as the `aggregate` part does ([benchmark](../benchmarks/types/queries.bench.ts)), and the narrowed states would need to name it, which also rejects a function generic over the state that narrows only `value` or `aggregate`.

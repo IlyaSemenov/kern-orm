@@ -822,7 +822,7 @@ export class SelectQuery<
         "groupBy cannot be used after a row lock, since a group comes from several rows of the table",
       )
     }
-    return this.derive({ groupBy: addGroupKeys(this.node, this.context, args) })
+    return this.derive({ groupBy: addGroupKeys("groupBy", this.node, this.context, args) })
   }
 
   // A query whose row no relation guarantees keeps its state, as for `where`.
@@ -919,12 +919,83 @@ export class SelectQuery<
     if (this.node.rows !== "many") {
       throw new Error("distinct applies only to a query of many rows")
     }
+    if (this.node.distinctOn.length > 0) {
+      throw new Error("distinct cannot be used after distinctOn, which compares only its keys")
+    }
     if (this.node.lock !== undefined) {
       throw new Error(
         "distinct cannot be used after a row lock, since a row without duplicates comes from several rows of the table",
       )
     }
     return this.derive({ distinct: true })
+  }
+
+  // It keeps the state, as `distinct` and `groupBy` do, so that a conditional call can assign the query back to its variable.
+  /**
+   * Keeps the first row of each group of the rows of a query of many rows with equal values of the keys returned by `callback`, after the keys of earlier calls, such as the latest submission of each user.
+   *
+   * `callback` receives the columns with the queries of the relations of the table, and the fields selected so far, and returns an expression or a query of one value, or an array of them; a field of nested rows or of a literal cannot be a key.
+   * Sort the query by the keys first, then by the order that chooses the first row of each group; the rows keep that order.
+   * To sort by a key of an expression, select it and take it from the second parameter of the callbacks of `distinctOn` and `orderBy`.
+   * The aggregate methods and `exists` reject the query after it.
+   */
+  distinctOn<Q extends QueryOf<RecordQueryState & ManyRowsQueryState>>(
+    this: Q,
+    callback: (
+      // An intersection rather than one alias of both, as for the callback of `select`.
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
+      selected: SelectedRefs<Q["types"]["result"]>,
+    ) => GroupTerms,
+  ): Q
+  /**
+   * Keeps the first value of each group of the values of a query made by `pluck` with equal values of the keys returned by `callback`, after the keys of earlier calls.
+   *
+   * `callback` receives the columns with the queries of the relations of the table, and the expression of the value, and returns what `distinctOn` of a query of records takes.
+   */
+  distinctOn<Q extends QueryOf<ValueQueryState & ManyRowsQueryState>>(
+    this: Q,
+    callback: (
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
+      value: AnyExpression<Q["types"]["result"]>,
+    ) => GroupTerms,
+  ): Q
+  /**
+   * Keeps the first row of each group of the rows of a query that `map` converts with equal values of the keys returned by `callback`, after the keys of earlier calls.
+   *
+   * `callback` receives the columns with the queries of the relations of the table, and returns what `distinctOn` of a query of records takes.
+   */
+  distinctOn<Q extends QueryOf<MappedQueryState & ManyRowsQueryState>>(
+    this: Q,
+    callback: (
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
+    ) => GroupTerms,
+  ): Q
+  /**
+   * Keeps the first row of each group of the rows of a query of many rows with equal values of the listed columns, after the keys of earlier calls, such as the latest submission of each user.
+   *
+   * Sort the query by the keys first, then by the order that chooses the first row of each group; the rows keep that order.
+   */
+  distinctOn<Q extends QueryOf<ManyRowsQueryState>>(
+    this: Q,
+    ...keys: (keyof Q["types"]["table"]["columns"] & string)[]
+  ): Q
+  distinctOn(...args: unknown[]): unknown {
+    const { node } = this
+    // Rows `one` must find a second row to reject it, which `distinctOn` could hide, as `distinct` could.
+    if (node.rows !== "many") {
+      throw new Error("distinctOn applies only to a query of many rows")
+    }
+    if (node.distinct) {
+      throw new Error(
+        "distinctOn cannot be used after distinct, which compares every selected field",
+      )
+    }
+    if (node.lock !== undefined) {
+      throw new Error(
+        "distinctOn cannot be used after a row lock; PostgreSQL does not allow row locks with DISTINCT ON",
+      )
+    }
+    return this.derive({ distinctOn: addGroupKeys("distinctOn", node, this.context, args) })
   }
 
   // They keep the state, as `distinct` does, so that a conditional call can assign the query back to its variable.
@@ -935,7 +1006,7 @@ export class SelectQuery<
    * Without `options`, the query waits for the rows that another transaction has locked.
    *
    * It requires a transaction, unless the query is part of a mutation, such as of its filter.
-   * The query cannot use `distinct` or `groupBy`, and the aggregate methods and `exists` reject it after the lock.
+   * The query cannot use `distinct`, `distinctOn`, or `groupBy`, and the aggregate methods and `exists` reject it after the lock.
    */
   forUpdate<Q extends QueryOf<LockableQueryState>>(this: Q, options?: RowLockOptions): Q
   forUpdate(options?: RowLockOptions): unknown {
@@ -1314,14 +1385,18 @@ export class SelectQuery<
   }
 
   // They replace the fields that `distinct` compares, so nothing tells which rows they would read.
+  // An aggregate of the first rows of `distinctOn` would need a derived source of them, which lowering builds only for nested queries.
   // PostgreSQL rejects a lock beside an aggregate, and `EXISTS` would lock only the first row that it finds.
-  /** Rejects `method`, an aggregate method or `exists`, on a query made by one of them, of `distinct`, or with a row lock. */
+  /** Rejects `method`, an aggregate method or `exists`, on a query made by one of them, of `distinct` or `distinctOn`, or with a row lock. */
   private rejectAggregation(method: string): void {
     this.rejectAggregate(method)
     if (this.node.distinct) {
       throw new Error(
         `${method} cannot be used after distinct, whose selected fields it replaces; to count distinct values, call countDistinct without distinct`,
       )
+    }
+    if (this.node.distinctOn.length > 0) {
+      throw new Error(`${method} cannot be used after distinctOn`)
     }
     if (this.node.lock !== undefined) {
       throw new Error(

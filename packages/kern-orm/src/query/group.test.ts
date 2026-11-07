@@ -120,7 +120,9 @@ describe("groupBy", () => {
 
     expect(() => fields.groupBy()).toThrow(message)
     expect(() => fields.groupBy(() => [])).toThrow(message)
-    expect(() => addGroupKeys(fields.groupBy("label").node, noContext, [])).toThrow(message)
+    expect(() => addGroupKeys("groupBy", fields.groupBy("label").node, noContext, [])).toThrow(
+      message,
+    )
   })
 
   it("rejects what is not a key", () => {

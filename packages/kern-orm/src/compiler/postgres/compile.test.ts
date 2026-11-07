@@ -964,6 +964,29 @@ describe("groups", () => {
   })
 })
 
+describe("keys of DISTINCT ON", () => {
+  const source = from(post).node.from
+  const title = createRef(source, "title")
+  const columns = createColumnRefs<typeof post>(source)
+
+  it("compiles a key as the position of the projection of the same column or expression node, and another key as its expression, before the select list in the order of the parameters", () => {
+    const shifted = toNode(sql(t.text)`${columns.title} || ${"x"}`)
+    const node: SelectNode = {
+      ...createSelectNode(source, [
+        { key: "shifted", expression: shifted, type: t.text },
+        { key: "heading", expression: title, type: t.text },
+        { key: "suffix", expression: toNode(sql(t.text)`${"y"}`), type: t.text },
+      ]),
+      distinctOn: [title, shifted, toNode(sql(t.text)`${columns.id} || ${"z"}`)],
+    }
+
+    expect(compileStatement(node)).toMatchObject({
+      text: 'SELECT DISTINCT ON (2, 1, "post"."id" || $1) "post"."title" || $2 AS "shifted", "post"."title" AS "heading", $3 AS "suffix" FROM "post" AS "post"',
+      parameters: ["z", "x", "y"],
+    })
+  })
+})
+
 describe("row locks", () => {
   const posts = from(post)
 

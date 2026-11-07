@@ -30,9 +30,10 @@ const form = defineTable("form", {
   status: t.text,
   group: t.integer,
   threshold: t.boolean,
+  category: t.integer,
 })
 
-it("collects the keys of the columns of a source at any depth of the queries nested in an expression, also of IN and of SQL text", () => {
+it("collects the keys of the columns of a source at any depth of the queries nested in an expression, also of IN, of SQL text, and of the keys of DISTINCT ON", () => {
   const outer = from(form).node.from
   const inner = from(form).node.from
   const joined = from(form).node.from
@@ -74,6 +75,7 @@ it("collects the keys of the columns of a source at any depth of the queries nes
         ),
       ),
     },
+    distinctOn: [createRef(outer, "category")],
     groupBy: [createRef(outer, "group")],
     having: createRef(outer, "threshold"),
     orderBy: [createOrder(createRef(outer, "position"))],
@@ -85,6 +87,7 @@ it("collects the keys of the columns of a source at any depth of the queries nes
   expect([...keys]).toEqual([
     "id",
     "ownerId",
+    "category",
     "name",
     "rank",
     "status",

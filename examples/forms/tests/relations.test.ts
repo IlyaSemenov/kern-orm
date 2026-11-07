@@ -4,6 +4,7 @@ import {
   formActivity,
   getSubmissionReview,
   listFieldConditions,
+  listLatestComments,
   listUserActivity,
 } from "../src/queries"
 import { describePostgres, getSampleId } from "../testing/postgres"
@@ -91,6 +92,18 @@ describePostgres("relations in PostgreSQL", ({ testTransaction, tenantDb, saasDb
           { text: "Approved", answer: undefined },
         ],
       },
+    ])
+  })
+
+  it("give the latest comment on each submission with its author", async () => {
+    const comments = await testTransaction(() =>
+      inTenant("tenant_1", () => listLatestComments(tenantDb)),
+    )
+
+    // The comments come in the order of the IDs of their submissions.
+    expect(comments).toStrictEqual([
+      { text: "Thanks", author: "ada@example.com" },
+      { text: "Approved", author: "grace@example.com" },
     ])
   })
 

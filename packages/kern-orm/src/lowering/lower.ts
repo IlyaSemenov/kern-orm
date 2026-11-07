@@ -17,7 +17,7 @@ import type {
   TextStatementNode,
 } from "../ast/nodes"
 import { createList, createNode, noFilters, noOrder } from "../ast/nodes"
-import { findValueProjection } from "../ast/projections"
+import { findValueProjection, isSameValue } from "../ast/projections"
 import { collectColumnKeys, mayAggregateSource } from "../ast/references"
 import type { AnyDb } from "../execution/db"
 import type { AggregateProjection } from "../query/aggregate"
@@ -226,9 +226,13 @@ function lowerSelectStatement(
   const projections = lowerProjections(selected, context)
   const filters = lowerFilters(node.filters, context)
   const orderBy = lowerOrder(node.orderBy, context, selected, projections)
-  const groupBy = lowerGroupBy(node.groupBy, context, selected, projections)
+  const groupBy = lowerKeys(node.groupBy, context, selected, projections)
+  const distinctOn = lowerKeys(node.distinctOn, context, selected, projections)
   if (node.distinct) {
     checkDistinct(projections, orderBy)
+  }
+  if (distinctOn !== undefined) {
+    checkDistinctOn(projections, distinctOn, orderBy)
   }
   const { relation } = node
   // Without its row, such a query breaks the promise of the relation rather than missing a record it looks up.
@@ -237,21 +241,23 @@ function lowerSelectStatement(
       ? formatRelationName(relation.key, relation.name)
       : undefined
   // PostgreSQL evaluates the select list also for the rows that an offset skips, so the nested queries of a page after an offset read its rows from a derived source.
+  // Without a limit, it evaluates the select list of `DISTINCT ON` also for the rows after the first of each group, so the nested queries of a query of `distinctOn` read its first rows from a derived source too.
   // A query of `distinct` compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway.
   // A query with a row lock stays on its table too, since PostgreSQL evaluates the select list below the lock there, whereas a derived page would lock its rows before the nested queries that read them lock theirs.
-  // A query of groups stays on its table as well, so it evaluates its nested queries also for the groups that an offset skips.
+  // A query of groups stays on its table as well, so it evaluates its nested queries also for the groups that an offset or `distinctOn` skips.
   const page =
-    node.offset !== undefined &&
+    (node.offset !== undefined || distinctOn !== undefined) &&
     !node.distinct &&
     groupBy === undefined &&
     node.lock === undefined &&
-    selected.some((field, index) => isPagedField(field, projections[index]!, orderBy))
+    selected.some((field, index) => isPagedField(field, projections[index]!, orderBy, distinctOn))
       ? lowerPage(
           node,
           selected,
           projections,
           filters,
           orderBy,
+          distinctOn,
           positions,
           guaranteedBy,
           recordTemplate,
@@ -272,6 +278,7 @@ function lowerSelectStatement(
     limit: node.limit,
     offset: node.offset,
     distinct: node.distinct,
+    distinctOn,
     lock: node.lock,
     rows: node.rows,
     value: node.value,
@@ -311,6 +318,47 @@ function checkDistinct(
   }
 }
 
+/**
+ * Rejects a query of `distinctOn` of the lowered `projections`, `keys`, and `orderBy` that `SELECT DISTINCT ON` cannot give the rows of, with an error that does not depend on where the query is:
+ *
+ * - A query without projections, such as of only literals, since PostgreSQL requires a select list with `DISTINCT ON`.
+ * - An order that sorts by a value other than the keys before it sorts by all of them, in any order and direction, which PostgreSQL rejects, since the order sorts the groups apart and then chooses the first row of each; an order of only keys may omit some, which PostgreSQL adds.
+ *   A sort key is a key when it is the same column, or the same expression node that a projection of the query has, as `findValueProjection` tells, so that both compile to the same column or position.
+ *   Another expression may compile at each place with parameters and aliases of its own, so PostgreSQL may find the two unequal; the check runs before packing, which would add the expression to the projections of its derived source and make both positions, so that it counts as another value wherever the query is.
+ */
+function checkDistinctOn(
+  projections: readonly ProjectionNode[],
+  keys: readonly ExpressionNode[],
+  orderBy: readonly OrderNode[],
+): void {
+  if (projections.length === 0) {
+    throw new Error(
+      "distinctOn requires at least one selected column or SQL expression; literal fields are not selected",
+    )
+  }
+  const isKey = (key: ExpressionNode, expression: ExpressionNode) =>
+    isSameValue(key, expression) &&
+    (key.kind === "column" || findValueProjection(projections, key) !== -1)
+  let leading = 0
+  while (leading < orderBy.length && keys.some(key => isKey(key, orderBy[leading]!.expression))) {
+    leading++
+  }
+  if (leading === orderBy.length) {
+    return
+  }
+  for (const key of keys) {
+    let sorted = false
+    for (let index = 0; index < leading && !sorted; index++) {
+      sorted = isKey(key, orderBy[index]!.expression)
+    }
+    if (!sorted) {
+      throw new Error(
+        "A query of distinctOn must sort by all its keys before any other value; sort by a key of an expression through its selected field",
+      )
+    }
+  }
+}
+
 /** Returns the fields of `selected` that a statement selects, or `selected` itself without literals. */
 function dropLiterals(selected: readonly SelectedNode[]): readonly SqlSelectedNode[] {
   if (!selected.some(isLiteralSelection)) {
@@ -345,20 +393,24 @@ function createRecordTemplate(
 }
 
 /**
- * Tells whether `field`, a field of a query lowered to `projection`, is a nested query that a page after an offset evaluates only over its rows: one that no sort key of `orderBy`, the lowered order, sorts by.
+ * Tells whether `field`, a field of a query lowered to `projection`, is a nested query that a derived page evaluates only over its rows: one that no sort key of `orderBy`, the lowered order, sorts by, and that is none of `distinctOn`, the lowered keys of `distinctOn`.
  *
- * The query evaluates a field that it sorts by, of an aggregate or of `exists`, for every row anyway.
+ * The query evaluates a field that it sorts by or compares, of an aggregate or of `exists`, for every row anyway.
  */
 function isPagedField(
   field: SqlSelectedNode,
   projection: ProjectionNode,
   orderBy: readonly OrderNode[],
+  distinctOn: readonly ExpressionNode[] | undefined,
 ): boolean {
   if (!isNestedSelection(field)) {
     return false
   }
   const { expression } = projection
-  return !orderBy.some(order => order.expression === expression)
+  return (
+    !orderBy.some(order => order.expression === expression) &&
+    (distinctOn === undefined || !distinctOn.includes(expression))
+  )
 }
 
 /** Rejects a query of a relation outside the definitions of `context`. */
@@ -386,9 +438,10 @@ function checkDb(db: AnyDb | undefined, context: LoweringContext, subject: strin
 }
 
 /**
- * Lowers `node` with `projections`, `filters`, and `orderBy`, the lowered parts of the node, to a statement that evaluates its nested queries, apart from those that it sorts by, over the rows of a derived page.
+ * Lowers `node` with `projections`, `filters`, `orderBy`, and `distinctOn`, the lowered parts of the node, to a statement that evaluates its nested queries, apart from those that it sorts by or compares, over the rows of a derived page.
  * `queryFields` are the fields of the query without literals, and `projections` their lowered projections in the same order.
- * The derived source applies the filters, the order, the limit, and the offset, and replaces the occurrence of the table.
+ * The derived source applies `DISTINCT ON`, the filters, the order, the limit, and the offset, and replaces the occurrence of the table.
+ * It selects each key of `distinctOn` that it does not select otherwise, so that it has a select list, which PostgreSQL requires with `DISTINCT ON`, and evaluates each key once.
  *
  * It returns `undefined` when `mayAggregateSource` tells that a nested query that it evaluates over the rows of the page may aggregate the rows of the query, which the limit and the offset apply after.
  *
@@ -403,6 +456,7 @@ function lowerPage(
   projections: readonly ProjectionNode[],
   filters: QueryFilters,
   orderBy: readonly OrderNode[],
+  distinctOn: readonly ExpressionNode[] | undefined,
   positions: boolean,
   guaranteedBy: string | undefined,
   recordTemplate: readonly RecordTemplateField[] | undefined,
@@ -415,7 +469,7 @@ function lowerPage(
   for (let index = 0; index < projections.length; index++) {
     const { expression } = projections[index]!
     let key: string | undefined
-    if (isPagedField(queryFields[index]!, projections[index]!, orderBy)) {
+    if (isPagedField(queryFields[index]!, projections[index]!, orderBy, distinctOn)) {
       if (mayAggregateSource(expression, from)) {
         return undefined
       }
@@ -442,6 +496,14 @@ function lowerPage(
   for (const field of fields) {
     sourced.push(field)
   }
+  if (distinctOn !== undefined) {
+    for (let index = 0; index < distinctOn.length; index++) {
+      const key = distinctOn[index]!
+      if (findValueProjection(sourced, key) === -1) {
+        sourced.push(Object.freeze({ key: `$key${index + 1}`, expression: key, type: text }))
+      }
+    }
+  }
   const page = deriveOrderedSource(
     {
       kind: "select",
@@ -452,6 +514,7 @@ function lowerPage(
       orderBy,
       limit: node.limit,
       offset: node.offset,
+      distinctOn,
       rows: "many",
       value: false,
       guaranteedBy: undefined,
@@ -498,7 +561,7 @@ function lowerAggregate(node: QueryNode, context: LoweringContext): SelectNode<S
   const aggregate = field.expression
   const orderBy = lowerOrder(node.orderBy, context)
   let from: SourceNode = node.from
-  const groupBy = lowerGroupBy(node.groupBy, context)
+  const groupBy = lowerKeys(node.groupBy, context)
   let filters = lowerFilters(node.filters, context)
   let args = lowerEach(aggregate.arguments, context, lowerExpression)
   let order = field.ordered ? orderBy : noOrder
@@ -647,7 +710,7 @@ function lowerExists(node: QueryNode, context: LoweringContext): ExistsNode {
       joins: noJoins,
       projections: noProjections,
       filters: lowerFilters(node.filters, context),
-      groupBy: lowerGroupBy(node.groupBy, context),
+      groupBy: lowerKeys(node.groupBy, context),
       having: lowerValue(node.having, context),
       orderBy: noOrder,
       limit: node.limit,
@@ -809,11 +872,11 @@ function lowerOrder(
 }
 
 /**
- * Lowers the keys of `groupBy` of a query, or `undefined` for a query without them.
+ * Lowers the keys of `groupBy` or `distinctOn` of a query, or `undefined` for a query without them.
  *
  * Each key is lowered by `lowerSelectedValue` over `selected`, the fields of the query, and `projections`, their lowered projections.
  */
-function lowerGroupBy(
+function lowerKeys(
   keys: readonly ExpressionNode[],
   context: LoweringContext,
   selected?: readonly SqlSelectedNode[],
@@ -962,9 +1025,9 @@ function lowerQueryOfValues(node: NestedQueryNode, context: LoweringContext): Se
   return lowerSelect(node.query, context, sortsByPositions(node.query))
 }
 
-/** Tells whether the statement of `node` in a subquery sorts by the positions of its projections: PostgreSQL finds a sort expression of `SELECT DISTINCT` or `GROUP BY` only when it is equal to a selected one or a key, and a repeated expression has aliases of its own and, apart from the parameters of casts in a query of groups, parameters of its own. */
+/** Tells whether the statement of `node` in a subquery sorts by the positions of its projections: PostgreSQL finds a sort expression of `SELECT DISTINCT` or `GROUP BY` only when it is equal to a selected one or a key, and the keys of `DISTINCT ON` with the order only when they are equal, while a repeated expression has aliases of its own and, apart from the parameters of casts in a query of groups, parameters of its own. */
 function sortsByPositions(node: QueryNode): boolean {
-  return node.distinct || node.groupBy.length > 0
+  return node.distinct || node.distinctOn.length > 0 || node.groupBy.length > 0
 }
 
 /** Lowers each of `items` with `lower`; when none changes, it returns `items` itself. */

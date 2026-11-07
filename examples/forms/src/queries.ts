@@ -263,6 +263,17 @@ export async function getSubmissionReview(db: DbOf<typeof tenantSchema>, submiss
   }))
 }
 
+/** Returns the latest comment on each submission with its author through the `Db` of a tenant. */
+export async function listLatestComments(db: DbOf<typeof tenantSchema>) {
+  return await db.comment
+    .distinctOn("submissionId")
+    .orderBy("submissionId", { createdAt: "desc" })
+    .select("text")
+    .select(comment => ({
+      author: comment.author.get("email"),
+    }))
+}
+
 /** Returns the users of a tenant by email with the numbers of the submissions they filled in and reviewed, and their comments with the answers they are on. */
 export async function listUserActivity(db: DbOf<typeof tenantSchema>) {
   return await db.user

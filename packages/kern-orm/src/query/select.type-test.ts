@@ -1045,6 +1045,61 @@ describe("distinct", () => {
   })
 })
 
+describe("distinctOn", () => {
+  test("keeps the state of a query of many rows, so that a conditional call assigns back to its variable", () => {
+    const base = from(post).select("id")
+    expectTypeOf(base.distinctOn("title")).toEqualTypeOf<typeof base>()
+
+    let query = base
+    query = query.distinctOn("title", "hint")
+    expectTypeOf(query.select("title").take()).toEqualTypeOf(base.select("title").take())
+  })
+
+  test("passes the columns and the selected fields to the callback of a query of records, the value to that of pluck, and only the columns to that of map", () => {
+    const selected = from(post)
+      .select("id")
+      .distinctOn((columns, fields) => {
+        expectTypeOf(fields.id).toEqualTypeOf<AnyExpression<string>>()
+        return [columns.title, fields.id]
+      })
+    expectTypeOf<Executed<typeof selected>>().toEqualTypeOf<{ id: string }[]>()
+
+    const titles = from(post)
+      .pluck("hint")
+      .distinctOn((columns, value) => {
+        expectTypeOf(value).toEqualTypeOf<AnyExpression<string | null>>()
+        return [value, columns.title]
+      })
+    expectTypeOf<Executed<typeof titles>>().toEqualTypeOf<(string | null)[]>()
+
+    const mapped = from(post)
+      .select("title")
+      .map(row => row.title.length)
+      .distinctOn((...args) => {
+        expectTypeOf(args).toEqualTypeOf<[ColumnRefs<typeof post> & EmptyRecord]>()
+        return args[0].title
+      })
+    expectTypeOf<Executed<typeof mapped>>().toEqualTypeOf<number[]>()
+  })
+
+  test("rejects a query of one row and a key that is no column", () => {
+    // @ts-expect-error A query of one row must find a second row to reject it.
+    from(post).take().distinctOn("title")
+    // @ts-expect-error A query of one row must find a second row to reject it.
+    from(post).get("title").distinctOn("title")
+    // @ts-expect-error An aggregate query has one row.
+    from(post).count().distinctOn("title")
+    from(post)
+      .select(columns => ({
+        heading: columns.title,
+      }))
+      // @ts-expect-error A selected field is no column.
+      .distinctOn("heading")
+    // @ts-expect-error A key is an expression or a query of one value.
+    from(post).distinctOn(() => "title")
+  })
+})
+
 describe("row locks", () => {
   test("keep the state of a query of any rows, so that a conditional call assigns back to its variable", () => {
     const base = from(post).select("id")

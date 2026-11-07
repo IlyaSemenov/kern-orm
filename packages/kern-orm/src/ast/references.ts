@@ -116,6 +116,11 @@ function visitQuery(query: SelectNode, visit: (node: ExpressionNode) => void): v
     }
     visitNodes(join.on, visit)
   }
+  if (query.distinctOn !== undefined) {
+    for (const key of query.distinctOn) {
+      visitNodes(key, visit)
+    }
+  }
   for (const projection of query.projections) {
     visitNodes(projection.expression, visit)
   }

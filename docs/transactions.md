@@ -156,7 +156,7 @@ const jobIds = await db.job
 
 A [nested transaction](#nested-transactions) that rolls back releases the locks it took.
 
-A query with [`distinct`](./queries/selecting#distinct-rows) or [`groupBy`](./queries/grouping) cannot lock rows, and aggregates, `exists`, and `groupBy` cannot be called on a query that locks them.
+A query with [`distinct`](./queries/selecting#distinct-rows), [`distinctOn`](./queries/selecting#first-row-of-each-group), or [`groupBy`](./queries/grouping) cannot lock rows, and aggregates, `exists`, `distinctOn`, and `groupBy` cannot be called on a query that locks them.
 `update` and `delete` lock the rows they change themselves, so their queries take no lock.
 
 ## Advisory locks

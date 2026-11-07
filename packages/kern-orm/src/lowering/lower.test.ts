@@ -931,6 +931,149 @@ describe("query of distinct", () => {
   })
 })
 
+describe("query of distinctOn", () => {
+  const compile = (query: AnySelectQuery) => compileStatement(lowerStatement(query.node)).text
+  const message =
+    "A query of distinctOn must sort by all its keys before any other value; sort by a key of an expression through its selected field"
+  const keyed = schema.field.distinctOn("formId", "label").select("id")
+  const bucket = (field: { id: AnyExpression<number> }) => sql(t.integer)`${field.id} % ${3}`
+  const buckets = schema.field
+    .select(field => ({
+      bucket: bucket(field),
+      id: field.id,
+    }))
+    .distinctOn((_field, selected) => selected.bucket)
+    .orderBy((field, selected) => [selected.bucket, desc(field.id)])
+
+  it("takes an order that sorts by all its keys first, in any order and direction, an order of only some keys, or none", () => {
+    expect(compile(keyed.orderBy({ label: "desc" }, "formId", "id", "label"))).toBe(
+      'SELECT DISTINCT ON ("form_field"."formId", "form_field"."label") "form_field"."id" AS "id" FROM "form_field" AS "form_field" ORDER BY "form_field"."label" DESC, "form_field"."formId", 1, "form_field"."label"',
+    )
+    expect(compile(keyed.orderBy("formId"))).toEndWith('ORDER BY "form_field"."formId"')
+    expect(compile(keyed)).toBe(
+      'SELECT DISTINCT ON ("form_field"."formId", "form_field"."label") "form_field"."id" AS "id" FROM "form_field" AS "form_field"',
+    )
+  })
+
+  it("rejects an order that sorts by another value before all its keys, wherever the query is", () => {
+    for (const order of [["id", "formId", "label"] as const, ["formId", "id"] as const]) {
+      const query = keyed.orderBy(...order)
+      expect(() => lowerStatement(query.node)).toThrow(message)
+      expect(() => lowerQuery(query.node)).toThrow(message)
+      expect(() =>
+        lowerStatement(
+          schema.form.select(form => ({
+            fields: form.fields
+              .distinctOn("formId", "label")
+              .select("id")
+              .orderBy(...order),
+          })).node,
+        ),
+      ).toThrow(message)
+      expect(() =>
+        lowerStatement(schema.form.where(form => form.id.in(query.pluck("id"))).node),
+      ).toThrow(message)
+    }
+    // Only the same node is sure to have the value of the key.
+    expect(() =>
+      lowerStatement(
+        schema.field
+          .select("id")
+          .distinctOn(field => sql(t.text)`upper(${field.label})`)
+          .orderBy(field => [sql(t.text)`upper(${field.label})`, field.id]).node,
+      ),
+    ).toThrow(message)
+  })
+
+  it("compiles a key of a selected expression with parameters and its sort key as the position of its projection, also as a subquery, and rejects them once the query no longer selects it, whose copies would have parameters of their own", () => {
+    const text =
+      'SELECT DISTINCT ON (1) "form_field"."id" % $1 AS "bucket", "form_field"."id" AS "id" FROM "form_field" AS "form_field" ORDER BY 1, 2 DESC'
+
+    expect(compile(buckets)).toBe(text)
+    expect(compile(schema.form.where(form => sql<boolean>`${form.id} IN ${buckets}`))).toBe(
+      `SELECT FROM "form" AS "form" WHERE "form"."id" IN (${text})`,
+    )
+    for (const query of [
+      buckets.clearSelect().select("id"),
+      buckets.select(field => ({
+        bucket: bucket(field),
+      })),
+    ]) {
+      expect(() => lowerStatement(query.node)).toThrow(message)
+      expect(() => lowerStatement(schema.$select({ rows: query }).node)).toThrow(message)
+      expect(() =>
+        lowerStatement(schema.form.where(form => form.id.in(query.pluck("id"))).node),
+      ).toThrow(message)
+    }
+  })
+
+  it("rejects a query without fields that SQL selects, which PostgreSQL has no syntax for", () => {
+    const expected =
+      "distinctOn requires at least one selected column or SQL expression; literal fields are not selected"
+
+    for (const { node } of [
+      schema.field.distinctOn("formId"),
+      schema.field
+        .select(() => ({
+          kind: literal("field"),
+        }))
+        .distinctOn("formId"),
+    ]) {
+      expect(() => lowerStatement(node)).toThrow(expected)
+      expect(() => lowerQuery(node)).toThrow(expected)
+    }
+  })
+
+  it("reads the first rows of a query that selects nested queries from a derived source, which selects its keys and applies its page, and sorts them again", () => {
+    const first = schema.field
+      .distinctOn("formId")
+      .orderBy("formId", { id: "desc" })
+      .select(field => ({
+        options: field.options.pluck("fieldId"),
+      }))
+
+    expect(compile(first)).toEndWith(
+      ' FROM (SELECT DISTINCT ON (2) "form_field_2"."id" AS "id", "form_field_2"."formId" AS "$key1" FROM "form_field" AS "form_field_2" ORDER BY 2, 1 DESC) AS "form_field" ORDER BY "form_field"."$key1", "form_field"."id" DESC',
+    )
+    expect(compile(first.limit(2).offset(1))).toEndWith(
+      ' FROM (SELECT DISTINCT ON (2) "form_field_2"."id" AS "id", "form_field_2"."formId" AS "$key1" FROM "form_field" AS "form_field_2" ORDER BY 2, 1 DESC LIMIT $1 OFFSET $2) AS "form_field" ORDER BY "form_field"."$key1", "form_field"."id" DESC',
+    )
+  })
+
+  it("evaluates a field of an aggregate that is a key in the derived source of the first rows", () => {
+    const first = schema.form
+      .select(form => ({
+        fieldCount: form.fields.count(),
+        labels: form.fields.pluck("label"),
+      }))
+      .distinctOn((_form, selected) => selected.fieldCount)
+
+    expect(compile(first)).toEndWith(
+      ' FROM (SELECT DISTINCT ON (2) "form_2"."id" AS "id", (SELECT count(*) AS "count" FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form_2"."id") AS "$field1" FROM "form" AS "form_2") AS "form"',
+    )
+  })
+
+  it("keeps the first rows of a query of groups and of a query whose nested query may aggregate its rows on its table", () => {
+    expect(
+      compile(
+        schema.field
+          .groupBy("formId")
+          .distinctOn("formId")
+          .select(field => ({
+            form: field.form.select("id"),
+          })),
+      ),
+    ).toEndWith(' FROM "form_field" AS "form_field" GROUP BY "form_field"."formId"')
+    expect(
+      compile(
+        schema.field.distinctOn("formId").select(field => ({
+          total: schema.form.get(() => sum(field.id)),
+        })),
+      ),
+    ).toEndWith(' FROM "form_field" AS "form_field"')
+  })
+})
+
 describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }) => {
   useTestFixture(() =>
     database.script(`
@@ -1504,6 +1647,118 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       )
 
       expect(rows).toEqual([{ residue: 1, count: 1 }])
+    })
+  })
+
+  describe("query of distinctOn", () => {
+    const entry = defineTable("entry", {
+      id: t.integer,
+      author: t.integer.nullable(),
+      kind: t.text,
+    })
+    const entryDb = database.bind(defineSchema({ entry }))
+    /** Runs `callback` in a test transaction with entries of the authors `1`, `2`, and `NULL`, of the kinds `a` and `b`, whose ids grow with time. */
+    const withEntries = <T>(callback: () => Promise<T>) =>
+      testTransaction(async () => {
+        await database.script(`
+          CREATE TABLE entry (id integer, author integer, kind text);
+          INSERT INTO entry VALUES
+            (1, 1, 'a'), (2, 1, 'a'), (3, 1, 'b'),
+            (4, 2, 'b'), (5, 2, 'b'), (6, 2, 'a'),
+            (7, NULL, 'a'), (8, NULL, 'b');
+        `)
+        return await callback()
+      })
+    const latest = entryDb.entry.distinctOn("author").orderBy("author", { id: "desc" })
+
+    it("keeps the first row of each group in the order of the query, with NULL keys in one group, executed, as a page, of one row, in in, and nested", async () => {
+      const results = await withEntries(async () => ({
+        executed: await latest.select("author", "id"),
+        page: await latest.offset(1).limit(1).pluck("id"),
+        first: await latest.get("id"),
+        inList: await entryDb.entry
+          .where(other => other.id.in(latest.pluck("id")))
+          .orderBy("id")
+          .pluck("id"),
+        nested: await entryDb.$select({
+          ids: latest.pluck("id"),
+          first: latest.select("kind").take(),
+        }),
+      }))
+
+      expect(results).toStrictEqual({
+        executed: [
+          { author: 1, id: 3 },
+          { author: 2, id: 6 },
+          { author: null, id: 8 },
+        ],
+        page: [6],
+        first: 3,
+        inList: [3, 6, 8],
+        nested: { ids: [3, 6, 8], first: { kind: "b" } },
+      })
+    })
+
+    it("evaluates the nested queries of the first rows once for each group, executed and nested", async () => {
+      const numbered = latest.select(row => ({
+        id: row.id,
+        number: entryDb.entry
+          .where(other => other.id.eq(row.id))
+          .get(() => sql(t.integer)`nextval('nested_sequence')::integer`),
+      }))
+      const run = (execute: () => Promise<readonly { id: number }[]>) =>
+        withEntries(async () => {
+          await database.script("CREATE SEQUENCE nested_sequence")
+          const rows = await execute()
+          const evaluations = await database.query`SELECT currval('nested_sequence')`.get(t.integer)
+          return { ids: rows.map(row => row.id), evaluations }
+        })
+
+      expect(await run(async () => await numbered)).toEqual({ ids: [3, 6, 8], evaluations: 3 })
+      expect(await run(async () => (await entryDb.$select({ rows: numbered })).rows)).toEqual({
+        ids: [3, 6, 8],
+        evaluations: 3,
+      })
+    })
+
+    it("keeps the first group of each key of a query of groups, such as the most common kind of each author", async () => {
+      const kinds = entryDb.entry
+        .groupBy("author", "kind")
+        .distinctOn("author")
+        .orderBy(row => [row.author, desc(count()), row.kind])
+        .select("author", "kind")
+
+      expect(await withEntries(async () => await kinds)).toStrictEqual([
+        { author: 1, kind: "a" },
+        { author: 2, kind: "b" },
+        { author: null, kind: "a" },
+      ])
+    })
+
+    it("sorts by a selected key of an expression with parameters, executed, nested, and in SQL text", async () => {
+      const residues = db.form
+        .select(form => ({
+          residue: sql(t.integer)`${form.id} % ${3}`,
+          id: form.id,
+        }))
+        .distinctOn((_form, selected) => selected.residue)
+        .orderBy((form, selected) => [selected.residue, desc(form.id)])
+
+      const results = await testTransaction(async () => ({
+        executed: await residues,
+        nested: await db.$select({ rows: residues }),
+        text: await db.form
+          .where(form => sql<boolean>`${form.id} IN (SELECT r.id FROM ${residues} AS r)`)
+          .orderBy("id")
+          .pluck("id"),
+      }))
+
+      const rows = [
+        { residue: 0, id: 18 },
+        { residue: 1, id: 19 },
+        { residue: 2, id: 20 },
+      ]
+      expect(results).toStrictEqual({ executed: rows, nested: { rows }, text: [18, 19, 20] })
     })
   })
 

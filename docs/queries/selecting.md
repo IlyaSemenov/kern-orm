@@ -174,6 +174,37 @@ A query with `distinct` cannot select [related records](./relations).
 Aggregates and `exists` cannot be called after `distinct`.
 To count distinct values, call [`countDistinct`](#aggregates).
 
+## First row of each group
+
+To get one row of each group of rows, such as the latest submission of each user, list the columns of the groups in `distinctOn`, and sort the query by them first and then by the order that chooses the row:
+
+```ts
+const latest = await db.submission
+  .distinctOn("userId")
+  .orderBy("userId", { createdAt: "desc" })
+  .select("id", "userId", "createdAt")
+```
+
+Each group gives its first row in the order of the query, and the rows keep that order.
+Without an order, each group gives any of its rows.
+
+To use an expression as a key, such as the day of a submission, select it and take it from the second parameter of the callbacks of `distinctOn` and `orderBy`, as for [grouping](./grouping#keys-of-expressions):
+
+```ts
+import { sql } from "kern-orm"
+import * as t from "kern-orm/types"
+
+const firstOfDay = await db.submission
+  .select(submission => ({
+    day: sql(t.text)`${submission.createdAt}::date::text`,
+    id: submission.id,
+  }))
+  .distinctOn((submission, selected) => selected.day)
+  .orderBy((submission, selected) => [selected.day, submission.createdAt])
+```
+
+Aggregates and `exists` cannot be called after `distinctOn`.
+
 ## One value
 
 To get one value, such as the ID of a form, call `get` with a column or an expression:

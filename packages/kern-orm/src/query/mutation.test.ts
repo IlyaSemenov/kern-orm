@@ -283,9 +283,10 @@ describe("update and delete", () => {
         schema.form.all().limit(1),
         schema.form.all().offset(1),
         schema.form.all().distinct(),
+        schema.form.all().distinctOn("name"),
       ]) {
         expect(() => mutate(query)).toThrow(
-          `${method} cannot sort or limit the rows it changes; choose them with where, find, or findBy instead of take, limit, offset, orderBy, or distinct`,
+          `${method} cannot sort or limit the rows it changes; choose them with where, find, or findBy instead of take, limit, offset, orderBy, distinct, or distinctOn`,
         )
       }
       expect(() => mutate(schema.form.all().groupBy("id"))).toThrow(

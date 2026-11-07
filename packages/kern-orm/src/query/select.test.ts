@@ -7,6 +7,7 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import { countType } from "./aggregate"
+import { literal } from "./literal"
 import { desc } from "./order"
 import type { AnySelectQuery } from "./select"
 import { from } from "./select"
@@ -780,6 +781,106 @@ describe("distinct", () => {
     expect(() => selected.stringAgg("title", ", ")).toThrow(message("stringAgg"))
     expect(() => selected.exists()).toThrow(message("exists"))
     expect(() => selected.take().count()).toThrow(message("count"))
+  })
+
+  it("rejects distinctOn before or after it", () => {
+    expect(() => selected.distinctOn("title")).toThrow(
+      "distinctOn cannot be used after distinct, which compares every selected field",
+    )
+    expect(() => from(post).distinctOn("title").select("title").distinct()).toThrow(
+      "distinct cannot be used after distinctOn, which compares only its keys",
+    )
+  })
+})
+
+describe("distinctOn", () => {
+  it("keeps the first row of each group of the keys of column keys and of callbacks, after the keys of earlier calls", () => {
+    const query = from(post)
+      .distinctOn("title")
+      .distinctOn(columns => columns.createdAt)
+      .orderBy("title", "createdAt", "id")
+      .select("id")
+
+    expect(query.toSQL().text).toBe(
+      'SELECT DISTINCT ON ("post"."title", "post"."created_at") "post"."id" AS "id" FROM "post" AS "post" ORDER BY "post"."title", "post"."created_at", 1',
+    )
+  })
+
+  it("compiles a key of a selected field, of the value of pluck, and of the columns after map as the position of its projection, with the parameters in the order of the text", () => {
+    const days = from(post)
+      .select(columns => ({
+        day: sql(t.text)`date_trunc(${"day"}, ${columns.createdAt})::text`,
+        id: columns.id,
+      }))
+      .distinctOn((_columns, selected) => selected.day)
+      .orderBy((columns, selected) => [selected.day, desc(columns.createdAt)])
+      .where({ title: "First" })
+
+    expect(days.toSQL()).toEqual({
+      text: 'SELECT DISTINCT ON (1) date_trunc($1, "post"."created_at")::text AS "day", "post"."id" AS "id" FROM "post" AS "post" WHERE "post"."title" = $2 ORDER BY 1, "post"."created_at" DESC',
+      parameters: ["day", "First"],
+    })
+    expect(
+      from(post)
+        .pluck("title")
+        .distinctOn((_columns, title) => title)
+        .toSQL().text,
+    ).toBe('SELECT DISTINCT ON (1) "post"."title" AS "title" FROM "post" AS "post"')
+    expect(
+      from(post)
+        .select("id", "title")
+        .map(row => row.id)
+        .distinctOn(columns => columns.title)
+        .toSQL().text,
+    ).toBe(
+      'SELECT DISTINCT ON (2) "post"."id" AS "id", "post"."title" AS "title" FROM "post" AS "post"',
+    )
+  })
+
+  it("rejects a call without keys and a field of nested rows or of a literal as a key", () => {
+    const query = from(post).select(() => ({
+      titles: from(post).pluck("title"),
+      kind: literal("post"),
+    }))
+
+    expect(() => from(post).distinctOn()).toThrow("distinctOn requires at least one key")
+    expect(() => from(post).distinctOn(() => [])).toThrow("distinctOn requires at least one key")
+    expect(() => query.distinctOn((_columns, selected) => selected.titles)).toThrow(
+      'Field "titles" holds nested rows and cannot be a key of distinctOn',
+    )
+    expect(() => query.distinctOn((_columns, selected) => selected.kind)).toThrow(
+      'Field "kind" holds a literal and cannot be a key of distinctOn',
+    )
+  })
+
+  it("rejects a query of one row, which must find a second row to reject it", () => {
+    // Types reject these calls, which a query held as any query can still make.
+    const queries: AnySelectQuery[] = [
+      from(post).take(),
+      from(post).find("id"),
+      from(post).get("title"),
+      from(post).count(),
+      from(post).exists(),
+    ]
+
+    for (const query of queries) {
+      expect(() => query.distinctOn("title")).toThrow(
+        "distinctOn applies only to a query of many rows",
+      )
+    }
+  })
+
+  it("rejects the aggregate methods and exists after it", () => {
+    const query = from(post).distinctOn("title").orderBy("title").select("id")
+
+    for (const [method, aggregate] of [
+      ["count", () => query.count()],
+      ["max", () => query.max("id")],
+      ["stringAgg", () => query.stringAgg("title", ", ")],
+      ["exists", () => query.exists()],
+    ] as const) {
+      expect(aggregate).toThrow(`${method} cannot be used after distinctOn`)
+    }
   })
 })
 

@@ -192,7 +192,16 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
   // PostgreSQL matches an expression with the keys of `GROUP BY` only in the query of groups itself, not in the queries nested in it.
   context.grouped = groupBy !== undefined
   // PostgreSQL accepts an empty select list and returns rows without columns, unless the query is distinct.
-  let text = `SELECT${node.distinct ? " DISTINCT" : ""}${compileProjections(context, scope, node.projections)}`
+  let text = "SELECT"
+  if (node.distinct) {
+    text += " DISTINCT"
+  }
+  const { distinctOn } = node
+  if (distinctOn !== undefined) {
+    // The keys precede the select list in the text, so they are compiled first, which numbers their parameters in the order of the text.
+    text += ` DISTINCT ON (${compileKeys(context, scope, distinctOn, node.projections)})`
+  }
+  text += compileProjections(context, scope, node.projections)
 
   if (fromScope !== undefined) {
     text += ` FROM ${compileSource(context, outer, fromScope)}`
@@ -205,7 +214,7 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
   text += compileWhere(context, scope, node.filters)
 
   if (groupBy !== undefined) {
-    text += ` ${compileGroupBy(context, scope, groupBy, node.projections)}`
+    text += ` GROUP BY ${compileKeys(context, scope, groupBy, node.projections)}`
   }
   if (having !== undefined) {
     text += ` HAVING ${compileExpression(context, scope, having)}`
@@ -261,18 +270,18 @@ function compileWhere(
 }
 
 // A repeated expression with a correlated subquery or with parameters other than of casts would not be the key for PostgreSQL, since it has aliases and parameters of its own, so a key refers to its projection by position.
-/** Compiles the `GROUP BY` clause of a query of `projections`, its final select list, also with those that lowering adds, such as of a sort key of packed rows: each key is the position of the projection that has its value, or its expression without one. */
-function compileGroupBy(
+/** Compiles the keys of `GROUP BY` or `DISTINCT ON` of a query of `projections`, its final select list, also with those that lowering adds, such as of a sort key of packed rows: each key is the position of the projection that has its value, or its expression without one. */
+function compileKeys(
   context: CompileContext,
   scope: Scope | undefined,
-  groupBy: readonly ExpressionNode[],
+  keys: readonly ExpressionNode[],
   projections: readonly ProjectionNode[],
 ): string {
-  let text = "GROUP BY"
-  for (let index = 0; index < groupBy.length; index++) {
-    const key = groupBy[index]!
+  let text = ""
+  for (let index = 0; index < keys.length; index++) {
+    const key = keys[index]!
     const position = findValueProjection(projections, key)
-    text += `${index === 0 ? " " : ", "}${position === -1 ? compileExpression(context, scope, key) : String(position + 1)}`
+    text += `${index === 0 ? "" : ", "}${position === -1 ? compileExpression(context, scope, key) : String(position + 1)}`
   }
   return text
 }

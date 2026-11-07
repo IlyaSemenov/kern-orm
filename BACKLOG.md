@@ -77,20 +77,14 @@ Two independent goals:
    - Orchid ORM 1.78.47 resolves a query of `whereIn` of an empty list without querying the database ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/where.md#wherein)), and code that filters by a list from a request relies on it.
    - Decide what `toSQL` and `$compile` give for a query without a statement.
 
-## First row of each group
-
-The first row of each group in the order of the query, as `DISTINCT ON`, as `distinct` of columns of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#distinct)).
-
-- PostgreSQL requires the expressions of `DISTINCT ON` to start the order of the query, and takes sort keys outside the select list, so packing can add them to the projections of its derived source.
-- Decide what a query of it does with a page after an offset, which [`distinct`](architecture/queries.md#distinct-rows) keeps on its table, and with the aggregate methods and `exists`, which `distinct` rejects.
-
 ## Aggregates of distinct rows
 
-The aggregate methods and `exists` after `distinct`, which [reject](architecture/queries.md#distinct-rows), such as the number of distinct pairs of columns for the total of a page of `distinct`, as `SELECT count(*) FROM (SELECT DISTINCT ...)`, which `countDistinct` of one column does not give.
+The aggregate methods and `exists` after `distinct` and [`distinctOn`](architecture/queries.md#first-row-of-each-group), which [reject](architecture/queries.md#distinct-rows), such as the number of distinct pairs of columns for the total of a page of `distinct`, as `SELECT count(*) FROM (SELECT DISTINCT ...)`, which `countDistinct` of one column does not give, and the number of the groups of `distinctOn`.
 
 - They replace the fields that `distinct` compares, so the node of the query needs to keep them.
 - Decide what an aggregate of an argument compares: only its argument, or the selected fields too, since the argument may not be among them.
 - Reading the rows from a derived source, as aggregate methods read the groups of [`groupBy`](architecture/queries.md#groups), gives `SELECT count(*) FROM (SELECT DISTINCT ...)`.
+- A derived source of `distinctOn` selects its keys, since PostgreSQL requires a select list with `DISTINCT ON`, and keeps its order, which chooses the first rows whose argument an aggregate reads.
 
 ## Queries repeated in a statement
 
@@ -108,11 +102,18 @@ The callback of `having` takes the selected fields as its second parameter, as t
 
 ## Pages of groups after an offset
 
-A [query of groups](architecture/queries.md#groups) with nested queries evaluates them for the groups that an offset skips, since it stays on its table; a derived page of groups would evaluate them only over its rows, as `lowerPage` does for other queries.
+A [query of groups](architecture/queries.md#groups) with nested queries evaluates them for the groups that an offset skips, and with [`distinctOn`](architecture/queries.md#first-row-of-each-group) without a limit for every group, since it stays on its table; a derived page of groups would evaluate them only over its rows, as `lowerPage` does for other queries.
 
 ## Nullability of aggregates in groups
 
 `sum` and the others of a column that cannot be `NULL`, without `filter`, are never `NULL` in a [group](architecture/queries.md#groups), which has a row, while types give `null`; decide whether that is worth a part of the state.
+
+## First rows in another order
+
+Rows of [`distinctOn`](architecture/queries.md#first-row-of-each-group) in an order that does not start with its keys, such as the latest submission of each user, newest first, which lowering rejects, since PostgreSQL requires the order of `DISTINCT ON` to start with its keys.
+
+- A derived source of the first rows, sorted by the keys and then by the order of the query, read in the order of the query with its limit and offset, gives them; an order that starts with the keys keeps one statement.
+- It only turns orders that lowering rejects into valid ones, so no query that runs changes.
 
 ## Other options of aggregate functions
 

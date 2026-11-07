@@ -50,7 +50,7 @@ export interface OrderedSource {
  * Creates the derived source of the rows of `query`, and, when `ordered`, the order of the query over the projections of the source, in which its reader takes the rows, such as an aggregate.
  *
  * The order of a derived source does not carry into the query that reads it, so the reader sorts by sort keys: the projections that have the values of the sort expressions, as for an executed query, or projections of the sort expressions added to the source.
- * With a limit or an offset, the source sorts by the positions of the sort keys, so that the rows it chooses, their values, and their order in the reader come from one evaluation; so it does with a row lock, which takes the rows in the order of its query.
+ * With a limit or an offset, the source sorts by the positions of the sort keys, so that the rows it chooses, their values, and their order in the reader come from one evaluation; so it does with `DISTINCT ON`, whose order chooses the first row of each group, and with a row lock, which takes the rows in the order of its query.
  * Without them, it has no order.
  * `offset` replaces the offset of `query` in the source, such as `OFFSET 0` that keeps PostgreSQL from merging it, and the source replaces the occurrence of a table `replaces` for its reader.
  */
@@ -62,7 +62,11 @@ export function deriveOrderedSource(
 ): OrderedSource {
   const { orderBy } = query
   const projections = query.projections.slice()
-  const sorted = query.limit !== undefined || query.offset !== undefined || query.lock !== undefined
+  const sorted =
+    query.limit !== undefined ||
+    query.offset !== undefined ||
+    query.distinctOn !== undefined ||
+    query.lock !== undefined
   const sortKeys: SortKey[] = []
   const positions: OrderNode[] = []
   if (orderBy.length > 0 && (ordered || sorted)) {
@@ -79,7 +83,7 @@ export function deriveOrderedSource(
       }
     }
   }
-  // The order only chooses the rows of a limit or an offset, or the order of a row lock, there.
+  // The order only chooses the rows of a limit, an offset, or `DISTINCT ON`, or the order of a row lock, there.
   const derivedQuery = Object.freeze({ ...query, projections, orderBy: positions, offset })
   const source: DerivedSourceNode = Object.freeze(
     replaces === undefined

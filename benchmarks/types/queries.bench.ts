@@ -64,6 +64,8 @@ bench.baseline(async () => {
     .groupBy("position")
     .having(() => count().gt(0))
     .pluck("position")
+  await tenantDb.field.distinctOn("position").pluck("position")
+  await tenantDb.field.select("position").distinctOn((_field, selected) => selected.position)
   await formsDb.$execute(
     formsSchema.form
       .where({ name: "baseline" })
@@ -336,7 +338,7 @@ bench("groupBy of a selected field", async () => {
       total: count(),
     }))
     .groupBy((_form, selected) => selected.bucket)
-}).types([551, "instantiations"])
+}).types([513, "instantiations"])
 
 bench("having of an aggregate", async () => {
   await tenantDb.form
@@ -344,6 +346,19 @@ bench("having of an aggregate", async () => {
     .having(() => count().gt(1))
     .pluck("name")
 }).types([198, "instantiations"])
+
+bench("distinctOn of a column", async () => {
+  await tenantDb.form.distinctOn("name").orderBy("name").select("id")
+}).types([284, "instantiations"])
+
+bench("distinctOn of a selected field", async () => {
+  await tenantDb.form
+    .select(form => ({
+      bucket: form.name.length(),
+      id: form.id,
+    }))
+    .distinctOn((_form, selected) => selected.bucket)
+}).types([529, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
@@ -414,7 +429,7 @@ bench("relation many of map", async () => {
 
 bench("helper of map", async () => {
   await tenantDb.form.use(withMappedName)
-}).types([816, "instantiations"])
+}).types([822, "instantiations"])
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
@@ -429,11 +444,11 @@ bench("transform of the number of the rows", async () => {
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1096, "instantiations"])
+}).types([1099, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1201, "instantiations"])
+}).types([1204, "instantiations"])
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
