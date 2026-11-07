@@ -6,8 +6,8 @@ import { compileStatement } from "../compiler/postgres/compile"
 import { createDatabase } from "../execution/database"
 import { count, every, sum } from "../expression/aggregates"
 import type { AnyExpression } from "../expression/expression"
-import { and, not } from "../expression/predicates"
-import { sql } from "../expression/sql"
+import { and, not, or } from "../expression/predicates"
+import { param, sql } from "../expression/sql"
 import { countType } from "../query/aggregate"
 import { literal } from "../query/literal"
 import { desc } from "../query/order"
@@ -1202,6 +1202,46 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       await expect(testTransaction(async () => await buckets)).rejects.toThrow(
         "must appear in the GROUP BY clause",
       )
+    })
+
+    it("reads a key with a parameter of param created once in having, also beside an aggregate under OR, and sorts by it without selecting it, but rejects its copy in a nested query", async () => {
+      const three = param(t.integer, 3)
+      const bucket = (form: { id: AnyExpression<number> }) => sql(t.integer)`${form.id} % ${three}`
+      const totals = db.form
+        .groupBy(bucket)
+        .having(form => or(bucket(form).eq(1), count().lt(7)))
+        .orderBy(form => desc(bucket(form)))
+        .select(() => ({
+          total: count(),
+        }))
+      const copies = db.form.groupBy(bucket).select(form => ({
+        copy: db.form.where({ id: 1 }).get(() => bucket(form)),
+      }))
+
+      expect(await testTransaction(async () => await totals)).toStrictEqual([
+        { total: 7 },
+        { total: 6 },
+      ])
+      // PostgreSQL matches an expression with the keys only in the query of groups itself.
+      await expect(testTransaction(async () => await copies)).rejects.toThrow(
+        "subquery uses ungrouped column",
+      )
+    })
+
+    it("binds a parameter without a cast at each place of a query of groups, whose type each place deduces", async () => {
+      const value = sql`${"01"}`
+      const rows = await testTransaction(
+        async () =>
+          await db.form
+            .where({ id: 1 })
+            .groupBy("id")
+            .select(() => ({
+              number: sql(t.integer)`${value}::integer`,
+              text: sql(t.text)`${value}::text`,
+            })),
+      )
+
+      expect(rows).toStrictEqual([{ number: 1, text: "01" }])
     })
 
     it("groups by a selected correlated query by its position, and rejects one that a literal replaces, whose key and sort key are lowered apart", async () => {

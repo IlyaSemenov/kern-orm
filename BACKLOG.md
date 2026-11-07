@@ -92,15 +92,19 @@ The aggregate methods and `exists` after `distinct`, which [reject](architecture
 - Decide what an aggregate of an argument compares: only its argument, or the selected fields too, since the argument may not be among them.
 - Reading the rows from a derived source, as aggregate methods read the groups of [`groupBy`](architecture/queries.md#groups), gives `SELECT count(*) FROM (SELECT DISTINCT ...)`.
 
-## Expressions repeated in a statement
+## Queries repeated in a statement
 
-An expression that a statement holds at two places is not one expression for PostgreSQL when it has parameters, each with a number of its own, or queries, each with aliases of its own: a key of a [query of groups](architecture/queries.md#groups) fails in `HAVING`, also beside an aggregate under `OR`, which `where` cannot replace, and in `ORDER BY` when the query does not select it.
+An expression that holds a query is not one expression for PostgreSQL at two places of a statement, since the compiler gives each occurrence of a source its own alias: a key of a [query of groups](architecture/queries.md#groups) that holds a query fails with `subquery uses ungrouped column` in `HAVING`, also beside an aggregate under `OR`, which `where` cannot replace, and in `ORDER BY` when the query does not select it, so only the position of its projection refers to it.
 
-- Preliminary decision for parameters: the compiler numbers a parameter node once per statement, so that one expression held in a variable or in a reference is one parameter; PostgreSQL takes `GROUP BY t.a + $1 HAVING t.a + $1 > $2 OR count(*) > 5`.
-- It runs per parameter, so benchmark it first; a statement of few repeats pays for a lookup on each parameter.
-- It does not help an expression that holds a query: the compiler gives each occurrence of a source its own alias, so PostgreSQL rejects a correlated subquery repeated in `GROUP BY` with `subquery uses ungrouped column`, also without parameters, and only the position of its projection refers to it.
 - A key and a sort key of a field that a later selection replaces, which hold a query, are lowered apart, so the key does not find the projection of the sort key; lowering one expression node to one node per query would give them one projection.
 - A position refers to the selected projection, which `findValueProjection` finds by the same expression node or the same column.
+
+## Selected fields in `having`
+
+The callback of `having` takes the selected fields as its second parameter, as those of `groupBy` and `orderBy` do, so that a condition reads an aggregate or a key of an expression by its field, such as `having((submission, selected) => selected.submissions.gt(1))`.
+
+- A field of a key is a copy of its expression in `HAVING`, so a key with parameters other than of `param(type, value)` still fails there, as [architecture/queries.md](architecture/queries.md#groups) states.
+- It adds a part to the types of `having`; measure its cost with `bench:types` before choosing a design.
 
 ## Pages of groups after an offset
 

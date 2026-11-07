@@ -55,10 +55,33 @@ const forms = await db.submission
 // forms: { formName: string; submissions: number }[]
 ```
 
-Group and sort by a key with parameters, such as `timeZone` above, or with a query, only through its selected field.
-PostgreSQL takes another copy of such a key for another expression and rejects the query, so `having` cannot read it.
+Group and sort by a key with values interpolated into it, such as `timeZone` above, or with a query, through its selected field.
+PostgreSQL takes another copy of such a key for another expression and rejects the query.
 For a condition of such a key alone, call `where` instead, which chooses the rows of the groups.
-To read a key with parameters in `having`, write it without them at every place, also in `select` and `groupBy`; a key with a query cannot be read there.
+
+To read a key with parameters in `having`, or to sort by it without selecting it, create each of its parameters once with [`param`](../types#types-in-queries) and build every copy of the key from them:
+
+```ts
+import { count, or, param, sql } from "kern-orm"
+import * as t from "kern-orm/types"
+
+const zone = param(t.text, timeZone)
+
+const days = await db.submission
+  .select(submission => ({
+    day: sql(t.text)`(${submission.createdAt} at time zone ${zone})::date::text`,
+    submissions: count(),
+  }))
+  .groupBy((submission, selected) => selected.day)
+  .having(submission =>
+    or(
+      sql(t.text)`(${submission.createdAt} at time zone ${zone})::date::text`.eq(today),
+      count().gt(10),
+    ),
+  )
+```
+
+A key with a query cannot be read in `having`.
 
 ## Filtering groups
 

@@ -1,5 +1,9 @@
 import { expect, it } from "bun:test"
 
+import type { CastNode } from "../../ast/nodes"
+import { createNode } from "../../ast/nodes"
+import * as t from "../../types"
+
 import { CompileContext, maxParameters } from "./context"
 
 it("numbers aliases of the same name apart from the names they could take", () => {
@@ -48,4 +52,23 @@ it("numbers parameters and rejects more than PostgreSQL takes", () => {
     "Statement has more than 65535 parameters, which PostgreSQL does not take; split it into several statements, such as in a transaction",
   )
   expect(context.parameters).toHaveLength(maxParameters)
+})
+
+it("binds the parameter of a cast once, numbering it with the other parameters", () => {
+  const context = new CompileContext(undefined)
+  const createCast = () =>
+    createNode<CastNode>({
+      kind: "cast",
+      operand: createNode({ kind: "param", value: "UTC", type: t.text }),
+      type: t.text,
+    })
+  const zone = createCast()
+
+  expect([
+    context.bindOnce(zone, "UTC"),
+    context.bind("x"),
+    context.bindOnce(zone, "UTC"),
+    context.bindOnce(createCast(), "UTC"),
+  ]).toEqual(["$1", "$2", "$1", "$3"])
+  expect(context.parameters).toEqual(["UTC", "x", "UTC"])
 })

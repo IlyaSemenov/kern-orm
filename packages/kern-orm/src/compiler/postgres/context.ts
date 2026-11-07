@@ -1,3 +1,4 @@
+import type { CastNode } from "../../ast/nodes"
 import type { AnyDb } from "../../execution/db"
 import type { AnyTable } from "../../table/table"
 import type { TextValue } from "../../type/type"
@@ -13,7 +14,10 @@ export class CompileContext {
   readonly parameters: TextValue[] = []
   /** Whether a select statement of the compilation locks rows. */
   locksRows = false
+  /** Whether the clauses being compiled belong to a query of groups, which binds the parameter of a cast once by `bindOnce`. */
+  grouped = false
   readonly #aliases = new Set<string>()
+  #placeholders: Map<CastNode, string> | undefined
 
   constructor(
     readonly schemaName: string | undefined,
@@ -48,5 +52,16 @@ export class CompileContext {
     }
     this.parameters.push(value)
     return `$${this.parameters.length}`
+  }
+
+  /** Binds `value` as the parameter of `cast` unless `bindOnce` has bound the cast before, and returns its placeholder. */
+  bindOnce(cast: CastNode, value: TextValue): string {
+    this.#placeholders ??= new Map()
+    let placeholder = this.#placeholders.get(cast)
+    if (placeholder === undefined) {
+      placeholder = this.bind(value)
+      this.#placeholders.set(cast, placeholder)
+    }
+    return placeholder
   }
 }

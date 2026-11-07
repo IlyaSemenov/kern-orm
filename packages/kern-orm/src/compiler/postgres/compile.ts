@@ -187,6 +187,10 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
     joinScopes.push(scope)
   }
 
+  const { groupBy, having } = node
+  const { grouped } = context
+  // PostgreSQL matches an expression with the keys of `GROUP BY` only in the query of groups itself, not in the queries nested in it.
+  context.grouped = groupBy !== undefined
   // PostgreSQL accepts an empty select list and returns rows without columns, unless the query is distinct.
   let text = `SELECT${node.distinct ? " DISTINCT" : ""}${compileProjections(context, scope, node.projections)}`
 
@@ -200,7 +204,6 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
 
   text += compileWhere(context, scope, node.filters)
 
-  const { groupBy, having } = node
   if (groupBy !== undefined) {
     text += ` ${compileGroupBy(context, scope, groupBy, node.projections)}`
   }
@@ -226,6 +229,7 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
       text += ` ${lock.onLocked}`
     }
   }
+  context.grouped = grouped
   return text
 }
 
@@ -256,7 +260,7 @@ function compileWhere(
     : ` WHERE ${compileExpression(context, scope, where)}`
 }
 
-// A repeated expression with parameters or a correlated subquery would not be the key for PostgreSQL, since it has parameters and aliases of its own, so a key refers to its projection by position.
+// A repeated expression with a correlated subquery or with parameters other than of casts would not be the key for PostgreSQL, since it has aliases and parameters of its own, so a key refers to its projection by position.
 /** Compiles the `GROUP BY` clause of a query of `projections`, its final select list, also with those that lowering adds, such as of a sort key of packed rows: each key is the position of the projection that has its value, or its expression without one. */
 function compileGroupBy(
   context: CompileContext,
@@ -357,8 +361,16 @@ function compileExpression(
       return compileColumn(scope, node)
     case "param":
       return context.bind(encodeParameter(node))
-    case "cast":
-      return `${compileOperand(context, scope, node.operand, "value")}::${node.type.castType}`
+    case "cast": {
+      const { operand } = node
+      // PostgreSQL takes an expression of a query of groups, such as in `HAVING` or `ORDER BY`, for a key of `GROUP BY` only when it is equal to the key, so the query binds the parameter of a cast once, such as of `param(type, value)`, which is `$1::type` with the same type at every place.
+      // A parameter without a cast takes its type from its place, so binding it once could convert its value by the type of another place, and a lookup of every parameter slows down statements of many parameters.
+      const value =
+        context.grouped && operand.kind === "param"
+          ? context.bindOnce(node, encodeParameter(operand))
+          : compileOperand(context, scope, operand, "value")
+      return `${value}::${node.type.castType}`
+    }
     case "boolean":
       return node.value ? "TRUE" : "FALSE"
     case "and":
