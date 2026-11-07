@@ -28,6 +28,7 @@
     - for a tree of 256 conditions, 12% (7 to 18%) on Bun and 15% (7 to 18%) on Node.js;
     - for a select of a few conditions, an insert of 1000 records, and nested relations, the medians of 3 to 8% are inconclusive.
   - A sort key of a selected expression, or of the query of a selected field of an aggregate or of `exists`, takes the node of the lowered projection, so the statement still finds the projection that has its value.
+  - The lowering of expressions and projections reaches the lowering of a query, which nested queries recurse into, only through the context of the statement (`lowering/context.ts`), so that the modules of `lowering/` import one another without cycles.
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
   Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.

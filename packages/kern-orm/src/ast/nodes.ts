@@ -371,6 +371,12 @@ export const noFilters: QueryFilters = /* @__PURE__ */ Object.freeze({})
 /** Order without sort keys. */
 export const noOrder: readonly OrderNode[] = /* @__PURE__ */ Object.freeze([])
 
+/** Joins of a query that reads only its source. */
+export const noJoins: readonly JoinNode[] = /* @__PURE__ */ Object.freeze([])
+
+/** Projections of a query that selects nothing, such as the query of `EXISTS`. */
+export const noProjections: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
+
 /** Creates a query of all rows of `from` with `projections`. */
 export function createSelectNode<From extends SourceNode>(
   from: From,
