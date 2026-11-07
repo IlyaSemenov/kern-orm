@@ -69,6 +69,16 @@
   - Simple `CASE x WHEN ...` is not offered: `x.eq(...)` in each condition writes it.
   - A call is a raw node, as `createList` makes those of the other functions, and adds about 410 instantiations to a query of a column for two branches with their conditions ([benchmark](../benchmarks/types/queries.bench.ts)).
 
+## Aggregate functions
+
+- `count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, and `some` (`expression/aggregates.ts`) are [functions of expressions](#functions-of-expressions) whose call is an `aggregate` node, of the definitions that the aggregate methods read from `query/aggregate.ts`; [queries](queries.md#aggregate-functions) tell what a query that holds one does.
+- The argument is what the first operand of a function is: an expression with a type or a query of one value, in types and at runtime.
+  `count` takes a call without an argument as `count(*)` and rejects an argument of `undefined`, which would count the rows silently.
+- The values follow the aggregate methods: `count` and `countDistinct` give a number, and the others the value of the argument or `null`.
+  The type of the expression is the one of the method, so it decodes the value and gives it its operators; `sum` of `smallint` and `integer` values rejects a sum outside the safe integer range of numbers, and `avg` of a type of the cast type `bigint` rejects when it is called.
+  Types do not check that PostgreSQL has the aggregate for the type of the argument, as for the methods.
+- A query of one field of `count()` takes about 250 instantiations, of `max` of a column about 310, and of `max` of an aggregate of a relation about 600 ([benchmark](../benchmarks/types/queries.bench.ts)).
+
 ## Text functions
 
 - `lower`, `upper`, `trim`, and `length` of `textOperators` are operators rather than [functions](#functions-of-expressions), since they have a single operand and only text types have them.

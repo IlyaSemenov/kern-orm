@@ -63,6 +63,8 @@ export type {
   TypedOperandOperators,
 } from "./expression/functions"
 export { caseWhen, coalesce, greatest, least } from "./expression/functions"
+export type { AggregateExpression, CountExpression } from "./expression/aggregates"
+export { avg, count, countDistinct, every, max, min, some, sum } from "./expression/aggregates"
 export type { NumberTypeOperators } from "./type/number"
 export type {
   AnyType,

@@ -43,7 +43,7 @@ An insert that updates or skips the record it conflicts with on a key, as `INSER
 
 Groups of the rows of a query, as `GROUP BY`, with the aggregates of each group, a filter of the groups by their aggregates, as `HAVING`, and an order by an aggregate, such as the participants of a contest with a positive sum of points, in the order of the sum, as `group` and `having` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#group)).
 
-- The aggregate methods turn the rows of the whole query into one value, so the aggregates of groups need another form, such as aggregate functions of expressions in `select`, `having`, and `orderBy`.
+- The aggregate methods turn the rows of the whole query into one value, so the aggregates of groups are the [aggregate functions](architecture/queries.md#aggregate-functions) in `select`, `having`, and `orderBy`.
 - A query of groups selects only the columns it groups by and aggregates; decide how types reject other columns.
 - Decide how lowering nests a query of groups in a selection and reads a page of groups after an offset.
 
@@ -98,6 +98,11 @@ The aggregate methods and `exists` after `distinct`, which [reject](architecture
 
 - They replace the fields that `distinct` compares, so the node of the query needs to keep them.
 - Decide what an aggregate of an argument compares: only its argument, or the selected fields too, since the argument may not be among them.
+
+## Options of aggregate functions
+
+Options of the [aggregate functions](architecture/queries.md#aggregate-functions), which SQL fragments cover until then: a condition of their rows as `FILTER (WHERE ...)`, an order of their rows, and a function form of `stringAgg`, which needs that order, since the order of a query of groups is that of the groups.
+Orchid ORM 1.78.47 takes `distinct`, `order`, `filter`, `filterOr`, `withinGroup`, and `over` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/aggregate.md)).
 
 ## Arithmetic operators
 
@@ -287,6 +292,7 @@ Research: types reject an aggregate whose argument PostgreSQL cannot aggregate, 
 
 - `min` and `max` of ordered types, as `orderingOperators` give them, except `uuid`, which has no `min` and `max` in PostgreSQL; `sum` and `avg` of numbers and `interval`, such as by a capability of numeric types that arithmetic operators would bring; `every` and `some` of `boolean`; `stringAgg` of text.
 - Types could also tell the type of the value of an aggregate by the type of its argument, such as a number for the average of `bigint` values, which `avg` rejects: a property of a type that `transform` drops, carried by column references and expressions.
+- The [aggregate functions](architecture/types.md#aggregate-functions) take the same argument, so the design applies to both.
 - Profile the cost of each aggregate call with `bench:types` before choosing a design.
 
 ## SQL nullability apart from the values of a type
@@ -313,6 +319,7 @@ Fragments that kern-orm builds are known to be scalar, such as the `coalesce` of
 
 - Mark such fragments, such as by a flag of a raw node or a node kind of a function call, so that the check skips them.
 - Research first which fragments refer to the columns of a parent row: the fallbacks of aggregates, and possibly generic operators and the operators of custom types.
+- Aggregates of a nested query whose arguments read both its source and a column of the table also keep the page on its table; telling them apart needs the sources of the query that holds them.
 
 ## SQL fragments of users in pages after an offset
 
@@ -321,6 +328,7 @@ Research and a decision: whether a SQL fragment of a user in a nested query can 
 - A contract that a fragment in a nested query never aggregates the rows of an enclosing query, for which the aggregate methods exist, would drop the check, but breaking it would change results silently rather than fail.
 - A variant of `sql` for fragments that are known to be scalar would keep the check for other fragments, at the cost of a public API for a rare case.
 - A fragment that does aggregate the parent rows makes the parent query return one row, so the nested queries run once anyway; only scalar fragments lose the speed-up.
+- A fragment of an aggregate whose argument reads a column of the table only through a query nested in it, such as ``sql`count(${db.form.where({ id }).get(() => form.id)})` `` in a nested query of a page after an offset, gives a wrong result: PostgreSQL assigns the aggregate to the parent, which the check misses, since a query nested in a fragment does not count, so the page moves to a derived source and gives a row that the offset of the parent would remove. Counting such a query would keep every fragment of a correlated query on its table, such as ``sql`${form.fields.count()} > 1` ``.
 
 ## Union of queries of several tables
 

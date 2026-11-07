@@ -16,22 +16,29 @@ export function collectColumnKeys(
 }
 
 /**
- * Tells whether `node` holds, at any depth, a SQL fragment that refers to a column of `source` outside the queries nested in the fragment.
+ * Tells whether `node` holds, at any depth, what may aggregate the rows of the query of `source`: an `aggregate` node that refers to a column of `source` at any depth of its arguments, also in the queries nested in them, or a SQL fragment that refers to one outside the queries nested in the fragment.
  *
- * PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query ([PostgreSQL](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)).
- * Lowering does not parse SQL fragments to identify their aggregates, so such a fragment in a nested query, such as `sum` of a column of the parent row, may aggregate the rows of the query of `source`.
+ * PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, also through a query nested in an argument ([PostgreSQL](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)), so such a call in a nested query, such as `sum` of a column of the parent row, aggregates the rows of the query of `source`.
+ * Lowering does not parse SQL fragments to identify their aggregates, and a query nested in a fragment does not count, since a scalar query correlated with `source`, such as of a relation, would count too.
+ *
+ * It is conservative: an aggregate whose arguments read both `source` and its own query belongs to its own query, yet it counts, since this walk cannot tell a source of the query that holds the aggregate from one of an enclosing query.
  */
-export function holdsFragmentOfSource(node: ExpressionNode, source: SourceNode): boolean {
+export function mayAggregateSource(node: ExpressionNode, source: SourceNode): boolean {
   let found = false
+  const check = (value: ExpressionNode) => {
+    if (value.kind === "column" && value.source === source) {
+      found = true
+    }
+  }
   visitNodes(node, true, child => {
-    if (found || child.kind !== "raw") {
+    if (found) {
       return
     }
-    visitNodes(child, false, value => {
-      if (value.kind === "column" && value.source === source) {
-        found = true
-      }
-    })
+    if (child.kind === "aggregate") {
+      visitNodes(child, true, check)
+    } else if (child.kind === "raw") {
+      visitNodes(child, false, check)
+    }
   })
   return found
 }

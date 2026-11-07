@@ -112,24 +112,38 @@ export function projectAggregate(
   argument: ScalarProjection,
   delimiter?: string,
 ): AggregateProjection {
+  return Object.freeze({
+    key: method,
+    expression: createAggregateCall(method, argument.expression, delimiter),
+    type: toAggregateType(method, argument.type),
+    ordered: aggregateDefinitions[method].ordered,
+    fallbacks: noFallbacks,
+  })
+}
+
+/** Creates the call of the aggregate function of `method` over the values of `argument`, without an order; `delimiter` is the delimiter of `stringAgg`, sent as a parameter. */
+export function createAggregateCall(
+  method: AggregateMethod,
+  argument: ExpressionNode,
+  delimiter?: string,
+): AggregateNode {
   const definition = aggregateDefinitions[method]
-  const args: ExpressionNode[] = [argument.expression]
+  const args: ExpressionNode[] = [argument]
   if (delimiter !== undefined) {
     args.push(createNode({ kind: "param", value: delimiter, type: undefined }))
   }
-  return Object.freeze({
-    key: method,
-    expression: createNode({
-      kind: "aggregate",
-      name: definition.name,
-      distinct: definition.distinct,
-      arguments: args,
-      orderBy: [],
-    }),
-    type: definition.type(argument.type),
-    ordered: definition.ordered,
-    fallbacks: noFallbacks,
+  return createNode({
+    kind: "aggregate",
+    name: definition.name,
+    distinct: definition.distinct,
+    arguments: args,
+    orderBy: [],
   })
+}
+
+/** Returns the type that decodes the value of the aggregate of `method` over the values of type `argument`, rejecting what `method` cannot decode, such as `avg` of a type of the SQL type `bigint`. */
+export function toAggregateType(method: AggregateMethod, argument: AnyType): AnyType {
+  return aggregateDefinitions[method].type(argument)
 }
 
 /** Creates the projection of the aggregate of `field` whose `NULL` `fallback` replaces after its earlier fallbacks. */

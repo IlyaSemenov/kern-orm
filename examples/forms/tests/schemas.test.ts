@@ -10,6 +10,7 @@ import {
   getField,
   getFieldCountsById,
   getFieldLabels,
+  getFieldStats,
   getForm,
   getFormPage,
   getPublishedFormNames,
@@ -383,6 +384,18 @@ describePostgres("in PostgreSQL", ({ testTransaction, tenantDb, saasDb, inTenant
     })
 
     expect(results).toStrictEqual({ tenant: true, saas: false, counts: [3] })
+  })
+
+  it("read the number of the fields of a form and the last position in one statement through the Db of a tenant and of the SaaS", async () => {
+    const results = await testTransaction(async () => ({
+      tenant: await inTenant("tenant_1", () => getFieldStats(tenantDb, getSampleId("form:survey"))),
+      saas: await getFieldStats(saasDb, getSampleId("form:draft")),
+    }))
+
+    expect(results).toStrictEqual({
+      tenant: { total: 4, lastPosition: 4 },
+      saas: { total: 0, lastPosition: null },
+    })
   })
 
   it("convert the results of shared queries in code through the Db of a tenant and of the SaaS", async () => {

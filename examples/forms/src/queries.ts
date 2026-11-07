@@ -1,5 +1,5 @@
 import type { DbOf } from "kern-orm"
-import { defineExpression, defineHelper, desc, or } from "kern-orm"
+import { count, defineExpression, defineHelper, desc, max, or } from "kern-orm"
 import { defineDependency } from "ripple-di"
 
 import { formsSchema, tenantSchema } from "./schemas"
@@ -30,6 +30,17 @@ export async function listFieldCounts(db: DbOf<typeof formsSchema>) {
     .where({ published: true })
     .orderBy("name", "id")
     .pluck(form => form.fields.count())
+}
+
+/** Returns the number of the fields of a form and the position of the last one in one statement, through the `Db` of a tenant or of the SaaS. */
+export async function getFieldStats(db: DbOf<typeof formsSchema>, formId: string) {
+  return await db.field
+    .where({ formId })
+    .select(field => ({
+      total: count(),
+      lastPosition: max(field.position),
+    }))
+    .take()
 }
 
 /** Publishes a form only if it has a field with a label, in one statement, through the `Db` of a tenant or of the SaaS. */

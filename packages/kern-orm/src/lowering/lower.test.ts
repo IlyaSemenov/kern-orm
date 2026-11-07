@@ -4,6 +4,7 @@ import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { compileStatement } from "../compiler/postgres/compile"
 import { createDatabase } from "../execution/database"
+import { count, every, sum } from "../expression/aggregates"
 import type { AnyExpression } from "../expression/expression"
 import { and, not } from "../expression/predicates"
 import { sql } from "../expression/sql"
@@ -185,6 +186,36 @@ describe("lowerStatement", () => {
 
     expect(compileStatement(lowerStatement(node)).text).toBe(
       'SELECT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id") AS "hasFields" FROM (SELECT "form_2"."id" AS "id" FROM "form" AS "form_2" ORDER BY 1 OFFSET $1) AS "form" ORDER BY "form"."id"',
+    )
+  })
+
+  it("derives a page after an offset only when the aggregates of its nested queries read no column of its table", () => {
+    const page = schema.form.orderBy("id").offset(20)
+    const parentColumn = page.select(form => ({
+      total: schema.field.select(() => ({
+        sum: sum(form.id),
+      })),
+    }))
+    const bothColumns = page.select(form => ({
+      total: schema.field.select(field => ({
+        every: every(field.id.eq(form.id)),
+      })),
+    }))
+    const ownColumn = page.select(form => ({
+      total: form.fields.select(field => ({
+        fields: count(),
+        sum: sum(field.id),
+      })),
+    }))
+
+    expect(compileStatement(lowerStatement(parentColumn.node)).text).toEndWith(
+      ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
+    )
+    expect(compileStatement(lowerStatement(bothColumns.node)).text).toEndWith(
+      ' FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1',
+    )
+    expect(compileStatement(lowerStatement(ownColumn.node)).text).toEndWith(
+      ' FROM (SELECT "form_2"."id" AS "id" FROM "form" AS "form_2" ORDER BY 1 OFFSET $1) AS "form" ORDER BY "form"."id"',
     )
   })
 
@@ -944,6 +975,38 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
 
     expect(results).toStrictEqual([[{ nested: [{ total: 210, mixed: 211, composed: 211 }] }], []])
+  })
+
+  it("aggregates the rows of a query before its offset in an aggregate of its column in a nested query", async () => {
+    const select = (query: typeof db.form) =>
+      query.select(form => ({
+        nested: db.form.where({ id: 1 }).select(() => ({
+          total: sum(form.id),
+        })),
+      }))
+
+    const results = await testTransaction(async () => [
+      await select(db.form.offset(0)),
+      await select(db.form.offset(1)),
+    ])
+
+    expect(results).toStrictEqual([[{ nested: [{ total: 210 }] }], []])
+  })
+
+  it("aggregates the rows of a query before its offset through a query in the argument of an aggregate", async () => {
+    const select = (query: typeof db.form) =>
+      query.select(form => ({
+        nested: db.form.where({ id: 1 }).select(() => ({
+          total: count(db.form.where({ id: 1 }).get(() => form.id)),
+        })),
+      }))
+
+    const results = await testTransaction(async () => [
+      await select(db.form.offset(0)),
+      await select(db.form.offset(1)),
+    ])
+
+    expect(results).toStrictEqual([[{ nested: [{ total: 20 }] }], []])
   })
 
   describe("query of distinct", () => {

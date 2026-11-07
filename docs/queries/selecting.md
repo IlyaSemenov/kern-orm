@@ -245,6 +245,32 @@ const lastPosition = await db.field.where({ formId }).max("position").coalesce(0
 An aggregate keeps the filters of the query and ignores its selected fields.
 With [`limit` and `offset`](./sorting#pagination), it aggregates the rows of the page, which the order of the query chooses.
 
+### Several aggregates at once
+
+To read several aggregates in one statement, such as the number of the fields of a form and the position of the last one, select the functions of the same names as the [aggregate methods](#aggregates):
+
+```ts
+import { count, max } from "kern-orm"
+
+const stats = await db.field
+  .where({ formId })
+  .select(field => ({
+    total: count(),
+    lastPosition: max(field.position),
+  }))
+  .take()
+// stats: { total: number; lastPosition: number | null }
+```
+
+`count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, and `some` take an expression or a query of one value, such as a column or an aggregate of related records, and give the values that the methods give.
+`count()` without an argument counts the rows.
+
+Each returns an expression with the operators of its type, so pass it to a function or call an operator on it, such as `coalesce(sum(field.position), 0)` or `count().gt(1)`.
+
+Such a query returns one row, so call `take` to get the record instead of an array of it.
+`limit` and `offset` apply to this row rather than to the rows that it aggregates, so `limit(10)` beside `count()` counts every row.
+To aggregate the rows of a page, call the method, such as `limit(10).count()`.
+
 ## Whether rows exist
 
 To check whether a query has rows, such as whether any form is published, call `exists`:

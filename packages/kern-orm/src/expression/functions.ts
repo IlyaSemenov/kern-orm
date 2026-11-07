@@ -178,7 +178,7 @@ function toCaseConditionNode(condition: unknown): ExpressionNode {
 // A plain value takes no cast: PostgreSQL types its parameter by the other operands, and the first operand is never a parameter without a type.
 /** Creates the expression of the call of the SQL function `name`, of the type of its first operand. */
 function callFunction(name: string, first: unknown, rest: readonly unknown[]): AnyExpression {
-  const expression = toTypedExpression(first, name)
+  const expression = toTypedExpression(first, `The first operand of ${name}`)
   const type = getType(expression)!
   const operands: ExpressionNode[] = [toNode(expression)]
   for (const value of rest) {
@@ -187,13 +187,13 @@ function callFunction(name: string, first: unknown, rest: readonly unknown[]): A
   return toExpression(createList(`${name}(`, operands, ")"), type)
 }
 
-/** Converts the first operand of the function `name` into an expression with a type, rejecting any other value. */
-function toTypedExpression(value: unknown, name: string): AnyExpression {
+/** Converts an operand, which the error names as `subject`, into an expression with a type, rejecting any other value. */
+export function toTypedExpression(value: unknown, subject: string): AnyExpression {
   // `expr` rejects a query other than of one value.
   const expression = value instanceof SelectQuery ? value.expr() : value
   if (!isExpression(expression) || getType(expression) === undefined) {
     throw new TypeError(
-      `The first operand of ${name} must be a query of one value of a table or an expression with a type to decode the result; build a sql fragment with a type, such as sql(t.integer)`,
+      `${subject} must be a query of one value of a table or an expression with a type to decode the result; build a sql fragment with a type, such as sql(t.integer)`,
     )
   }
   return expression

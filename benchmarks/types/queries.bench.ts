@@ -3,7 +3,18 @@
 
 import { bench } from "@ark/attest"
 import type { DbOf } from "kern-orm"
-import { caseWhen, coalesce, defineHelper, desc, greatest, matches, not } from "kern-orm"
+import {
+  caseWhen,
+  coalesce,
+  count,
+  defineHelper,
+  desc,
+  greatest,
+  matches,
+  max,
+  not,
+  sum,
+} from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { formsDb, formsSchema, storeDb, tenantDb } from "./fixture.ts"
@@ -40,6 +51,10 @@ bench.baseline(async () => {
   await tenantDb.field.where({ label: "baseline" }).max(field => field.label.lower())
   await tenantDb.field.pluck(field => field.answers.count())
   await tenantDb.field.where({ label: "baseline" }).max(field => field.answers.count())
+  await tenantDb.field.select(field => ({
+    total: count(),
+    last: max(field.position),
+  }))
   await formsDb.$execute(
     formsSchema.form
       .where({ name: "baseline" })
@@ -263,7 +278,31 @@ bench("case of two branches", async () => {
       "b",
     ),
   )
-}).types([589, "instantiations"])
+}).types([586, "instantiations"])
+
+bench("count function", async () => {
+  await tenantDb.form.select(() => ({
+    total: count(),
+  }))
+}).types([247, "instantiations"])
+
+bench("aggregate function of a column", async () => {
+  await tenantDb.form.select(form => ({
+    last: max(form.name),
+  }))
+}).types([312, "instantiations"])
+
+bench("operator of an aggregate function of an operator", async () => {
+  await tenantDb.form.select(form => ({
+    positive: sum(form.name.length()).gt(0),
+  }))
+}).types([464, "instantiations"])
+
+bench("aggregate function of an aggregate of a relation", async () => {
+  await tenantDb.form.select(form => ({
+    most: max(form.fields.count()),
+  }))
+}).types([602, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()

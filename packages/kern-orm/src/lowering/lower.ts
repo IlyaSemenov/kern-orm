@@ -17,7 +17,7 @@ import type {
   TextStatementNode,
 } from "../ast/nodes"
 import { createList, createNode, noFilters } from "../ast/nodes"
-import { collectColumnKeys, holdsFragmentOfSource } from "../ast/references"
+import { collectColumnKeys, mayAggregateSource } from "../ast/references"
 import type { AnyDb } from "../execution/db"
 import type { AggregateProjection } from "../query/aggregate"
 import { countProjection, isAggregateQuery, isSelectedAsValue } from "../query/aggregate"
@@ -386,8 +386,7 @@ function checkDb(db: AnyDb | undefined, context: LoweringContext, subject: strin
  * `queryFields` are the fields of the query without literals, and `projections` their lowered projections in the same order.
  * The derived source applies the filters, the order, the limit, and the offset, and replaces the occurrence of the table.
  *
- * It returns `undefined` when a nested query that it evaluates over the rows of the page holds a SQL fragment that refers to a column of the table outside the queries nested in the fragment.
- * Such a fragment may hold an aggregate of the query, which the limit and the offset apply after.
+ * It returns `undefined` when `mayAggregateSource` tells that a nested query that it evaluates over the rows of the page may aggregate the rows of the query, which the limit and the offset apply after.
  *
  * The source selects the columns of the table that the fields and the nested queries of the query read, under their keys, and the other scalar fields of the query, which it evaluates before the limit and the offset as the query would, such as a window function over all its rows.
  * A field of an aggregate or of `exists` that the query sorts by is such a scalar field: the order needs its value for every row.
@@ -413,7 +412,7 @@ function lowerPage(
     const { expression } = projections[index]!
     let key: string | undefined
     if (isPagedField(queryFields[index]!, projections[index]!, orderBy)) {
-      if (holdsFragmentOfSource(expression, from)) {
+      if (mayAggregateSource(expression, from)) {
         return undefined
       }
       collectColumnKeys(expression, from, columnKeys)

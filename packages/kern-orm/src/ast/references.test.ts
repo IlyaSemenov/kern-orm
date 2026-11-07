@@ -1,4 +1,4 @@
-import { expect, it } from "bun:test"
+import { describe, expect, it } from "bun:test"
 
 import { toNode } from "../expression/expression"
 import { and } from "../expression/predicates"
@@ -9,7 +9,7 @@ import * as t from "../types"
 
 import type { ExpressionNode, SelectNode } from "./nodes"
 import { createList, createNode, createSelectNode } from "./nodes"
-import { collectColumnKeys, holdsFragmentOfSource } from "./references"
+import { collectColumnKeys, mayAggregateSource } from "./references"
 import {
   createDerivedSource,
   createExists,
@@ -81,7 +81,7 @@ it("collects the keys of the columns of a source at any depth of the queries nes
   expect([...keys]).toEqual(["id", "ownerId", "name", "rank", "status", "position"])
 })
 
-it("detects a SQL fragment at any depth that refers to a column of a source outside the queries nested in it", () => {
+describe("mayAggregateSource", () => {
   const outer = from(form).node.from
   const inner = from(form).node.from
   const nest = (expression: ExpressionNode) =>
@@ -91,19 +91,49 @@ it("detects a SQL fragment at any depth that refers to a column of a source outs
         t.integer,
       ),
     )
-  const createFragment = (...values: ExpressionNode[]) => createList("f(", values, ")")
 
-  expect(holdsFragmentOfSource(nest(createFragment(createRef(outer, "id"))), outer)).toBe(true)
-  expect(holdsFragmentOfSource(nest(nest(createFragment(createRef(outer, "id")))), outer)).toBe(
-    true,
-  )
-  expect(
-    holdsFragmentOfSource(
-      nest(createFragment(createRef(outer, "id"), createRef(inner, "id"))),
-      outer,
-    ),
-  ).toBe(true)
-  expect(holdsFragmentOfSource(nest(createFragment(createRef(inner, "id"))), outer)).toBe(false)
-  expect(holdsFragmentOfSource(nest(createFragment()), outer)).toBe(false)
-  expect(holdsFragmentOfSource(nest(createRef(outer, "id")), outer)).toBe(false)
+  it("detects a SQL fragment at any depth that refers to a column of a source outside the queries nested in it", () => {
+    const createFragment = (...values: ExpressionNode[]) => createList("f(", values, ")")
+
+    expect(mayAggregateSource(nest(createFragment(createRef(outer, "id"))), outer)).toBe(true)
+    expect(mayAggregateSource(nest(nest(createFragment(createRef(outer, "id")))), outer)).toBe(true)
+    expect(
+      mayAggregateSource(
+        nest(createFragment(createRef(outer, "id"), createRef(inner, "id"))),
+        outer,
+      ),
+    ).toBe(true)
+    expect(mayAggregateSource(nest(createFragment(createRef(inner, "id"))), outer)).toBe(false)
+    expect(mayAggregateSource(nest(createFragment()), outer)).toBe(false)
+    expect(mayAggregateSource(nest(createRef(outer, "id")), outer)).toBe(false)
+  })
+
+  it("finds the columns of a source in the arguments of an aggregate at any depth, also in the queries nested in them", () => {
+    const createAggregate = (...args: ExpressionNode[]) =>
+      createNode({ kind: "aggregate", name: "f", distinct: false, arguments: args, orderBy: [] })
+
+    expect(mayAggregateSource(nest(createAggregate(createRef(outer, "id"))), outer)).toBe(true)
+    expect(mayAggregateSource(nest(nest(createAggregate(createRef(outer, "id")))), outer)).toBe(
+      true,
+    )
+    expect(
+      mayAggregateSource(
+        nest(createAggregate(createRef(outer, "id"), createRef(inner, "id"))),
+        outer,
+      ),
+    ).toBe(true)
+    expect(mayAggregateSource(nest(createAggregate(nest(createRef(outer, "id")))), outer)).toBe(
+      true,
+    )
+    expect(mayAggregateSource(nest(createAggregate(createRef(inner, "id"))), outer)).toBe(false)
+    expect(mayAggregateSource(nest(createAggregate(nest(createRef(inner, "id")))), outer)).toBe(
+      false,
+    )
+  })
+
+  it("does not count a query nested in a SQL fragment", () => {
+    const fragment = createList("f(", [nest(createRef(outer, "id"))], ")")
+
+    expect(mayAggregateSource(nest(fragment), outer)).toBe(false)
+  })
 })

@@ -251,6 +251,16 @@ Queries come in two kinds that share the query methods and differ only by execut
     The part adds about 4 instantiations to each method that changes the state, up to 3% of a query ([benchmark](../benchmarks/types/queries.bench.ts)); rejecting them on every query of values would spare it, but would also reject `count` of a query of `pluck`, such as one that a helper or shared code prepares.
   - At runtime, the methods and lowering recognize an aggregate query by the projection of its aggregate, which only the aggregate methods select and `coalesce` keeps, so the node has no part for it.
 
+## Aggregate functions
+
+- The [aggregate functions of expressions](types.md#aggregate-functions) select several aggregates in one statement, whereas an aggregate method makes a query of its own value.
+- A query that holds one is no aggregate query: `isAggregateQuery` recognizes only the projection of an aggregate method, so its node and state have no part for it, and it keeps its fields, rows, and clauses as any query does.
+  - It is what SQL gives: PostgreSQL returns one row of the aggregates, so rows `many` give an array of that row, and `take` gives the record.
+  - A limit and an offset apply to the row of the result rather than to the rows that it aggregates, so `.limit(10).select(() => ({ total: count() }))` counts every row, unlike `.limit(10).count()`, which reads the rows of the page from a derived source.
+- Types and lowering do not check where an aggregate stands, so PostgreSQL's errors apply: it rejects an aggregate in `where` and in the values of `update`, beside a row lock, and beside a column.
+- PostgreSQL assigns an aggregate to the query that holds it, unless its arguments refer only to the sources of enclosing queries, also through a query nested in an argument, and then to the innermost of those queries ([PostgreSQL](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)); a column of a query nested in an argument, which is its own, does not count.
+  It applies to a function as it is written: one of only a column of the parent row of a nested query, such as `sum(form.position)` in a query of its fields, aggregates the rows of the parent query, whereas an aggregate method reads such an argument from a derived source and aggregates the rows of its own query ([SQL generation](sql.md)).
+
 ## Exists
 
 - `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of `exists`, or a query of [`distinct`](#distinct-rows): it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.

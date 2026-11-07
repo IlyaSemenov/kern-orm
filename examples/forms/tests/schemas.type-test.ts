@@ -10,6 +10,7 @@ import {
   getField,
   getFieldCountsById,
   getFieldLabels,
+  getFieldStats,
   getForm,
   getFormPage,
   getSubmissionReview,
@@ -127,6 +128,12 @@ describe("Db", () => {
     const submissions = await listSubmissions(database.bind(tenantSchema), "form-id")
 
     expectTypeOf(submissions).toEqualTypeOf<{ id: string; user: { id: string; email: string } }[]>()
+  })
+
+  test("of a tenant reads several aggregates of the fields of a form in one record", async () => {
+    const stats = await getFieldStats(database.bind(tenantSchema), "form-id")
+
+    expectTypeOf(stats).toEqualTypeOf<{ total: number; lastPosition: number | null }>()
   })
 
   test("of a tenant filters forms by the distinct values of another query", async () => {
