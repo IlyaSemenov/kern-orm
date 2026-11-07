@@ -10,9 +10,9 @@ import {
   createCountCall,
   toAggregateType,
 } from "../query/aggregate"
+import type { ScalarQuery } from "../query/operand"
 import type { OrderTerms } from "../query/order"
 import { addTerms } from "../query/order"
-import type { ScalarQuery } from "../query/select"
 
 import type { AnyExpression, Expression } from "./expression"
 import { getType, isOperandSource, operandNode, toExpression, toNode } from "./expression"

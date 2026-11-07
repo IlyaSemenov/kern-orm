@@ -19,7 +19,7 @@ import type { QueryContext } from "./column-refs"
 import { createSelectionRefs } from "./column-refs"
 import type { NestedSelectionNode, QueryNode } from "./node"
 import { isLiteralSelection, isNestedSelection } from "./node"
-import type { ScalarQuery } from "./select"
+import type { ScalarQuery } from "./operand"
 
 /**
  * Direction of a sort key, optionally with the placement of `NULL`.

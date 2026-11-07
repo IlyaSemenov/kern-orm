@@ -4,14 +4,9 @@ import type { AnyTable } from "../table/table"
 
 import type { SelectQueryKind } from "./kind"
 import type { OneRow } from "./rows"
-import type {
-  AnySelectQuery,
-  ChangeState,
-  FilteredStateRows,
-  SelectQuery,
-  TableOrQuery,
-} from "./select"
+import type { AnySelectQuery, ChangeState, SelectQuery, TableOrQuery } from "./select"
 import { requireDerived } from "./select"
+import type { FilteredStateRows } from "./select-method-state"
 import type { HelperFields, MergeSelection, WithoutHelperFields } from "./selection"
 import type { EmptyRecord, QueryStateOf, SelectQueryState } from "./state"
 

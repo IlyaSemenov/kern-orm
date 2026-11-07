@@ -1,6 +1,6 @@
 import type { ExpressionNode, NestedQueryNode } from "../../ast/nodes"
 import { createNode, falseNode } from "../../ast/nodes"
-import type { ValuesQuery, ValuesQueryValue } from "../../query/select"
+import type { ValuesQuery, ValuesQueryValue } from "../../query/operand"
 import type { AnyType } from "../../type/type"
 import type { Expression } from "../expression"
 import { getType, toBooleanExpression, toNode, toValueNode } from "../expression"

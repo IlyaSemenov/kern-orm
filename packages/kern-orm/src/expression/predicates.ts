@@ -1,7 +1,7 @@
 import { combineNodes, negateNode } from "../ast/boolean"
 import type { ExpressionNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
-import type { ScalarQuery } from "../query/select"
+import type { ScalarQuery } from "../query/operand"
 
 import type { AnyExpression, Expression } from "./expression"
 import { isOperandSource, operandNode, toBooleanExpression } from "./expression"

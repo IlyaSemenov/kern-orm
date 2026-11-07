@@ -5,16 +5,12 @@ import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { operandNode, toExpression } from "../expression/expression"
-import type {
-  TypedOperand,
-  TypedOperandInput,
-  TypedOperandOperators,
-} from "../expression/functions"
+import type { TypedOperand } from "../expression/functions"
 import type { Operand, OperandValue } from "../expression/operators/comparison"
 import { valuesQueryNode } from "../expression/operators/equality"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext } from "../schema/relation"
-import type { AnyTable, ColumnOperators, ColumnValues, Selectable } from "../table/table"
+import type { AnyTable, Selectable } from "../table/table"
 
 import type { AggregateMethod, CountValueType } from "./aggregate"
 import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate"
@@ -38,26 +34,44 @@ import type { AnyMutationQuery, InitialMutationState } from "./mutation"
 import { createDelete, createInsert, createUpdate, MutationQuery } from "./mutation"
 import type { QueryNode } from "./node"
 import { createQueryNode } from "./node"
+import type {
+  ExpressionQueryState,
+  OperandUses,
+  ScalarQueryValue,
+  ScalarValue,
+  scalarValue,
+} from "./operand"
 import type { OrderKey, OrderTerms, SelectedRefs } from "./order"
 import { addOrder } from "./order"
 import { createPageCount } from "./pagination"
 import { coalesceValue, mergeProjections, projectValue } from "./projections"
-import type { FilteredRows, OneRow, OneValueRows, QueryResult, ValueRows } from "./rows"
+import type { OneRow, OneValueRows, QueryResult, ValueRows } from "./rows"
 import { limitToOne, toFilteredRows, toValueRows } from "./rows"
 import type {
-  HelperFields,
-  MergeSelection,
-  Selection,
-  SelectionResult,
-  SelectionUses,
-} from "./selection"
-import type {
-  EmptyRecord,
-  InitialQueryState,
-  QueryStateOf,
-  QueryValueType,
-  SelectQueryState,
-} from "./state"
+  AggregateState,
+  CoalescedValue,
+  CoalesceQueryState,
+  ColumnAggregateState,
+  ColumnValueType,
+  CountState,
+  FilteredState,
+  FoundState,
+  LockableQueryState,
+  ManyRowsQueryState,
+  MappedQueryState,
+  OneRecordQueryState,
+  OneRowQueryState,
+  OperandAggregateState,
+  OperandValueAggregateState,
+  OperandValueType,
+  RecordQueryState,
+  UnaggregatedQueryState,
+  UnaggregatedValueQueryState,
+  UnguaranteedQueryState,
+  ValueQueryState,
+} from "./select-method-state"
+import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
+import type { EmptyRecord, InitialQueryState, QueryStateOf, SelectQueryState } from "./state"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
 // Declared in the module of `SelectQuery`: declared in another module, it keeps TypeScript 6 and `bun check` from reducing a union of queries that differ by their fields, such as `cond ? query.select("id", "title") : query.select("id")`, to one query, so that methods that change the state reject the union.
@@ -66,191 +80,8 @@ export type ChangeState<S extends SelectQueryState, Changes extends Partial<Sele
   readonly [K in keyof SelectQueryState]: K extends keyof Changes ? Changes[K] : S[K]
 } & {}
 
-// Non-distributive over the guarantee, so that a state that may be guaranteed relaxes its rows.
-// The guarantee of the query of a helper callback, whose records are the marker, records only whether the callback filters, so its rows stay.
-// The marker is checked with `value`, since a value of type `never` also matches it, and outside a tuple, so that a result of `any` gives the rows of both branches.
-/** Rows mode of a query of state `S` after a filter: `FilteredRows` of a query whose row is guaranteed, and the rows of other queries. */
-export type FilteredStateRows<S extends SelectQueryState> = [S["guaranteed"]] extends [false]
-  ? S["rows"]
-  : [S["value"]] extends [false]
-    ? S["result"] extends HelperFields
-      ? S["rows"]
-      : FilteredRows<S["rows"], false>
-    : FilteredRows<S["rows"], S["value"]>
-
-/** State `S` after a filter, which ends the guarantee of its row. */
-type FilteredState<S extends SelectQueryState> = ChangeState<
-  S,
-  { rows: FilteredStateRows<S>; guaranteed: false }
->
-
-/** State `S` after a filter followed by `take`, as `find` and `findBy` change it. */
-type FoundState<S extends SelectQueryState> = ChangeState<
-  S,
-  { rows: OneRow<FilteredStateRows<S>>; guaranteed: false }
->
-
 /** Query of state `S`, bound or unbound. */
 export type QueryOf<S extends SelectQueryState> = SelectQuery<S, SelectQueryKind>
-
-declare const scalarValue: unique symbol
-
-// An aggregate query and a query of `exists` always have their row, and a required relation guarantees the row of a query that keeps the guarantee, such as of `field.form`.
-/** Value of a query of state `S` in an expression: its value, or `NULL` without its row unless the query always has it. */
-export type ScalarValue<S extends SelectQueryState> = S["aggregate"] extends true
-  ? S["result"]
-  : S["guaranteed"] extends true
-    ? S["result"]
-    : S["result"] | null
-
-/**
- * Query of one value of a table, such as of `get`, of an aggregate, or of `exists`, which an expression takes as a scalar subquery of its value, or as `EXISTS` of the rows of a query of `exists`.
- *
- * `T` is its value there: without its row, a query of `get` is `NULL`, unless a required relation guarantees the row, such as of `field.form`.
- */
-// An interface rather than an intersection with `QueryOf`, which TypeScript would compare with every method of the query.
-export interface ScalarQuery<T = unknown> {
-  /** Value of the query in an expression, from which an expression infers `T`. */
-  readonly [scalarValue]: T
-  readonly types: ScalarQueryState
-  // A method of a query, which TypeScript drops from the type of a spread copy of a query, so that such a copy is rejected.
-  readonly exists: unknown
-}
-
-/** Value of query `Q` of one value in an expression. */
-export type ScalarQueryValue<Q extends ScalarQuery> = Q[typeof scalarValue]
-
-/** Relations whose records `E`, an expression or a query of one value that a callback returns, selects: those of a query, as an expression does not carry the relations of its queries. */
-export type OperandUses<E> = E extends ScalarQuery ? E["types"]["uses"] : never
-
-/** State of a query of one value, which an expression takes. */
-interface ScalarQueryState extends SelectQueryState {
-  readonly rows: "one" | "optional"
-  readonly value: true
-}
-
-/** State of a query of one value with the type of its value, whose expression `expr` gives. */
-interface ExpressionQueryState extends ScalarQueryState {
-  readonly valueType: QueryValueType
-}
-
-/** Query of one value of a table with the type of its value, such as of `get` or of an aggregate, which gives the expression of a function the decoding and the operators of its value. */
-// An interface rather than an intersection with `QueryOf`, as `ScalarQuery` is.
-export interface TypedScalarQuery extends ScalarQuery {
-  readonly types: ExpressionQueryState
-}
-
-/** Query of values of a table of any rows, such as of `pluck`, whose value is `T`, which `in` takes as a subquery of its values. */
-// An interface rather than an intersection with `QueryOf`, as `ScalarQuery` is.
-export interface ValuesQuery<T = unknown> {
-  readonly types: ValuesQueryState<T>
-  // A method of a query, which TypeScript drops from the type of a spread copy of a query, so that such a copy is rejected.
-  readonly exists: unknown
-}
-
-/** Value of query `Q` of values, of each of its rows. */
-export type ValuesQueryValue<Q extends ValuesQuery> = Q["types"]["result"]
-
-/** State of a query of values whose value is `T`. */
-interface ValuesQueryState<T> extends SelectQueryState {
-  readonly result: T
-  readonly value: true
-}
-
-/** State of a query whose rows are records, which `select` and `clearSelect` change. */
-type RecordQueryState = SelectQueryState & { readonly value: false }
-
-/** State of a query whose row no relation guarantees, which a filter keeps. */
-type UnguaranteedQueryState = SelectQueryState & { readonly guaranteed: false }
-
-/** State of a query whose rows are values, made by `get`, `pluck`, an aggregate method, such as `count`, or `exists`. */
-type ValueQueryState = SelectQueryState & { readonly value: true }
-
-/** State of a query converted by `map`, whose callback of `orderBy` reads no selected fields, which its result no longer tells. */
-type MappedQueryState = SelectQueryState & { readonly value: "mapped" }
-
-/** State of a query of values with the values that the type of its value encodes, which `coalesce` takes; it narrows nothing else, so that a call compares no operators. */
-type CoalesceQueryState = ValueQueryState & { readonly valueType: { readonly input: unknown } }
-
-/** State of a query not made by an aggregate method or `exists`, which `get`, `pluck`, the aggregate methods, `exists`, and `groupBy` apply to. */
-type UnaggregatedQueryState = SelectQueryState & { readonly aggregate: false }
-
-/** State of a query of values not made by an aggregate method or `exists`, such as of `pluck`, whose callback of `groupBy` reads its value. */
-type UnaggregatedValueQueryState = ValueQueryState & UnaggregatedQueryState
-
-// A type of literal members rather than parameters of input and operators: an alias instantiates its arguments with each new mapper, also where no call reads them, and the operators of a type are object types that TypeScript instantiates again each time.
-/** Type of the value of a query of column `K` of table `T`. */
-type ColumnValueType<T extends AnyTable, K extends keyof T["columns"]> = {
-  readonly input: ColumnValues<T>[K]
-  readonly operators: ColumnOperators<T, K>
-}
-
-/** Type of the value of a query of `E`, an expression or a query of one value that a callback returns. */
-type OperandValueType<E extends TypedOperand> = {
-  readonly input: TypedOperandInput<E>
-  readonly operators: TypedOperandOperators<E>
-}
-
-/** State of a query of the value `V` of type `Type` of an aggregate or of `exists` over the rows of a query of state `S`, which always returns one row. */
-type AggregateState<S extends SelectQueryState, V, Type extends QueryValueType> = ChangeState<
-  S,
-  { result: V; valueType: Type; rows: "one"; value: true; guaranteed: false; aggregate: true }
->
-
-// Apart from `AggregateState`: a parameter of `AggregateState` for the relations made every aggregate and `exists` cost more, such as 3% more for `count` and for `exists` of a relation, and `ChangeState` of its result about 17% more for this state.
-/** State of a query of the value `V` of type `Type` of an aggregate over the rows of a query of state `S`, whose argument is `E`, an expression or a query of one value that a callback returns. */
-type OperandAggregateState<
-  S extends SelectQueryState,
-  V,
-  Type extends QueryValueType,
-  E,
-> = ChangeState<
-  S,
-  {
-    result: V
-    valueType: Type
-    rows: "one"
-    value: true
-    guaranteed: false
-    aggregate: true
-    uses: S["uses"] | OperandUses<E>
-  }
->
-
-/** State of a query of the number of rows or of values among the rows of a query of state `S`. */
-type CountState<S extends SelectQueryState> = AggregateState<S, number, CountValueType>
-
-/** State of a query of an aggregate of the values of column `K` of the rows of a query of state `S`, `NULL` without values other than `NULL`. */
-type ColumnAggregateState<
-  S extends SelectQueryState,
-  K extends keyof S["table"]["columns"],
-> = AggregateState<S, Selectable<S["table"]>[K] | null, ColumnValueType<S["table"], K>>
-
-/** State of a query of an aggregate of the values of `E`, an expression or a query of one value that a callback returns, over the rows of a query of state `S`, `NULL` without values other than `NULL`. */
-type OperandValueAggregateState<
-  S extends SelectQueryState,
-  E extends TypedOperand,
-> = OperandAggregateState<S, OperandValue<E> | null, OperandValueType<E>, E>
-
-// `null` among the values of a type stands for `NULL`, so `coalesce` removes only `null`: `undefined` that a decoder returns stays, and so does `unknown` of a JSON type.
-// A fallback expression or query whose value can be `NULL` keeps `null`, while its other values are decoded by the type of the value.
-/** Value `V` of a query of values whose `NULL` `coalesce` replaces with fallback `F`. */
-type CoalescedValue<V, F> = Exclude<V, null> | Extract<OperandValue<F>, null>
-
-/** State of a query of many rows, which `limit` and `offset` apply to. */
-type ManyRowsQueryState = SelectQueryState & { readonly rows: "many" }
-
-// `map` marks a query as an aggregate query to reject the methods that read its fields, but keeps its rows.
-/** State of a query that returns rows of its table, which a row lock applies to: not of an aggregate or of `exists`. */
-type LockableQueryState = SelectQueryState &
-  ({ readonly aggregate: false } | { readonly value: "mapped" })
-
-/** State of a query of one row, which `optional` and `required` apply to. */
-type OneRowQueryState = SelectQueryState & { readonly rows: "one" | "nullable" | "optional" }
-
-// The result of `map` is no value of a column, so `null` of its missing row does not read as `NULL`.
-/** State of a query of one row whose rows are records or what `map` gives, which `nullable` applies to. */
-type OneRecordQueryState = OneRowQueryState & { readonly value: false | "mapped" }
 
 /** Changes of the node of a query, which a method collects before it derives a query from them. */
 type NodeChanges = { -readonly [K in keyof QueryNode]?: QueryNode[K] }

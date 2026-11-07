@@ -1,6 +1,6 @@
 import type { ComparisonNode, ExpressionNode } from "../../ast/nodes"
 import { createNode } from "../../ast/nodes"
-import type { ScalarQuery, ScalarQueryValue } from "../../query/select"
+import type { ScalarQuery, ScalarQueryValue } from "../../query/operand"
 import type { AnyType } from "../../type/type"
 import type { AnyExpression, Expression } from "../expression"
 import { getType, toBooleanExpression, toNode, toValueNode } from "../expression"

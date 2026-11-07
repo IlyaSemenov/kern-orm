@@ -3,7 +3,8 @@ import type { NoRelations, SchemaContext } from "../schema/relation"
 import type { AnyTable } from "../table/table"
 
 import type { ColumnRefs, RelationRefs } from "./column-refs"
-import type { ScalarQuery, TableOrQuery } from "./select"
+import type { ScalarQuery } from "./operand"
+import type { TableOrQuery } from "./select"
 
 /**
  * Defines a reusable expression of a table, which the callbacks of queries over the table call with their columns and any further arguments, such as to filter by it and select it in one query.

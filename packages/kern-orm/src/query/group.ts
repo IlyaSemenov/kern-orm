@@ -11,8 +11,8 @@ import { createSelectionRefs } from "./column-refs"
 import type { WhereFilter } from "./filters"
 import { toFilterNode } from "./filters"
 import type { QueryNode } from "./node"
+import type { ScalarQuery } from "./operand"
 import { createColumnNode, createSelectedRefs } from "./order"
-import type { ScalarQuery } from "./select"
 
 /** Key of a group returned by the callback of `groupBy` or `distinctOn`: an expression or a query of one value, such as of a value of a related record. */
 export type GroupTerm = AnyExpression | ScalarQuery

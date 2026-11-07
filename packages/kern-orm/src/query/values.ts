@@ -9,7 +9,7 @@ import { requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { createSelectionRefs } from "./column-refs"
-import type { ScalarQuery } from "./select"
+import type { ScalarQuery } from "./operand"
 
 /**
  * Value of column `K` of table `T` that an insert or an update sets: a value that its type encodes, `null` for a nullable column, an expression of its values, or a query of one such value.

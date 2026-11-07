@@ -2,7 +2,7 @@
 
 import type { ExpressionNode } from "../ast/nodes"
 import { createList, createNode } from "../ast/nodes"
-import type { ScalarQuery, TypedScalarQuery } from "../query/select"
+import type { ScalarQuery, TypedScalarQuery } from "../query/operand"
 import { SelectQuery } from "../query/select"
 import type { ExpressionInput } from "../query/selection"
 import type { AnyType, Type } from "../type/type"

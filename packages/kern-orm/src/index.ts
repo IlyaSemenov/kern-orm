@@ -102,17 +102,9 @@ export { createDatabase } from "./execution/database"
 export type { Connection, Driver, DriverResult, TransactionFailure } from "./execution/driver"
 export type { TransactionCoordinator } from "./execution/transaction"
 export { createStatement } from "./execution/driver"
-export type {
-  AnySelectQuery,
-  BoundSelectQuery,
-  FilteredStateRows,
-  OperandUses,
-  ResultOf,
-  ScalarQuery,
-  SelectQuery,
-  TypedScalarQuery,
-  ValuesQuery,
-} from "./query/select"
+export type { OperandUses, ScalarQuery, TypedScalarQuery, ValuesQuery } from "./query/operand"
+export type { AnySelectQuery, BoundSelectQuery, ResultOf, SelectQuery } from "./query/select"
+export type { FilteredStateRows } from "./query/select-method-state"
 export { from } from "./query/select"
 export type {
   EmptyRecord,
