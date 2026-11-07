@@ -1,6 +1,6 @@
 # The `fieldTypes` part of the state
 
-The `fieldTypes` part holds the type of the value of each selected field, which the references of `having` read, and `SelectedFieldTypes` defers its merge until the types are read.
+The `fieldTypes` part holds the type of the value of each selected field, which the references of `having` and the narrowing of `groupBy` read, and `SelectedFieldTypes` defers its merge until the types are read.
 
 ```ts
 db.submission
@@ -20,7 +20,7 @@ db.submission
   ```ts
   // The state of `select` of a callback that returns `Sel`
   result: MergeSelection<S["result"], SelectionResult<Sel>>
-  // Deferred: `having` reads `types` of the interface, which merges them
+  // Deferred: `having` or `groupBy` reads `types` of the interface, which merges them
   fieldTypes: SelectedFieldTypes<S["fieldTypes"], SelectionFieldTypes<Sel>>
   // Eager, as the result
   fieldTypes: MergeSelection<S["fieldTypes"], SelectionFieldTypes<Sel>>

@@ -2,7 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
-import { count, sum } from "../expression/aggregates"
+import { avg, count, every, max, min, some, stringAgg, sum } from "../expression/aggregates"
 import type { AnyExpression, Expression, TypedExpression } from "../expression/expression"
 import type { Operand } from "../expression/operators/comparison"
 import { and } from "../expression/predicates"
@@ -22,6 +22,8 @@ import type { AnySelectQuery, ResultOf, SelectQuery } from "./select"
 import { from } from "./select"
 import type { Selection } from "./selection"
 import type { EmptyRecord, InitialQueryState, QueryStateOf } from "./state"
+
+declare const flag: boolean
 
 const post = defineTable("post", {
   id: t.uuid,
@@ -798,16 +800,20 @@ describe("expr", () => {
 })
 
 describe("groupBy", () => {
-  test("keeps the state of the query, so that a conditional call assigns back to its variable", () => {
+  test("allows conditional grouping to assign back to the original variable", () => {
     const base = from(post).select("title")
-    expectTypeOf(base.groupBy("title")).toEqualTypeOf<typeof base>()
-    expectTypeOf(base.groupBy(columns => [columns.title, columns.hint])).toEqualTypeOf<
-      typeof base
-    >()
+    expectTypeOf(base.groupBy("title")).toExtend<typeof base>()
+    expectTypeOf(base.groupBy(columns => [columns.title, columns.hint])).toExtend<typeof base>()
 
     let query = base
     query = query.groupBy("title")
     expectTypeOf(query.take()).toEqualTypeOf(base.take())
+  })
+
+  test("rejects a union of distinct query states, as other state-changing methods do", () => {
+    const query = flag ? from(post).take() : from(post).limit(20)
+    // @ts-expect-error No single state describes both queries.
+    query.groupBy("title")
   })
 
   test("takes columns, and an expression or a query of one value of a callback, or an array of them", () => {
@@ -858,7 +864,7 @@ describe("groupBy", () => {
     expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ hint: string | null; id: string }>()
   })
 
-  test("keeps the values of aggregates of the groups, null among them", () => {
+  test("removes null introduced by aggregates of nonempty groups", () => {
     const query = from(post)
       .groupBy("title")
       .select(columns => ({
@@ -870,8 +876,139 @@ describe("groupBy", () => {
     expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{
       title: string
       total: number
-      length: number | null
+      length: number
     }>()
+  })
+
+  test("narrows every unfiltered aggregate before or after grouping, preserving nullable arguments and filters", () => {
+    const selected = from(post).select(columns => ({
+      minimum: min(columns.title.length()),
+      maximum: max(columns.title),
+      average: avg(columns.title.length()),
+      all: every(columns.title.eq("x")),
+      any: some(columns.title.eq("x")),
+      joined: stringAgg(columns.title, ",", { orderBy: columns.title }),
+      nullable: max(columns.hint),
+      filtered: sum(columns.title.length(), { filter: columns.title.eq("x") }),
+      maybeFiltered: sum(columns.title.length(), {} as { filter?: Expression<boolean> }),
+      emptyOptions: sum(columns.title.length(), {}),
+      undefinedFilter: sum(columns.title.length(), { filter: undefined }),
+      // Functions of aggregates keep their standalone nullability.
+      positive: sum(columns.title.length()).gt(0),
+    }))
+    const grouped = selected.groupBy("title")
+    expectTypeOf<ResultOf<typeof grouped>>().toEqualTypeOf<{
+      minimum: number
+      maximum: string
+      average: number
+      all: boolean
+      any: boolean
+      joined: string
+      nullable: string | null
+      filtered: number | null
+      maybeFiltered: number | null
+      emptyOptions: number
+      undefinedFilter: number
+      positive: boolean | null
+    }>()
+    const repeated = grouped.groupBy("hint")
+    expectTypeOf<ResultOf<typeof repeated>>().toEqualTypeOf<ResultOf<typeof grouped>>()
+    const cleared = grouped.clearSelect().select(columns => ({
+      total: sum(columns.title.length()),
+    }))
+    expectTypeOf<ResultOf<typeof cleared>>().toEqualTypeOf<{ total: number }>()
+  })
+
+  test("narrows get and pluck in either order without changing missing-row behavior", () => {
+    const grouped = from(post).groupBy("title")
+    const after = grouped.pluck(columns => sum(columns.title.length()))
+    const before = from(post)
+      .pluck(columns => sum(columns.title.length()))
+      .groupBy("title")
+    const one = grouped.get(columns => max(columns.title)).optional()
+    const oneBefore = from(post)
+      .get(columns => max(columns.title))
+      .optional()
+      .groupBy("title")
+    expectTypeOf<Executed<typeof after>>().toEqualTypeOf<number[]>()
+    expectTypeOf<Executed<typeof before>>().toEqualTypeOf<number[]>()
+    expectTypeOf<Executed<typeof one>>().toEqualTypeOf<string | undefined>()
+    expectTypeOf<Executed<typeof oneBefore>>().toEqualTypeOf<string | undefined>()
+    const fallback = from(post)
+      .pluck(columns => sum(columns.hint.length()))
+      .coalesce(0)
+      .groupBy("title")
+    expectTypeOf<Executed<typeof fallback>>().toEqualTypeOf<number[]>()
+    const nullableFallback = from(post)
+      .pluck(columns => sum(columns.title.length()))
+      .coalesce(sql(t.integer.nullable())`NULL`)
+      .groupBy("title")
+    expectTypeOf<Executed<typeof nullableFallback>>().toEqualTypeOf<(number | null)[]>()
+  })
+
+  test("keeps null from a replacement, a union, an optional field, or a literal", () => {
+    const nullable: { total?: Expression<number | null> } = {}
+    const query = from(post)
+      .select(columns => ({
+        total: sum(columns.title.length()),
+        literal: literal(null),
+        union: flag ? sum(columns.title.length()) : sql(t.integer.nullable())`NULL`,
+      }))
+      .select(() => nullable)
+      .groupBy("title")
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{
+      total: number | null | undefined
+      literal: null
+      union: number | null
+    }>()
+    const optional: { total?: ReturnType<typeof sum<ColumnRefs<typeof post>["title"]>> } = {}
+    const optionalQuery = from(post)
+      .select(() => optional)
+      .groupBy("title")
+    expectTypeOf<ResultOf<typeof optionalQuery>>().toEqualTypeOf<{ total?: string | null }>()
+    const selectTotal = (columns: ColumnRefs<typeof post>) => ({
+      total: sum(columns.title.length()),
+    })
+    const optionalAggregate: Partial<ReturnType<typeof selectTotal>> = {}
+    const optionalGrouped = from(post)
+      .select(() => optionalAggregate)
+      .groupBy("title")
+    expectTypeOf<ResultOf<typeof optionalGrouped>>().toEqualTypeOf<{ total?: number }>()
+    const replaced = from(post)
+      .select(columns => ({
+        total: sum(columns.title.length()),
+      }))
+      .select(() => ({
+        total: sql(t.integer.nullable())`NULL`,
+      }))
+      .groupBy("title")
+    expectTypeOf<ResultOf<typeof replaced>>().toEqualTypeOf<{ total: number | null }>()
+  })
+
+  test("keeps selected aggregate references nullable when reused outside their grouped query", () => {
+    const base = from(post)
+    base
+      .select(columns => ({
+        total: sum(columns.title.length()),
+      }))
+      .groupBy("title")
+      .having((_columns, selected) => {
+        const ungrouped = base.select(() => ({
+          total: selected.total,
+        }))
+        const grouped = ungrouped.groupBy("title")
+        expectTypeOf<ResultOf<typeof ungrouped>>().toEqualTypeOf<{ total: number | null }>()
+        expectTypeOf<ResultOf<typeof grouped>>().toEqualTypeOf<{ total: number }>()
+        return selected.total.gt(0)
+      })
+    base
+      .groupBy("title")
+      .pluck(columns => sum(columns.title.length()))
+      .having((_columns, value) => {
+        const ungrouped = base.pluck(() => value)
+        expectTypeOf<Executed<typeof ungrouped>>().toEqualTypeOf<(number | null)[]>()
+        return value.gt(0)
+      })
   })
 
   test("applies the methods that choose rows and read values, and an aggregate method gives one value of the groups", () => {

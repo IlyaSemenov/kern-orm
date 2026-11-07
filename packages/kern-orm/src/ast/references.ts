@@ -39,8 +39,49 @@ export function mayAggregateSource(node: ExpressionNode, source: SourceNode): bo
   return found
 }
 
-/** Calls `visit` for `node` and each expression node in it at any depth, including the queries nested in it. */
-function visitNodes(node: ExpressionNode, visit: (node: ExpressionNode) => void): void {
+/**
+ * Tells whether an aggregate belongs to an enclosing query rather than the query of `source`.
+ *
+ * Only references free in its arguments, order, and filter decide its owner: columns bound by a subquery do not count, but references through that subquery to its enclosing queries do.
+ * Without such references, an aggregate of constants belongs to the query that contains it.
+ * The node must have been lowered, so that subqueries expose their sources.
+ */
+export function aggregatesOuterSource(node: ExpressionNode, source: SourceNode): boolean {
+  let local = false
+  let outer = false
+  const queries: SelectNode[] = []
+  visitNodes(
+    node,
+    child => {
+      if (child.kind !== "column" || local) return
+      for (const query of queries) {
+        if (bindsSource(query.from, child.source)) return
+        for (const join of query.joins) {
+          if (bindsSource(join.source, child.source)) return
+        }
+      }
+      if (child.source === source) local = true
+      else outer = true
+    },
+    queries,
+  )
+  return outer && !local
+}
+
+/** Tells whether a declared source binds a reference, including the table occurrence a derived source replaces. */
+function bindsSource(declared: SourceNode | undefined, source: SourceNode): boolean {
+  return declared === source || (declared?.kind === "derived" && declared.replaces === source)
+}
+
+/**
+ * Calls `visit` for `node` and each expression node in it at any depth, including the queries nested in it.
+ * When supplied, `queries` holds the nested queries enclosing each node passed to `visit`.
+ */
+function visitNodes(
+  node: ExpressionNode,
+  visit: (node: ExpressionNode) => void,
+  queries?: SelectNode[],
+): void {
   visit(node)
   switch (node.kind) {
     case "column":
@@ -54,49 +95,49 @@ function visitNodes(node: ExpressionNode, visit: (node: ExpressionNode) => void)
     case "cast":
     case "not":
     case "isNull":
-      visitNodes(node.operand, visit)
+      visitNodes(node.operand, visit, queries)
       return
     case "and":
     case "or":
       for (const operand of node.operands) {
-        visitNodes(operand, visit)
+        visitNodes(operand, visit, queries)
       }
       return
     case "comparison":
-      visitNodes(node.left, visit)
-      visitNodes(node.right, visit)
+      visitNodes(node.left, visit, queries)
+      visitNodes(node.right, visit, queries)
       return
     case "in":
-      visitNodes(node.operand, visit)
+      visitNodes(node.operand, visit, queries)
       for (const item of node.list) {
-        visitNodes(item, visit)
+        visitNodes(item, visit, queries)
       }
       return
     case "inQuery":
-      visitNodes(node.operand, visit)
+      visitNodes(node.operand, visit, queries)
       if (node.query.kind === "select") {
-        visitQuery(node.query, visit)
+        visitQuery(node.query, visit, queries)
       }
       return
     case "raw":
       for (const value of node.values) {
-        visitNodes(value, visit)
+        visitNodes(value, visit, queries)
       }
       return
     case "subquery":
     case "exists":
     case "textSubquery":
-      visitQuery(node.query, visit)
+      visitQuery(node.query, visit, queries)
       return
     case "aggregate":
       for (const argument of node.arguments) {
-        visitNodes(argument, visit)
+        visitNodes(argument, visit, queries)
       }
       for (const order of node.orderBy) {
-        visitNodes(order.expression, visit)
+        visitNodes(order.expression, visit, queries)
       }
       if (node.filter !== undefined) {
-        visitNodes(node.filter, visit)
+        visitNodes(node.filter, visit, queries)
       }
       return
     default:
@@ -104,50 +145,59 @@ function visitNodes(node: ExpressionNode, visit: (node: ExpressionNode) => void)
   }
 }
 
-/** Calls `visit` for each expression node in the clauses and the derived sources of `query` at any depth. */
-function visitQuery(query: SelectNode, visit: (node: ExpressionNode) => void): void {
+/**
+ * Calls `visit` for each expression node in the clauses and the derived sources of `query` at any depth.
+ * When supplied, `queries` holds the nested queries enclosing each node passed to `visit`; this call adds `query` for its duration.
+ */
+function visitQuery(
+  query: SelectNode,
+  visit: (node: ExpressionNode) => void,
+  queries?: SelectNode[],
+): void {
+  queries?.push(query)
   const { from, filters } = query
   if (from?.kind === "derived") {
-    visitQuery(from.query, visit)
+    visitQuery(from.query, visit, queries)
   }
   for (const join of query.joins) {
     if (join.source.kind === "derived") {
-      visitQuery(join.source.query, visit)
+      visitQuery(join.source.query, visit, queries)
     }
-    visitNodes(join.on, visit)
+    visitNodes(join.on, visit, queries)
   }
   if (query.distinctOn !== undefined) {
     for (const key of query.distinctOn) {
-      visitNodes(key, visit)
+      visitNodes(key, visit, queries)
     }
   }
   for (const projection of query.projections) {
-    visitNodes(projection.expression, visit)
+    visitNodes(projection.expression, visit, queries)
   }
   if (filters.relation !== undefined) {
-    visitNodes(filters.relation, visit)
+    visitNodes(filters.relation, visit, queries)
   }
   if (filters.scope !== undefined) {
-    visitNodes(filters.scope, visit)
+    visitNodes(filters.scope, visit, queries)
   }
   if (filters.user !== undefined) {
-    visitNodes(filters.user, visit)
+    visitNodes(filters.user, visit, queries)
   }
   if (query.groupBy !== undefined) {
     for (const key of query.groupBy) {
-      visitNodes(key, visit)
+      visitNodes(key, visit, queries)
     }
   }
   if (query.having !== undefined) {
-    visitNodes(query.having, visit)
+    visitNodes(query.having, visit, queries)
   }
   for (const order of query.orderBy) {
-    visitNodes(order.expression, visit)
+    visitNodes(order.expression, visit, queries)
   }
   if (query.limit !== undefined) {
-    visitNodes(query.limit, visit)
+    visitNodes(query.limit, visit, queries)
   }
   if (query.offset !== undefined) {
-    visitNodes(query.offset, visit)
+    visitNodes(query.offset, visit, queries)
   }
+  queries?.pop()
 }

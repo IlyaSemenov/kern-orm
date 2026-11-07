@@ -17,6 +17,7 @@ import {
   matches,
   one,
   param,
+  sum,
   toSnakeCase,
 } from "kern-orm"
 import * as t from "kern-orm/types"
@@ -87,6 +88,27 @@ export const selectComputedValues = schema.form.select(form => ({
   fieldCount: greatest(form.fields.count(), 1),
   weight: caseWhen(t.integer, [[form.fields.exists(), 1]], 0),
 }))
+
+/** Aggregate expression with its group value in the inferred declaration. */
+export const aggregateValue = sum(param(t.integer, 1))
+
+/** Grouped query whose state keeps its non-null aggregate result. */
+export const groupedTotals = schema.form
+  .select(form => ({
+    total: sum(form.name.length()),
+  }))
+  .groupBy("name")
+
+/** Grouped query of an optional aggregate field. */
+export function groupOptionalTotal(selection: { total?: typeof aggregateValue }) {
+  return schema.form.select(() => selection).groupBy("name")
+}
+
+/** Query of aggregate values whose declaration retains the later grouping behavior. */
+export const totalValues = schema.form.pluck(form => sum(form.name.length()))
+
+/** Helper whose declaration carries grouping to earlier and later selections. */
+export const groupNames = defineHelper(schema.form, query => query.groupBy("name"))
 
 /** Selects a column or a literal by a flag; see the file header. */
 export function selectNameOrLiteral(withName: boolean) {

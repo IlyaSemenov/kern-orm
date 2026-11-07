@@ -10,6 +10,11 @@ import {
   deleteForm,
   deleteFormsWithFields,
   firstFormByName,
+  aggregateValue,
+  groupedTotals,
+  totalValues,
+  groupNames,
+  groupOptionalTotal,
   hasFieldId,
   insertForm,
   insertFormWithFieldIds,
@@ -31,6 +36,20 @@ import {
 declare const flag: boolean
 
 describe("emitted query declarations", () => {
+  test("preserves grouped aggregate values and helper effects across declarations", () => {
+    expectTypeOf<ResultOf<typeof groupedTotals>>().toEqualTypeOf<{ total: number }>()
+    const optional = groupOptionalTotal({})
+    expectTypeOf<ResultOf<typeof optional>>().toEqualTypeOf<{ total?: number }>()
+    const groupedValues = totalValues.groupBy("name")
+    expectTypeOf<ResultOf<typeof groupedValues>>().toEqualTypeOf<number>()
+    const withHelper = schema.form
+      .select(() => ({
+        total: aggregateValue,
+      }))
+      .use(groupNames)
+    expectTypeOf<ResultOf<typeof withHelper>>().toEqualTypeOf<{ total: number }>()
+  })
+
   test("preserves the input fields and selects a column through a generic function", () => {
     const query = selectName(schema.form.select("id"))
 

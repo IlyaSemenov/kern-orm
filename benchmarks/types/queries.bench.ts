@@ -4,6 +4,7 @@
 import { bench } from "@ark/attest"
 import type { DbOf } from "kern-orm"
 import {
+  avg,
   caseWhen,
   coalesce,
   count,
@@ -12,6 +13,7 @@ import {
   greatest,
   matches,
   max,
+  min,
   not,
   stringAgg,
   sum,
@@ -71,6 +73,13 @@ bench.baseline(async () => {
     }))
     .groupBy("position")
     .having((_field, selected) => selected.positions.gt(0))
+  // Other aggregate functions than those of the benchmarks of groups, which `sum` and `max` of other benchmarks would otherwise share.
+  await tenantDb.field.groupBy("label").select(field => ({
+    label: field.label,
+    first: min(field.label),
+    average: avg(field.position),
+  }))
+  await tenantDb.field.groupBy("label").pluck(field => avg(field.position))
   await tenantDb.field.distinctOn("position").pluck("position")
   await tenantDb.field.select("position").distinctOn((_field, selected) => selected.position)
   await formsDb.$execute(
@@ -257,15 +266,15 @@ bench("aggregate with a fallback", async () => {
 
 bench("function of a column", async () => {
   await tenantDb.form.pluck(form => coalesce(form.name, "x"))
-}).types([228, "instantiations"])
+}).types([230, "instantiations"])
 
 bench("case conversion of a column", async () => {
   await tenantDb.form.pluck(form => form.name.lower())
-}).types([178, "instantiations"])
+}).types([184, "instantiations"])
 
 bench("get of a callback", async () => {
   await tenantDb.form.find("x").get(form => form.name.lower())
-}).types([315, "instantiations"])
+}).types([321, "instantiations"])
 
 bench("aggregate of a callback", async () => {
   await tenantDb.form.where({ name: "x" }).max(form => form.name.lower())
@@ -273,7 +282,7 @@ bench("aggregate of a callback", async () => {
 
 bench("value of an aggregate of a relation", async () => {
   await tenantDb.form.pluck(form => form.fields.count())
-}).types([393, "instantiations"])
+}).types([395, "instantiations"])
 
 bench("aggregate of an aggregate of a relation", async () => {
   await tenantDb.form.where({ name: "x" }).max(form => form.fields.count())
@@ -283,7 +292,7 @@ bench("function of an aggregate of a relation and a value", async () => {
   await tenantDb.form.select(form => ({
     value: greatest(form.fields.count(), 1),
   }))
-}).types([610, "instantiations"])
+}).types([613, "instantiations"])
 
 bench("case of two branches", async () => {
   await tenantDb.form.pluck(form =>
@@ -296,47 +305,47 @@ bench("case of two branches", async () => {
       "b",
     ),
   )
-}).types([583, "instantiations"])
+}).types([589, "instantiations"])
 
 bench("count function", async () => {
   await tenantDb.form.select(() => ({
     total: count(),
   }))
-}).types([247, "instantiations"])
+}).types([250, "instantiations"])
 
 bench("aggregate function of a column", async () => {
   await tenantDb.form.select(form => ({
     last: max(form.name),
   }))
-}).types([280, "instantiations"])
+}).types([284, "instantiations"])
 
 bench("count function with a filter", async () => {
   await tenantDb.form.select(form => ({
     published: count({ filter: form.published }),
   }))
-}).types([316, "instantiations"])
+}).types([319, "instantiations"])
 
 bench("stringAgg of a column in an order", async () => {
   await tenantDb.form.select(form => ({
     names: stringAgg(form.name, ", ", { orderBy: form.id }),
   }))
-}).types([294, "instantiations"])
+}).types([297, "instantiations"])
 
 bench("operator of an aggregate function of an operator", async () => {
   await tenantDb.form.select(form => ({
     positive: sum(form.name.length()).gt(0),
   }))
-}).types([464, "instantiations"])
+}).types([469, "instantiations"])
 
 bench("aggregate function of an aggregate of a relation", async () => {
   await tenantDb.form.select(form => ({
     most: max(form.fields.count()),
   }))
-}).types([602, "instantiations"])
+}).types([612, "instantiations"])
 
 bench("groupBy of a column", async () => {
   await tenantDb.form.groupBy("name").select("name")
-}).types([136, "instantiations"])
+}).types([164, "instantiations"])
 
 bench("groupBy of a selected field", async () => {
   await tenantDb.form
@@ -345,14 +354,14 @@ bench("groupBy of a selected field", async () => {
       total: count(),
     }))
     .groupBy((_form, selected) => selected.bucket)
-}).types([501, "instantiations"])
+}).types([613, "instantiations"])
 
 bench("having of an aggregate", async () => {
   await tenantDb.form
     .groupBy("name")
     .having(() => count().gt(1))
     .pluck("name")
-}).types([219, "instantiations"])
+}).types([294, "instantiations"])
 
 bench("having of a selected field", async () => {
   await tenantDb.form
@@ -362,7 +371,29 @@ bench("having of a selected field", async () => {
     }))
     .groupBy("name")
     .having((_form, selected) => selected.total.gt(1))
-}).types([674, "instantiations"])
+}).types([777, "instantiations"])
+
+bench("aggregate functions after groupBy", async () => {
+  await tenantDb.form.groupBy("name").select(form => ({
+    name: form.name,
+    total: sum(form.name.length()),
+    last: max(form.name),
+  }))
+}).types([523, "instantiations"])
+
+bench("groupBy after a select of aggregate functions", async () => {
+  await tenantDb.form
+    .select(form => ({
+      name: form.name,
+      total: sum(form.name.length()),
+      last: max(form.name),
+    }))
+    .groupBy("name")
+}).types([655, "instantiations"])
+
+bench("pluck of an aggregate function after groupBy", async () => {
+  await tenantDb.form.groupBy("name").pluck(form => sum(form.name.length()))
+}).types([386, "instantiations"])
 
 bench("distinctOn of a column", async () => {
   await tenantDb.form.distinctOn("name").orderBy("name").select("id")
@@ -375,7 +406,7 @@ bench("distinctOn of a selected field", async () => {
       id: form.id,
     }))
     .distinctOn((_form, selected) => selected.bucket)
-}).types([519, "instantiations"])
+}).types([522, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
@@ -442,15 +473,15 @@ bench("relation many of map", async () => {
   await tenantDb.form.where({ id: "x" }).select(form => ({
     fields: form.fields.pluck("label").map(label => label.length),
   }))
-}).types([849, "instantiations"])
+}).types([852, "instantiations"])
 
 bench("helper of map", async () => {
   await tenantDb.form.use(withMappedName)
-}).types([825, "instantiations"])
+}).types([835, "instantiations"])
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
-}).types([994, "instantiations"])
+}).types([1004, "instantiations"])
 
 bench("transform of the number of the rows", async () => {
   await tenantDb.form
@@ -461,15 +492,15 @@ bench("transform of the number of the rows", async () => {
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1124, "instantiations"])
+}).types([1137, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1250, "instantiations"])
+}).types([1263, "instantiations"])
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
-}).types([1193, "instantiations"])
+}).types([1203, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -481,7 +512,7 @@ bench("unbound query", async () => {
       }))
       .take(),
   )
-}).types([967, "instantiations"])
+}).types([970, "instantiations"])
 
 bench("unbound query on DbOf", async () => {
   await sharedDb.$execute(
@@ -493,7 +524,7 @@ bench("unbound query on DbOf", async () => {
       }))
       .take(),
   )
-}).types([967, "instantiations"])
+}).types([970, "instantiations"])
 
 bench("relation many", async () => {
   await tenantDb.$execute(
@@ -504,7 +535,7 @@ bench("relation many", async () => {
         fields: form.fields.select("label", "position"),
       })),
   )
-}).types([1050, "instantiations"])
+}).types([1053, "instantiations"])
 
 bench("relation one", async () => {
   await tenantDb.$execute(
@@ -515,7 +546,7 @@ bench("relation one", async () => {
         form: field.form.select("name", "published"),
       })),
   )
-}).types([865, "instantiations"])
+}).types([868, "instantiations"])
 
 bench("exists of a relation", async () => {
   await tenantDb.$execute(
@@ -526,7 +557,7 @@ bench("exists of a relation", async () => {
         hasFields: form.fields.exists(),
       })),
   )
-}).types([1047, "instantiations"])
+}).types([1050, "instantiations"])
 
 bench("filtered relation one", async () => {
   await tenantDb.$execute(
@@ -537,7 +568,7 @@ bench("filtered relation one", async () => {
         form: field.form.where({ published: true }).select("name", "published"),
       })),
   )
-}).types([1349, "instantiations"])
+}).types([1352, "instantiations"])
 
 bench("root query of a deep relation graph", async () => {
   await storeDb.customer.where({ name: "x" }).select("name")
@@ -568,7 +599,7 @@ bench("query of a deep relation graph", async () => {
         })),
       })),
     }))
-}).types([3564, "instantiations"])
+}).types([3567, "instantiations"])
 
 bench("$select", async () => {
   await tenantDb.$select({
@@ -601,7 +632,7 @@ bench("update of an aggregate of a relation", async () => {
   await tenantDb.form.find("x").update(form => ({
     name: form.fields.min("label").coalesce("x"),
   }))
-}).types([831, "instantiations"])
+}).types([845, "instantiations"])
 
 bench("delete with get of a callback", async () => {
   await tenantDb.form

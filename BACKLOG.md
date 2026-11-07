@@ -100,10 +100,6 @@ An aggregate method of a query of [`distinctOn`](architecture/queries.md#first-r
 - A source of the first rows that selects the columns that the argument reads and replaces the table, as `lowerPage` does, would let the aggregate evaluate the argument only over the first rows.
 - An argument that may aggregate the rows, such as an aggregate function of a query of groups or a SQL fragment of the columns, must stay in the source, as `mayAggregateSource` tells for a page.
 
-## Nullability of aggregates in groups
-
-`sum` and the others of a column that cannot be `NULL`, without `filter`, are never `NULL` in a [group](architecture/queries.md#groups), which has a row, while types give `null`; decide whether that is worth a part of the state.
-
 ## First rows in another order
 
 Rows of [`distinctOn`](architecture/queries.md#first-row-of-each-group) in an order that does not start with its keys, such as the latest submission of each user, newest first, which lowering rejects, since PostgreSQL requires the order of `DISTINCT ON` to start with its keys.
@@ -211,7 +207,7 @@ Pages after the sort keys of the last row of the previous page, reading the orde
 
 [`use` of a mutation](architecture/mutations.md#helpers) rejects at runtime some of what types accept, and a helper applies to a mutation only with `use`, not as a function of a query:
 
-- Types do not tell a helper of `groupBy`, `orderBy`, `limit`, or `offset`, which a mutation lacks, from one that only selects; the state of a helper could record them.
+- Types accept a helper that calls `groupBy`, `orderBy`, `limit`, or `offset`, which a mutation lacks; the effect records only guaranteed grouping, which `use` of a mutation does not check.
 - Types do not tell a selection of no fields from none, which needs a new part of the state or of the marker of a helper, and each query would pay for it.
 
 ## Index in the callback of `map`
@@ -286,7 +282,8 @@ Helper effects that record the calls of their callbacks rather than only the row
 - a query of one row rejects a helper that calls `limit` or `offset`;
 - the effect applies the calls that change the rows in their order, also in a helper that it applies, so that a helper whose last such call is `required` makes a query of one row `one` in types, as it does at runtime;
 - a query of values rejects a helper that calls `nullable` before `optional` or `required`, also when the call is in a helper that it applies;
-- a query made by an aggregate, `exists`, or `map`, and a query with a row lock, reject a helper that calls `groupBy`.
+- a query with a row lock rejects a helper that calls `groupBy`;
+- a conditional call of `groupBy` is recorded even when TypeScript reduces the union of its branches to the ungrouped one, so queries made by an aggregate, `exists`, or `map` reject it too.
 
 It needs a new part of the query state, so measure its cost with `bench:types` before choosing a design.
 

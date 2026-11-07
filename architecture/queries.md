@@ -6,7 +6,7 @@
   A query of `from(table)`, and of a table without relations in its schema, has the context without relations, and a query whose table has relations is also a query of the same table without them in types.
   At runtime, a query holds the context of its table in the schema or `Db` it starts from, which each of them creates once for each of its tables, whose relations the references of `select` start; a query of `from(table)` holds the context without relations.
   A query is covariant in its state and its kind, as `out` declares on `SelectQuery` and TypeScript checks: its methods take the query they are called on from `this`, and only `toSQL` reads the kind of the class, so that comparing two queries of different states, such as the entries of two `Db` types or a query passed to `$execute`, compares their states rather than their methods ([decision](../decisions/queries/query-methods-typed-by-this.md)).
-  - The methods that keep the state in types, `groupBy`, `orderBy`, `limit`, `offset`, `distinct`, `distinctOn`, `where` and `having` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` and `having` of a guaranteed query change its state.
+  - The methods that keep the state in types, `orderBy`, `limit`, `offset`, `distinct`, `distinctOn`, `where` and `having` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` and `having` of a guaranteed query change its state.
   - A method that changes the state takes the state and the kind of the query, which TypeScript cannot infer from a union of queries of different states, so such a union rejects it ([decision](../decisions/queries/state-changing-methods-on-unions.md)).
   - A parameter that takes queries of other states, such as of `$execute`, `$compile`, and `defineHelper`, and a nested query of a selection are typed by `SelectQuery` of either kind, those of `$execute` and `$compile` also by the `RecordQuery` of `$select`, and those of `$execute` and `$compile` and a nested query also by a [query of `transform`](#converting-results); a copy of a query made by spread or rest lacks its methods, so it is not a query.
 - The classes of queries, `SelectQuery`, `TransformedQuery`, `RecordQuery`, `MutationQuery`, and `SqlQuery`, share no base class, so each declares `types`, `db`, `then`, and `toSQL`; only these declarations repeat, since `executeOnAwait` and `compileToSQL` of `query/kind.ts` hold the logic ([decision](../decisions/queries/query-classes-without-base-class.md)).
@@ -269,18 +269,28 @@ Queries come in two kinds that share the query methods and differ only by execut
   - `groupBy` adds keys after those of earlier calls: column keys, or a callback that returns a key or an array of them, each an expression or a query of one value, with the second parameter as in [`orderBy`](#sorting-and-pagination), whose field of nested rows or of a literal throws when it is read.
     A string always names a column, never a selected field, since the key of a field names only the field of a record ([decision](../decisions/aggregates/group-keys-name-columns.md)).
     A call without keys rejects at runtime, since an empty list built in code would leave the rows ungrouped.
+    Each key must be an ordinary expression; grouping sets, including `()`, `ROLLUP`, and `CUBE`, are outside the contract, also when written in a SQL fragment.
   - `where` keeps filtering the rows, wherever it is in the chain.
   - `having` takes what `where` takes, and is stored as `having` of the node, apart from the filters, combined with `AND` across calls.
-    It requires an earlier `groupBy` at runtime only, and types take its call without one, as they keep no part of the state for keys.
+    It requires an earlier `groupBy` at runtime only; types accept its call without one.
     Like `where`, it ends the guarantee of a required relation, so it has the same two overloads.
   - The second parameter of its callback holds the references to the selected fields, as in [`orderBy`](#sorting-and-pagination), with the operators and the values of the types of their fields, such as `having((submission, selected) => selected.submissions.gt(1))`, or the expression of the value of a query of `get` or `pluck` with the operators of `valueType`.
     After an aggregate method, `exists`, or `map`, whose fields are not those of the groups, it is `undefined`, so that a condition cannot read the aggregate of an aggregate method, which in `HAVING` would aggregate the rows of a group.
     A field of nested rows or of a literal throws when it is read.
-- `groupBy` keeps the state in types, as `orderBy` and `distinct` do, so the state has no part for groups, and a conditional call assigns the query back to its variable.
+- `groupBy` derives a state whose `aggregate` part is `false & Grouped`, retaining its rows, kind, and other parts while narrowing directly selected aggregate values.
+  A conditional call can assign back to the original variable, but a union of different states rejects the call, as other state-changing methods do.
   It is constrained to a state of `aggregate: false`, so it rejects a query made by an aggregate method, `exists`, or `map`, also at runtime.
 - Types do not check the columns outside the keys, which PostgreSQL rejects with SQLSTATE `42803`, naming the column.
   Types cannot decide what is valid: a key can be an expression over a column that is itself no key, a primary key makes the other columns of its table valid, and fragments are opaque; a partial check needs a new part of the state on every query.
-- `sum` and the others stay `T | null` in a group too, and `coalesce(sum(x), 0)` removes `null` ([backlog](../BACKLOG.md#nullability-of-aggregates-in-groups)).
+- A directly selected unfiltered `sum`, `min`, `max`, `avg`, `every`, `some`, or `stringAgg` has the nullability of its argument in a query of groups, since each returned group has a row ([decision](../decisions/aggregates/aggregate-nullability-in-groups.md)).
+  - `GroupValue` carries the value in a group; `fieldTypes` retains it for record selections and `valueType` for callbacks of `get` and `pluck`, so `groupBy` narrows earlier selections as well as later ones.
+    A union or an optional replacement narrows only when every possible field type guarantees a non-null value.
+  - A nullable argument, a filter that may be present, or an operator or function of the aggregate retains its standalone nullability.
+    `coalesce` of a query clears the group value of its projection, whose nullability follows the fallback instead.
+  - References to selected aggregates in `having` keep their standalone nullable value and their group mark, so reusing one in an ungrouped query cannot claim a non-null value.
+  - A directly selected unfiltered aggregate other than a count must belong to its grouped query; lowering rejects an aggregate of only sources of enclosing queries, including through subqueries.
+    Aggregates of constants belong to their own query, and an explicitly nullable SQL fragment retains the SQL semantics of an outer aggregate.
+    The ownership check applies regardless of argument nullability, which runtime types do not fully describe.
 - The methods that choose rows and read values apply to the groups, as `limit`, `offset`, `take`, `get`, `pluck`, `distinct`, `distinctOn`, `map`, `transform`, and `use` do, and so do `in`, a nested selection, and `$select`.
   - `exists` tells whether the query has a group.
   - An aggregate method aggregates the groups: `.groupBy("a").count()` is the number of the groups, as `SELECT count(*) FROM (SELECT FROM t GROUP BY a HAVING ...) AS subquery`, and `.groupBy("a").max(p => sum(p.b))` is the largest sum of a group.
@@ -299,13 +309,14 @@ Queries come in two kinds that share the query methods and differ only by execut
   - A condition on such a key beside an aggregate under `OR` cannot be written.
   - A sort key of such a key requires the query to select it, unless the query is packed or reads its page from a derived source, which selects the sort key: another executed query that a later selection replaces the field of has no projection of it.
 - A key of a field that a later selection replaces, which holds a query, is lowered apart from its sort key, so their nodes differ and PostgreSQL rejects the query, with or without parameters.
-- A helper that only calls `groupBy` passes types on a query made by an aggregate, `exists`, or `map`, and on a query with a row lock, and fails at runtime, since its effect does not record the call ([backlog](../BACKLOG.md#helper-effects-of-their-calls)).
-- The `fieldTypes` part of the state holds the type of the value of each selected field of a query of records, the values that it encodes and its operators, as `valueType` does for a query of values, which the references of `having` read.
+- A helper that guarantees grouping carries it in its effect, narrows earlier aggregate selections, and rejects a query made by an aggregate, `exists`, or `map` in types.
+  A query with a row lock rejects it at runtime, since types do not record the lock.
+- The `fieldTypes` part of the state holds the type of the value of each selected field of a query of records, the values that it encodes and its operators, as `valueType` does for a query of values, which the references of `having` and the narrowing of `groupBy` read.
   `result` holds only the decoded values, which do not tell the operators ([decision](../decisions/aggregates/field-types-part.md)).
   - `select`, `clearSelect`, and the effect of a [helper](#helpers) keep it by the rules by which `select` merges the result: a numeric key as a string, a replaced field, an absent optional replacement, and each branch of a union.
     A field of a union of expressions is a union of references, each taking only its own values.
   - A literal and the rows of a nested query other than of one value have no type of a value, so their references have no operators; a query of one value, such as of `get`, has the type of its value, though reading its field throws.
-  - `SelectedFieldTypes` defers the merge of each selection until the types are read: comparing states, such as with the constraint of a helper, relates its type arguments, and only `having` or a structural comparison of them merges the types.
+  - `SelectedFieldTypes` defers the merge of each selection until the types are read: comparing states, such as with the constraint of a helper, relates its type arguments, while `having`, `groupBy` after a selection, or a structural comparison of them merges the types.
     Its parameter of the earlier types is declared covariant: TypeScript measures it as bivariant through the merge, which reduced a union of queries whose field is an expression in one and a literal in the other to the query of the expression.
 - The second parameter of the callback of `having` makes a call cost more also when its callback reads no field, since TypeScript resolves the types of the parameters of both signatures to compare them ([decision](../decisions/aggregates/having-callback-parameters.md)).
 
@@ -419,6 +430,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     A check that the result retains the marker or comes from `map` of records rejects a helper that maps a value, by the `valueType` part that `map` keeps.
   - A helper that only selects fields and maps them also applies to a [mutation](mutations.md#helpers), with its `use`.
   - A helper adds or replaces fields and the [types of their values](#groups) by the same merge as `select`, for every branch of its effect; a query of values rejects a helper that selects fields or ends with a call of `nullable` in any branch.
+  - The aggregate fields of a helper narrow on a grouped query, whether the helper or the query groups it; a helper that groups only conditionally does not narrow them.
   - A helper checks that its callback returns the input query or one derived from it, also when called directly.
     The returned query keeps the kind and the `Db` of the input query.
 - The callback of a helper defined with a query of a schema or a `Db` receives a query of its schema context in types, and at runtime the query it is applied to, whose schema shares the definitions of the relations by identity when it includes that schema.

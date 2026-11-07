@@ -21,6 +21,7 @@ import { checkRelation } from "./context"
 import { checkDistinct, checkDistinctOn } from "./distinct"
 import { lowerExists } from "./exists"
 import { lowerExpression, lowerFilters, lowerKeys, lowerOrder, lowerValue } from "./expression"
+import { checkGroupAggregates } from "./group"
 import { lowerMutation } from "./mutation"
 import { sortByPositions } from "./order"
 import { lowerPage } from "./page"
@@ -129,6 +130,9 @@ function lowerSelectStatement(
   const recordTemplate = createRecordTemplate(node.projections)
   const selected = dropLiterals(node.projections)
   const projections = lowerProjections(selected, context)
+  if (node.groupBy.length > 0) {
+    checkGroupAggregates(projections, node)
+  }
   const filters = lowerFilters(node.filters, context)
   const orderBy = lowerOrder(node.orderBy, context, selected, projections)
   const groupBy = lowerKeys(node.groupBy, context, selected, projections)

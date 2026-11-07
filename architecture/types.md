@@ -82,6 +82,8 @@
 - The values follow the aggregate methods: `count` and `countDistinct` give a number, and the others the value of the argument or `null`, also without rows that `filter` takes.
   The type of the expression is the one of the method, so it decodes the value and gives it its operators; `sum` of `smallint` and `integer` values rejects a sum outside the safe integer range of numbers, and `avg` of a type of the cast type `bigint` rejects when it is called.
   Types do not check that PostgreSQL has the aggregate for the type of the argument, as for the methods.
+- An overload without a filter marks an aggregate with its argument value for direct selection in a [query of groups](queries.md#groups).
+  Operators and functions do not carry this mark; an aggregate expression retains its standalone nullable value when used outside a grouped selection.
 
 ## Text functions
 

@@ -34,6 +34,7 @@ Filters, queries in expressions, and SQL fragments.
 - [State of an aggregate of a callback](aggregates/aggregate-state-of-callbacks.md).
 - [Keys of `groupBy` name columns](aggregates/group-keys-name-columns.md).
 - [One callback type of `having`](aggregates/having-callback-parameters.md).
+- [Nullability of aggregates in groups](aggregates/aggregate-nullability-in-groups.md): direct aggregates keep only argument nullability, with an ownership check.
 - [The `fieldTypes` part of the state](aggregates/field-types-part.md): deferred, typed by the types of the fields rather than by their decoded values.
 
 ## Converting results

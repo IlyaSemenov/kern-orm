@@ -6,15 +6,16 @@ import type { SelectQueryKind } from "./kind"
 import type { OneRow } from "./rows"
 import type { AnySelectQuery, ChangeState, SelectQuery, TableOrQuery } from "./select"
 import { requireDerived } from "./select"
-import type { FilteredStateRows } from "./select-method-state"
+import type { FilteredStateRows, GroupedState } from "./select-method-state"
 import type {
+  GroupedRecord,
   HelperFields,
   MergeSelection,
   SelectedFieldTypes,
   SelectedFieldTypesOf,
   WithoutHelperFields,
 } from "./selection"
-import type { EmptyRecord, QueryStateOf, SelectQueryState } from "./state"
+import type { EmptyRecord, Grouped, QueryStateOf, SelectQueryState } from "./state"
 
 /**
  * State of the query that the callback of a helper of table `T` with schema context `C` receives: the fields of the query the helper is applied to, and all its rows.
@@ -38,8 +39,10 @@ interface HelperState<T extends AnyTable, C extends SchemaContext> extends Query
  * `reads` are the relations of the schema of the helper among them, which its callback may read from the references of the query it is applied to, and `key` is the key of its table there.
  */
 export interface HelperEffect {
+  /** Whether the helper guarantees that the query is grouped. */
+  readonly grouped: boolean
   readonly fields: object
-  /** Types of the values of the fields it selects, the `fieldTypes` part of the state that its callback returns, which `having` reads. */
+  /** Types of the values of the fields it selects, the `fieldTypes` part of the state that its callback returns, which `having` and the narrowing of grouped selections read. */
   readonly fieldTypes: unknown
   /** Whether `map` converts the rows, whose fields the result no longer tells, so that `fields` are empty. */
   readonly mapped: boolean
@@ -56,6 +59,7 @@ export interface HelperEffect {
 /** Effect of a helper whose callback returns a query of state `S`, for each state of a union. */
 type ReadEffect<S extends SelectQueryState> = S extends SelectQueryState
   ? {
+      readonly grouped: S["aggregate"] extends Grouped ? true : false
       readonly fields: S["value"] extends "mapped"
         ? EmptyRecord
         : { [K in keyof S["result"] as K extends keyof HelperFields ? never : K]: S["result"][K] }
@@ -91,7 +95,8 @@ type CheckResult<S extends SelectQueryState> = [S] extends [
 // A generic state passes them through its own constraint, such as `S extends QueryStateOf<T> & { readonly value: false }`.
 /** State of a query over table `T` that accepts a helper of effect `E`. */
 type HelperInput<T extends AnyTable, E extends HelperEffect> = QueryStateOf<T, ReadsContext<E>> &
-  ValueCheck<E>
+  ValueCheck<E> &
+  (true extends E["grouped"] ? { readonly aggregate: false } : unknown)
 
 // A query of values rejects even one branch that selects fields, maps them, or ends with a call of `nullable`, and so does a query that `map` converts, whose fields the callback of the helper could not read.
 /** Constraint of `value` of a query that accepts a helper of effect `E`. */
@@ -129,14 +134,25 @@ export type ReadsContext<E extends HelperEffect> = [E["reads"]] extends [never]
     >
 
 /** State of a query of state `S` after a helper of effect `E`. */
-type ApplyEffect<S extends SelectQueryState, E extends HelperEffect> = ChangeState<
+type ApplyEffect<S extends SelectQueryState, E extends HelperEffect> = ApplySelectionEffect<
+  E["grouped"] extends true ? GroupedState<S> : S,
+  E
+>
+
+/** Applies the selected fields and row effects after the grouping guaranteed by the helper. */
+type ApplySelectionEffect<S extends SelectQueryState, E extends HelperEffect> = ChangeState<
   S,
   {
     result: E["mapped"] extends true
       ? E["output"]
       : [keyof E["fields"]] extends [never]
         ? S["result"]
-        : MergeSelection<S["result"], E["fields"]>
+        : MergeSelection<
+            S["result"],
+            S["aggregate"] extends Grouped
+              ? GroupedRecord<E["fields"], SelectedFieldTypesOf<E["fieldTypes"]>>
+              : E["fields"]
+          >
     fieldTypes: SelectedFieldTypes<S["fieldTypes"], SelectedFieldTypesOf<E["fieldTypes"]>>
     value: E["mapped"] extends true ? "mapped" : S["value"]
     aggregate: E["mapped"] extends true ? true : S["aggregate"]

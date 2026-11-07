@@ -9,7 +9,7 @@ import * as t from "../types"
 
 import type { ExpressionNode, SelectNode } from "./nodes"
 import { createList, createNode, createSelectNode } from "./nodes"
-import { collectColumnKeys, mayAggregateSource } from "./references"
+import { aggregatesOuterSource, collectColumnKeys, mayAggregateSource } from "./references"
 import {
   createDerivedSource,
   createExists,
@@ -150,5 +150,55 @@ describe("mayAggregateSource", () => {
 
   it("does not count a column of a source outside an aggregate and a SQL fragment", () => {
     expect(mayAggregateSource(nest(createRef(outer, "id")), outer)).toBe(false)
+  })
+})
+
+describe("aggregatesOuterSource", () => {
+  const local = from(form).node.from
+  const outer = from(form).node.from
+  const inner = from(form).node.from
+  const nest = (source: typeof inner, value: ExpressionNode) =>
+    toNode(
+      createSubquery(
+        createSelectNode(source, [{ key: "value", expression: value, type: t.integer }]),
+        t.integer,
+      ),
+    )
+
+  it("distinguishes local, outer, constant, and mixed references", () => {
+    expect(aggregatesOuterSource(createRef(local, "id"), local)).toBe(false)
+    expect(aggregatesOuterSource(createRef(outer, "id"), local)).toBe(true)
+    expect(aggregatesOuterSource(createList("1", [], ""), local)).toBe(false)
+    expect(
+      aggregatesOuterSource(
+        createList("f(", [createRef(outer, "id"), createRef(local, "id")], ")"),
+        local,
+      ),
+    ).toBe(false)
+  })
+
+  it("excludes bound columns but follows free references through subqueries", () => {
+    expect(aggregatesOuterSource(nest(inner, createRef(inner, "id")), local)).toBe(false)
+    expect(aggregatesOuterSource(nest(inner, createRef(outer, "id")), local)).toBe(true)
+    expect(aggregatesOuterSource(nest(inner, createRef(local, "id")), local)).toBe(false)
+    // Binding an occurrence in a sibling subquery must not hide a free reference to it.
+    const siblings = createList(
+      "f(",
+      [nest(inner, createRef(inner, "id")), createRef(inner, "id")],
+      ")",
+    )
+    expect(aggregatesOuterSource(siblings, local)).toBe(true)
+  })
+
+  it("excludes references bound by joins and replacing derived sources", () => {
+    const derived = createDerivedSource(createSelectNode(inner))
+    const query: SelectNode = {
+      ...createSelectNode({ ...derived, replaces: inner }, [
+        { key: "id", expression: createRef(inner, "id"), type: t.integer },
+      ]),
+      joins: [createLeftJoin(outer, createNode({ kind: "boolean", value: true }))],
+      filters: { user: createRef(outer, "threshold") },
+    }
+    expect(aggregatesOuterSource(toNode(createSubquery(query, t.integer)), local)).toBe(false)
   })
 })

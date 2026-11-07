@@ -4,6 +4,7 @@ import { describePostgres } from "../../testing/postgres"
 import { combineNodes } from "../ast/boolean"
 import type { ProjectionNode } from "../ast/nodes"
 import { count, max, sum } from "../expression/aggregates"
+import { FALSE } from "../expression/constants"
 import { toNode } from "../expression/expression"
 import { coalesce } from "../expression/functions"
 import { and, or } from "../expression/predicates"
@@ -324,6 +325,35 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       { formId: 2, form: { name: "Contact" }, total: 6, fieldCount: 2 },
       { formId: 1, form: { name: "Survey" }, total: 3, fieldCount: 2 },
     ])
+  })
+
+  it("preserves NULL for empty filtered aggregates and permits explicitly nullable outer aggregates", async () => {
+    const results = await testTransaction(async () => ({
+      groups: await db.field
+        .groupBy("formId")
+        .orderBy("formId")
+        .select(field => ({
+          total: sum(field.position),
+          missing: sum(field.position, { filter: FALSE }),
+          constant: max(param(t.integer, 7)),
+        })),
+      outer: await db.$execute(
+        from(field)
+          .where(FALSE)
+          .select(outer => ({
+            groups: from(field)
+              .groupBy("formId")
+              .pluck(() => sql(t.integer.nullable())`sum(${outer.position})`),
+          })),
+      ),
+    }))
+    expect(results).toStrictEqual({
+      groups: [
+        { total: 10, missing: null, constant: 7 },
+        { total: 6, missing: null, constant: 7 },
+      ],
+      outer: [{ groups: [null, null] }],
+    })
   })
 
   it("filters the groups by their aggregates", async () => {

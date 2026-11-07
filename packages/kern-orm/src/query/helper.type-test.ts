@@ -2,7 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
-import { count } from "../expression/aggregates"
+import { count, sum } from "../expression/aggregates"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -142,7 +142,7 @@ describe("defineHelper", () => {
     expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ name: string }[]>()
   })
 
-  test("groups the rows of the query, also of one that fails at runtime, since the effect does not record groupBy", () => {
+  test("groups the rows and rejects aggregate or mapped queries", () => {
     const grouped = defineHelper(schema.form, form => form.groupBy("name"))
     const filtered = defineHelper(schema.form, form =>
       form.groupBy("name").having(() => count().gt(1)),
@@ -153,13 +153,36 @@ describe("defineHelper", () => {
     expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ name: string }[]>()
     expectTypeOf<Awaited<typeof filteredForms>>().toEqualTypeOf<{ name: string }[]>()
 
+    // @ts-expect-error groupBy rejects an aggregate query.
     db.form.count().use(grouped)
+    // @ts-expect-error groupBy rejects a query of exists.
     db.form.exists().use(grouped)
-    db.form
-      .select("name")
-      .map(row => row.name)
-      .use(grouped)
+    const mapped = db.form.select("name").map(row => row.name)
+    // @ts-expect-error groupBy rejects a converted query.
+    mapped.use(grouped)
     db.form.forUpdate().use(grouped)
+  })
+
+  test("carries grouping and aggregate fields through helpers in either order", () => {
+    const grouped = defineHelper(form, query => query.groupBy("name"))
+    const totals = defineHelper(form, query =>
+      query.select(columns => ({
+        total: sum(columns.name.length()),
+      })),
+    )
+    const before = from(form).use(totals).use(grouped)
+    const after = from(form).use(grouped).use(totals)
+    const direct = from(form).groupBy("name").use(totals)
+    const later = from(form).use(totals).groupBy("name")
+    expectTypeOf<ResultOf<typeof before>>().toEqualTypeOf<{ total: number }>()
+    expectTypeOf<ResultOf<typeof after>>().toEqualTypeOf<{ total: number }>()
+    expectTypeOf<ResultOf<typeof direct>>().toEqualTypeOf<{ total: number }>()
+    expectTypeOf<ResultOf<typeof later>>().toEqualTypeOf<{ total: number }>()
+    const conditional = defineHelper(form, (query, group: boolean) =>
+      group ? query.groupBy("name") : query,
+    )
+    const maybe = from(form).use(conditional, true).use(totals)
+    expectTypeOf<ResultOf<typeof maybe>>().toEqualTypeOf<{ total: number | null }>()
   })
 
   test("locks the rows of the query", () => {

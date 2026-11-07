@@ -31,8 +31,24 @@ const totals = await db.submission.groupBy("formId").select(submission => ({
 
 To join the text values of each group in an order, select [`stringAgg`](./selecting#several-aggregates-at-once) with `orderBy`.
 
-`sum` and the other aggregates keep `null` in their types in a group too.
-To remove it, pass them to [`coalesce`](./expressions#replacing-null), such as `coalesce(sum(field.position), 0)`.
+Select an aggregate without `filter` directly to get a value that is `null` only when its argument can be: each returned group has at least one row.
+This works with `select`, `get`, and `pluck`, whether `groupBy` comes before or after them:
+
+```ts
+import { sum } from "kern-orm"
+
+const totals = await db.field.groupBy("formId").select(field => ({
+  formId: field.formId,
+  positions: sum(field.position),
+}))
+// totals: { formId: string; positions: number }[]
+```
+
+An aggregate of nullable values or with a `filter` can still return `null`.
+Use [`coalesce`](./expressions#replacing-null) when you need a fallback, such as `coalesce(sum(field.position, { filter: field.position.gt(0) }), 0)`.
+For an expression such as `sum(field.position).gt(0)`, use `coalesce` too if you need a result without `null`.
+
+To aggregate an enclosing query from inside a grouped query, write an explicitly nullable SQL expression, such as ``sql(t.integer.nullable())`sum(${outer.position})` ``.
 
 ## Keys of expressions
 
@@ -53,6 +69,8 @@ const days = await db.submission
 
 The callback returns a key or an array of them, each an expression or a [query of one value](./filtering#values-of-other-queries).
 The first parameter of the callback holds the columns and the relations of the table; after `pluck` or `get`, the second parameter is the expression of the value.
+
+Use a [SQL query](./sql) for `ROLLUP`, `CUBE`, or `GROUPING SETS`; `groupBy` groups rows by columns or expressions.
 
 A string always names a column of the table, even when a selected field has the same key.
 

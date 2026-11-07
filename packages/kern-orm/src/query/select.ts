@@ -56,6 +56,7 @@ import type {
   CountState,
   FilteredState,
   FoundState,
+  GroupedState,
   LockableQueryState,
   ManyRowsQueryState,
   MappedQueryState,
@@ -63,8 +64,8 @@ import type {
   OneRowQueryState,
   OperandAggregateState,
   OperandValueAggregateState,
-  OperandValueType,
   RecordQueryState,
+  SelectedOperandType,
   UnaggregatedQueryState,
   UnaggregatedValueQueryState,
   UnguaranteedQueryState,
@@ -72,6 +73,8 @@ import type {
 } from "./select-method-state"
 import type {
   ColumnFieldTypes,
+  GroupOperandValue,
+  GroupSelectionResult,
   MergeSelection,
   SelectedFieldTypes,
   Selection,
@@ -79,7 +82,13 @@ import type {
   SelectionResult,
   SelectionUses,
 } from "./selection"
-import type { EmptyRecord, InitialQueryState, QueryStateOf, SelectQueryState } from "./state"
+import type {
+  EmptyRecord,
+  Grouped,
+  InitialQueryState,
+  QueryStateOf,
+  SelectQueryState,
+} from "./state"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
 // Declared in the module of `SelectQuery`: declared in another module, it keeps TypeScript 6 and `bun check` from reducing a union of queries that differ by their fields, such as `cond ? query.select("id", "title") : query.select("id")`, to one query, so that methods that change the state reject the union.
@@ -198,7 +207,10 @@ export class SelectQuery<
     ChangeState<
       S,
       {
-        result: MergeSelection<S["result"], SelectionResult<Sel>>
+        result: MergeSelection<
+          S["result"],
+          S["aggregate"] extends Grouped ? GroupSelectionResult<Sel> : SelectionResult<Sel>
+        >
         uses: S["uses"] | SelectionUses<Sel>
         fieldTypes: SelectedFieldTypes<S["fieldTypes"], SelectionFieldTypes<Sel>>
       }
@@ -309,8 +321,8 @@ export class SelectQuery<
     ChangeState<
       S,
       {
-        result: OperandValue<E>
-        valueType: OperandValueType<E>
+        result: S["aggregate"] extends Grouped ? GroupOperandValue<E> : OperandValue<E>
+        valueType: SelectedOperandType<E>
         rows: OneValueRows<S["rows"]>
         value: true
         uses: S["uses"] | OperandUses<E>
@@ -366,8 +378,8 @@ export class SelectQuery<
     ChangeState<
       S,
       {
-        result: OperandValue<E>
-        valueType: OperandValueType<E>
+        result: S["aggregate"] extends Grouped ? GroupOperandValue<E> : OperandValue<E>
+        valueType: SelectedOperandType<E>
         rows: ValueRows<S["rows"]>
         value: true
         uses: S["uses"] | OperandUses<E>
@@ -604,7 +616,19 @@ export class SelectQuery<
   >(
     this: SelectQuery<S, Kind>,
     fallback: F,
-  ): SelectQuery<ChangeState<S, { result: CoalescedValue<S["result"], F> }>, Kind>
+  ): SelectQuery<
+    ChangeState<
+      S,
+      {
+        result: CoalescedValue<S["result"], F>
+        // The projection becomes a function of the aggregate, whose nullability follows its fallback.
+        valueType: S["valueType"] extends { readonly group: unknown }
+          ? Omit<S["valueType"], "group">
+          : S["valueType"]
+      }
+    >,
+    Kind
+  >
   coalesce(fallback: unknown): unknown {
     this.rejectMapped("coalesce")
     const { node } = this
@@ -636,7 +660,12 @@ export class SelectQuery<
     return toExpression(value, (this.node.projections[0] as ScalarProjection).type)
   }
 
-  // It keeps the state, as `orderBy` and `distinct` do: types cannot tell which columns a key makes valid, such as the other columns of a primary key, so that a part of the state for it would cost every query and decide nothing.
+  // Grouping changes the values of aggregates selected before it as well as those selected afterwards.
+  /** Groups the rows by the listed columns, after the keys of earlier calls, so that the query gives one row of each group, whose fields are its keys and the aggregates of its rows, such as `sum(field.position)`. */
+  groupBy<S extends UnaggregatedQueryState, Kind extends SelectQueryKind>(
+    this: SelectQuery<S, Kind>,
+    ...keys: (keyof S["table"]["columns"] & string)[]
+  ): SelectQuery<GroupedState<S>, Kind>
   /**
    * Groups the rows by the keys returned by `callback`, after the keys of earlier calls, so that the query gives one row of each group, whose fields are its keys and the aggregates of its rows, such as `sum(field.position)`.
    *
@@ -645,31 +674,26 @@ export class SelectQuery<
    * Methods that choose rows and read values, such as `limit`, `take`, and `pluck`, apply to the groups, and an aggregate method aggregates them, such as `count` for the number of the groups.
    * The query cannot take a row lock, `update`, or `delete`.
    */
-  groupBy<Q extends QueryOf<RecordQueryState>>(
-    this: Q,
+  groupBy<S extends RecordQueryState, Kind extends SelectQueryKind>(
+    this: SelectQuery<S, Kind>,
     callback: (
       // An intersection rather than one alias of both, as for the callback of `select`.
-      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
-      selected: SelectedRefs<Q["types"]["result"]>,
+      columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>,
+      selected: SelectedRefs<S["result"]>,
     ) => GroupTerms,
-  ): Q
+  ): SelectQuery<GroupedState<S>, Kind>
   /**
    * Groups the rows of a query made by `get` or `pluck` by the keys returned by `callback`, after the keys of earlier calls.
    *
    * `callback` receives the columns with the queries of the relations of the table, and the expression of the value, and returns what `groupBy` of a query of records takes.
    */
-  groupBy<Q extends QueryOf<UnaggregatedValueQueryState>>(
-    this: Q,
+  groupBy<S extends UnaggregatedValueQueryState, Kind extends SelectQueryKind>(
+    this: SelectQuery<S, Kind>,
     callback: (
-      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
-      value: AnyExpression<Q["types"]["result"]>,
+      columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>,
+      value: AnyExpression<S["result"]>,
     ) => GroupTerms,
-  ): Q
-  /** Groups the rows by the listed columns, after the keys of earlier calls, so that the query gives one row of each group, whose fields are its keys and the aggregates of its rows, such as `sum(field.position)`. */
-  groupBy<Q extends QueryOf<UnaggregatedQueryState>>(
-    this: Q,
-    ...keys: (keyof Q["types"]["table"]["columns"] & string)[]
-  ): Q
+  ): SelectQuery<GroupedState<S>, Kind>
   groupBy(...args: unknown[]): unknown {
     this.rejectAggregate("groupBy")
     if (this.node.lock !== undefined) {

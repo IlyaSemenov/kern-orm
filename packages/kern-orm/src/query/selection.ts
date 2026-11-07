@@ -1,5 +1,7 @@
+import type { GroupValue } from "../expression/aggregates"
 import type { AnyExpression, TypedExpression } from "../expression/expression"
 import type { TypedOperand } from "../expression/functions"
+import type { OperandValue } from "../expression/operators/comparison"
 import type { AnyTable } from "../table/table"
 import type { IsAny, Simplify } from "../utils/type-helpers"
 
@@ -26,6 +28,17 @@ export type NestedQuery =
 export type SelectionResult<S extends Selection> = {
   [K in keyof S]: FieldValue<S[K]>
 }
+
+/** Record of a selection in a query of groups. */
+export type GroupSelectionResult<S extends Selection> = {
+  [K in keyof S]: GroupFieldValue<S[K]>
+}
+
+/** Value of a field selected in a group, leaving nested queries and literals unchanged. */
+type GroupFieldValue<V> = V extends GroupValue<infer T> ? T : FieldValue<V>
+
+/** Value of an operand in a query of groups. */
+export type GroupOperandValue<E> = E extends GroupValue<infer T> ? T : OperandValue<E>
 
 /** Value of a selected field: of an expression, of the nested rows of a query as the result of executing it, or of a literal, for each member of a union of them. */
 type FieldValue<V> = V extends NestedQuery
@@ -111,7 +124,29 @@ export type SelectionFieldTypes<Sel> = {
 }
 
 /** Type of the value of a selected field `F`, for each member of a union of them, so that each keeps its own operators and values. */
-type FieldType<F> = F extends TypedOperand ? OperandValueType<F> : unknown
+type FieldType<F> = F extends TypedOperand
+  ? F extends GroupValue<infer T>
+    ? OperandValueType<F> & { readonly group: T }
+    : OperandValueType<F>
+  : unknown
+
+/** Record `R` of a query whose rows become groups, with field types `F`. */
+export type GroupedRecord<R, F> =
+  IsAny<R> extends true
+    ? R
+    : R extends unknown
+      ? {
+          // An absent field contributes undefined to the record, not to the nullability of an aggregate that is present.
+          [K in keyof R]: K extends keyof F ? GroupedField<R[K], Exclude<F[K], undefined>> : R[K]
+        }
+      : never
+
+/** Value of a selected field after grouping; a union of field types must all guarantee a non-null value to remove `null`. */
+export type GroupedField<V, D> = [D] extends [{ readonly group: infer G }]
+  ? null extends G
+    ? V
+    : Exclude<V, null>
+  : V
 
 /** Types of the values of fields `P` with those of fields `N` added or replaced, by the rules of `MergeSelection`, for each branch of either. */
 export type MergeFieldTypes<P, N> = P extends unknown

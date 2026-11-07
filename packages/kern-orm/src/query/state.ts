@@ -87,3 +87,8 @@ export interface InitialQueryState<
   readonly guaranteed: Guaranteed
   readonly aggregate: false
 }
+
+/** Mark of `aggregate: false` of a query of groups, which aggregate methods replace. */
+export interface Grouped {
+  readonly grouped: true
+}

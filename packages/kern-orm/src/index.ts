@@ -67,7 +67,11 @@ export type {
   AggregateExpression,
   AggregateOptions,
   CountExpression,
+  GroupAggregateExpression,
+  GroupValue,
   StringAggOptions,
+  UnfilteredAggregateOptions,
+  UnfilteredStringAggOptions,
 } from "./expression/aggregates"
 export {
   avg,
@@ -104,10 +108,15 @@ export type { TransactionCoordinator } from "./execution/transaction/coordinator
 export { createStatement } from "./execution/driver"
 export type { OperandUses, ScalarQuery, TypedScalarQuery, ValuesQuery } from "./query/operand"
 export type { AnySelectQuery, BoundSelectQuery, ResultOf, SelectQuery } from "./query/select"
-export type { FilteredStateRows } from "./query/select-method-state"
+export type {
+  FilteredStateRows,
+  GroupedState,
+  SelectedOperandType,
+} from "./query/select-method-state"
 export { from } from "./query/select"
 export type {
   EmptyRecord,
+  Grouped,
   InitialQueryState,
   QueryState,
   QueryStateOf,
@@ -177,6 +186,10 @@ export type {
   ColumnFieldTypes,
   ExpressionInput,
   ExpressionValue,
+  GroupedField,
+  GroupedRecord,
+  GroupOperandValue,
+  GroupSelectionResult,
   MergeSelection,
   NestedQuery,
   SelectedFieldTypes,

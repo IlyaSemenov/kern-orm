@@ -2,6 +2,7 @@
 
 import { combineNodes } from "../ast/boolean"
 import type { ExpressionNode } from "../ast/nodes"
+import type { GroupValue } from "../expression/aggregates"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { isOperandSource, operandNode } from "../expression/expression"
 import type { AnyTable } from "../table/table"
@@ -87,9 +88,7 @@ export type HavingFields<S extends SelectQueryState> = S["value"] extends false
     }
   : S["value"] extends true
     ? S["aggregate"] extends false
-      ? S["valueType"] extends QueryValueType
-        ? Expression<S["result"], S["valueType"]["operators"], S["valueType"]["input"]>
-        : AnyExpression<S["result"]>
+      ? ToFieldRef<S["valueType"], S["result"]>
       : undefined
     : undefined
 
@@ -100,7 +99,12 @@ type FieldRef<F, K extends string, V> = K extends keyof F
 
 /** Expression of values `V` with the operators and the values of type `D` of a value, or without them when `D` is none. */
 type ToFieldRef<D, V> = D extends QueryValueType
-  ? Expression<V, D["operators"], D["input"]>
+  ? D extends { readonly group: infer G }
+    ? unknown extends G
+      ? Expression<V, D["operators"], D["input"]>
+      : // References can escape this callback and be selected without grouping, so retain standalone nullability and the group mark.
+        Expression<V | null, D["operators"], D["input"]> & GroupValue<G>
+    : Expression<V, D["operators"], D["input"]>
   : AnyExpression<V>
 
 // One callback type rather than overloads: TypeScript gives the parameters of a callback their types from the first overload that it tries, so an overload of a callback of one parameter first would leave both parameters of a callback of two untyped.

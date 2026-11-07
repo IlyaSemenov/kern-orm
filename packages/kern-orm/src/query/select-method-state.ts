@@ -1,5 +1,6 @@
 // States of the methods of `SelectQuery` in types: the states of the queries that they apply to, and of those that they return.
 
+import type { GroupValue } from "../expression/aggregates"
 import type {
   TypedOperand,
   TypedOperandInput,
@@ -12,8 +13,8 @@ import type { CountValueType } from "./aggregate"
 import type { OperandUses } from "./operand"
 import type { FilteredRows, OneRow } from "./rows"
 import type { ChangeState } from "./select"
-import type { HelperFields } from "./selection"
-import type { QueryValueType, SelectQueryState } from "./state"
+import type { GroupedField, GroupedRecord, HelperFields, SelectedFieldTypes } from "./selection"
+import type { Grouped, QueryValueType, SelectQueryState } from "./state"
 
 // Non-distributive over the guarantee, so that a state that may be guaranteed relaxes its rows.
 // The guarantee of the query of a helper callback, whose records are the marker, records only whether the callback filters, so its rows stay.
@@ -73,6 +74,36 @@ export type ColumnValueType<T extends AnyTable, K extends keyof T["columns"]> = 
 export type OperandValueType<E extends TypedOperand> = {
   readonly input: TypedOperandInput<E>
   readonly operators: TypedOperandOperators<E>
+}
+
+/** State `S` after grouping, with the values of its directly selected aggregates in nonempty groups. */
+export interface GroupedState<S extends SelectQueryState> extends SelectQueryState {
+  readonly table: S["table"]
+  readonly schema: S["schema"]
+  readonly result: GroupedResult<S>
+  readonly rows: S["rows"]
+  readonly value: S["value"]
+  readonly valueType: S["valueType"]
+  readonly fieldTypes: S["fieldTypes"]
+  readonly uses: S["uses"]
+  readonly guaranteed: S["guaranteed"]
+  readonly aggregate: false & Grouped
+}
+
+/** Selected result after grouping, retaining the records or scalar value of the query. */
+type GroupedResult<S extends SelectQueryState> = S["value"] extends false
+  ? S["fieldTypes"] extends SelectedFieldTypes<unknown, unknown>
+    ? GroupedRecord<S["result"], S["fieldTypes"]["types"]>
+    : S["result"]
+  : S["value"] extends true
+    ? GroupedField<S["result"], S["valueType"]>
+    : S["result"]
+
+/** Type of a selected operand, carrying its value in a group for a later call of `groupBy`. */
+export interface SelectedOperandType<E extends TypedOperand> extends QueryValueType {
+  readonly input: TypedOperandInput<E>
+  readonly operators: TypedOperandOperators<E>
+  readonly group: E extends GroupValue<infer V> ? V : unknown
 }
 
 /** State of a query of the value `V` of type `Type` of an aggregate or of `exists` over the rows of a query of state `S`, which always returns one row. */

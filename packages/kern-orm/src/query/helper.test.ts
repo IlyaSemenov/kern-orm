@@ -98,17 +98,15 @@ it("groups the rows of the query it is applied to, which must return rows of its
   expect(schema.form.select("name").use(filtered).toSQL().text).toBe(
     'SELECT "form"."name" AS "name" FROM "form" AS "form" GROUP BY 1 HAVING "form"."name" = $1',
   )
-  // Types accept the helper, since its effect does not record `groupBy`.
+  // @ts-expect-error A grouping helper rejects an aggregate query in types too.
   expect(() => schema.form.count().use(grouped)).toThrow(
     "groupBy cannot be used after an aggregate",
   )
+  // @ts-expect-error A grouping helper rejects a query of exists.
   expect(() => schema.form.exists().use(grouped)).toThrow("groupBy cannot be used after exists")
-  expect(() =>
-    schema.form
-      .select("name")
-      .map(row => row.name)
-      .use(grouped),
-  ).toThrow("groupBy cannot be used after map")
+  const mapped = schema.form.select("name").map(row => row.name)
+  // @ts-expect-error A grouping helper rejects a converted query.
+  expect(() => mapped.use(grouped)).toThrow("groupBy cannot be used after map")
   expect(() => schema.form.forUpdate().use(grouped)).toThrow(
     "groupBy cannot be used after a row lock, since a group comes from several rows of the table",
   )
