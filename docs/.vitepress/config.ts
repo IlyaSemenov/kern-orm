@@ -1,30 +1,34 @@
 import { defineConfig } from "vitepress"
 
-// The site serves the docs of the last release, Stable, at its root and the docs of `main`, Next, under next/.
+import kernOrmPackage from "../../packages/kern-orm/package.json"
+
+// The site serves the docs of the last release, Release, at its root and the docs of `main`, Dev, under dev/.
 const origin = "https://ilyasemenov.github.io"
-const stableBase = "/kern-orm/"
-const nextBase = `${stableBase}next/`
-const nextLabel = "Next (unreleased)"
-const isNext = process.env.DOCS_TRACK === "next"
+const releaseBase = "/kern-orm/"
+const devBase = `${releaseBase}dev/`
+const isDev = process.env.DOCS_TRACK === "dev"
+// The version of kern-orm in the commit of Release: Release builds at that commit, and the workflow passes it to the build of Dev, since `main` can hold a version that is not released yet.
+const releaseLabel = `v${process.env.DOCS_RELEASE_VERSION ?? kernOrmPackage.version}`
+const devLabel = "Development"
 
 export default defineConfig({
   title: "kern-orm",
   description:
     "Fully typed relational query builder for PostgreSQL with ambient transactions and single-query relation loading",
-  base: isNext ? nextBase : stableBase,
+  base: isDev ? devBase : releaseBase,
   // Search engines should send users to the docs of the version they can install.
-  head: isNext ? [["meta", { name: "robots", content: "noindex" }]] : [],
+  head: isDev ? [["meta", { name: "robots", content: "noindex" }]] : [],
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
     nav: [
       { text: "Docs", link: "/getting-started" },
       {
-        text: isNext ? nextLabel : "Stable",
+        text: isDev ? devLabel : releaseLabel,
         // An absolute URL, since the other track is outside `base`, and a target, which makes the router load it as another site.
         items: [
-          { text: "Stable", link: `${origin}${stableBase}`, target: "_self" },
-          { text: nextLabel, link: `${origin}${nextBase}`, target: "_self" },
+          { text: releaseLabel, link: `${origin}${releaseBase}`, target: "_self" },
+          { text: devLabel, link: `${origin}${devBase}`, target: "_self" },
         ],
       },
     ],

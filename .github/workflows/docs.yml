@@ -1,6 +1,6 @@
 name: Docs
 
-# Publishes the docs of the last release at the root of the site and the docs of `main` under next/.
+# Publishes the docs of the last release at the root of the site and the docs of `main` under dev/.
 # A run derives both from the current state of the repository, so any run can replace a queued one, and a rerun neither rolls back the site nor needs to know what is deployed.
 
 on:
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The tip of the branch rather than the commit of the event, so that a rerun does not roll back Next.
+          # The tip of the branch rather than the commit of the event, so that a rerun does not roll back Dev.
           ref: ${{ github.ref }}
           # VitePress takes last updated times from the Git history.
           fetch-depth: 0
@@ -55,11 +55,6 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Build Next
-        run: bun run docs:build
-        env:
-          DOCS_TRACK: next
-
       - name: Find the last release
         id: release
         env:
@@ -69,32 +64,40 @@ jobs:
         run: |
           tag=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')
           commit=$(git rev-parse "refs/tags/$tag^{commit}")
+          version=$(git show "$commit:packages/kern-orm/package.json" | jq -r .version)
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Restore Stable
-        id: stable
+      - name: Build Dev
+        run: bun run docs:build
+        env:
+          DOCS_TRACK: dev
+          DOCS_RELEASE_VERSION: ${{ steps.release.outputs.version }}
+
+      - name: Restore Release
+        id: release-cache
         uses: actions/cache@v6
         with:
-          path: ${{ runner.temp }}/stable
-          key: docs-stable-${{ steps.release.outputs.commit }}
+          path: ${{ runner.temp }}/release
+          key: docs-release-${{ steps.release.outputs.commit }}
 
       # Builds with the tools and dependencies of the release, which main may have moved past.
-      - name: Build Stable
-        if: steps.stable.outputs.cache-hit != 'true'
+      - name: Build Release
+        if: steps.release-cache.outputs.cache-hit != 'true'
         env:
           COMMIT: ${{ steps.release.outputs.commit }}
           MISE_TRUSTED_CONFIG_PATHS: ${{ runner.temp }}
         run: |
-          git worktree add "$RUNNER_TEMP/stable-source" "$COMMIT"
-          cd "$RUNNER_TEMP/stable-source"
+          git worktree add "$RUNNER_TEMP/release-source" "$COMMIT"
+          cd "$RUNNER_TEMP/release-source"
           mise exec -- bun install --frozen-lockfile
           mise exec -- bun run docs:build
-          mv docs/.vitepress/dist "$RUNNER_TEMP/stable"
+          mv docs/.vitepress/dist "$RUNNER_TEMP/release"
 
       - name: Assemble the site
         run: |
-          cp -R "$RUNNER_TEMP/stable" "$RUNNER_TEMP/site"
-          mv docs/.vitepress/dist "$RUNNER_TEMP/site/next"
+          cp -R "$RUNNER_TEMP/release" "$RUNNER_TEMP/site"
+          mv docs/.vitepress/dist "$RUNNER_TEMP/site/dev"
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
