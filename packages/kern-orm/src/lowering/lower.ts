@@ -1,6 +1,12 @@
 // Lowering of a query, a mutation, or a statement of SQL text to the SQL statement that executes it.
 
-import type { RawSqlNode, SelectNode, StatementNode, TextStatementNode } from "../ast/nodes"
+import type {
+  RawSqlNode,
+  SelectNode,
+  StatementNode,
+  TableSourceNode,
+  TextStatementNode,
+} from "../ast/nodes"
 import { noFilters, noJoins, noOrder } from "../ast/nodes"
 import type { AnyDb } from "../execution/db"
 import { isAggregateQuery } from "../query/aggregate"
@@ -140,23 +146,10 @@ function lowerSelectStatement(
     node.guaranteed && relation !== undefined
       ? formatRelationName(relation.key, relation.name)
       : undefined
-  const page = lowerPage(
-    node,
-    selected,
-    projections,
-    filters,
-    orderBy,
-    groupBy,
-    having,
-    distinctOn,
-    positions,
-    guaranteedBy,
-    recordTemplate,
-  )
-  if (page !== undefined) {
-    return page
-  }
-  return Object.freeze({
+  // `lowerPage` reads the order of the sort expressions, so the statement takes the order of positions only after it, before it is frozen.
+  const statement: {
+    -readonly [K in keyof SelectNode<TableSourceNode>]: SelectNode<TableSourceNode>[K]
+  } = {
     kind: "select",
     from: node.from,
     joins: noJoins,
@@ -164,7 +157,7 @@ function lowerSelectStatement(
     filters,
     groupBy,
     having,
-    orderBy: positions && orderBy.length > 0 ? sortByPositions(orderBy, projections) : orderBy,
+    orderBy,
     limit: node.limit,
     offset: node.offset,
     distinct: node.distinct,
@@ -174,7 +167,15 @@ function lowerSelectStatement(
     value: node.value,
     guaranteedBy,
     recordTemplate,
-  })
+  }
+  const page = lowerPage(statement, selected, positions)
+  if (page !== undefined) {
+    return page
+  }
+  if (positions && orderBy.length > 0) {
+    statement.orderBy = sortByPositions(orderBy, projections)
+  }
+  return Object.freeze(statement)
 }
 
 /** Lowers a query of `exists` to a statement without a source of one row of `EXISTS` of its rows. */

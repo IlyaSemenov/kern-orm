@@ -4,24 +4,23 @@ import type {
   ExpressionNode,
   OrderNode,
   ProjectionNode,
-  QueryFilters,
   ScalarProjection,
   SelectNode,
   SourceNode,
+  TableSourceNode,
 } from "../ast/nodes"
 import { createNode, noFilters, noJoins } from "../ast/nodes"
 import { findValueProjection } from "../ast/projections"
 import { collectColumnKeys, mayAggregateSource } from "../ast/references"
-import type { QueryNode, SqlSelectedNode } from "../query/node"
+import type { SqlSelectedNode } from "../query/node"
 import { isNestedSelection } from "../query/node"
-import type { RecordTemplateField } from "../result/result"
 import { text } from "../type/builtins/text"
 
 import { deriveOrderedSource, sortByPositions } from "./order"
 
 /**
- * Lowers `node` with `projections`, `filters`, `orderBy`, `groupBy`, `having`, and `distinctOn`, the lowered parts of the node, to a statement that evaluates its nested queries, apart from those that it sorts by, groups by, or compares, over the rows of a derived page, or returns `undefined` for a query that keeps its page on its table.
- * `queryFields` are the fields of the query without literals, and `projections` their lowered projections in the same order.
+ * Lowers `query`, the statement of a query on its table that sorts by its sort expressions, to a statement that evaluates its nested queries, apart from those that it sorts by, groups by, or compares, over the rows of a derived page, or returns `undefined` for a query that keeps its page on its table.
+ * `queryFields` are the fields of the query without literals, whose lowered projections the statement has in the same order.
  * The derived source applies `DISTINCT ON`, the filters, the keys and the condition of the groups, the order, the limit, and the offset, and replaces the occurrence of the table.
  * It selects each key of `distinctOn` that it does not select otherwise, so that it has a select list, which PostgreSQL requires with `DISTINCT ON`, and evaluates each key once; a key of `groupBy` needs no projection of its own, since it compiles as the position of a projection that has its value or as its expression.
  *
@@ -33,33 +32,25 @@ import { deriveOrderedSource, sortByPositions } from "./order"
  * The order of a derived source does not carry into the query that reads it, so the statement sorts the rows of the page again by the sort keys of the source, by positions when `positions` is set.
  */
 export function lowerPage(
-  node: QueryNode,
+  query: SelectNode<TableSourceNode>,
   queryFields: readonly SqlSelectedNode[],
-  projections: readonly ProjectionNode[],
-  filters: QueryFilters,
-  orderBy: readonly OrderNode[],
-  groupBy: readonly ExpressionNode[] | undefined,
-  having: ExpressionNode | undefined,
-  distinctOn: readonly ExpressionNode[] | undefined,
   positions: boolean,
-  guaranteedBy: string | undefined,
-  recordTemplate: readonly RecordTemplateField[] | undefined,
 ): SelectNode<SourceNode> | undefined {
+  const { from, projections, orderBy, groupBy, distinctOn, offset } = query
   // PostgreSQL evaluates the select list also for the rows that an offset skips, so the nested queries of a page after an offset read its rows from a derived source.
   // Without a limit, it evaluates the select list of `DISTINCT ON` also for the rows after the first of each group, so the nested queries of a query of `distinctOn` read its first rows from a derived source too.
   // A query of `distinct` compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway.
   // A query with a row lock stays on its table too, since PostgreSQL evaluates the select list below the lock there, whereas a derived page would lock its rows before the nested queries that read them lock theirs.
   if (
-    (node.offset === undefined && distinctOn === undefined) ||
-    node.distinct ||
-    node.lock !== undefined ||
+    (offset === undefined && distinctOn === undefined) ||
+    query.distinct ||
+    query.lock !== undefined ||
     !queryFields.some((field, index) =>
       isPagedField(field, projections[index]!, orderBy, groupBy, distinctOn),
     )
   ) {
     return undefined
   }
-  const { from } = node
   const columnKeys = new Set<string>()
   const fields: ScalarProjection[] = []
   // Keys of the source of the scalar fields other than columns of the table, by the position of the field, which no column key takes.
@@ -108,19 +99,19 @@ export function lowerPage(
       from,
       joins: noJoins,
       projections: sourced,
-      filters,
+      filters: query.filters,
       groupBy,
-      having,
+      having: query.having,
       orderBy,
-      limit: node.limit,
-      offset: node.offset,
+      limit: query.limit,
+      offset,
       distinctOn,
       rows: "many",
       value: false,
       guaranteedBy: undefined,
     },
     true,
-    node.offset,
+    offset,
     from,
   )
   const selected: ProjectionNode[] = []
@@ -146,10 +137,10 @@ export function lowerPage(
     orderBy: positions ? sortByPositions(page.order, selected) : page.order,
     limit: undefined,
     offset: undefined,
-    rows: node.rows,
-    value: node.value,
-    guaranteedBy,
-    recordTemplate,
+    rows: query.rows,
+    value: query.value,
+    guaranteedBy: query.guaranteedBy,
+    recordTemplate: query.recordTemplate,
   })
 }
 
