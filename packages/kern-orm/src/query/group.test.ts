@@ -371,19 +371,26 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
   })
 
-  it("reads in having a selected key with a parameter of param through its field, beside an aggregate under or", async () => {
-    const buckets = await testTransaction(
-      async () =>
-        await db.field
-          .select(field => ({
-            bucket: sql(t.integer)`${field.position} % ${param(t.integer, 2)}`,
-            fieldCount: count(),
-          }))
-          .groupBy((_field, selected) => selected.bucket)
-          .having((_field, selected) => or(selected.bucket.eq(0), selected.fieldCount.gt(4))),
-    )
+  it("reads in having a selected key with a parameter of param through its field, beside an aggregate under or, also in a page of groups with a nested query", async () => {
+    const buckets = db.field
+      .select(field => ({
+        bucket: sql(t.integer)`${field.position} % ${param(t.integer, 2)}`,
+        fieldCount: count(),
+      }))
+      .groupBy((_field, selected) => selected.bucket)
+      .having((_field, selected) => or(selected.bucket.eq(0), selected.fieldCount.gt(4)))
 
-    expect(buckets).toStrictEqual([{ bucket: 0, fieldCount: 1 }])
+    const results = await testTransaction(async () => ({
+      groups: await buckets,
+      page: await buckets.offset(0).select(() => ({
+        forms: db.form.orderBy("id").pluck("id"),
+      })),
+    }))
+
+    expect(results).toStrictEqual({
+      groups: [{ bucket: 0, fieldCount: 1 }],
+      page: [{ bucket: 0, fieldCount: 1, forms: [1, 2, 3] }],
+    })
   })
 
   it("groups by a selected value of a related record through its expression, and of an aggregate of related records", async () => {
@@ -449,6 +456,76 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       mapped: [2, 3],
       transformed: 2,
       used: [first],
+    })
+  })
+
+  it("selects nested queries of a page of groups after an offset and of the first groups of distinctOn, also of nested groups and of a table grouped by its primary key with a window function over all its groups", async () => {
+    const results = await testTransaction(async () => ({
+      page: await db.field
+        .groupBy("formId")
+        .having(() => count().lt(3))
+        .select(field => ({
+          formId: field.formId,
+          form: field.form.select("name"),
+          fieldCount: count(),
+        }))
+        .orderBy((_field, selected) => desc(selected.fieldCount))
+        .offset(0),
+      first: await db.field
+        .groupBy("label", "formId")
+        .distinctOn("label")
+        .orderBy(field => [field.label, desc(sum(field.position)), field.formId])
+        .select(field => ({
+          label: field.label,
+          form: field.form.select("name"),
+        })),
+      nested: await db.form.orderBy("id").select(form => ({
+        id: form.id,
+        labels: form.fields
+          .groupBy("label")
+          .orderBy("label")
+          .offset(1)
+          .select(field => ({
+            label: field.label,
+            forms: db.field
+              .where(other => other.label.eq(field.label))
+              .orderBy("formId")
+              .pluck("formId"),
+          })),
+      })),
+      forms: await db.form
+        .groupBy("id")
+        .orderBy("id")
+        .offset(1)
+        .select(form => ({
+          name: form.name,
+          formCount: sql(t.integer)`count(*) OVER ()`,
+          labels: form.fields.orderBy("position").pluck("label"),
+        })),
+    }))
+
+    expect(results).toStrictEqual({
+      page: [{ formId: 2, form: { name: "Contact" }, fieldCount: 2 }],
+      first: [
+        { label: "Email", form: { name: "Contact" } },
+        { label: "Name", form: { name: "Survey" } },
+        { label: "Phone", form: { name: "Survey" } },
+      ],
+      nested: [
+        {
+          id: 1,
+          labels: [
+            { label: "Name", forms: [1, 2] },
+            { label: "Phone", forms: [1] },
+          ],
+        },
+        { id: 2, labels: [{ label: "Name", forms: [1, 2] }] },
+        { id: 3, labels: [] },
+      ],
+      forms: [
+        { name: "Contact", formCount: 3, labels: ["Name", "Email"] },
+        { name: "Draft", formCount: 3, labels: [] },
+      ],
     })
   })
 

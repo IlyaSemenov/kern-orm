@@ -126,6 +126,7 @@ function lowerSelectStatement(
   const filters = lowerFilters(node.filters, context)
   const orderBy = lowerOrder(node.orderBy, context, selected, projections)
   const groupBy = lowerKeys(node.groupBy, context, selected, projections)
+  const having = lowerValue(node.having, context)
   const distinctOn = lowerKeys(node.distinctOn, context, selected, projections)
   if (node.distinct) {
     checkDistinct(projections, orderBy)
@@ -145,6 +146,8 @@ function lowerSelectStatement(
     projections,
     filters,
     orderBy,
+    groupBy,
+    having,
     distinctOn,
     positions,
     guaranteedBy,
@@ -160,7 +163,7 @@ function lowerSelectStatement(
     projections,
     filters,
     groupBy,
-    having: lowerValue(node.having, context),
+    having,
     orderBy: positions && orderBy.length > 0 ? sortByPositions(orderBy, projections) : orderBy,
     limit: node.limit,
     offset: node.offset,

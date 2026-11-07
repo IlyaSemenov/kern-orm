@@ -4,7 +4,7 @@ import { describePostgres } from "../../testing/postgres"
 import { compileStatement } from "../compiler/postgres/compile"
 import { count, every, sum } from "../expression/aggregates"
 import { and, not } from "../expression/predicates"
-import { sql } from "../expression/sql"
+import { param, sql } from "../expression/sql"
 import { desc } from "../query/order"
 import type { AnySelectQuery } from "../query/select"
 import { many, one } from "../schema/relation"
@@ -203,18 +203,53 @@ describe("page after an offset", () => {
     expect(locked).toEndWith('FROM "form" AS "form" ORDER BY "form"."id" OFFSET $1 FOR UPDATE')
   })
 
-  it("evaluates a nested query of a page of groups after an offset on its table", () => {
-    const page = schema.form
-      .groupBy("id")
-      .orderBy("id")
-      .offset(1)
-      .select(form => ({
-        labels: form.fields.pluck("label"),
+  it("reads the page of groups of a query that selects nested queries after an offset from a derived source of the page, which applies the keys and the condition of the groups", () => {
+    const page = schema.field
+      .groupBy("formId")
+      .having(() => count().gt(1))
+      .select(field => ({
+        fieldCount: count(),
+        form: field.form.select("id"),
       }))
+      .orderBy(field => [desc(sum(field.id)), field.formId])
+      .offset(1)
 
     expect(compile(page)).toEndWith(
-      ' FROM "form" AS "form" GROUP BY "form"."id" ORDER BY "form"."id" OFFSET $1',
+      ' FROM (SELECT "form_field_2"."formId" AS "formId", count(*) AS "$field1", sum("form_field_2"."id") AS "$order1" FROM "form_field" AS "form_field_2" GROUP BY 1 HAVING count(*) > $1 ORDER BY 3 DESC, 1 OFFSET $2) AS "form_field" ORDER BY "form_field"."$order1" DESC, "form_field"."formId"',
     )
+  })
+
+  it("evaluates a field of an aggregate that is a key of the groups in the derived source of the page", () => {
+    const page = schema.form
+      .select(form => ({
+        fieldCount: form.fields.count(),
+        forms: count(),
+        labels: schema.field.pluck("label"),
+      }))
+      .groupBy((_form, selected) => selected.fieldCount)
+      .offset(1)
+
+    expect(compile(page)).toEndWith(
+      ' FROM (SELECT (SELECT count(*) AS "count" FROM "form_field" AS "form_field_2" WHERE "form_field_2"."formId" = "form_2"."id") AS "$field1", count(*) AS "$field2" FROM "form" AS "form_2" GROUP BY 1 OFFSET $1) AS "form"',
+    )
+  })
+
+  it("binds the parameter of param in a key of the groups once in the derived source of the page, also in a condition that reads the key through its field", () => {
+    const divisor = param(t.integer, 2)
+    const page = schema.field
+      .select(field => ({
+        bucket: sql(t.integer)`${field.id} % ${divisor}`,
+        labels: schema.option.pluck("fieldId"),
+      }))
+      .groupBy((_field, selected) => selected.bucket)
+      .having((_field, selected) => selected.bucket.gt(0))
+      .offset(1)
+
+    const { text, parameters } = page.toSQL()
+    expect(text).toEndWith(
+      ' FROM (SELECT "form_field_2"."id" % ($1::integer) AS "$field1" FROM "form_field" AS "form_field_2" GROUP BY 1 HAVING ("form_field_2"."id" % ($1::integer)) > $2 OFFSET $3) AS "form_field"',
+    )
+    expect(parameters).toEqual(["2", "0", "1"])
   })
 
   it("selects in the derived page of a parent the column that only the condition or the keys of the groups of a nested query read", () => {
@@ -277,17 +312,22 @@ describe("first rows of distinctOn", () => {
     )
   })
 
-  it("keeps the first rows of a query of groups and of a query whose nested query may aggregate its rows on its table", () => {
-    expect(
-      compile(
-        schema.field
-          .groupBy("formId")
-          .distinctOn("formId")
-          .select(field => ({
-            form: field.form.select("id"),
-          })),
-      ),
-    ).toEndWith(' FROM "form_field" AS "form_field" GROUP BY "form_field"."formId"')
+  it("reads the first groups of a query of groups that selects nested queries from a derived source, which applies the keys of the groups and of distinctOn", () => {
+    const first = schema.field
+      .groupBy("formId", "label")
+      .distinctOn("formId")
+      .orderBy(field => [field.formId, desc(count())])
+      .select(field => ({
+        label: field.label,
+        form: field.form.select("id"),
+      }))
+
+    expect(compile(first)).toEndWith(
+      ' FROM (SELECT DISTINCT ON (2) "form_field_2"."label" AS "label", "form_field_2"."formId" AS "formId", count(*) AS "$order2" FROM "form_field" AS "form_field_2" GROUP BY 2, 1 ORDER BY 2, 3 DESC) AS "form_field" ORDER BY "form_field"."formId", "form_field"."$order2" DESC',
+    )
+  })
+
+  it("keeps the first rows and the page of groups of a query whose nested query may aggregate its rows on its table", () => {
     expect(
       compile(
         schema.field.distinctOn("formId").select(field => ({
@@ -295,6 +335,19 @@ describe("first rows of distinctOn", () => {
         })),
       ),
     ).toEndWith(' FROM "form_field" AS "form_field"')
+    expect(
+      compile(
+        schema.field
+          .groupBy("formId")
+          .orderBy("formId")
+          .offset(1)
+          .select(field => ({
+            total: field.form.get(() => sum(field.id)),
+          })),
+      ),
+    ).toEndWith(
+      ' FROM "form_field" AS "form_field" GROUP BY "form_field"."formId" ORDER BY "form_field"."formId" OFFSET $1',
+    )
   })
 })
 
@@ -383,6 +436,46 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     )
     expect(pageRows.map(row => row.number)).toEqual([10, 9, 8, 7, 6])
     expect(evaluations).toEqual({ number: 20, nested: 5 })
+  })
+
+  it("evaluates nested queries only for the groups of a page after an offset and for the first groups of distinctOn", async () => {
+    const groups = db.form.groupBy("id").select(form => ({
+      id: form.id,
+      rows: count(),
+      residue: sql(t.integer)`${form.id} % ${5}`,
+      nested: db.form
+        .where(other => other.id.eq(form.id))
+        .get(() => sql(t.integer)`nextval('nested_sequence')::integer`),
+    }))
+    const page = groups.orderBy("id").limit(5).offset(10)
+    const first = groups
+      .distinctOn((_form, selected) => selected.residue)
+      .orderBy((form, selected) => [selected.residue, desc(form.id)])
+    const run = (query: typeof page) =>
+      testTransaction(async () => {
+        await database.script("CREATE SEQUENCE nested_sequence")
+        const rows = await db.$execute(query)
+        const evaluations = await database.query`SELECT currval('nested_sequence')`.get(t.integer)
+        return {
+          ids: rows.map(row => row.id),
+          rows: rows.map(row => row.rows),
+          nested: rows.map(row => row.nested).toSorted((a, b) => a - b),
+          evaluations,
+        }
+      })
+
+    expect(await run(page)).toEqual({
+      ids: [11, 12, 13, 14, 15],
+      rows: [1, 1, 1, 1, 1],
+      nested: [1, 2, 3, 4, 5],
+      evaluations: 5,
+    })
+    expect(await run(first)).toEqual({
+      ids: [20, 16, 17, 18, 19],
+      rows: [1, 1, 1, 1, 1],
+      nested: [1, 2, 3, 4, 5],
+      evaluations: 5,
+    })
   })
 
   it("evaluates window functions of a page after an offset over all its rows, also of a nested page", async () => {

@@ -84,10 +84,6 @@ An expression that holds a query is not one expression for PostgreSQL at two pla
 - A key and a sort key of a field that a later selection replaces, which hold a query, are lowered apart, so the key does not find the projection of the sort key; lowering one expression node to one node per query would give them one projection.
 - A position refers to the selected projection, which `findValueProjection` finds by the same expression node or the same column.
 
-## Pages of groups after an offset
-
-A [query of groups](architecture/queries.md#groups) with nested queries evaluates them for the groups that an offset skips, and with [`distinctOn`](architecture/queries.md#first-row-of-each-group) without a limit for every group, since it stays on its table; a derived page of groups would evaluate them only over its rows, as `lowerPage` does for other queries.
-
 ## Parameters of keys without `param`
 
 A key of a [query of groups](architecture/queries.md#groups) with a value interpolated into it, such as ``sql(t.date)`(${submission.createdAt} at time zone ${timeZone})::date``, fails in `HAVING` also when the condition reads it through its selected field, since the compiler binds only the parameter of `param(type, value)` once in a query of groups, so the copy of the key there has a parameter of its own.

@@ -354,25 +354,37 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       })
     })
 
-    it("groups a nested query by a parameterized bucket that a literal replaces, by the position of its sort key, and rejects it as an executed query, which has no such projection", async () => {
+    it("groups by the position of the sort key of a parameterized bucket that a literal replaces, in a nested query and in an executed page of a derived source, and rejects it in another executed query, which has no such projection", async () => {
       const buckets = db.form
         .select(form => ({
           bucket: residue(form),
-          total: count(),
+          total: sum(form.id),
         }))
         .groupBy((_form, selected) => selected.bucket)
         .orderBy((_form, selected) => selected.bucket)
         .select(() => ({
           bucket: literal("replaced"),
         }))
+      const derived = buckets.offset(1).select(() => ({
+        first: db.form.where({ id: 1 }).pluck("id"),
+      }))
 
-      const page = await testTransaction(async () => await db.$select({ rows: buckets }))
+      const results = await testTransaction(async () => ({
+        nested: await db.$select({ rows: buckets }),
+        derived: await derived,
+      }))
 
-      expect(page).toStrictEqual({
-        rows: [
-          { bucket: "replaced", total: 6 },
-          { bucket: "replaced", total: 7 },
-          { bucket: "replaced", total: 7 },
+      expect(results).toStrictEqual({
+        nested: {
+          rows: [
+            { bucket: "replaced", total: 63 },
+            { bucket: "replaced", total: 70 },
+            { bucket: "replaced", total: 77 },
+          ],
+        },
+        derived: [
+          { bucket: "replaced", total: 70, first: [1] },
+          { bucket: "replaced", total: 77, first: [1] },
         ],
       })
       await expect(testTransaction(async () => await buckets)).rejects.toThrow(
