@@ -29,6 +29,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Use `examples/` as acceptance tests of the public API in realistic multi-schema setups.
 - Name runtime tests `*.test.ts`, compile-only type tests `*.type-test.ts`, and tests of the packed packages `*.package-test.ts`.
 - Structure type tests with `describe` and `test` from `bun:test`, like runtime tests; `bun test` does not run them, and typecheck checks their bodies.
+- Put a call that no overload accepts on one line under `@ts-expect-error`: TypeScript 6 reports it at the call, and TypeScript 7 at the argument.
 - Keep each package entry point, `src/index.ts` and one `src/<name>.ts` per subpath export, limited to explicit public exports.
 - Export from an entry point every type that the inferred types of public values reference, so that the declarations of a consumer module can name them; the package test emits such declarations.
 - Treat `package.json` exports and supported runtimes as public contracts.
