@@ -299,9 +299,12 @@ Queries come in two kinds that share the query methods and differ only by execut
     A string always names a column, never a selected field, since the key of a field names only the field of a record.
     A call without keys rejects at runtime, since an empty list built in code would leave the rows ungrouped.
   - `where` keeps filtering the rows, wherever it is in the chain.
-  - `having` takes what `where` takes, as `QueryWhereFilter`, with one callback parameter, and is stored as `having` of the node, apart from the filters, combined with `AND` across calls.
+  - `having` takes what `where` takes, and is stored as `having` of the node, apart from the filters, combined with `AND` across calls.
     It requires an earlier `groupBy` at runtime only, and types take its call without one, as they keep no part of the state for keys.
     Like `where`, it ends the guarantee of a required relation, so it has the same two overloads.
+  - The second parameter of its callback holds the references to the selected fields, as in [`orderBy`](#sorting-and-pagination), with the operators and the values of the types of their fields, such as `having((submission, selected) => selected.submissions.gt(1))`, or the expression of the value of a query of `get` or `pluck` with the operators of `valueType`.
+    After an aggregate method, `exists`, or `map`, whose fields are not those of the groups, it is `undefined`, so that a condition cannot read the aggregate of an aggregate method, which in `HAVING` would aggregate the rows of a group.
+    A field of nested rows or of a literal throws when it is read.
 - `groupBy` keeps the state in types, as `orderBy` and `distinct` do, so the state has no part for groups, and a conditional call assigns the query back to its variable.
   It is constrained to a state of `aggregate: false`, so it rejects a query made by an aggregate method, `exists`, or `map`, also at runtime.
 - Types do not check the columns outside the keys, which PostgreSQL rejects with SQLSTATE `42803`, naming the column.
@@ -318,13 +321,24 @@ Queries come in two kinds that share the query methods and differ only by execut
 - The compiler binds the parameter of a cast once in a query of groups ([SQL generation](sql.md#statements)), so the copies of a key built from one `param(type, value)` compile to equal text, which PostgreSQL takes for the key in `HAVING` and `ORDER BY`.
   Another parameter, such as of a value interpolated into `sql`, of an operator, or of `param` of an expression, is a parameter of its own at each place.
 - Only the position of its projection refers to a key with such other parameters or with a query, since each other place has parameters and aliases of its own ([backlog](../BACKLOG.md#queries-repeated-in-a-statement)).
-  - A condition of `having` cannot read such a key.
+  - A condition of `having` cannot read such a key, also through its field: `HAVING` cannot refer to a projection, so a field is a copy of its expression there.
+    Lowering `having` through the projections of the fields, as the keys are, would change no SQL, since the compiler gives each occurrence of a source an alias of its own.
   - Moving the condition to `where` is valid only when it keeps the meaning of the whole predicate, and building the parameters of the key from `param` must change it at every place, also in grouping, not only in the condition; a key that holds a query has aliases of its own at each place anyway.
   - A condition on such a key beside an aggregate under `OR` cannot be written.
   - A sort key of such a key requires the query to select it, unless the query is packed, whose derived source selects the sort key: an executed query that a later selection replaces the field of has no projection of it.
 - A key of a field that a later selection replaces, which holds a query, is lowered apart from its sort key, so their nodes differ and PostgreSQL rejects the query, with or without parameters.
 - A helper that only calls `groupBy` passes types on a query made by an aggregate, `exists`, or `map`, and on a query with a row lock, and fails at runtime, since its effect does not record the call ([backlog](../BACKLOG.md#helper-effects-of-their-calls)).
-- The two methods add about 6 instantiations, 0.5%, to a [helper](#helpers), and about 12, 1.5%, to a helper of `map`; a query of `groupBy` of a column takes about 140, and of `having` of an aggregate and `pluck` about 200 ([benchmark](../benchmarks/types/queries.bench.ts)).
+- The `fieldTypes` part of the state holds the type of the value of each selected field of a query of records, the values that it encodes and its operators, as `valueType` does for a query of values, which the references of `having` read.
+  `result` holds only the decoded values, which do not tell the operators: `timestamptz`, `date`, and `numeric` decode to strings, so operators chosen by the decoded value would give some types operators that they lack and others none of theirs, and the values that a type encodes, such as a `Date` of `timestamptz`, would be lost.
+  - `select`, `clearSelect`, and the effect of a [helper](#helpers) keep it by the rules by which `select` merges the result: a numeric key as a string, a replaced field, an absent optional replacement, and each branch of a union.
+    A field of a union of expressions is a union of references, each taking only its own values.
+  - A literal and the rows of a nested query other than of one value have no type of a value, so their references have no operators; a query of one value, such as of `get`, has the type of its value, though reading its field throws.
+  - `SelectedFieldTypes` defers the merge of each selection until the types are read: comparing states, such as with the constraint of a helper, relates its type arguments, and only `having` or a structural comparison of them merges the types.
+    Its parameter of the earlier types is declared covariant: TypeScript measures it as bivariant through the merge, which reduced a union of queries whose field is an expression in one and a literal in the other to the query of the expression.
+  - Merged eagerly by `MergeSelection`, as the result is, the part added about 14% to applying a helper and 5% to the first query of a deep relation graph; deferred, it adds about 2.5–4% and 0.6%, and up to 1.6% to a few other queries.
+- The two methods add about 6 instantiations, 0.5%, to a [helper](#helpers), and about 12, 1.5%, to a helper of `map`; a query of `groupBy` of a column takes about 140, of `having` of an aggregate and `pluck` about 220, and of `select` of an aggregate, `groupBy`, and `having` that reads it as a field about 670 ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - The second parameter of the callback of `having` adds about 21 instantiations, 10%, also to a call whose callback reads no field, since TypeScript resolves the types of the parameters of both signatures to compare them.
+    An overload of a callback of one parameter before the one of two does not avoid it: TypeScript gives the parameters of a callback their types from the first overload that it tries, so it leaves both parameters of a callback of two without types.
 - Orchid ORM 1.78.47 `group` takes a selected alias before a column and compiles it to a position, and it requires a selection in types ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/sql/to-sql.ts)); a string of `groupBy` here always names a column, and a query needs no selection to be grouped.
 
 ## Exists
@@ -445,7 +459,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     A helper that only filters applies to a query that `map` converts.
     A check that the result retains the marker or comes from `map` of records rejects a helper that maps a value, by the `valueType` part that `map` keeps.
   - A helper that only selects fields and maps them also applies to a [mutation](mutations.md#helpers), with its `use`.
-  - A helper adds or replaces fields by the same merge as `select`, for every branch of its effect; a query of values rejects a helper that selects fields or ends with a call of `nullable` in any branch.
+  - A helper adds or replaces fields and the [types of their values](#groups) by the same merge as `select`, for every branch of its effect; a query of values rejects a helper that selects fields or ends with a call of `nullable` in any branch.
   - A helper checks that its callback returns the input query or one derived from it, also when called directly.
     The returned query keeps the kind and the `Db` of the input query.
 - The callback of a helper defined with a query of a schema or a `Db` receives a query of its schema context in types, and at runtime the query it is applied to, whose schema shares the definitions of the relations by identity when it includes that schema.

@@ -31,7 +31,7 @@ export interface QueryValueType {
 }
 
 /**
- * State of a select query in types: its table, the relations of its schema, the record or value of its rows and the type of its value, how its rows become its result, and the relations it selects records of.
+ * State of a select query in types: its table, the relations of its schema, the record or value of its rows, the type of its value or the types of its fields, how its rows become its result, and the relations it selects records of.
  *
  * Methods change only their own parts of the state.
  */
@@ -41,6 +41,10 @@ export interface SelectQueryState extends QueryState {
   // `unknown` rather than `QueryValueType`, and only the states of `expr` and `coalesce` narrow it, so that comparing a query with the state of a nested query or of an operand does not instantiate the operators of its type.
   /** Type of the value of a query of values, a `QueryValueType`; `never` for a query of records. */
   readonly valueType: unknown
+  // `result` holds only the decoded values, which do not tell the operators of a field.
+  // `SelectedFieldTypes` defers the merge of each selection until the types are read, such as by `having` or a structural comparison of states, so that most queries do not merge the types of their fields.
+  /** Types of the values of the selected fields of a query of records, the values that each encodes and its operators, which the callback of `having` gives its references: a `SelectedFieldTypes`, or `EmptyRecord` without selected fields. */
+  readonly fieldTypes: unknown
   /**
    * Whether a required relation guarantees the row of the query, such as of `field.form`.
    *
@@ -76,6 +80,7 @@ export interface InitialQueryState<
 > extends QueryStateOf<T, C> {
   readonly result: EmptyRecord
   readonly valueType: never
+  readonly fieldTypes: EmptyRecord
   readonly rows: Rows
   readonly value: false
   readonly uses: U

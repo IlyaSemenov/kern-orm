@@ -44,7 +44,7 @@ import * as t from "kern-orm/types"
 
 const days = await db.submission
   .select(submission => ({
-    day: sql(t.text)`(${submission.createdAt} at time zone ${timeZone})::date::text`,
+    day: sql(t.date)`(${submission.createdAt} at time zone ${timeZone})::date`,
     submissions: count(),
   }))
   .groupBy((submission, selected) => selected.day)
@@ -72,27 +72,22 @@ Group and sort by a key with values interpolated into it, such as `timeZone` abo
 PostgreSQL takes another copy of such a key for another expression and rejects the query.
 For a condition of such a key alone, call `where` instead, which chooses the rows of the groups.
 
-To read a key with parameters in `having`, or to sort by it without selecting it, create each of its parameters once with [`param`](../types#types-in-queries) and build every copy of the key from them:
+To read a key with parameters in `having`, create its parameters with [`param`](../types#types-in-queries) and take the key from the second parameter of the callback of `having`:
 
 ```ts
 import { count, or, param, sql } from "kern-orm"
 import * as t from "kern-orm/types"
 
-const zone = param(t.text, timeZone)
-
 const days = await db.submission
   .select(submission => ({
-    day: sql(t.text)`(${submission.createdAt} at time zone ${zone})::date::text`,
+    day: sql(t.date)`(${submission.createdAt} at time zone ${param(t.text, timeZone)})::date`,
     submissions: count(),
   }))
   .groupBy((submission, selected) => selected.day)
-  .having(submission =>
-    or(
-      sql(t.text)`(${submission.createdAt} at time zone ${zone})::date::text`.eq(today),
-      count().gt(10),
-    ),
-  )
+  .having((submission, selected) => or(selected.day.eq(today), selected.submissions.gt(10)))
 ```
+
+To sort by such a key without selecting it, create each of its parameters once with `param` and build every copy of the key from them.
 
 A key with a query cannot be read in `having`.
 
@@ -109,6 +104,20 @@ const popular = await db.submission
     submissions: count(),
   }))
 ```
+
+To filter by a field that you select, such as the number of the submissions of each form, take it from the second parameter of the callback:
+
+```ts
+const popular = await db.submission
+  .select(submission => ({
+    formId: submission.formId,
+    submissions: count(),
+  }))
+  .groupBy("formId")
+  .having((submission, selected) => selected.submissions.gt(1))
+```
+
+After `pluck` or `get`, the second parameter is the expression of the value.
 
 `having` takes what [`where`](./filtering) takes, such as an object of the values of a key, and each call adds a condition combined with `AND`.
 Call it after `groupBy`.

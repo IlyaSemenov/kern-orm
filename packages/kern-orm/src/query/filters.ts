@@ -75,15 +75,23 @@ export function addUserFilter(
   })
 }
 
-/** Converts a filter of `where` or `having` over `source` with the relations of `context` into the node of its condition, whose objects of column values it resolves. */
+/**
+ * Converts a filter of `where` or `having` over `source` with the relations of `context` into the node of its condition, whose objects of column values it resolves.
+ *
+ * A callback receives the columns with the relations, and what `readSelected` returns, such as the selected fields for `having`.
+ */
 export function toFilterNode(
   filter: WhereFilter<AnyTable>,
   source: TableSourceNode,
   context: QueryContext,
+  readSelected?: () => unknown,
 ): ExpressionNode {
   const condition =
     typeof filter === "function"
-      ? (filter as (refs: unknown) => unknown)(createSelectionRefs(source, context))
+      ? (filter as (refs: unknown, selected: unknown) => unknown)(
+          createSelectionRefs(source, context),
+          readSelected?.(),
+        )
       : filter
   return resolveValues(toConditionNode(condition), source)
 }

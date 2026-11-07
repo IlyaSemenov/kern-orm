@@ -7,7 +7,13 @@ import type { OneRow } from "./rows"
 import type { AnySelectQuery, ChangeState, SelectQuery, TableOrQuery } from "./select"
 import { requireDerived } from "./select"
 import type { FilteredStateRows } from "./select-method-state"
-import type { HelperFields, MergeSelection, WithoutHelperFields } from "./selection"
+import type {
+  HelperFields,
+  MergeSelection,
+  SelectedFieldTypes,
+  SelectedFieldTypesOf,
+  WithoutHelperFields,
+} from "./selection"
 import type { EmptyRecord, QueryStateOf, SelectQueryState } from "./state"
 
 /**
@@ -18,6 +24,7 @@ import type { EmptyRecord, QueryStateOf, SelectQueryState } from "./state"
 interface HelperState<T extends AnyTable, C extends SchemaContext> extends QueryStateOf<T, C> {
   readonly result: HelperFields<never>
   readonly valueType: never
+  readonly fieldTypes: EmptyRecord
   readonly rows: "many"
   readonly value: false
   readonly uses: never
@@ -26,12 +33,14 @@ interface HelperState<T extends AnyTable, C extends SchemaContext> extends Query
 }
 
 /**
- * Effect of a helper: the fields it selects, or whether `map` converts its rows and what it gives, its rows mode on a query of many rows, `one` after `take` or `required` and `nullable` or `optional` after the method of the same name, the relations it selects records of, and whether it keeps the guarantee of the row of a query of a required relation.
+ * Effect of a helper: the fields it selects and the types of their values, or whether `map` converts its rows and what it gives, its rows mode on a query of many rows, `one` after `take` or `required` and `nullable` or `optional` after the method of the same name, the relations it selects records of, and whether it keeps the guarantee of the row of a query of a required relation.
  *
  * `reads` are the relations of the schema of the helper among them, which its callback may read from the references of the query it is applied to, and `key` is the key of its table there.
  */
 export interface HelperEffect {
   readonly fields: object
+  /** Types of the values of the fields it selects, the `fieldTypes` part of the state that its callback returns, which `having` reads. */
+  readonly fieldTypes: unknown
   /** Whether `map` converts the rows, whose fields the result no longer tells, so that `fields` are empty. */
   readonly mapped: boolean
   /** What `map` gives for each row of a query the helper is applied to; `never` when `mapped` is `false`. */
@@ -50,6 +59,7 @@ type ReadEffect<S extends SelectQueryState> = S extends SelectQueryState
       readonly fields: S["value"] extends "mapped"
         ? EmptyRecord
         : { [K in keyof S["result"] as K extends keyof HelperFields ? never : K]: S["result"][K] }
+      readonly fieldTypes: S["value"] extends "mapped" ? EmptyRecord : S["fieldTypes"]
       readonly mapped: S["value"] extends "mapped" ? true : false
       readonly output: S["value"] extends "mapped" ? WithoutHelperFields<S["result"]> : never
       readonly rows: S["rows"]
@@ -127,6 +137,7 @@ type ApplyEffect<S extends SelectQueryState, E extends HelperEffect> = ChangeSta
       : [keyof E["fields"]] extends [never]
         ? S["result"]
         : MergeSelection<S["result"], E["fields"]>
+    fieldTypes: SelectedFieldTypes<S["fieldTypes"], SelectedFieldTypesOf<E["fieldTypes"]>>
     value: E["mapped"] extends true ? "mapped" : S["value"]
     aggregate: E["mapped"] extends true ? true : S["aggregate"]
     // `required` also leaves `one`, which the effect cannot tell from `take`, so a query of one row keeps its mode in types while `required` changes it to `one`.

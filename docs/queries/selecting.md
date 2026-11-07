@@ -210,7 +210,7 @@ import * as t from "kern-orm/types"
 
 const firstOfDay = await db.submission
   .select(submission => ({
-    day: sql(t.text)`${submission.createdAt}::date::text`,
+    day: sql(t.date)`${submission.createdAt}::date`,
     id: submission.id,
   }))
   .distinctOn((submission, selected) => selected.day)

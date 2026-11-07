@@ -190,9 +190,9 @@ export function createColumnNode(source: TableSourceNode, key: string): Expressi
 }
 
 /**
- * Creates the references of the callback of `orderBy`, `groupBy`, or `distinctOn` to the fields selected by `node`; `purpose` completes the error of a field that cannot be read, such as `sorted by`.
+ * Creates the references of the callback of `orderBy`, `groupBy`, `distinctOn`, or `having` to the fields selected by `node`; `purpose` completes the error of a field that cannot be read, such as `sorted by`.
  *
- * Each is an expression over the node of its projection, so that a sort key or a key of a group of it is the projection itself.
+ * Each is an expression over the node of its projection, so that a sort key or a key of a group of it is the projection itself; `HAVING` compiles the expression again, since it cannot refer to a projection.
  * A field of an aggregate or of `exists` is an expression of its query that holds the field, by which lowering finds the projection of the field.
  */
 export function createSelectedRefs(node: QueryNode, purpose: string): unknown {

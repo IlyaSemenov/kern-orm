@@ -1,4 +1,6 @@
 import type { AnyExpression, TypedExpression } from "../expression/expression"
+import type { TypedOperand } from "../expression/functions"
+import type { AnyTable } from "../table/table"
 import type { IsAny, Simplify } from "../utils/type-helpers"
 
 import type { TransformedQuery, TransformedQueryState } from "./conversion"
@@ -6,7 +8,8 @@ import type { SelectQueryKind } from "./kind"
 import type { Literal } from "./literal"
 import type { QueryResult } from "./rows"
 import type { QueryOf } from "./select"
-import type { SelectQueryState } from "./state"
+import type { ColumnValueType, OperandValueType } from "./select-method-state"
+import type { EmptyRecord, SelectQueryState } from "./state"
 
 /** Expressions, nested queries, and literals selected under the keys of the result fields; a record has no symbol keys. */
 export interface Selection {
@@ -95,3 +98,51 @@ type MergeFields<Previous, Fields> = Simplify<
     ]: Fields[K]
   }
 >
+
+/** Types of the values of columns `K` of table `T` as selected fields: the values that each encodes and its operators. */
+export type ColumnFieldTypes<T extends AnyTable, K extends keyof T["columns"]> = {
+  [P in K]: ColumnValueType<T, P>
+}
+
+// A literal and the rows of a nested query other than of one value have no type of a value, so the callback of `having` gets them without operators; a query of one value, such as of `get`, has the type of its value, though reading its field throws there, as for any nested rows.
+/** Types of the values of the expressions and the queries of one value of selection `Sel`, under the keys of the result records, as `MergeSelection` normalizes them. */
+export type SelectionFieldTypes<Sel> = {
+  [K in keyof Sel as K extends number ? `${K}` : K]: FieldType<Exclude<Sel[K], undefined>>
+}
+
+/** Type of the value of a selected field `F`, for each member of a union of them, so that each keeps its own operators and values. */
+type FieldType<F> = F extends TypedOperand ? OperandValueType<F> : unknown
+
+/** Types of the values of fields `P` with those of fields `N` added or replaced, by the rules of `MergeSelection`, for each branch of either. */
+export type MergeFieldTypes<P, N> = P extends unknown
+  ? N extends unknown
+    ? // Inside the distribution, so that the keys of a union do not hide those of a branch.
+      [keyof N] extends [never]
+      ? P
+      : [keyof P] extends [never]
+        ? N
+        : {
+            [K in keyof P | keyof N]: K extends keyof N
+              ? {} extends Pick<N, K>
+                ? // An optional replacement may be absent, so the previous type stays possible.
+                  K extends keyof P
+                  ? P[K] | Exclude<N[K], undefined>
+                  : Exclude<N[K], undefined>
+                : N[K]
+              : K extends keyof P
+                ? P[K]
+                : never
+          }
+    : never
+  : never
+
+// An interface defers the merge until the types are read, such as by `having`: comparing states, such as with the constraint of a helper, relates its type arguments, and only a structural comparison of them merges the types.
+// `P` is declared covariant, since TypeScript measures it as bivariant through the conditional types of the merge, which would relate a field of a literal to one of an expression.
+/** Types of the values of the selected fields of a query: those of `P`, the `fieldTypes` part of the state before a selection, with `N` added or replaced. */
+export interface SelectedFieldTypes<out P, N> {
+  readonly types: MergeFieldTypes<SelectedFieldTypesOf<P>, N>
+}
+
+/** Types of the values of the selected fields of the `fieldTypes` part `F` of a state, by key; none for `EmptyRecord` of a query without selected fields. */
+export type SelectedFieldTypesOf<F> =
+  F extends SelectedFieldTypes<unknown, unknown> ? F["types"] : EmptyRecord

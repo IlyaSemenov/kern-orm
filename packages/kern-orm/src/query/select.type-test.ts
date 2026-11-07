@@ -5,6 +5,7 @@ import { createDatabase } from "../execution/database"
 import { count, sum } from "../expression/aggregates"
 import type { AnyExpression, Expression, TypedExpression } from "../expression/expression"
 import type { Operand } from "../expression/operators/comparison"
+import { and } from "../expression/predicates"
 import { param, sql } from "../expression/sql"
 import { defineSchema } from "../schema/schema"
 import type { Table } from "../table/table"
@@ -12,7 +13,9 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import type { ColumnRefs } from "./column-refs"
+import { defineHelper } from "./helper"
 import type { SelectQueryKind } from "./kind"
+import { literal } from "./literal"
 import { desc, orderBy } from "./order"
 import type { QueryResult } from "./rows"
 import type { AnySelectQuery, ResultOf, SelectQuery } from "./select"
@@ -924,6 +927,134 @@ describe("having", () => {
     groups.having({ unknown: "Hello" })
     // @ts-expect-error A plain Boolean value is no condition.
     groups.having(true)
+  })
+
+  test("gives the callback the selected fields with the operators and the values of their types", () => {
+    const withTotal = defineHelper(post, posts =>
+      posts.select(() => ({
+        total: count(),
+      })),
+    )
+    from(post)
+      .select(columns => ({
+        title: columns.title,
+        stamp: sql(t.timestamptz)`now()`,
+        others: from(post).count(),
+      }))
+      .groupBy("title")
+      .use(withTotal)
+      .having((_columns, selected) =>
+        and(
+          selected.title.ilike("a%"),
+          selected.stamp.gt(new Date()),
+          selected.others.lt(10),
+          selected.total.gt(1),
+        ),
+      )
+    from(post)
+      .select(() => ({
+        total: count(),
+      }))
+      .groupBy("title")
+      // @ts-expect-error A count takes a number.
+      .having((_columns, selected) => selected.total.gt("1"))
+    from(post)
+      .select("*")
+      .groupBy("id")
+      .having((_columns, selected) => selected.title.ilike("a%"))
+  })
+
+  test("gives the callback the value of a query of values, and nothing after an aggregate method, exists, or map", () => {
+    const groups = from(post).groupBy("title")
+    groups.pluck(() => count()).having((_columns, value) => value.gt(1))
+    // @ts-expect-error A count takes a number.
+    groups.pluck(() => count()).having((_columns, value) => value.gt("1"))
+
+    groups.count().having((_columns, selected) => {
+      expectTypeOf(selected).toEqualTypeOf<undefined>()
+      return count().gt(1)
+    })
+    groups.exists().having((_columns, selected) => {
+      expectTypeOf(selected).toEqualTypeOf<undefined>()
+      return count().gt(1)
+    })
+    groups
+      .select("title")
+      .map(row => row.title)
+      .having((_columns, selected) => {
+        expectTypeOf(selected).toEqualTypeOf<undefined>()
+        return count().gt(1)
+      })
+  })
+
+  test("types a field by its latest selection, as the result does", () => {
+    const total: { total?: ReturnType<typeof count> } = {}
+    from(post)
+      .select(columns => ({
+        "0": columns.title,
+        total: count(),
+      }))
+      .select(() => ({
+        0: count(),
+      }))
+      .select(() => total)
+      .groupBy("title")
+      .having((_columns, selected) => and(selected["0"].gt(1), selected.total.gt(1)))
+    from(post)
+      .select(columns => ({
+        "0": columns.title,
+      }))
+      .select(() => ({
+        0: count(),
+      }))
+      .groupBy("title")
+      // @ts-expect-error The count replaced the text field.
+      .having((_columns, selected) => selected["0"].eq("x"))
+    const label: { total?: ColumnRefs<typeof post>["title"] } = {}
+    from(post)
+      .select(() => ({
+        total: count(),
+      }))
+      .select(() => label)
+      .groupBy("title")
+      // @ts-expect-error The count stays without the optional replacement, and it takes no text.
+      .having((_columns, selected) => selected.total.eq("x"))
+  })
+
+  test("takes for a field of several types only what each of them takes", () => {
+    const pick = (flag: boolean) =>
+      from(post)
+        .select(() => ({
+          value: flag ? sql(t.integer)`1` : sql(t.text)`'x'`,
+        }))
+        .groupBy("title")
+    // @ts-expect-error The integer branch takes no text.
+    pick(true).having((_columns, selected) => selected.value.eq("x"))
+
+    const select = (flag: boolean) =>
+      flag
+        ? from(post).select("title")
+        : from(post).select(columns => ({
+            title: columns.title,
+          }))
+    select(true)
+      .groupBy("title")
+      .having((_columns, selected) => selected.title.eq("x"))
+
+    // Each branch selects a further field, so that TypeScript compares the types of the earlier fields when it reduces their union.
+    const expression = from(post)
+      .select(() => ({
+        value: sql(t.integer)`1`,
+      }))
+      .select("title")
+    const code = from(post)
+      .select(() => ({
+        value: literal(1 as number),
+      }))
+      .select("title")
+    const either = (flag: boolean) => (flag ? expression : code)
+    // @ts-expect-error The field of a literal has no operators.
+    either(true).having((_columns, selected) => selected.value.gt(1))
   })
 })
 

@@ -4,10 +4,10 @@ import { describePostgres } from "../../testing/postgres"
 import { combineNodes } from "../ast/boolean"
 import type { ProjectionNode } from "../ast/nodes"
 import { count, max, sum } from "../expression/aggregates"
-import type { AnyExpression } from "../expression/expression"
 import { toNode } from "../expression/expression"
 import { coalesce } from "../expression/functions"
-import { sql } from "../expression/sql"
+import { and, or } from "../expression/predicates"
+import { param, sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -200,6 +200,62 @@ describe("having", () => {
     )
   })
 
+  it("gives a callback the fields selected so far, each compiled as a copy of its expression, which HAVING cannot refer to by position", () => {
+    const query = schema.field
+      .select(field => ({
+        formId: field.formId,
+        fieldCount: count({ filter: field.position.lt(5) }),
+        hasForm: field.form.exists(),
+      }))
+      .groupBy("formId")
+      .having((_field, selected) => and(selected.fieldCount.gt(1), selected.hasForm))
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT "form_field"."formId" AS "formId", count(*) FILTER (WHERE "form_field"."position" < $1) AS "fieldCount", EXISTS (SELECT FROM "form" AS "form" WHERE "form"."id" = "form_field"."formId") AS "hasForm" FROM "form_field" AS "form_field" GROUP BY 1 HAVING count(*) FILTER (WHERE "form_field"."position" < $2) > $3 AND EXISTS (SELECT FROM "form" AS "form_2" WHERE "form_2"."id" = "form_field"."formId")',
+      parameters: ["5", "5", "1"],
+    })
+  })
+
+  it("gives a callback the value of a query made by get or pluck", () => {
+    const query = fields
+      .groupBy("formId")
+      .pluck(() => count())
+      .having((_field, fieldCount) => fieldCount.gt(1))
+
+    expect(query.toSQL().text).toEndWith('GROUP BY "form_field"."formId" HAVING count(*) > $1')
+  })
+
+  it("rejects reading a selected field of nested rows or of a literal", () => {
+    const query = schema.form.groupBy("id").select(form => ({
+      fields: form.fields.select("id"),
+      note: literal("note"),
+    }))
+
+    expect(() => query.having((_form, selected) => selected.fields as never)).toThrow(
+      'Field "fields" holds nested rows and cannot be read in having',
+    )
+    expect(() => query.having((_form, selected) => selected.note as never)).toThrow(
+      'Field "note" holds a literal and cannot be read in having',
+    )
+  })
+
+  it("gives a callback no fields after an aggregate method, exists, or map, whose fields are not those of the groups", () => {
+    const grouped = fields.groupBy("formId")
+    const queries: AnySelectQuery[] = [
+      grouped.count(),
+      grouped.exists(),
+      grouped.select("formId").map(row => row.formId),
+    ]
+    for (const query of queries) {
+      let received: unknown = null
+      query.having((_field: unknown, selected: unknown) => {
+        received = selected
+        return count().gt(1)
+      })
+      expect(received).toBeUndefined()
+    }
+  })
+
   it("ends the guarantee of the row of a required relation, as where does", () => {
     const query = schema.field.select(field => {
       const groups = field.form.groupBy("id").having(() => count().gt(1))
@@ -282,6 +338,21 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     expect(formIds).toStrictEqual([1])
   })
 
+  it("filters the groups by a selected aggregate through its field", async () => {
+    const groups = await testTransaction(
+      async () =>
+        await db.field
+          .select(field => ({
+            formId: field.formId,
+            early: count({ filter: field.position.lt(5) }),
+          }))
+          .groupBy("formId")
+          .having((_field, selected) => selected.early.gt(1)),
+    )
+
+    expect(groups).toStrictEqual([{ formId: 1, early: 2 }])
+  })
+
   it("groups by a selected expression with parameters, also sorted by it, by the position of its projection", async () => {
     const buckets = await testTransaction(
       async () =>
@@ -298,6 +369,21 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       { bucket: 0, fieldCount: 1 },
       { bucket: 1, fieldCount: 4 },
     ])
+  })
+
+  it("reads in having a selected key with a parameter of param through its field, beside an aggregate under or", async () => {
+    const buckets = await testTransaction(
+      async () =>
+        await db.field
+          .select(field => ({
+            bucket: sql(t.integer)`${field.position} % ${param(t.integer, 2)}`,
+            fieldCount: count(),
+          }))
+          .groupBy((_field, selected) => selected.bucket)
+          .having((_field, selected) => or(selected.bucket.eq(0), selected.fieldCount.gt(4))),
+    )
+
+    expect(buckets).toStrictEqual([{ bucket: 0, fieldCount: 1 }])
   })
 
   it("groups by a selected value of a related record through its expression, and of an aggregate of related records", async () => {
@@ -474,19 +560,16 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       })
     })
 
-    it("rejects a condition of having that reads a key with parameters, which have numbers of their own there", async () => {
-      const bucket = (field: { position: AnyExpression<number> }) =>
-        sql(t.integer)`${field.position} % ${2}`
-
+    it("rejects a condition of having that reads a key with parameters other than of param through its field, which is a copy whose parameters have numbers of their own", async () => {
       await expect(
         testTransaction(
           async () =>
             await db.field
               .select(field => ({
-                bucket: bucket(field),
+                bucket: sql(t.integer)`${field.position} % ${2}`,
               }))
               .groupBy((_field, selected) => selected.bucket)
-              .having(field => bucket(field).gt(0)),
+              .having((_field, selected) => selected.bucket.gt(0)),
         ),
       ).rejects.toThrow("must appear in the GROUP BY clause")
     })

@@ -84,16 +84,18 @@ An expression that holds a query is not one expression for PostgreSQL at two pla
 - A key and a sort key of a field that a later selection replaces, which hold a query, are lowered apart, so the key does not find the projection of the sort key; lowering one expression node to one node per query would give them one projection.
 - A position refers to the selected projection, which `findValueProjection` finds by the same expression node or the same column.
 
-## Selected fields in `having`
-
-The callback of `having` takes the selected fields as its second parameter, as those of `groupBy` and `orderBy` do, so that a condition reads an aggregate or a key of an expression by its field, such as `having((submission, selected) => selected.submissions.gt(1))`.
-
-- A field of a key is a copy of its expression in `HAVING`, so a key with parameters other than of `param(type, value)` still fails there, as [architecture/queries.md](architecture/queries.md#groups) states.
-- It adds a part to the types of `having`; measure its cost with `bench:types` before choosing a design.
-
 ## Pages of groups after an offset
 
 A [query of groups](architecture/queries.md#groups) with nested queries evaluates them for the groups that an offset skips, and with [`distinctOn`](architecture/queries.md#first-row-of-each-group) without a limit for every group, since it stays on its table; a derived page of groups would evaluate them only over its rows, as `lowerPage` does for other queries.
+
+## Parameters of keys without `param`
+
+A key of a [query of groups](architecture/queries.md#groups) with a value interpolated into it, such as ``sql(t.date)`(${submission.createdAt} at time zone ${timeZone})::date``, fails in `HAVING` also when the condition reads it through its selected field, since the compiler binds only the parameter of `param(type, value)` once in a query of groups, so the copy of the key there has a parameter of its own.
+Users must create the parameters of such a key with `param`, as [the grouping guide](docs/queries/grouping.md#keys-of-expressions) explains, while the same value without it needs no type anywhere else.
+
+- Preliminary decision: bind every parameter node once in a query of groups, so that copies of one expression node, such as a field read in `having` or a sort key built from the same expression, compile to equal text; the lookup then costs only statements of groups.
+- Check with PostgreSQL that it takes a repeated parameter without a type in `HAVING` and `ORDER BY` for the key of `GROUP BY`, such as of `AT TIME ZONE $1`.
+- Decide what happens to a parameter node reused by one expression in contexts that infer different types, such as an untyped expression compared with an `integer` and with a `text` column, for which PostgreSQL deduces one type of the parameter; the compiler binds a parameter without a type apart at each place for this reason.
 
 ## Queries in aggregates of first rows
 

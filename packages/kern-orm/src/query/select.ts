@@ -24,7 +24,7 @@ import type { EqValue, QueryWhereFilter, WhereFilter } from "./filters"
 import { addUserFilter } from "./filters"
 import type { KeyCheck, PrimaryKeyValues } from "./find"
 import { toKeyValues, toPrimaryKeyValues } from "./find"
-import type { GroupTerms } from "./group"
+import type { GroupTerms, QueryHavingFilter } from "./group"
 import { addGroupKeys, addHaving } from "./group"
 import type { AnyQuery, QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
@@ -70,7 +70,15 @@ import type {
   UnguaranteedQueryState,
   ValueQueryState,
 } from "./select-method-state"
-import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
+import type {
+  ColumnFieldTypes,
+  MergeSelection,
+  SelectedFieldTypes,
+  Selection,
+  SelectionFieldTypes,
+  SelectionResult,
+  SelectionUses,
+} from "./selection"
 import type { EmptyRecord, InitialQueryState, QueryStateOf, SelectQueryState } from "./state"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
@@ -145,7 +153,16 @@ export class SelectQuery<
     this: SelectQuery<S, Kind>,
     all: "*",
   ): SelectQuery<
-    ChangeState<S, { result: MergeSelection<S["result"], Selectable<S["table"]>> }>,
+    ChangeState<
+      S,
+      {
+        result: MergeSelection<S["result"], Selectable<S["table"]>>
+        fieldTypes: SelectedFieldTypes<
+          S["fieldTypes"],
+          ColumnFieldTypes<S["table"], keyof S["table"]["columns"]>
+        >
+      }
+    >,
     Kind
   >
   /** Selects the listed columns, replacing fields under their keys. */
@@ -157,7 +174,13 @@ export class SelectQuery<
     this: SelectQuery<S, Kind>,
     ...keys: K[]
   ): SelectQuery<
-    ChangeState<S, { result: MergeSelection<S["result"], Pick<Selectable<S["table"]>, K>> }>,
+    ChangeState<
+      S,
+      {
+        result: MergeSelection<S["result"], Pick<Selectable<S["table"]>, K>>
+        fieldTypes: SelectedFieldTypes<S["fieldTypes"], ColumnFieldTypes<S["table"], K>>
+      }
+    >,
     Kind
   >
   /**
@@ -177,6 +200,7 @@ export class SelectQuery<
       {
         result: MergeSelection<S["result"], SelectionResult<Sel>>
         uses: S["uses"] | SelectionUses<Sel>
+        fieldTypes: SelectedFieldTypes<S["fieldTypes"], SelectionFieldTypes<Sel>>
       }
     >,
     Kind
@@ -191,7 +215,7 @@ export class SelectQuery<
   /** Removes all selected fields and keeps the other clauses. */
   clearSelect<S extends RecordQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
-  ): SelectQuery<ChangeState<S, { result: EmptyRecord }>, Kind>
+  ): SelectQuery<ChangeState<S, { result: EmptyRecord; fieldTypes: EmptyRecord }>, Kind>
   clearSelect(): unknown {
     this.rejectValue("clearSelect")
     return this.derive({ projections: [] })
@@ -657,19 +681,24 @@ export class SelectQuery<
   }
 
   // A query whose row no relation guarantees keeps its state, as for `where`.
-  /** Filters the groups of a query of `groupBy` by what `where` takes, such as an aggregate of a group, combined with `AND` with the previous conditions of the groups; `where` keeps filtering the rows of the groups. */
+  /**
+   * Filters the groups of a query of `groupBy` by what `where` takes, such as an aggregate of a group, combined with `AND` with the previous conditions of the groups; `where` keeps filtering the rows of the groups.
+   *
+   * A callback also receives the fields selected so far, such as `having((submission, selected) => selected.submissions.gt(1))`, or the value of a query made by `get` or `pluck`.
+   */
   having<Q extends QueryOf<UnguaranteedQueryState>>(
     this: Q,
-    filter: QueryWhereFilter<Q["types"]>,
+    filter: QueryHavingFilter<Q["types"]>,
   ): Q
   /**
    * Filters the groups of a query of `groupBy` by what `where` takes, such as an aggregate of a group, combined with `AND` with the previous conditions of the groups; `where` keeps filtering the rows of the groups.
    *
+   * A callback also receives the fields selected so far, or the value of a query made by `get` or `pluck`.
    * A query of the record of a required relation, such as `field.form`, resolves to `null` without a group that passes the filter, or to `undefined` after `get` or `pluck`.
    */
   having<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
-    filter: QueryWhereFilter<S>,
+    filter: QueryHavingFilter<S>,
   ): SelectQuery<FilteredState<S>, Kind>
   having(filter: WhereFilter<AnyTable>): unknown {
     return this.derive({

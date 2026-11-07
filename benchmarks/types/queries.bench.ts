@@ -64,6 +64,13 @@ bench.baseline(async () => {
     .groupBy("position")
     .having(() => count().gt(0))
     .pluck("position")
+  await tenantDb.field
+    .select(field => ({
+      position: field.position,
+      positions: count(),
+    }))
+    .groupBy("position")
+    .having((_field, selected) => selected.positions.gt(0))
   await tenantDb.field.distinctOn("position").pluck("position")
   await tenantDb.field.select("position").distinctOn((_field, selected) => selected.position)
   await formsDb.$execute(
@@ -338,14 +345,24 @@ bench("groupBy of a selected field", async () => {
       total: count(),
     }))
     .groupBy((_form, selected) => selected.bucket)
-}).types([513, "instantiations"])
+}).types([501, "instantiations"])
 
 bench("having of an aggregate", async () => {
   await tenantDb.form
     .groupBy("name")
     .having(() => count().gt(1))
     .pluck("name")
-}).types([198, "instantiations"])
+}).types([219, "instantiations"])
+
+bench("having of a selected field", async () => {
+  await tenantDb.form
+    .select(form => ({
+      name: form.name,
+      total: count(),
+    }))
+    .groupBy("name")
+    .having((_form, selected) => selected.total.gt(1))
+}).types([674, "instantiations"])
 
 bench("distinctOn of a column", async () => {
   await tenantDb.form.distinctOn("name").orderBy("name").select("id")
@@ -358,7 +375,7 @@ bench("distinctOn of a selected field", async () => {
       id: form.id,
     }))
     .distinctOn((_form, selected) => selected.bucket)
-}).types([529, "instantiations"])
+}).types([519, "instantiations"])
 
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
@@ -386,7 +403,7 @@ bench("filter of the values of a query", async () => {
 
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
-}).types([509, "instantiations"])
+}).types([517, "instantiations"])
 
 bench("comparison of an aggregate of a relation", async () => {
   await tenantDb.form.where(form => form.fields.count().expr().gt(3)).pluck("name")
@@ -429,7 +446,7 @@ bench("relation many of map", async () => {
 
 bench("helper of map", async () => {
   await tenantDb.form.use(withMappedName)
-}).types([822, "instantiations"])
+}).types([825, "instantiations"])
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
@@ -444,11 +461,11 @@ bench("transform of the number of the rows", async () => {
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1099, "instantiations"])
+}).types([1124, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1204, "instantiations"])
+}).types([1250, "instantiations"])
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
@@ -584,7 +601,7 @@ bench("update of an aggregate of a relation", async () => {
   await tenantDb.form.find("x").update(form => ({
     name: form.fields.min("label").coalesce("x"),
   }))
-}).types([823, "instantiations"])
+}).types([831, "instantiations"])
 
 bench("delete with get of a callback", async () => {
   await tenantDb.form

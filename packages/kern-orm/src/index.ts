@@ -174,11 +174,14 @@ export type { GroupTerm, GroupTerms } from "./query/group"
 export type { Helper, HelperEffect } from "./query/helper"
 export { defineHelper } from "./query/helper"
 export type {
+  ColumnFieldTypes,
   ExpressionInput,
   ExpressionValue,
   MergeSelection,
   NestedQuery,
+  SelectedFieldTypes,
   Selection,
+  SelectionFieldTypes,
   SelectionResult,
   SelectionUses,
 } from "./query/selection"
