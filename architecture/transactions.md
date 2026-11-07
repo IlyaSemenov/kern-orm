@@ -2,7 +2,8 @@
 
 - **Database** (`execution/`): a driver and the ambient transaction coordinator of one connection domain.
   `bind` binds schemas to it, and all schemas bound to the same database share its transactions.
-- **Transaction coordinator** (`execution/transaction.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
+- **Transaction coordinator** (`execution/transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
+- **Transaction level** (`execution/transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `execution/transaction/settings.ts`.
 
 ## Levels
 

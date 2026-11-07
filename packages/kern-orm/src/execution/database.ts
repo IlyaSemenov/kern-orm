@@ -7,7 +7,7 @@ import type { AnyDb, BindOptions, Db } from "./db"
 import { bindSchema } from "./db"
 import type { Driver, DriverResult, SqlStatement } from "./driver"
 import { createStatement } from "./driver"
-import { TransactionCoordinator } from "./transaction"
+import { TransactionCoordinator } from "./transaction/coordinator"
 
 /**
  * Physical database shared by all schemas bound to it.
