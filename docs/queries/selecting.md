@@ -271,6 +271,8 @@ Such a query returns one row, so call `take` to get the record instead of an arr
 `limit` and `offset` apply to this row rather than to the rows that it aggregates, so `limit(10)` beside `count()` counts every row.
 To aggregate the rows of a page, call the method, such as `limit(10).count()`.
 
+To compute them for each group of rows, such as the number of the fields of each form, see [Grouping](./grouping).
+
 ## Whether rows exist
 
 To check whether a query has rows, such as whether any form is published, call `exists`:

@@ -16,7 +16,7 @@ export type RowLockOptions =
   | { readonly noWait?: boolean; readonly skipLocked?: false }
   | { readonly noWait?: false; readonly skipLocked?: boolean }
 
-// PostgreSQL rejects a lock beside an aggregate and `DISTINCT`, whose rows come from several rows of a table, whereas `EXISTS` takes it and locks only the first row that it finds.
+// PostgreSQL rejects a lock beside an aggregate, `DISTINCT`, and `GROUP BY`, whose rows come from several rows of a table, whereas `EXISTS` takes it and locks only the first row that it finds.
 /** Creates the row lock of `strength` for `method`, rejecting a query whose rows it cannot lock and options that contradict each other. */
 export function createRowLock(
   node: QueryNode,
@@ -33,6 +33,11 @@ export function createRowLock(
   if (node.distinct) {
     throw new Error(
       `${method} cannot be used after distinct, since a row without duplicates comes from several rows of the table`,
+    )
+  }
+  if (node.groupBy.length > 0) {
+    throw new Error(
+      `${method} cannot be used after groupBy, since a group comes from several rows of the table`,
     )
   }
   const { noWait, skipLocked } = options

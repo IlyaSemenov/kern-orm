@@ -135,6 +135,14 @@ function visitQuery(query: SelectNode, visit: (node: ExpressionNode) => void): v
   if (filters.user !== undefined) {
     visitNodes(filters.user, true, visit)
   }
+  if (query.groupBy !== undefined) {
+    for (const key of query.groupBy) {
+      visitNodes(key, true, visit)
+    }
+  }
+  if (query.having !== undefined) {
+    visitNodes(query.having, true, visit)
+  }
   for (const order of query.orderBy) {
     visitNodes(order.expression, true, visit)
   }

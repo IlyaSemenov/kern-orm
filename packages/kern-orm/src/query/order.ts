@@ -54,9 +54,9 @@ export type OrderTerm = AnyExpression | ScalarQuery | Ordering
 
 // A conditional type of the query state here would keep a query from being assigned to a query of a wider state, such as one that a `Db` executes, so queries of records and of values get their references from overloads of `orderBy`.
 /**
- * References of the callback of `orderBy` to the fields of records `R` selected by a query: their expressions by key.
+ * References of the callbacks of `orderBy` and `groupBy` to the fields of records `R` selected by a query: their expressions by key.
  *
- * A field of nested rows or of a literal is among them in types, but reading it throws; a field of an aggregate or of `exists` sorts by its value.
+ * A field of nested rows or of a literal is among them in types, but reading it throws; a field of an aggregate or of `exists` gives its value.
  */
 export type SelectedRefs<R> = { readonly [K in keyof R & string]: AnyExpression<R[K]> }
 
@@ -121,7 +121,7 @@ export function addOrder(
   if (typeof first === "function") {
     const terms: unknown = (first as (columns: unknown, selected: unknown) => unknown)(
       createSelectionRefs(node.from, context),
-      createSelectedRefs(node),
+      createSelectedRefs(node, "sorted"),
     )
     if (Array.isArray(terms)) {
       for (const term of terms) {
@@ -179,18 +179,18 @@ function createOrderNode(expression: ExpressionNode, direction: unknown): OrderN
 }
 
 /** Creates a reference to the column `key` of the table of `source`. */
-function createColumnNode(source: TableSourceNode, key: string): ExpressionNode {
+export function createColumnNode(source: TableSourceNode, key: string): ExpressionNode {
   requireColumn(source.table, key)
   return createNode({ kind: "column", source, key })
 }
 
 /**
- * Creates the references of the callback of `orderBy` to the fields selected by `node`.
+ * Creates the references of the callback of `orderBy` or `groupBy` to the fields selected by `node`, for what `purpose` tells of a field that cannot be read.
  *
- * Each is an expression over the node of its projection, so that a sort key of it is the projection itself.
+ * Each is an expression over the node of its projection, so that a sort key or a key of a group of it is the projection itself.
  * A field of an aggregate or of `exists` is an expression of its query that holds the field, by which lowering finds the projection of the field.
  */
-function createSelectedRefs(node: QueryNode): unknown {
+export function createSelectedRefs(node: QueryNode, purpose: "sorted" | "grouped"): unknown {
   const { projections } = node
   if (node.value) {
     // `get`, `pluck`, and the aggregate methods select one expression.
@@ -203,7 +203,7 @@ function createSelectedRefs(node: QueryNode): unknown {
       // PostgreSQL does not see a literal, and every row has the same value of it.
       Object.defineProperty(refs, key, {
         get() {
-          throw new Error(`Field "${key}" holds a literal and cannot be sorted by`)
+          throw new Error(`Field "${key}" holds a literal and cannot be ${purpose} by`)
         },
         enumerable: true,
       })
@@ -211,10 +211,10 @@ function createSelectedRefs(node: QueryNode): unknown {
       if (isSelectedAsValue(projection.query)) {
         refs[key] = toQueryExpression(projection)
       } else {
-        // Nested rows are JSON, which PostgreSQL cannot sort by.
+        // Nested rows are JSON, which PostgreSQL can neither sort nor group by.
         Object.defineProperty(refs, key, {
           get() {
-            throw new Error(`Field "${key}" holds nested rows and cannot be sorted by`)
+            throw new Error(`Field "${key}" holds nested rows and cannot be ${purpose} by`)
           },
           enumerable: true,
         })

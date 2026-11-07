@@ -109,6 +109,10 @@ describe("the clause of a query", () => {
         forms.distinct(),
         "forUpdate cannot be used after distinct, since a row without duplicates comes from several rows of the table",
       ],
+      [
+        forms.groupBy("id"),
+        "forUpdate cannot be used after groupBy, since a group comes from several rows of the table",
+      ],
     ]
     for (const [query, message] of queries) {
       expect(() => query.forUpdate()).toThrow(message)
@@ -123,6 +127,9 @@ describe("the clause of a query", () => {
     expect(() => locked.exists()).toThrow(rejection("exists"))
     expect(() => locked.distinct()).toThrow(
       "distinct cannot be used after a row lock, since a row without duplicates comes from several rows of the table",
+    )
+    expect(() => locked.groupBy("id")).toThrow(
+      "groupBy cannot be used after a row lock, since a group comes from several rows of the table",
     )
   })
 })

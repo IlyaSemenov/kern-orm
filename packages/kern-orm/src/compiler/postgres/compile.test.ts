@@ -844,6 +844,89 @@ describe("ordering and pagination", () => {
   })
 })
 
+describe("groups", () => {
+  const posts = from(post)
+  const source = posts.node.from
+  const title = createRef(source, "title")
+  const columns = createColumnRefs<typeof post>(source)
+
+  it("compiles a key as the position of the projection of the same column or expression node, and another key as its expression", () => {
+    const shifted = toNode(sql(t.text)`${columns.title} || ${"x"}`)
+    const node: SelectNode = {
+      ...createSelectNode(source, [
+        { key: "shifted", expression: shifted, type: t.text },
+        { key: "heading", expression: title, type: t.text },
+      ]),
+      groupBy: [title, shifted, createRef(source, "id")],
+    }
+
+    expect(compileStatement(node).text).toBe(
+      'SELECT "post"."title" || $1 AS "shifted", "post"."title" AS "heading" FROM "post" AS "post" GROUP BY 2, 1, "post"."id"',
+    )
+  })
+
+  it("does not take an equal expression built apart for the projection of a key", () => {
+    const node: SelectNode = {
+      ...createSelectNode(source, [
+        {
+          key: "shifted",
+          expression: toNode(sql(t.text)`${columns.title} || ${"x"}`),
+          type: t.text,
+        },
+      ]),
+      groupBy: [toNode(sql(t.text)`${columns.title} || ${"x"}`)],
+    }
+
+    expect(compileStatement(node)).toMatchObject({
+      text: 'SELECT "post"."title" || $1 AS "shifted" FROM "post" AS "post" GROUP BY "post"."title" || $2',
+      parameters: ["x", "x"],
+    })
+  })
+
+  it("numbers the parameters in the order of the text, with the clauses after WHERE and before ORDER BY", () => {
+    const node: SelectNode = {
+      ...createSelectNode(source, [
+        { key: "selected", expression: toNode(sql(t.text)`${"selected"}`), type: t.text },
+      ]),
+      filters: { user: toNode(columns.title.eq("where")) },
+      groupBy: [toNode(sql`${columns.title} || ${"group"}`)],
+      having: toNode(sql<boolean>`${columns.title} = ${"having"}`),
+      orderBy: [createOrder(toNode(sql`${columns.title} || ${"order"}`))],
+      limit: createParameter(1),
+    }
+
+    expect(compileStatement(node)).toMatchObject({
+      text: 'SELECT $1 AS "selected" FROM "post" AS "post" WHERE "post"."title" = $2 GROUP BY "post"."title" || $3 HAVING "post"."title" = $4 ORDER BY "post"."title" || $5 LIMIT $6',
+      parameters: ["selected", "where", "group", "having", "order", "1"],
+    })
+  })
+
+  it("sees the sources of its query and of enclosing queries, and rejects a source elsewhere in the statement", () => {
+    const inner = from(post).node.from
+    const nested = (changes: Partial<SelectNode>) =>
+      toNode(
+        createSubquery(
+          {
+            ...createSelectNode(inner, [
+              { key: "id", expression: createRef(inner, "id"), type: t.uuid },
+            ]),
+            ...changes,
+          },
+          t.uuid,
+        ),
+      )
+    const outer = (changes: Partial<SelectNode>) =>
+      createSelectNode(source, [{ key: "nested", expression: nested(changes), type: t.uuid }])
+    const elsewhere = createRef(from(post).node.from, "id")
+
+    expect(compileStatement(outer({ groupBy: [title], having: title })).text).toContain(
+      'GROUP BY "post"."title" HAVING "post"."title"',
+    )
+    expect(() => compileStatement(outer({ groupBy: [elsewhere] }))).toThrow()
+    expect(() => compileStatement(outer({ having: elsewhere }))).toThrow()
+  })
+})
+
 describe("row locks", () => {
   const posts = from(post)
 

@@ -28,6 +28,8 @@ const form = defineTable("form", {
   position: t.integer,
   rank: t.integer,
   status: t.text,
+  group: t.integer,
+  threshold: t.boolean,
 })
 
 it("collects the keys of the columns of a source at any depth of the queries nested in an expression, also of IN and of SQL text", () => {
@@ -72,13 +74,24 @@ it("collects the keys of the columns of a source at any depth of the queries nes
         ),
       ),
     },
+    groupBy: [createRef(outer, "group")],
+    having: createRef(outer, "threshold"),
     orderBy: [createOrder(createRef(outer, "position"))],
   }
   const keys = new Set<string>()
 
   collectColumnKeys(toNode(createSubquery(nested, t.integer)), outer, keys)
 
-  expect([...keys]).toEqual(["id", "ownerId", "name", "rank", "status", "position"])
+  expect([...keys]).toEqual([
+    "id",
+    "ownerId",
+    "name",
+    "rank",
+    "status",
+    "group",
+    "threshold",
+    "position",
+  ])
 })
 
 describe("mayAggregateSource", () => {

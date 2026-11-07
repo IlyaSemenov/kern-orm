@@ -28,7 +28,7 @@ export type AggregateExpression<E extends TypedOperand> = Expression<
   TypedOperandInput<E>
 >
 
-/** Returns the number of the rows of the query that selects it, as `count(*)`. */
+/** Returns the number of the rows of the query that selects it, or of each of its groups, as `count(*)`. */
 export function count(): CountExpression
 /** Returns the number of the values of `value`, an expression with a type or a query of one value, other than `NULL`. */
 export function count(value: TypedOperand): CountExpression

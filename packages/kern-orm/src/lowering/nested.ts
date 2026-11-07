@@ -45,10 +45,11 @@ export function packRows(query: SelectNode): SelectNode {
   const { projections } = query
   const many = query.rows === "many"
   // Packing and ordering read the values of `query` through a derived source, whose expressions are evaluated once per row unless PostgreSQL merges it into the created query.
-  // PostgreSQL merges no derived source with `DISTINCT`, a row lock, a limit, an offset, or a volatile function in its select list.
+  // PostgreSQL merges no derived source with `DISTINCT`, `GROUP BY`, a row lock, a limit, an offset, or a volatile function in its select list.
   // Packing refers to each scalar twice, so `OFFSET 0` keeps it from merging a source that selects scalars other than table columns, which it would evaluate twice.
   const separate =
     !query.distinct &&
+    query.groupBy === undefined &&
     query.lock === undefined &&
     query.limit === undefined &&
     query.offset === undefined &&

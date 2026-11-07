@@ -43,6 +43,19 @@ export async function getFieldStats(db: DbOf<typeof formsSchema>, formId: string
     .take()
 }
 
+/** Returns the forms of a tenant with at least `minSubmissions` submissions, with the numbers of their submissions and of the reviewed ones, from the most submitted. */
+export async function listSubmittedForms(db: DbOf<typeof tenantSchema>, minSubmissions: number) {
+  return await db.submission
+    .groupBy("formId")
+    .having(() => count().gte(minSubmissions))
+    .select(submission => ({
+      name: submission.form.get("name"),
+      submissions: count(),
+      reviewed: count(submission.reviewerId),
+    }))
+    .orderBy((_submission, selected) => desc(selected.submissions))
+}
+
 /** Publishes a form only if it has a field with a label, in one statement, through the `Db` of a tenant or of the SaaS. */
 export async function publishWithFieldLabel(
   db: DbOf<typeof formsSchema>,

@@ -1,5 +1,5 @@
 import { combineNodes } from "../ast/boolean"
-import type { QueryFilters, TableSourceNode } from "../ast/nodes"
+import type { ExpressionNode, QueryFilters, TableSourceNode } from "../ast/nodes"
 import type { ComparisonSignature, Operand } from "../expression/operators/comparison"
 import type { EqualityOperator } from "../expression/operators/equality"
 import type { ConditionOperand, Predicate } from "../expression/predicates"
@@ -67,14 +67,23 @@ export function addUserFilter(
   source: TableSourceNode,
   context: QueryContext,
 ): QueryFilters {
-  const condition =
-    typeof filter === "function"
-      ? (filter as (refs: unknown) => unknown)(createSelectionRefs(source, context))
-      : filter
-  const predicate = resolveValues(toConditionNode(condition), source)
+  const predicate = toFilterNode(filter, source, context)
   const { user } = filters
   return Object.freeze({
     ...filters,
     user: user ? combineNodes("and", [user, predicate]) : predicate,
   })
+}
+
+/** Converts a filter of `where` or `having` over `source` with the relations of `context` into the node of its condition, whose objects of column values it resolves. */
+export function toFilterNode(
+  filter: WhereFilter<AnyTable>,
+  source: TableSourceNode,
+  context: QueryContext,
+): ExpressionNode {
+  const condition =
+    typeof filter === "function"
+      ? (filter as (refs: unknown) => unknown)(createSelectionRefs(source, context))
+      : filter
+  return resolveValues(toConditionNode(condition), source)
 }

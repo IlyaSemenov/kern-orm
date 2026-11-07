@@ -350,7 +350,7 @@ export class MutationQuery<
   /**
    * Applies a helper of `defineHelper` that only selects fields and maps them to what the mutation returns, as `use` of a select query does.
    *
-   * Another method of a query in the helper fails: types reject those that filter or take one row, but not `orderBy`, `limit`, `offset`, `distinct`, and the row locks, which they do not tell from a selection.
+   * Another method of a query in the helper fails: types reject those that filter or take one row, but not `groupBy`, `orderBy`, `limit`, `offset`, `distinct`, and the row locks, which they do not tell from a selection.
    * A selection of no fields fails as well on a mutation that returns the number of its rows.
    */
   use<
@@ -505,7 +505,7 @@ export function createDelete(query: AnySelectQuery): AnyMutationQuery {
 
 // PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters; `find` and `findBy` add no limit, since the values of a key match at most one row.
 /**
- * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a relation, with selected fields, which a mutation selects after it, with a conversion of `map`, which a mutation takes after it too, with an order, a limit, an offset, or `distinct`, with a row lock, which a mutation takes on its rows itself, or without a filter that restricts its rows unless `all` allows it.
+ * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a relation, with selected fields, which a mutation selects after it, with a conversion of `map`, which a mutation takes after it too, with keys of groups, whose rows SQL does not give, with an order, a limit, an offset, or `distinct`, with a row lock, which a mutation takes on its rows itself, or without a filter that restricts its rows unless `all` allows it.
  *
  * A filter simplified to `TRUE`, such as `where({})`, restricts no row.
  */
@@ -521,6 +521,11 @@ function checkChangedRows(node: QueryNode, method: string): void {
   if (node.conversion !== undefined) {
     throw new Error(
       `${method} returns what map converts after it, not before; call map after ${method}`,
+    )
+  }
+  if (node.groupBy.length > 0) {
+    throw new Error(
+      `${method} changes rows rather than groups; choose them with where, find, or findBy instead of groupBy`,
     )
   }
   if (

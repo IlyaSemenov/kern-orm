@@ -55,6 +55,10 @@ bench.baseline(async () => {
     total: count(),
     last: max(field.position),
   }))
+  await tenantDb.field
+    .groupBy("position")
+    .having(() => count().gt(0))
+    .pluck("position")
   await formsDb.$execute(
     formsSchema.form
       .where({ name: "baseline" })
@@ -304,6 +308,26 @@ bench("aggregate function of an aggregate of a relation", async () => {
   }))
 }).types([602, "instantiations"])
 
+bench("groupBy of a column", async () => {
+  await tenantDb.form.groupBy("name").select("name")
+}).types([136, "instantiations"])
+
+bench("groupBy of a selected field", async () => {
+  await tenantDb.form
+    .select(form => ({
+      bucket: form.name.length(),
+      total: count(),
+    }))
+    .groupBy((_form, selected) => selected.bucket)
+}).types([551, "instantiations"])
+
+bench("having of an aggregate", async () => {
+  await tenantDb.form
+    .groupBy("name")
+    .having(() => count().gt(1))
+    .pluck("name")
+}).types([198, "instantiations"])
+
 bench("exists", async () => {
   await tenantDb.form.where({ name: "x" }).exists()
 }).types([141, "instantiations"])
@@ -373,7 +397,7 @@ bench("relation many of map", async () => {
 
 bench("helper of map", async () => {
   await tenantDb.form.use(withMappedName)
-}).types([804, "instantiations"])
+}).types([816, "instantiations"])
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
@@ -388,11 +412,11 @@ bench("transform of the number of the rows", async () => {
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1090, "instantiations"])
+}).types([1096, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1195, "instantiations"])
+}).types([1201, "instantiations"])
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)

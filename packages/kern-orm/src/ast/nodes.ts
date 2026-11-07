@@ -255,6 +255,10 @@ export interface SelectNode<
   /** Projections in the order of the result fields, with unique keys; a query without them returns records without fields. */
   readonly projections: readonly ProjectionNode[]
   readonly filters: QueryFilters
+  /** Keys of `GROUP BY`, at least one; a key that a projection has is compiled as the position of the projection, whichever part of lowering adds it. */
+  readonly groupBy?: readonly ExpressionNode[] | undefined
+  /** Condition of `HAVING`; it requires `groupBy`, which the semantic query checks. */
+  readonly having?: ExpressionNode | undefined
   readonly orderBy: readonly OrderNode[]
   // PostgreSQL evaluates them before the rows of the query, so they see only the sources of enclosing queries.
   readonly limit: ExpressionNode | undefined

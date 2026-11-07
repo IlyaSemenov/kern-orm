@@ -172,6 +172,33 @@ describe("packRows", () => {
     )
   })
 
+  it("adds no OFFSET 0 to a source of groups, which PostgreSQL does not merge, and groups by the positions of its final projections, also of a sort key", () => {
+    const upper = allFields
+      .select(columns => ({
+        upper: sql(t.text)`upper(${columns.label})`,
+        fieldCount: toExpression(toNode(sql(t.integer)`count(*)`), t.integer),
+      }))
+      .groupBy((_columns, selected) => selected.upper)
+    const hidden = allFields
+      .select(columns => ({
+        fieldCount: toExpression(toNode(sql(t.integer)`count(*)`), t.integer),
+        bucket: sql(t.integer)`${columns.position} % ${2}`,
+      }))
+      .groupBy((_columns, selected) => selected.bucket)
+      .orderBy((_columns, selected) => selected.bucket)
+      .clearSelect()
+      .select(() => ({
+        fieldCount: toExpression(toNode(sql(t.integer)`count(*)`), t.integer),
+      }))
+
+    expect(compileStatement(packRows(lower(upper))).text).toEndWith(
+      `FROM (SELECT upper("form_field"."label") AS "upper", count(*) AS "fieldCount" FROM "form_field" AS "form_field" GROUP BY 1) AS "subquery"`,
+    )
+    expect(compileStatement(packRows(lower(hidden))).text).toEndWith(
+      `FROM (SELECT count(*) AS "fieldCount", "form_field"."position" % $1 AS "$order1" FROM "form_field" AS "form_field" GROUP BY 2) AS "subquery"`,
+    )
+  })
+
   it("attaches the result plan of the query to the packed projection", () => {
     const labels = lower(allFields.pluck("label").take().optional())
 

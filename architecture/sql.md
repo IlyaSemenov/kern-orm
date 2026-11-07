@@ -9,10 +9,11 @@
   A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, and has no order.
   An aggregate query becomes a statement of its aggregate without an order, which PostgreSQL rejects beside an aggregate unless it sorts by aggregates; `string_agg` takes the order of the query inside its call, and `coalesce` of the fallbacks of the query wraps the call.
   An aggregate takes the rows before the limit and the offset of its own query, so with a limit or an offset it reads the rows of the page from a derived source that selects the first argument of the aggregate and its sort keys, as nested rows are packed; `count(*)` reads a derived source without projections or an order.
+  An aggregate method of a query of [`groupBy`](queries.md#groups) reads the groups from such a source, which has the keys and `having` of the query, as a query of `exists` keeps them in `EXISTS`.
   PostgreSQL assigns an aggregate to the innermost query whose sources its arguments refer to, so an argument that does not refer to the source of its query outside nested queries, such as a column of the parent row, is read from such a derived source too.
   An [aggregate function](queries.md#aggregate-functions) is an expression of its query rather than the statement of an aggregate query, so its call stays where it is written, without a derived source.
   The statement of an executed query sorts by the positions of its projections, while the statement of a packed nested query keeps its sort expressions, which packing reads.
-  A query of [`distinct`](queries.md#distinct-rows) also sorts by positions as a subquery, of `IN`, of an expression, or in SQL text: PostgreSQL finds a sort expression of `SELECT DISTINCT` in the select list only when it is equal, and a repeated expression has parameters and aliases of its own.
+  A query of [`distinct`](queries.md#distinct-rows) or [`groupBy`](queries.md#groups) also sorts by positions as a subquery, of `IN`, of an expression, or in SQL text: PostgreSQL finds a sort expression of `SELECT DISTINCT` in the select list, and one of `GROUP BY` among the keys, only when it is equal, and a repeated expression has parameters and aliases of its own.
   A mutation keeps its statement and packs the nested queries of the fields of its `RETURNING` as a select list does.
   For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
   An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
@@ -46,7 +47,7 @@
   - Rows of a query of kern-orm are decoded by position, so the key of a result field stays apart from the SQL name of its projection, which only a reference through a derived source uses.
     A key of up to 50 bytes is the name itself, and a longer key is named by its prefix of more than 50 bytes and its position, so the names of the projections of a query differ.
 - A column reference resolves to a source visible from its position, as in PostgreSQL ([PostgreSQL](https://www.postgresql.org/docs/current/queries-table-expressions.html#QUERIES-LATERAL)); the compiler rejects any other reference, including one to a source that has an alias elsewhere in the statement, such as in a sibling subquery:
-  - the select list, `WHERE`, `ORDER BY`, and the subqueries in them see the sources of their query and of enclosing queries;
+  - the select list, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, and the subqueries in them see the sources of their query and of enclosing queries;
   - the `ON` condition of a join sees the sources up to the joined one;
   - a plain derived source sees only the sources of enclosing queries, and a `LATERAL` one also the sources before it in the same `FROM`;
   - `LIMIT` and `OFFSET` see only the sources of enclosing queries.
@@ -61,6 +62,10 @@
 - An executed query sorts by the position of the projection that has the value of a sort expression, such as `ORDER BY 2`, and by other expressions as they are; a nested query sorts by its sort keys as packing describes, with the same rule of which projection has the value.
   Only a projection of the same column or of the same expression node is guaranteed to have the value of a sort expression.
   A selected expression repeated in `ORDER BY` would get parameters of its own: the statement would send their values twice, and PostgreSQL would evaluate it again unless it finds the two expressions equal, which it does once a custom plan folds the parameters into constants but not in a generic plan, such as of a prepared statement.
+- The compiler compiles a key of `GROUP BY` as the position of the projection that has its value among the final projections of its `SELECT`, by the same rule of the same column or expression node, such as `GROUP BY 2`, and another key as its expression.
+  So the keys stay expressions in the statement, and one place covers the projections of an executed query and those that lowering adds, such as the sort keys of packed rows and the argument of an aggregate.
+  A selected expression repeated in `GROUP BY` would have parameters and aliases of its own, which PostgreSQL rejects with `must appear in the GROUP BY clause` or `subquery uses ungrouped column`.
+  A key of a selected field takes the node of its lowered projection, since lowering replaces the node of a field that holds a query.
 
 ## Result decoding
 
@@ -92,7 +97,7 @@
   The query reads them from the source and evaluates only its nested queries over the rows of the page, which it sorts again by the sort keys of the source, since the order of a derived source does not carry into the query that reads it.
   For a page of 20 of 1000 parents, it is 4 to 6 times faster after an offset of 100 and 26 to 45 times after 900, and within 4% after an offset of 0 ([benchmark](../benchmarks/suites/offset-page.ts)).
   A query without nested queries other than such sorted fields, also with queries in the expressions of its fields, which are scalar fields, or without an offset keeps its page on its table.
-  So does a query of [`distinct`](queries.md#distinct-rows), which compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway, and a query with a [row lock](queries.md#row-locks), which locks the rows of its nested queries before its own there.
+  So does a query of [`distinct`](queries.md#distinct-rows), which compares the values of all its fields to choose the rows of the page, so it evaluates them for every row anyway, a query with a [row lock](queries.md#row-locks), which locks the rows of its nested queries before its own there, and a query of [`groupBy`](queries.md#groups), whose nested queries run also for the groups that the offset skips ([backlog](../BACKLOG.md#pages-of-groups-after-an-offset)).
   So does a query whose nested queries that the page evaluates over its rows hold an `aggregate` node that refers to a column of its table at any depth of its arguments, or a SQL fragment that refers to one outside the queries nested in the fragment; a sorted field evaluated in the source is not checked, since the source evaluates it as the query would.
   PostgreSQL assigns an aggregate whose arguments refer only to the sources of an enclosing query to that query, also through a query nested in an argument, and lowering does not parse SQL fragments to identify their aggregates, so such a fragment or an [aggregate function](queries.md#aggregate-functions), such as `sum` of a column of the parent row, may aggregate the rows of the query before its offset.
   The check of an `aggregate` node is conservative: one whose arguments read both such a column and its own query, such as of `every(field => field.position.eq(form.position))` of a nested query, belongs to its own query, yet keeps the page on its table, since the check does not tell a source of its own query from one of an enclosing query, which costs only the speed of the page.
@@ -113,9 +118,9 @@
   - Nested rows stay JSON inside a packed row and never pass through `format`.
   - A row lock of the nested query stays in the derived source that reads its rows, since PostgreSQL rejects it beside the aggregate.
   - Packing reads the projections of the nested query through a derived source, whose expressions are evaluated once per row as long as PostgreSQL does not merge the source into the aggregating query, where packing refers to a scalar twice.
-    This relies on the planner, which merges no derived source with `DISTINCT`, a row lock, a limit, an offset, or a volatile function in its select list ([PostgreSQL](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/optimizer/prep/prepjointree.c)):
+    This relies on the planner, which merges no derived source with `DISTINCT`, `GROUP BY`, a row lock, a limit, an offset, or a volatile function in its select list ([PostgreSQL](https://github.com/postgres/postgres/blob/REL_18_STABLE/src/backend/optimizer/prep/prepjointree.c)):
     - A volatile expression, such as `random()`, is evaluated once per row in any derived source.
-    - A derived source that selects scalar expressions other than table columns gets `OFFSET 0` unless it has `DISTINCT`, a row lock, a limit, or an offset, so that a stable expression, such as a correlated subquery, is not evaluated twice.
+    - A derived source that selects scalar expressions other than table columns gets `OFFSET 0` unless it has `DISTINCT`, `GROUP BY`, a row lock, a limit, or an offset, so that a stable expression, such as a correlated subquery, is not evaluated twice.
       The aggregating query has no conditions of its own, so the barrier keeps nothing from being pushed down, and the conditions of the nested query and their indexes stay inside the source.
       A source of table columns has no barrier, which would add up to 8% there; with `md5` of each column instead, the barrier makes the query 38 to 45% faster ([benchmark](../benchmarks/suites/offset-barrier.ts)).
   - The order of the query is read from sort keys, projections of the derived source that stay out of the records, so each sort expression is evaluated once:

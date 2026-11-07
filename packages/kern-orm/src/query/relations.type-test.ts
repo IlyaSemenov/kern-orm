@@ -2,6 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
+import { count } from "../expression/aggregates"
 import { not } from "../expression/predicates"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
@@ -189,6 +190,39 @@ describe("select", () => {
     >()
     expectTypeOf<Executed<typeof answers>>().toEqualTypeOf<{ field: { id: string } | null }[]>()
     expectTypeOf<Executed<typeof firstFields>>().toEqualTypeOf<{ firstField: { id: string } }[]>()
+  })
+
+  test("gives null or undefined without the record of a required relation that a condition of its group excludes, unless required is called after it", () => {
+    const groups = tenant.field.select(field => ({
+      filtered: field.form
+        .groupBy("id")
+        .having(() => count().gt(1))
+        .select("name"),
+      nameAfterFilter: field.form
+        .groupBy("id")
+        .having(() => count().gt(1))
+        .get("name"),
+      nameBeforeFilter: field.form
+        .get("name")
+        .groupBy("id")
+        .having(() => count().gt(1)),
+      required: field.form
+        .groupBy("id")
+        .having(() => count().gt(1))
+        .select("name")
+        .required(),
+      kept: field.form.groupBy("id").select("name"),
+    }))
+
+    expectTypeOf<Executed<typeof groups>>().toEqualTypeOf<
+      {
+        filtered: { name: string } | null
+        nameAfterFilter: string | undefined
+        nameBeforeFilter: string | undefined
+        required: { name: string }
+        kept: { name: string }
+      }[]
+    >()
   })
 
   test("gives the number of related records, also of a relation one filtered before or after count", () => {

@@ -51,7 +51,7 @@ await db.form
 Pass `TRUE` in the same way for a branch of `and`.
 To add a whole clause only in some cases, use [`use`](./composing).
 
-To use an object of column values outside `where`, such as to select whether a record matches it, pass it to `matches` with the columns of the callback:
+To use an object of column values outside `where` and `having`, such as to select whether a record matches it, pass it to `matches` with the columns of the callback:
 
 ```ts
 import { matches } from "kern-orm"

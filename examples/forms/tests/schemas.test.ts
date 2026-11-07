@@ -22,6 +22,7 @@ import {
   listFormSummaries,
   listSubmissions,
   listSubmittedFormNames,
+  listSubmittedForms,
   lockFieldWithForm,
   publishedForms,
   publishWithFieldLabel,
@@ -395,6 +396,21 @@ describePostgres("in PostgreSQL", ({ testTransaction, tenantDb, saasDb, inTenant
     expect(results).toStrictEqual({
       tenant: { total: 4, lastPosition: 4 },
       saas: { total: 0, lastPosition: null },
+    })
+  })
+
+  it("group the submissions of a tenant by form, with the name of each form, from the most submitted", async () => {
+    const results = await testTransaction(() =>
+      inTenant("tenant_1", async () => ({
+        all: await listSubmittedForms(tenantDb, 1),
+        several: await listSubmittedForms(tenantDb, 2),
+      })),
+    )
+
+    const survey = { name: "Survey", submissions: 2, reviewed: 1 }
+    expect(results).toStrictEqual({
+      all: [survey, { name: "Feedback", submissions: 1, reviewed: 1 }],
+      several: [survey],
     })
   })
 

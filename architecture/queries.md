@@ -7,7 +7,7 @@
   At runtime, a query holds the context of its table in the schema or `Db` it starts from, which each of them creates once for each of its tables, whose relations the references of `select` start; a query of `from(table)` holds the context without relations.
   A query is covariant in its state and its kind, as `out` declares on `SelectQuery` and TypeScript checks: its methods take the query they are called on from `this`, and only `toSQL` reads the kind of the class, so that comparing two queries of different states, such as the entries of two `Db` types or a query passed to `$execute`, compares their states rather than their methods.
   Methods typed by the parameters of the class make TypeScript measure a query as invariant in its state, unreliably, and compare queries of different states member by member, which takes about 50 times the instantiations for the first comparison of two `Db` types of 2 shared tables and 200 times of 12 ([benchmark](../benchmarks/types/first-use.bench.ts)); inferring the query from `this` adds about 30 instantiations to each call of `where`.
-  - The methods that keep the state in types, `orderBy`, `limit`, `offset`, `distinct`, `where` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` of a guaranteed query changes its state.
+  - The methods that keep the state in types, `groupBy`, `orderBy`, `limit`, `offset`, `distinct`, `where` and `having` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` and `having` of a guaranteed query change its state.
   - A method that changes the state takes the state and the kind of the query, which TypeScript cannot infer from a union of queries of different states, so such a union rejects it.
     Two designs would apply such a method to a union of queries too, and both cost more than the contract is worth:
     - The method takes the whole query and returns a distributive conditional type of it, such as `Q extends SelectQuery<infer S, infer Kind> ? SelectQuery<ChangeState<S, …>, Kind> : never`.
@@ -51,7 +51,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   An optional selection retains the input field's requiredness and allows either its previous value or the selected property value, including `undefined`.
   `clearSelect` removes all fields and keeps the other clauses.
   Outside helper callbacks, TypeScript can reduce a union to a query of fewer fields when the shared fields have compatible types and the other state parts match; selecting a key hidden by that reduction replaces its runtime field.
-- The key of a field names only the field of a record: `where`, `orderBy`, and column references resolve against the columns of their source, never against selected keys.
+- The key of a field names only the field of a record: `where`, `orderBy`, `groupBy`, and column references resolve against the columns of their source, never against selected keys.
 - A literal (`query/literal.ts`) is a field whose value comes from code and never reaches PostgreSQL, unlike `param`: it has no projection, and its value is in the result plan ([SQL generation](sql.md#result-decoding)).
   Orchid ORM 0.73.36 `sql.val` instead sends the value as a parameter and reads back what the driver gives ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/expressions/val-expression.ts)), so its value has to survive the round trip.
   - It is not an expression: types take it only in a selection, and at runtime it rejects as an operand, also as the value of a column of an unknown type, and `get`, `pluck`, and the aggregate methods reject it as their value.
@@ -220,8 +220,8 @@ Queries come in two kinds that share the query methods and differ only by execut
     A nested query reads it too, so it does not find a record created after the statement started, which a concurrent transaction points a key at, and a required relation rejects with `RequiredRelationError`.
 - A row lock applies only to a query that returns rows of its table:
   - The methods reject an aggregate query and a query of `exists`, as types do by the `aggregate` part of the state; `map` sets that part too while it keeps the rows, so `LockableQueryState` also takes a query of `map`, and only the methods reject a conversion of an aggregate.
-  - They reject a query of `distinct`, and `distinct`, the aggregate methods, and `exists` reject a query with a lock when they are called; types accept these calls, since they keep no part of the state for a lock.
-    PostgreSQL rejects a lock beside an aggregate and `DISTINCT`, and takes it in `EXISTS`, where it would lock only the first row found.
+  - They reject a query of `distinct` or [`groupBy`](#groups), and `distinct`, `groupBy`, the aggregate methods, and `exists` reject a query with a lock when they are called; types accept these calls, since they keep no part of the state for a lock.
+    PostgreSQL rejects a lock beside an aggregate, `DISTINCT`, and `GROUP BY`, and takes it in `EXISTS`, where it would lock only the first row found.
   - [Mutations](mutations.md#rows-to-change) reject a query with a lock.
 - `$execute` rejects a select statement that locks rows at any depth without a statement where `isInTransaction` is `false`, as [`$lock`](transactions.md#locks) does; `compileStatement` tells it in `locksRows`.
   - A mutation holds the locks of its queries while it changes rows, so it runs without a transaction, such as to take the next jobs of a queue in one statement of `in` and `skipLocked`.
@@ -242,6 +242,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - The sum of `smallint` and `integer` values is a `bigint`, which their `Number` decodes, so a sum outside the safe integer range of numbers fails to decode with `ResultDecodeError`, as a count does, before a type derived with `transform` decodes it.
     Its type has the operators of their type.
 - It aggregates the rows that the filters, the limit, and the offset of the query choose, so a limit or an offset gives the aggregate of the rows of the page, which the order of the query chooses, and the limit of `take` before it gives the aggregate of at most one row, as does the key of `find` or `findBy` unless a value depends on the row.
+  A query of [`groupBy`](#groups) has one such row for each group.
   - `count()` ignores the order, since the number of the rows of a page does not depend on it.
   - `stringAgg` joins the values in the order of the query; the other aggregates do not depend on the order of their rows.
 - The methods that keep the rows apply to an aggregate query as they apply before it: `where`, `find`, and `findBy` restrict the aggregated rows, and `orderBy` changes the rows of a page and the order of `stringAgg`; `limit` and `offset` reject it as a query of one row, so they come before the aggregate.
@@ -261,10 +262,44 @@ Queries come in two kinds that share the query methods and differ only by execut
 - PostgreSQL assigns an aggregate to the query that holds it, unless its arguments refer only to the sources of enclosing queries, also through a query nested in an argument, and then to the innermost of those queries ([PostgreSQL](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)); a column of a query nested in an argument, which is its own, does not count.
   It applies to a function as it is written: one of only a column of the parent row of a nested query, such as `sum(form.position)` in a query of its fields, aggregates the rows of the parent query, whereas an aggregate method reads such an argument from a derived source and aggregates the rows of its own query ([SQL generation](sql.md)).
 
+## Groups
+
+- `groupBy` makes a query give one row of each group of its rows, as `GROUP BY`, whose fields read the [aggregate functions](#aggregate-functions), and `having` filters the groups, as `HAVING`.
+  - `groupBy` adds keys after those of earlier calls: column keys, or a callback that returns a key or an array of them, each an expression or a query of one value, with the second parameter as in [`orderBy`](#sorting-and-pagination), whose field of nested rows or of a literal throws when it is read.
+    A string always names a column, never a selected field, since the key of a field names only the field of a record.
+    A call without keys rejects at runtime, since an empty list built in code would leave the rows ungrouped.
+  - `where` keeps filtering the rows, wherever it is in the chain.
+  - `having` takes what `where` takes, as `QueryWhereFilter`, with one callback parameter, and is stored as `having` of the node, apart from the filters, combined with `AND` across calls.
+    It requires an earlier `groupBy` at runtime only, and types take its call without one, as they keep no part of the state for keys.
+    Like `where`, it ends the guarantee of a required relation, so it has the same two overloads.
+- `groupBy` keeps the state in types, as `orderBy` and `distinct` do, so the state has no part for groups, and a conditional call assigns the query back to its variable.
+  It is constrained to a state of `aggregate: false`, so it rejects a query made by an aggregate method, `exists`, or `map`, also at runtime.
+- Types do not check the columns outside the keys, which PostgreSQL rejects with SQLSTATE `42803`, naming the column.
+  Types cannot decide what is valid: a key can be an expression over a column that is itself no key, a primary key makes the other columns of its table valid, and fragments are opaque; a partial check needs a new part of the state on every query.
+- `sum` and the others stay `T | null` in a group too, and `coalesce(sum(x), 0)` removes `null` ([backlog](../BACKLOG.md#nullability-of-aggregates-in-groups)).
+- The methods that choose rows and read values apply to the groups, as `limit`, `offset`, `take`, `get`, `pluck`, `distinct`, `map`, `transform`, and `use` do, and so do `in`, a nested selection, and `$select`.
+  - `exists` tells whether the query has a group.
+  - An aggregate method aggregates the groups: `.groupBy("a").count()` is the number of the groups, as `SELECT count(*) FROM (SELECT FROM t GROUP BY a HAVING ...) AS subquery`, and `.groupBy("a").max(p => sum(p.b))` is the largest sum of a group.
+  - The aggregates of the rows of a group have no function form of `stringAgg` and no `FILTER`, which SQL fragments cover ([backlog](../BACKLOG.md#options-of-aggregate-functions)).
+- A [row lock](#row-locks) rejects a query of `groupBy`, and `groupBy` rejects a query with a row lock; [`update` and `delete`](mutations.md#rows-to-change) reject a query of `groupBy`, and `isTableQuery` is false for it.
+- A sort key of a selected field is the position of its projection, such as `ORDER BY 2 DESC`; a sort key that is not selected is its expression, or a sort key projection of the derived source when the query is packed ([SQL generation](sql.md#statements)).
+- A nested query correlated on a key is valid, such as a query of a relation by a grouped column of its parent, and one correlated on another column fails in PostgreSQL.
+  A selected field of a query other than an aggregate or `exists`, such as of `get`, is the JSON of nested rows, which PostgreSQL has no equality of, so its reference throws, and such a query is a key as a scalar subquery of its value: returned from the callback, or selected through `expr`.
+  A selected field of an aggregate or of `exists` without `map` or `transform` is a scalar, whose reference is a key as it is; with them, it is nested rows too.
+- Only the position of its projection refers to a key with parameters or a query, since each other place has parameters and aliases of its own ([backlog](../BACKLOG.md#expressions-repeated-in-a-statement)).
+  - A condition of `having` cannot read such a key.
+  - Moving the condition to `where` is valid only when it keeps the meaning of the whole predicate, and writing the key without parameters must change it at every place, also in grouping, not only in the condition; a key that holds a query has aliases of its own at each place without parameters too.
+  - A condition on such a key beside an aggregate under `OR` cannot be written.
+  - A sort key of such a key requires the query to select it, unless the query is packed, whose derived source selects the sort key: an executed query that a later selection replaces the field of has no projection of it.
+- A key of a field that a later selection replaces, which holds a query, is lowered apart from its sort key, so their nodes differ and PostgreSQL rejects the query, with or without parameters.
+- A helper that only calls `groupBy` passes types on a query made by an aggregate, `exists`, or `map`, and on a query with a row lock, and fails at runtime, since its effect does not record the call ([backlog](../BACKLOG.md#helper-effects-of-their-calls)).
+- The two methods add about 6 instantiations, 0.5%, to a [helper](#helpers), and about 12, 1.5%, to a helper of `map`; a query of `groupBy` of a column takes about 140, and of `having` of an aggregate and `pluck` about 200 ([benchmark](../benchmarks/types/queries.bench.ts)).
+- Orchid ORM 1.78.47 `group` takes a selected alias before a column and compiles it to a position, and it requires a selection in types ([source](https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/query/sql/to-sql.ts)); a string of `groupBy` here always names a column, and a query needs no selection to be grouped.
+
 ## Exists
 
 - `exists` makes a query of whether the query has a row, as a `boolean` value of rows `one`, whatever its rows and value, unless it is an aggregate query, a query of `exists`, or a query of [`distinct`](#distinct-rows): it replaces the projections with the projection of `exists` and ends the guarantee of the row, since the query always returns one row.
-  - It checks the rows that the filters, the limit, and the offset of the query choose, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
+  - It checks the rows that the filters, the limit, and the offset of the query choose, or the groups of a query of [`groupBy`](#groups) with its keys and `having`, and ignores the selected fields, nested queries among them, and the order, which the number of the rows of a page does not depend on.
   - Executed, it is `SELECT EXISTS (SELECT FROM ... WHERE ... LIMIT ... OFFSET ...)`; selected as a field, `EXISTS (...)` in the select list rather than a packed row, unless [`map` or `transform` converts it](#converting-results); and in a condition, `EXISTS (...)`.
   - The methods that keep the rows apply to it as they apply before it, as to an aggregate query: `where`, `find`, and `findBy` restrict the rows that it checks, and `coalesce` keeps it as it is, since `EXISTS` is never `NULL`.
   - In types, it is marked as an aggregate query, `aggregate: true`, so that `get`, `pluck`, the aggregate methods, and `exists` reject it, as does the callback of a helper.
@@ -284,7 +319,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Nested queries and relations
 
-- The references of the callbacks of a query, of `select`, `where`, `orderBy`, `get`, `pluck`, the aggregate methods, and `update`, have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them in `select` selects every field their type has.
+- The references of the callbacks of a query, of `select`, `where`, `having`, `groupBy`, `orderBy`, `get`, `pluck`, the aggregate methods, and `update`, have the columns of the query source and the relations of its table in the schema context of the query, all as own enumerable properties, so returning or spreading them in `select` selects every field their type has.
   The relations add about 35 instantiations to a call of `where` with a callback on a query of a table with relations, 19% of a query of `where` of a callback and `pluck`, about 30 to a call of `orderBy` with a callback, 22% of a query of `orderBy` of a callback and `pluck`, about 32 to `get`, `pluck`, and an aggregate method with a callback, 12% to 23% of such a query, and about 35 to `update` with a callback, 13% of a query of `find` and `update` ([benchmark](../benchmarks/types/queries.bench.ts)).
   A relation gives an unbound query of its related records over a new occurrence of the target table, in the context of the target table in the same schema, even for a query of a `Db`.
   Its relation filter compares the columns of the keys with SQL `=` in order, built from SQL nodes rather than by calling the `eq` operators of their types.
@@ -385,7 +420,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 - The callback of a helper defined with a query of a schema or a `Db` receives a query of its schema context in types, and at runtime the query it is applied to, whose schema shares the definitions of the relations by identity when it includes that schema.
   The callback reads relations by name from the query it is applied to, so applying a helper that selects relations of its schema context requires a query of its table under the same key with those relations, also when it is called directly.
   Relations of other schemas that the helper selects, such as of an independent query that it nests in a field, stay in the state of the result for the `Db` to check; a helper defined with a table reads no relations.
-  The effect does not record the relations that a condition of the callback reads, which stay out of the state, so types accept a helper that filters by a relation of its schema context on a query without the relation, where the callback fails to read it.
+  The effect does not record the relations that a condition or a key of `groupBy` of the callback reads, which stay out of the state, so types accept a helper that filters or groups by a relation of its schema context on a query without the relation, where the callback fails to read it.
 - `defineExpression` returns its callback, so it only gives the callback its types: a query of a schema or a `Db` gives the relations of its schema context, and a table only the columns.
   At runtime, the callback receives the references that its caller passes, so it refers to the columns of their occurrence of the table, in whichever query it is called.
   - A call has the type that the callback returns, which must be an expression or a query of one value, so it keeps the nullability and the operators of its values, and `select` takes it as it takes that value: an expression without a type, such as of `sql<T>`, cannot be selected ([selection](#selection)).

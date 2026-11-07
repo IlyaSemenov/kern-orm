@@ -41,6 +41,7 @@ export default defineConfig({
           { text: "Filtering", link: "/queries/filtering" },
           { text: "Operators", link: "/queries/operators" },
           { text: "Sorting and Pagination", link: "/queries/sorting" },
+          { text: "Grouping", link: "/queries/grouping" },
           { text: "Related Records", link: "/queries/relations" },
           { text: "Expressions", link: "/queries/expressions" },
           { text: "Inserting, Updating, and Deleting", link: "/queries/mutations" },

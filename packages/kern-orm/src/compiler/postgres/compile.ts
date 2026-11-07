@@ -13,6 +13,7 @@ import type {
   TableNameNode,
   TableSourceNode,
 } from "../../ast/nodes"
+import { findValueProjection } from "../../ast/projections"
 import type { AnyDb } from "../../execution/db"
 import type { SqlStatement } from "../../execution/driver"
 import type { StatementPlan } from "../../result/result"
@@ -199,6 +200,14 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
 
   text += compileWhere(context, scope, node.filters)
 
+  const { groupBy, having } = node
+  if (groupBy !== undefined) {
+    text += ` ${compileGroupBy(context, scope, groupBy, node.projections)}`
+  }
+  if (having !== undefined) {
+    text += ` HAVING ${compileExpression(context, scope, having)}`
+  }
+
   if (node.orderBy.length > 0) {
     text += ` ${compileOrderBy(context, scope, node.orderBy)}`
   }
@@ -245,6 +254,23 @@ function compileWhere(
   return where.kind === "boolean" && where.value
     ? ""
     : ` WHERE ${compileExpression(context, scope, where)}`
+}
+
+// A repeated expression with parameters or a correlated subquery would not be the key for PostgreSQL, since it has parameters and aliases of its own, so a key refers to its projection by position.
+/** Compiles the `GROUP BY` clause of a query of `projections`, its final select list, also with those that lowering adds, such as of a sort key of packed rows: each key is the position of the projection that has its value, or its expression without one. */
+function compileGroupBy(
+  context: CompileContext,
+  scope: Scope | undefined,
+  groupBy: readonly ExpressionNode[],
+  projections: readonly ProjectionNode[],
+): string {
+  let text = "GROUP BY"
+  for (let index = 0; index < groupBy.length; index++) {
+    const key = groupBy[index]!
+    const position = findValueProjection(projections, key)
+    text += `${index === 0 ? " " : ", "}${position === -1 ? compileExpression(context, scope, key) : String(position + 1)}`
+  }
+  return text
 }
 
 /** Compiles the `ORDER BY` clause of a query or an aggregate, which has at least one sort key. */

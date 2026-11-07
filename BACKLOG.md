@@ -39,14 +39,6 @@ An insert that updates or skips the record it conflicts with on a key, as `INSER
 - The upsert of the row of a [singleton table](#singleton-tables) takes no key, which depends on what guarantees that the table holds one row: `ON CONFLICT` requires a unique index, such as of a constant expression.
 - PostgreSQL rejects `DO UPDATE` of a statement whose records conflict with the same row twice, such as an `insertMany` of two records of one key, with SQLSTATE `21000`.
 
-## Grouping
-
-Groups of the rows of a query, as `GROUP BY`, with the aggregates of each group, a filter of the groups by their aggregates, as `HAVING`, and an order by an aggregate, such as the participants of a contest with a positive sum of points, in the order of the sum, as `group` and `having` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/query-methods.md#group)).
-
-- The aggregate methods turn the rows of the whole query into one value, so the aggregates of groups are the [aggregate functions](architecture/queries.md#aggregate-functions) in `select`, `having`, and `orderBy`.
-- A query of groups selects only the columns it groups by and aggregates; decide how types reject other columns.
-- Decide how lowering nests a query of groups in a selection and reads a page of groups after an offset.
-
 ## Scopes and soft delete
 
 Predicates that a table applies to its queries, such as excluding soft-deleted records, kept as the `scope` filters of a query, like `scopes` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/scopes.md)).
@@ -98,6 +90,25 @@ The aggregate methods and `exists` after `distinct`, which [reject](architecture
 
 - They replace the fields that `distinct` compares, so the node of the query needs to keep them.
 - Decide what an aggregate of an argument compares: only its argument, or the selected fields too, since the argument may not be among them.
+- Reading the rows from a derived source, as aggregate methods read the groups of [`groupBy`](architecture/queries.md#groups), gives `SELECT count(*) FROM (SELECT DISTINCT ...)`.
+
+## Expressions repeated in a statement
+
+An expression that a statement holds at two places is not one expression for PostgreSQL when it has parameters, each with a number of its own, or queries, each with aliases of its own: a key of a [query of groups](architecture/queries.md#groups) fails in `HAVING`, also beside an aggregate under `OR`, which `where` cannot replace, and in `ORDER BY` when the query does not select it.
+
+- Preliminary decision for parameters: the compiler numbers a parameter node once per statement, so that one expression held in a variable or in a reference is one parameter; PostgreSQL takes `GROUP BY t.a + $1 HAVING t.a + $1 > $2 OR count(*) > 5`.
+- It runs per parameter, so benchmark it first; a statement of few repeats pays for a lookup on each parameter.
+- It does not help an expression that holds a query: the compiler gives each occurrence of a source its own alias, so PostgreSQL rejects a correlated subquery repeated in `GROUP BY` with `subquery uses ungrouped column`, also without parameters, and only the position of its projection refers to it.
+- A key and a sort key of a field that a later selection replaces, which hold a query, are lowered apart, so the key does not find the projection of the sort key; lowering one expression node to one node per query would give them one projection.
+- A position refers to the selected projection, which `findValueProjection` finds by the same expression node or the same column.
+
+## Pages of groups after an offset
+
+A [query of groups](architecture/queries.md#groups) with nested queries evaluates them for the groups that an offset skips, since it stays on its table; a derived page of groups would evaluate them only over its rows, as `lowerPage` does for other queries.
+
+## Nullability of aggregates in groups
+
+`sum` and the others of a column that cannot be `NULL` are never `NULL` in a [group](architecture/queries.md#groups), which has a row, while types give `null`; decide whether that is worth a part of the state.
 
 ## Options of aggregate functions
 
@@ -211,7 +222,7 @@ Pages after the sort keys of the last row of the previous page, reading the orde
 
 [`use` of a mutation](architecture/mutations.md#helpers) rejects at runtime some of what types accept, and a helper applies to a mutation only with `use`, not as a function of a query:
 
-- Types do not tell a helper of `orderBy`, `limit`, or `offset`, which a mutation lacks, from one that only selects; the state of a helper could record them.
+- Types do not tell a helper of `groupBy`, `orderBy`, `limit`, or `offset`, which a mutation lacks, from one that only selects; the state of a helper could record them.
 - Types do not tell a selection of no fields from none, which needs a new part of the state or of the marker of a helper, and each query would pay for it.
 
 ## `transform` and `map` beyond their current limits
@@ -233,6 +244,7 @@ Records of a relation of a table to itself at any depth through `WITH RECURSIVE`
 `UNION ALL` of queries, `WITH` queries, and queries of a derived source of another query, such as the nearest administrators of a record among those of its ancestors.
 [Records of a relation at any depth](#records-of-a-relation-at-any-depth) need `WITH RECURSIVE` too.
 A query of `WITH` that locks the rows that the rest of a statement changes, such as `WITH locked AS (SELECT ... FOR UPDATE) UPDATE ...`, is written as SQL text with the query interpolated until then.
+[Groups](architecture/queries.md#groups) of the rows of a union of queries need it too.
 
 ## Joins
 
@@ -243,6 +255,7 @@ Queries with joined tables:
 - A column of a source joined with `LEFT JOIN` is `NULL` without a match whatever its type, so its result type needs the nullability of the join.
 - A [row lock](architecture/queries.md#row-locks) of a query with joins applies to all its sources, and PostgreSQL rejects it for the nullable side of an outer join, so it will need the sources to lock, as `FOR UPDATE OF`.
 - Sorting by a field of a related record, such as fields by the name of their form, is a [scalar subquery](architecture/queries.md#sorting-and-pagination) of the relation in `orderBy`; benchmark a join against it, such as with an index of the order.
+- A [query of groups](architecture/queries.md#groups) as a joined source, such as of the rows with the largest sums.
 
 ## Values before an update
 
@@ -271,7 +284,8 @@ Helper effects that record the calls of their callbacks rather than only the row
 
 - a query of one row rejects a helper that calls `limit` or `offset`;
 - the effect applies the calls that change the rows in their order, also in a helper that it applies, so that a helper whose last such call is `required` makes a query of one row `one` in types, as it does at runtime;
-- a query of values rejects a helper that calls `nullable` before `optional` or `required`, also when the call is in a helper that it applies.
+- a query of values rejects a helper that calls `nullable` before `optional` or `required`, also when the call is in a helper that it applies;
+- a query made by an aggregate, `exists`, or `map`, and a query with a row lock, reject a helper that calls `groupBy`.
 
 It needs a new part of the query state, so measure its cost with `bench:types` before choosing a design.
 
@@ -282,7 +296,8 @@ A condition carries no relations in types, unlike a selection, which carries the
 
 - a helper of a schema whose callback filters by a relation, such as `defineHelper(schema.survey, query => query.where(survey => survey.questions.exists()))`, on a query without the relation, such as `from(survey)`, where the callback fails to read the relation, while types reject a helper that selects the relation there ([architecture/queries.md](architecture/queries.md#helpers));
 - a query of a `Db` whose condition reads a relation that the relations of the `Db` lack, which only lowering rejects;
-- a selected expression of a query of a relation, such as `form.fields.count().expr()`, in both of these ways, unlike the same query selected as it is.
+- a selected expression of a query of a relation, such as `form.fields.count().expr()`, in both of these ways, unlike the same query selected as it is;
+- a key of `groupBy` and a condition of `having` that read a relation, such as `groupBy(form => form.fields.count())`, in the same ways, since `groupBy` and `having` keep `uses`.
 
 Checking them needs the relations in the types of expressions and conditions, so measure its cost with `bench:types` before choosing a design.
 

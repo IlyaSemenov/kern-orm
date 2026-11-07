@@ -21,6 +21,7 @@ import {
   listFormSummaries,
   listSubmissions,
   listSubmittedFormNames,
+  listSubmittedForms,
   listUserActivity,
   lockFieldWithForm,
   publishedForms,
@@ -134,6 +135,12 @@ describe("Db", () => {
     const stats = await getFieldStats(database.bind(tenantSchema), "form-id")
 
     expectTypeOf(stats).toEqualTypeOf<{ total: number; lastPosition: number | null }>()
+  })
+
+  test("of a tenant groups the submissions by form", async () => {
+    const forms = await listSubmittedForms(database.bind(tenantSchema), 2)
+
+    expectTypeOf(forms).toEqualTypeOf<{ name: string; submissions: number; reviewed: number }[]>()
   })
 
   test("of a tenant filters forms by the distinct values of another query", async () => {

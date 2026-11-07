@@ -2,6 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
+import { count } from "../expression/aggregates"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -139,6 +140,26 @@ describe("defineHelper", () => {
 
     const forms = db.form.use(unique)
     expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ name: string }[]>()
+  })
+
+  test("groups the rows of the query, also of one that fails at runtime, since the effect does not record groupBy", () => {
+    const grouped = defineHelper(schema.form, form => form.groupBy("name"))
+    const filtered = defineHelper(schema.form, form =>
+      form.groupBy("name").having(() => count().gt(1)),
+    )
+
+    const forms = db.form.select("name").use(grouped)
+    const filteredForms = db.form.select("name").use(filtered)
+    expectTypeOf<Awaited<typeof forms>>().toEqualTypeOf<{ name: string }[]>()
+    expectTypeOf<Awaited<typeof filteredForms>>().toEqualTypeOf<{ name: string }[]>()
+
+    db.form.count().use(grouped)
+    db.form.exists().use(grouped)
+    db.form
+      .select("name")
+      .map(row => row.name)
+      .use(grouped)
+    db.form.forUpdate().use(grouped)
   })
 
   test("locks the rows of the query", () => {

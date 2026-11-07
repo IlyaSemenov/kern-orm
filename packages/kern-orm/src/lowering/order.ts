@@ -10,24 +10,8 @@ import type {
   TableSourceNode,
 } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
+import { findValueProjection } from "../ast/projections"
 import { text } from "../type/builtins/text"
-
-/**
- * Returns the position of the projection that has the value of the sort expression `expression`: a projection of the same column or of the same expression node, or `-1`.
- *
- * Only the same node or column guarantees one value: PostgreSQL may or may not evaluate equal expressions built apart once, and gives each its own parameters.
- */
-export function findSortProjection(
-  projections: readonly ProjectionNode[],
-  expression: ExpressionNode,
-): number {
-  return projections.findIndex(projection => {
-    const selected = projection.expression
-    return expression.kind === "column" && selected.kind === "column"
-      ? selected.source === expression.source && selected.key === expression.key
-      : selected === expression
-  })
-}
 
 /** Creates the number of the projection at `position`, by which `ORDER BY` sorts by its value instead of evaluating an expression again. */
 export function createPositionNode(position: number): RawSqlNode {
@@ -41,7 +25,7 @@ export function sortByPositions(
 ): readonly OrderNode[] {
   const result: OrderNode[] = []
   for (const order of orderBy) {
-    const position = findSortProjection(projections, order.expression)
+    const position = findValueProjection(projections, order.expression)
     result.push(
       position === -1
         ? order
@@ -117,7 +101,7 @@ interface SortKey extends Omit<OrderNode, "expression"> {
 }
 
 /**
- * Returns the position of the projection that sorts by `expression`: the projection of `findSortProjection`, or one added to `projections`.
+ * Returns the position of the projection that sorts by `expression`: the projection of `findValueProjection`, or one added to `projections`.
  *
  * `index` is the position of the expression in the order.
  */
@@ -126,7 +110,7 @@ function projectSortKey(
   expression: ExpressionNode,
   index: number,
 ): number {
-  const position = findSortProjection(projections, expression)
+  const position = findValueProjection(projections, expression)
   if (position !== -1) {
     return position
   }

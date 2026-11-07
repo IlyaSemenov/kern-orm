@@ -67,6 +67,8 @@ The rows are sorted by the same values that the records get.
 
 After `pluck` or `get`, the second parameter is the expression of the value.
 
+To sort groups of rows by their aggregates, see [Grouping](./grouping#sorting-groups).
+
 When you select a field only under a condition and otherwise fill it with [`literal`](./selecting#values-from-code), sort by it under the same condition:
 
 ```ts

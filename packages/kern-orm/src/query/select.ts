@@ -28,6 +28,8 @@ import type { EqValue, QueryWhereFilter, WhereFilter } from "./filters"
 import { addUserFilter } from "./filters"
 import type { KeyCheck, PrimaryKeyValues } from "./find"
 import { toKeyValues, toPrimaryKeyValues } from "./find"
+import type { GroupTerms } from "./group"
+import { addGroupKeys, addHaving } from "./group"
 import type { AnyQuery, QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { RowLockOptions } from "./lock"
@@ -170,8 +172,11 @@ type MappedQueryState = SelectQueryState & { readonly value: "mapped" }
 /** State of a query of values with the values that the type of its value encodes, which `coalesce` takes; it narrows nothing else, so that a call compares no operators. */
 type CoalesceQueryState = ValueQueryState & { readonly valueType: { readonly input: unknown } }
 
-/** State of a query not made by an aggregate method or `exists`, which `get`, `pluck`, the aggregate methods, and `exists` apply to. */
+/** State of a query not made by an aggregate method or `exists`, which `get`, `pluck`, the aggregate methods, `exists`, and `groupBy` apply to. */
 type UnaggregatedQueryState = SelectQueryState & { readonly aggregate: false }
+
+/** State of a query of values not made by an aggregate method or `exists`, such as of `pluck`, whose callback of `groupBy` reads its value. */
+type UnaggregatedValueQueryState = ValueQueryState & UnaggregatedQueryState
 
 // A type of literal members rather than parameters of input and operators: an alias instantiates its arguments with each new mapper, also where no call reads them, and the operators of a type are object types that TypeScript instantiates again each time.
 /** Type of the value of a query of column `K` of table `T`. */
@@ -528,7 +533,7 @@ export class SelectQuery<
   /**
    * Replaces the selected fields with the number of rows of the query and returns the number instead of the rows.
    *
-   * It keeps the filters and ignores the order; with `limit` or `offset`, it counts the rows of that page.
+   * It keeps the filters and ignores the order; with `limit` or `offset`, it counts the rows of that page, and after `groupBy`, the groups.
    */
   count<S extends UnaggregatedQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
@@ -721,7 +726,7 @@ export class SelectQuery<
   /**
    * Replaces the selected fields with whether the query has a row and returns it instead of the rows, such as to filter by related records in `where`.
    *
-   * It keeps the filters, the limit, and the offset, and ignores the order.
+   * It keeps the filters, the limit, and the offset, and ignores the order; after `groupBy`, it tells whether the query has a group.
    */
   exists<S extends UnaggregatedQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
@@ -774,6 +779,73 @@ export class SelectQuery<
     // The method of `operandNode` rejects a query other than of one value, whose only projection has the type of the value.
     const value = this[operandNode]()
     return toExpression(value, (this.node.projections[0] as ScalarProjection).type)
+  }
+
+  // It keeps the state, as `orderBy` and `distinct` do: types cannot tell which columns a key makes valid, such as the other columns of a primary key, so that a part of the state for it would cost every query and decide nothing.
+  /**
+   * Groups the rows by the keys returned by `callback`, after the keys of earlier calls, so that the query gives one row of each group, whose fields are its keys and the aggregates of its rows, such as `sum(field.position)`.
+   *
+   * `callback` receives the columns with the queries of the relations of the table, and the fields selected so far, and returns an expression or a query of one value, or an array of them.
+   * A selected field groups by the value of the field; a field of nested rows or of a literal cannot be grouped by.
+   * Methods that choose rows and read values, such as `limit`, `take`, and `pluck`, apply to the groups, and an aggregate method aggregates them, such as `count` for the number of the groups.
+   * The query cannot take a row lock, `update`, or `delete`.
+   */
+  groupBy<Q extends QueryOf<RecordQueryState>>(
+    this: Q,
+    callback: (
+      // An intersection rather than one alias of both, as for the callback of `select`.
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
+      selected: SelectedRefs<Q["types"]["result"]>,
+    ) => GroupTerms,
+  ): Q
+  /**
+   * Groups the rows of a query made by `get` or `pluck` by the keys returned by `callback`, after the keys of earlier calls.
+   *
+   * `callback` receives the columns with the queries of the relations of the table, and the expression of the value, and returns what `groupBy` of a query of records takes.
+   */
+  groupBy<Q extends QueryOf<UnaggregatedValueQueryState>>(
+    this: Q,
+    callback: (
+      columns: ColumnRefs<Q["types"]["table"]> & RelationRefs<Q["types"]["schema"]>,
+      value: AnyExpression<Q["types"]["result"]>,
+    ) => GroupTerms,
+  ): Q
+  /** Groups the rows by the listed columns, after the keys of earlier calls, so that the query gives one row of each group, whose fields are its keys and the aggregates of its rows, such as `sum(field.position)`. */
+  groupBy<Q extends QueryOf<UnaggregatedQueryState>>(
+    this: Q,
+    ...keys: (keyof Q["types"]["table"]["columns"] & string)[]
+  ): Q
+  groupBy(...args: unknown[]): unknown {
+    this.rejectAggregate("groupBy")
+    if (this.node.lock !== undefined) {
+      throw new Error(
+        "groupBy cannot be used after a row lock, since a group comes from several rows of the table",
+      )
+    }
+    return this.derive({ groupBy: addGroupKeys(this.node, this.context, args) })
+  }
+
+  // A query whose row no relation guarantees keeps its state, as for `where`.
+  /** Filters the groups of a query of `groupBy` by what `where` takes, such as an aggregate of a group, combined with `AND` with the previous conditions of the groups; `where` keeps filtering the rows of the groups. */
+  having<Q extends QueryOf<UnguaranteedQueryState>>(
+    this: Q,
+    filter: QueryWhereFilter<Q["types"]>,
+  ): Q
+  /**
+   * Filters the groups of a query of `groupBy` by what `where` takes, such as an aggregate of a group, combined with `AND` with the previous conditions of the groups; `where` keeps filtering the rows of the groups.
+   *
+   * A query of the record of a required relation, such as `field.form`, resolves to `null` without a group that passes the filter, or to `undefined` after `get` or `pluck`.
+   */
+  having<S extends SelectQueryState, Kind extends SelectQueryKind>(
+    this: SelectQuery<S, Kind>,
+    filter: QueryWhereFilter<S>,
+  ): SelectQuery<FilteredState<S>, Kind>
+  having(filter: WhereFilter<AnyTable>): unknown {
+    return this.derive({
+      having: addHaving(this.node, filter, this.context),
+      rows: this.getFilteredRows(),
+      guaranteed: false,
+    })
   }
 
   /**
@@ -863,7 +935,7 @@ export class SelectQuery<
    * Without `options`, the query waits for the rows that another transaction has locked.
    *
    * It requires a transaction, unless the query is part of a mutation, such as of its filter.
-   * The query cannot use `distinct`, and the aggregate methods and `exists` reject it after the lock.
+   * The query cannot use `distinct` or `groupBy`, and the aggregate methods and `exists` reject it after the lock.
    */
   forUpdate<Q extends QueryOf<LockableQueryState>>(this: Q, options?: RowLockOptions): Q
   forUpdate(options?: RowLockOptions): unknown {
@@ -1177,10 +1249,16 @@ export class SelectQuery<
     const { node } = this
     return {
       filters: addUserFilter(node.filters, filter, node.from, this.context),
-      // The result of `map` is no value of a column, so a query of values that it converts turns `one` into `nullable`, as `FilteredStateRows` gives it.
-      rows: toFilteredRows(node.rows, node.value && node.conversion === undefined, node.guaranteed),
+      rows: this.getFilteredRows(),
       guaranteed: false,
     }
+  }
+
+  /** Returns the rows mode of this query after a filter, as `FilteredStateRows` gives it in types. */
+  private getFilteredRows(): ResultRows {
+    const { node } = this
+    // The result of `map` is no value of a column, so a query of values that it converts turns `one` into `nullable`.
+    return toFilteredRows(node.rows, node.value && node.conversion === undefined, node.guaranteed)
   }
 
   // The values of a key match at most one row, so a query of many rows becomes a query of rows `one` without a limit, which rejects several rows, such as where the database lacks the key or a value depends on the row, as a relation `one` does.

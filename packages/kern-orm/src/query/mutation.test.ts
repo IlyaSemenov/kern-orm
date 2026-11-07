@@ -78,6 +78,7 @@ describe("insert", () => {
       schema.form.where({}),
       schema.form.select("id"),
       schema.form.orderBy("id"),
+      schema.form.groupBy("id"),
       schema.form.limit(1),
       schema.form.distinct(),
       schema.form.forUpdate(),
@@ -287,6 +288,9 @@ describe("update and delete", () => {
           `${method} cannot sort or limit the rows it changes; choose them with where, find, or findBy instead of take, limit, offset, orderBy, or distinct`,
         )
       }
+      expect(() => mutate(schema.form.all().groupBy("id"))).toThrow(
+        `${method} changes rows rather than groups; choose them with where, find, or findBy instead of groupBy`,
+      )
       expect(() => mutate(schema.form.find(1).forUpdate())).toThrow(
         `${method} locks the rows it changes itself, so its query takes no row lock`,
       )
@@ -452,10 +456,12 @@ describe("use", () => {
   it("fails with the methods of a query that a mutation lacks, also those that types do not reject", () => {
     const filtered = defineHelper(schema.form, query => query.where({ id: 1 }))
     const sorted = defineHelper(schema.form, query => query.orderBy("name"))
+    const grouped = defineHelper(schema.form, query => query.groupBy("name"))
 
     // @ts-expect-error A mutation does not filter.
     expect(() => insert.use(filtered)).toThrow()
     expect(() => insert.use(sorted)).toThrow()
+    expect(() => insert.use(grouped)).toThrow()
   })
 
   it("rejects a selection of no fields on a mutation of the number of its rows, whose types keep the number", async () => {

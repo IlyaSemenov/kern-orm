@@ -46,6 +46,10 @@ export interface QueryNode extends ResultMode {
   /** Fields in the order of the result, with unique keys; a query without them returns records without fields. */
   readonly projections: readonly SelectedNode[]
   readonly filters: QueryFilters
+  /** Keys of the groups of the rows; a query with them gives one row of each group. */
+  readonly groupBy: readonly ExpressionNode[]
+  /** Condition of the groups, apart from `filters`, which choose the rows that they group. */
+  readonly having: ExpressionNode | undefined
   readonly orderBy: readonly OrderNode[]
   readonly limit: ExpressionNode | undefined
   readonly offset: ExpressionNode | undefined
@@ -87,6 +91,8 @@ export function createQueryNode(
     relation,
     projections: [],
     filters,
+    groupBy: [],
+    having: undefined,
     orderBy: [],
     limit: undefined,
     offset: undefined,
@@ -100,7 +106,7 @@ export function createQueryNode(
   })
 }
 
-/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, order, limit, offset, `distinct`, row lock, rows other than `many`, `all`, or conversion. */
+/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, keys of groups, order, limit, offset, `distinct`, row lock, rows other than `many`, `all`, or conversion. */
 export function isTableQuery(node: QueryNode): boolean {
   return (
     node.relation === undefined &&
@@ -108,6 +114,7 @@ export function isTableQuery(node: QueryNode): boolean {
     node.filters.relation === undefined &&
     node.filters.scope === undefined &&
     node.filters.user === undefined &&
+    node.groupBy.length === 0 &&
     node.orderBy.length === 0 &&
     node.limit === undefined &&
     node.offset === undefined &&

@@ -2,6 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
+import { count, sum } from "../expression/aggregates"
 import type { AnyExpression, Expression, TypedExpression } from "../expression/expression"
 import type { Operand } from "../expression/operators/comparison"
 import { param, sql } from "../expression/sql"
@@ -790,6 +791,139 @@ describe("expr", () => {
     from(stat).get("size").expr().gt(1)
     // @ts-expect-error A count has no operators of text.
     from(stat).count().expr().ilike("x%")
+  })
+})
+
+describe("groupBy", () => {
+  test("keeps the state of the query, so that a conditional call assigns back to its variable", () => {
+    const base = from(post).select("title")
+    expectTypeOf(base.groupBy("title")).toEqualTypeOf<typeof base>()
+    expectTypeOf(base.groupBy(columns => [columns.title, columns.hint])).toEqualTypeOf<
+      typeof base
+    >()
+
+    let query = base
+    query = query.groupBy("title")
+    expectTypeOf(query.take()).toEqualTypeOf(base.take())
+  })
+
+  test("takes columns, and an expression or a query of one value of a callback, or an array of them", () => {
+    from(post).groupBy("title", "hint")
+    from(post).groupBy(columns => columns.title)
+    from(post).groupBy(columns => [columns.title, sql`lower(${columns.hint})`])
+    from(post).groupBy(() => from(post).max("title"))
+
+    // @ts-expect-error A key is a column of the table.
+    from(post).groupBy("unknown")
+    // @ts-expect-error An object of directions gives no key.
+    from(post).groupBy({ title: "asc" })
+    // @ts-expect-error A plain value is no key.
+    from(post).groupBy(() => "title")
+    // @ts-expect-error A key has no direction.
+    from(post).groupBy(columns => desc(columns.title))
+    // @ts-expect-error A query of many rows has no value.
+    from(post).groupBy(() => from(post).pluck("title"))
+    // @ts-expect-error A query of records has no value.
+    from(post).groupBy(() => from(post).select("title").take())
+  })
+
+  test("gives the callback the selected fields of a query of records and the value of a query of values, as orderBy does", () => {
+    from(post)
+      .select(columns => ({
+        bucket: sql(t.integer)`length(${columns.title})`,
+        total: count(),
+      }))
+      .groupBy((_columns, selected) => {
+        expectTypeOf(selected.bucket).toEqualTypeOf<AnyExpression<number>>()
+        return selected.bucket
+      })
+    from(post)
+      .pluck("title")
+      .groupBy((_columns, value) => {
+        expectTypeOf(value).toEqualTypeOf<AnyExpression<string>>()
+        return value
+      })
+    from(post)
+      .select("title")
+      // @ts-expect-error The field is not selected.
+      .groupBy((_columns, selected) => selected.hint)
+  })
+
+  test("does not check the fields beside the keys, which PostgreSQL rejects", () => {
+    const query = from(post).groupBy("title").select("hint", "id")
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ hint: string | null; id: string }>()
+  })
+
+  test("keeps the values of aggregates of the groups, null among them", () => {
+    const query = from(post)
+      .groupBy("title")
+      .select(columns => ({
+        title: columns.title,
+        total: count(),
+        length: sum(columns.title.length()),
+      }))
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{
+      title: string
+      total: number
+      length: number | null
+    }>()
+  })
+
+  test("applies the methods that choose rows and read values, and an aggregate method gives one value of the groups", () => {
+    const groups = from(post).groupBy("title")
+    const number = groups.count()
+    const largest = groups.max(columns => columns.title.length())
+    const taken = groups.select("title").take()
+    const values = groups.pluck("title")
+    const exists = groups.exists()
+
+    expectTypeOf<Executed<typeof number>>().toEqualTypeOf<number>()
+    expectTypeOf<Executed<typeof largest>>().toEqualTypeOf<number | null>()
+    expectTypeOf<Executed<typeof taken>>().toEqualTypeOf<{ title: string }>()
+    expectTypeOf<Executed<typeof values>>().toEqualTypeOf<string[]>()
+    expectTypeOf<Executed<typeof exists>>().toEqualTypeOf<boolean>()
+  })
+
+  test("rejects a query made by an aggregate method, exists, or map", () => {
+    const aggregate = from(post).max("title")
+    const exists = from(post).exists()
+    const mapped = from(post)
+      .select("title")
+      .map(row => row.title)
+
+    // @ts-expect-error An aggregate query has one row of its aggregate.
+    aggregate.groupBy("title")
+    // @ts-expect-error An aggregate query has one row of its aggregate.
+    aggregate.groupBy(columns => columns.title)
+    // @ts-expect-error A query of exists has one row of whether a row exists.
+    exists.groupBy("title")
+    // @ts-expect-error A query that map converts reads its fields in code.
+    mapped.groupBy("title")
+  })
+})
+
+describe("having", () => {
+  const groups = from(post).groupBy("title").select("title")
+
+  test("keeps the state of a query whose row no relation guarantees", () => {
+    expectTypeOf(groups.having(() => count().gt(1))).toEqualTypeOf<typeof groups>()
+    expectTypeOf(groups.having({ title: "Hello" })).toEqualTypeOf<typeof groups>()
+  })
+
+  test("takes what where takes, and types a literal by its column", () => {
+    groups.having(columns => sum(columns.title.length()).gt(0))
+    groups.having(columns => columns.title.eq("Hello"))
+    groups.having(() => count().gt(1))
+    groups.having(from(post).exists())
+
+    // @ts-expect-error A count takes a number.
+    groups.having(() => count().gt("1"))
+    // @ts-expect-error A column of the table.
+    groups.having({ unknown: "Hello" })
+    // @ts-expect-error A plain Boolean value is no condition.
+    groups.having(true)
   })
 })
 

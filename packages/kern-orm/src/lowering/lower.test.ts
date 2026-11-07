@@ -678,6 +678,130 @@ describe("query with a row lock", () => {
   })
 })
 
+describe("query of groups", () => {
+  const compile = (query: AnySelectQuery) => compileStatement(lowerStatement(query.node)).text
+  const totals = schema.field.groupBy("formId").select(field => ({
+    formId: field.formId,
+    fieldCount: count(),
+  }))
+
+  it("sorts by the position of a selected aggregate and by a sort key of another aggregate as it is, after the keys and the condition of the groups", () => {
+    expect(
+      compile(
+        totals
+          .having(() => count().gt(1))
+          .orderBy((field, selected) => [desc(selected.fieldCount), sum(field.id)]),
+      ),
+    ).toBe(
+      'SELECT "form_field"."formId" AS "formId", count(*) AS "fieldCount" FROM "form_field" AS "form_field" GROUP BY 1 HAVING count(*) > $1 ORDER BY 2 DESC, sum("form_field"."id")',
+    )
+  })
+
+  it("sorts by the positions of its projections as a subquery, of IN, after take, and in SQL text, whose repeated sort expression would get parameters of its own", () => {
+    const residues = schema.field
+      .pluck(field => sql(t.integer)`${field.id} % ${3}`)
+      .groupBy((_field, value) => value)
+      .orderBy((_field, value) => desc(value))
+    const statement =
+      'SELECT "form_field"."id" % $1 AS "value" FROM "form_field" AS "form_field" GROUP BY 1 ORDER BY 1 DESC'
+
+    expect(compile(schema.form.where(form => form.id.in(residues)).select("id"))).toEndWith(
+      `WHERE "form"."id" IN (${statement})`,
+    )
+    expect(compile(schema.form.where(form => form.id.eq(residues.take())).select("id"))).toEndWith(
+      `WHERE "form"."id" = (${statement} LIMIT 1)`,
+    )
+    expect(
+      compile(schema.form.where(form => sql<boolean>`${form.id} IN ${residues}`).select("id")),
+    ).toEndWith(`WHERE "form"."id" IN (${statement})`)
+  })
+
+  it("takes the node of the lowered projection for a key of a selected field that holds a query, to group by its position", () => {
+    const value = schema.field
+      .select(field => ({
+        name: field.form.get("id").expr(),
+        fieldCount: count(),
+      }))
+      .groupBy((_field, selected) => selected.name)
+    const aggregate = schema.form
+      .select(form => ({
+        size: form.fields.count(),
+        forms: count(),
+      }))
+      .groupBy((_form, selected) => selected.size)
+
+    expect(compile(value)).toEndWith(' FROM "form_field" AS "form_field" GROUP BY 1')
+    expect(compile(aggregate)).toEndWith(' FROM "form" AS "form" GROUP BY 1')
+  })
+
+  it("keeps the keys and the condition of the groups in EXISTS", () => {
+    const groups = schema.field.groupBy("formId").having(() => count().gt(1))
+
+    expect(compile(groups.exists())).toBe(
+      'SELECT EXISTS (SELECT FROM "form_field" AS "form_field" GROUP BY "form_field"."formId" HAVING count(*) > $1) AS "exists"',
+    )
+    expect(compile(schema.form.where(() => groups.exists()).select("id"))).toEndWith(
+      'WHERE EXISTS (SELECT FROM "form_field" AS "form_field" GROUP BY "form_field"."formId" HAVING count(*) > $1)',
+    )
+  })
+
+  it("reads the groups of an aggregate method from a derived source, also with a limit, an order, and a fallback", () => {
+    const groups = schema.field.groupBy("formId").having(() => count().gt(1))
+
+    expect(compile(groups.count())).toBe(
+      'SELECT count(*) AS "count" FROM (SELECT FROM "form_field" AS "form_field" GROUP BY "form_field"."formId" HAVING count(*) > $1) AS "subquery"',
+    )
+    expect(compile(groups.max(field => sum(field.id)))).toBe(
+      'SELECT max("subquery"."value") AS "max" FROM (SELECT sum("form_field"."id") AS "value" FROM "form_field" AS "form_field" GROUP BY "form_field"."formId" HAVING count(*) > $1) AS "subquery"',
+    )
+    expect(
+      compile(
+        groups
+          .orderBy("formId")
+          .limit(2)
+          .max(field => sum(field.id))
+          .coalesce(0),
+      ),
+    ).toBe(
+      'SELECT coalesce(max("subquery"."value"), $1) AS "max" FROM (SELECT sum("form_field"."id") AS "value", "form_field"."formId" AS "$order1" FROM "form_field" AS "form_field" GROUP BY 2 HAVING count(*) > $2 ORDER BY 2 LIMIT $3) AS "subquery"',
+    )
+  })
+
+  it("evaluates a nested query of a page of groups after an offset on its table", () => {
+    const page = schema.form
+      .groupBy("id")
+      .orderBy("id")
+      .offset(1)
+      .select(form => ({
+        labels: form.fields.pluck("label"),
+      }))
+
+    expect(compile(page)).toEndWith(
+      ' FROM "form" AS "form" GROUP BY "form"."id" ORDER BY "form"."id" OFFSET $1',
+    )
+  })
+
+  it("selects in the derived page of a parent the column that only the condition or the keys of the groups of a nested query read", () => {
+    const page = schema.field.offset(1).select(field => ({
+      readInCondition: field.options
+        .groupBy("fieldId")
+        .having(() => count().gt(field.formId))
+        .pluck("fieldId"),
+      readInKey: field.options.groupBy(() => field.label).count(),
+    }))
+
+    expect(compile(page)).toEndWith(
+      'FROM (SELECT "form_field_2"."id" AS "id", "form_field_2"."formId" AS "formId", "form_field_2"."label" AS "label" FROM "form_field" AS "form_field_2" OFFSET $1) AS "form_field"',
+    )
+  })
+
+  it("takes SELECT DISTINCT over the groups", () => {
+    expect(compile(totals.distinct().orderBy((_field, selected) => selected.fieldCount))).toBe(
+      'SELECT DISTINCT "form_field"."formId" AS "formId", count(*) AS "fieldCount" FROM "form_field" AS "form_field" GROUP BY 1 ORDER BY 2',
+    )
+  })
+})
+
 describe("query of distinct", () => {
   const compile = (query: AnySelectQuery) => compileStatement(lowerStatement(query.node)).text
 
@@ -1007,6 +1131,89 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
 
     expect(results).toStrictEqual([[{ nested: [{ total: 20 }] }], []])
+  })
+
+  describe("query of groups", () => {
+    const residue = (form: { id: AnyExpression<number> }) => sql(t.integer)`${form.id} % ${3}`
+    it("takes a query of the values of a parameterized expression, grouped and sorted by its value, in IN, after take, and in SQL text", async () => {
+      const residues = db.form
+        .pluck(residue)
+        .groupBy((_form, value) => value)
+        .orderBy((_form, value) => desc(value))
+
+      const results = await testTransaction(async () => ({
+        executed: await residues,
+        inList: await db.form
+          .where(form => form.id.in(residues))
+          .orderBy("id")
+          .pluck("id"),
+        scalar: await db.form.where(form => form.id.eq(residues.take())).pluck("id"),
+        text: await db.form
+          .where(form => sql<boolean>`${form.id} IN ${residues}`)
+          .orderBy("id")
+          .pluck("id"),
+      }))
+
+      expect(results).toStrictEqual({
+        executed: [2, 1, 0],
+        inList: [1, 2],
+        scalar: [2],
+        text: [1, 2],
+      })
+    })
+
+    it("groups a nested query by a parameterized bucket that a literal replaces, by the position of its sort key, and rejects it as an executed query, which has no such projection", async () => {
+      const buckets = db.form
+        .select(form => ({
+          bucket: residue(form),
+          total: count(),
+        }))
+        .groupBy((_form, selected) => selected.bucket)
+        .orderBy((_form, selected) => selected.bucket)
+        .select(() => ({
+          bucket: literal("replaced"),
+        }))
+
+      const page = await testTransaction(async () => await db.$select({ rows: buckets }))
+
+      expect(page).toStrictEqual({
+        rows: [
+          { bucket: "replaced", total: 6 },
+          { bucket: "replaced", total: 7 },
+          { bucket: "replaced", total: 7 },
+        ],
+      })
+      await expect(testTransaction(async () => await buckets)).rejects.toThrow(
+        "must appear in the GROUP BY clause",
+      )
+    })
+
+    it("groups by a selected correlated query by its position, and rejects one that a literal replaces, whose key and sort key are lowered apart", async () => {
+      const buckets = db.form
+        .select(form => ({
+          bucket: db.form
+            .where(other => other.id.eq(form.id))
+            .get(other => sql(t.integer)`${other.id} % 3`)
+            .expr(),
+          total: count(),
+        }))
+        .groupBy((_form, selected) => selected.bucket)
+        .orderBy((_form, selected) => selected.bucket)
+
+      const rows = await testTransaction(async () => await buckets)
+
+      expect(rows).toStrictEqual([
+        { bucket: 0, total: 6 },
+        { bucket: 1, total: 7 },
+        { bucket: 2, total: 7 },
+      ])
+      const replaced = buckets.select(() => ({
+        bucket: literal("replaced"),
+      }))
+      await expect(
+        testTransaction(async () => await db.$select({ rows: replaced })),
+      ).rejects.toThrow("subquery uses ungrouped column")
+    })
   })
 
   describe("query of distinct", () => {

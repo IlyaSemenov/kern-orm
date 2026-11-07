@@ -163,6 +163,7 @@ export type {
   SelectedRefs,
 } from "./query/order"
 export { asc, desc, orderBy } from "./query/order"
+export type { GroupTerm, GroupTerms } from "./query/group"
 export type { Helper, HelperEffect } from "./query/helper"
 export { defineHelper } from "./query/helper"
 export type {
