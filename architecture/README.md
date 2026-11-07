@@ -11,6 +11,8 @@ Its core promises:
 
 The public API is not settled before 1.0 and may change in any release; a change of what companion packages rely on follows [package compatibility](compatibility.md).
 
+[Decisions](../decisions/README.md) record the trade-offs between designs, with their alternatives and costs, and the contracts here link them.
+
 ## Motivation
 
 kern-orm exists to solve problems of production projects on Orchid ORM:

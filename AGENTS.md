@@ -8,9 +8,10 @@ Read [README.md](README.md) completely before changing the public API, package b
 
 Before changing a module, read [architecture/README.md](architecture/README.md) and the files that its map lists for the module, and keep them in sync with the code.
 Keep [architecture/](architecture/README.md) to the code as it is: record a contract in the file of its topic and unresolved design of the code in its Open questions; list a new file in the map.
+Record a trade-off between designs in [decisions/](decisions/README.md), as [Decisions](#decisions) describes, and how other projects handle the scenarios of kern-orm in [comparison/](comparison/README.md), as [Comparison with other projects](#comparison-with-other-projects) describes.
 
 Track work not done yet in [BACKLOG.md](BACKLOG.md), with its preliminary decisions and open questions, roughly from the most important.
-Add each item as a section without a number where its importance roughly fits, and delete it once it is done, moving its lasting contracts to [architecture/](architecture/README.md).
+Add each item as a section without a number where its importance roughly fits, and delete it once it is done, moving its lasting contracts to [architecture/](architecture/README.md), or once it is decided against, moving the decision to [decisions/](decisions/README.md).
 The order is a loose hint: do not reorder other items to place a new one exactly.
 
 Extend this guide only with stable, non-obvious conventions, architecture, contracts, workflows, and gotchas.
@@ -95,7 +96,7 @@ Do not catalog files or restate information evident from their names and locatio
 
 ## Benchmarks
 
-- Back a decision made for speed or size, such as the SQL that the compiler builds instead of an alternative, with a benchmark, and link it from the decision in [architecture/](architecture/README.md).
+- Back a decision made for speed or size, such as the SQL that the compiler builds instead of an alternative, with a benchmark, and link it from the decision in [decisions/](decisions/README.md).
 - Write a benchmark of SQL as a script `benchmarks/suites/<topic>.ts`, such as `nested-transport.ts`, that compares the chosen variant with its alternatives through `runBenchmark` of `benchmarks/harness.ts`; its header names the variants and what it measures.
 - Keep data and SQL shared by several benchmarks in a module beside the harness, such as `benchmarks/nested-rows.ts`.
 - Run a benchmark with `bun run --cwd benchmarks bench <topic>`, which reads `DATABASE_URL` from `.env.test.local`.
@@ -113,7 +114,7 @@ Do not catalog files or restate information evident from their names and locatio
   - Find the types that a benchmark instantiates on each call with `bun run --cwd benchmarks profile:types types/<file> <name>`; the header of `benchmarks/types/profile.ts` describes its options.
   - Read [benchmarks/types/PROFILING.md](benchmarks/types/PROFILING.md) before measuring a cost that the benchmarks do not cover or looking for its cause.
 - Do not run benchmarks in CI.
-- Record in `architecture/` the ratios that a decision relies on rather than absolute times, and rerun the benchmark to update them when a change affects what it measures.
+- Record the ratios that a decision relies on rather than absolute times, and rerun the benchmark to update them when a change affects what it measures.
 
 ## Documentation
 
@@ -151,6 +152,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Use One Sentence Per Line for connected prose.
 - Keep semantically connected explanations as prose paragraphs.
 - Use lists for separate assertions instead of presenting them as prose paragraphs.
+- Link a file of another repository by a tag or a commit, such as of the version you checked, never by a branch such as `main`, whose file changes.
 
 ## Changesets
 
@@ -204,13 +206,27 @@ Describe the user-visible change.
   Keep each table of its data within 30000 rows and the statistics target at its default, so that ANALYZE reads every row.
 - Test concurrent transactions through connection-level state, such as `pg_backend_pid()` and transaction-local settings from `set_config(..., true)`, rather than committed tables.
 
-## Other ORMs
+## Decisions
 
-- Whenever you learn how another ORM handles a scenario differently from kern-orm, such as from its issues, documentation, or sources, or while researching a design, record it with a link to its issue or documentation, or with the name and version of the ORM you checked.
-- Record a scenario that another ORM fails or lacks while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>` or `// <ORM> <version> <what fails>`, or beside the decision in [architecture/](architecture/README.md) that it motivates.
-- Record a capability that another ORM has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of BACKLOG.md that would add it, or beside the decision in [architecture/](architecture/README.md) not to add it.
-- For a scenario of work not done yet, put the record in its item of BACKLOG.md, and move it to the test or the decision with the work.
-- Add a scenario worth showing in a comparison with other ORMs to "What to compare" in the item `## Comparison with other ORMs` of BACKLOG.md.
+- Record a decision when an alternative has a real advantage that the chosen design gives up, such as in DX, speed, or size, or looks better than it measures, so that it would be proposed again; this includes a choice of implementation, such as how a function recognizes its argument.
+- Keep a choice without such an alternative in architecture/ as its contract with a reason of one clause.
+- Write each decision in a file of its own under its topic directory, such as `decisions/nested-rows/`, and list it in that topic's section of the index; add a topic only when none fits.
+- Write in it the chosen design, the alternatives it weighs, their measured costs, and the other projects that chose an alternative.
+- Add readable code examples where they make the designs easier to compare, such as the calls that users write or the SQL that the compiler builds.
+- Link a decision from the contract of its design in architecture/, and keep there only that design and a reason of one clause; do not link decisions/ and comparison/ back to architecture/.
+- In a comment beside the code of a decision, state its reason, with a measurement only when the reason rests on it, such as a cost of an order of magnitude rather than of a few percent.
+
+## Comparison with other projects
+
+- Whenever you learn how another ORM, query builder, or migrator handles a scenario of kern-orm, such as from its issues, documentation, or sources, or while researching a design, record it in the file of its topic in [comparison/](comparison/README.md), under a heading of the scenario.
+  - Open the scenario with a sentence of what kern-orm does.
+  - Give each project an item with its name, a link to its issue, documentation, or source, and a verdict: `fails` when it gets wrong what kern-orm covers, `lacks` when it lacks what kern-orm has, `has` when it has what kern-orm lacks, `differs` when it does the task another way, or `same` when it does what kern-orm does.
+- Name another project, in comparison/ and in decisions/, as "Projects" of [comparison/README.md](comparison/README.md) lists it, without a link to the project and without a version unless it differs from the listed one; write a record of an issue or a pull request in the past tense.
+  List a new project there with its link and the version you checked.
+- Also record a scenario that another project fails while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>`.
+- Keep a capability that another project has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of BACKLOG.md that would add it, and move it to comparison/ when the item is deleted.
+- Mention another project in a decision only when its design is an alternative that the decision weighs.
+- Add a scenario worth comparing that comparison/ does not cover yet to "Scenarios to compare" in [comparison/README.md](comparison/README.md).
 
 ## Checks
 

@@ -2,6 +2,7 @@
 
 - **Migrator** (`packages/migrations/`): `@kern-orm/migrations` applies and rolls back histories of migrations.
   It is an official but replaceable migrator: `kern-orm` knows nothing of migrations, and another package must be able to implement migrations, their verification, and a command line with the public API of `kern-orm` alone.
+  It leaves to the application generating migrations from tables and tables from the database, column types of migrations, commands that create, drop, or reset a database or rename migrations, callbacks around migrating, and a command that verifies a history ([decision](../decisions/migrations/migrator-scope.md)).
 - A need of the migrator that the public API of `kern-orm` does not cover becomes a general capability of `kern-orm`, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
   The migrator imports only types from `kern-orm`.
 - The migrator runs everything through the `Database` of its target: transactions with `transaction`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
@@ -17,7 +18,6 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - Migrations are fixed artifacts: they never import the tables, the custom types, or the database of the application, so that a migration does the same on every target and in every later version of the application.
 - A migration is the default export of a module: a step or a non-empty array of steps, plain values without runtime identity, which `defineMigration` only types.
   A module that does not export a migration rejects when it loads, rather than being recorded as applied.
-  - rake-db 2.37.48 collects the steps of `change()` in the state of its module, so a migration that calls `change` of another copy of rake-db registers nothing, and migrating records it as applied ([orchid-orm#765](https://github.com/romeerez/orchid-orm/issues/765)).
 - A step has `up` and an optional `down`, each a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects when the migration loads instead of doing nothing on rollback.
   Blank SQL text rejects too, so that a migration left blank is never recorded as applied.
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
@@ -35,7 +35,6 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - A call loads only the migrations it applies or rolls back, so that migrating a target that is up to date loads none.
   It loads them all before running any, so that a module that fails to load changes nothing.
 - The cache of loaded modules is that of the runtime, so histories with the same keys never share migrations.
-  rake-db shared the changes of migrations of two histories under one key ([orchid-orm#764](https://github.com/romeerez/orchid-orm/issues/764)).
 - Migrations of a history rely on the search path and do not name the target schema, so that one history applies to any schema, such as the schema of each tenant.
 
 ## Targets
@@ -55,10 +54,9 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   Inside a transaction, such as one that creates a tenant with its schema, or a test fixture, it runs as a nested level, so that its changes commit or roll back with the enclosing transaction.
 - `migrate` returns after the first read when nothing is pending, so that migrating a tenant that is up to date at the first access of each process costs two statements outside a transaction.
   Otherwise, it locks the target with the [advisory lock](transactions.md#locks) of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
-- Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction ([orchid-orm#702](https://github.com/romeerez/orchid-orm/issues/702)).
+- Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction.
   Creating only what is missing keeps PostgreSQL from sending a notice of an existing schema, which postgres.js logs by default.
 - The lock belongs to the target, so that different targets, such as tenants, migrate at once.
-  rake-db 2.37.48 locks every target with one key, unless each configuration sets its own `migrationLockKey`, so a test run that migrates in a transaction blocks every other run until it ends ([orchid-orm#771](https://github.com/romeerez/orchid-orm/issues/771)).
 - The search path of the level of the migrations is the target schema followed by the schemas of the history, and the level restores the previous search path when it ends.
 - A target is up to date when its applied keys are the keys of the history, followed by keys after the last key of the history, if any, which a newer version of the application has applied, such as during a rolling deploy.
   `migrate` rejects an applied key that the history lacks before its last key or that is not of the form of a key, and a pending migration before an applied one.
@@ -146,7 +144,6 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   2. In a nested level that rolls back, it rolls the migration back and requires the structure that the migration found; runs each migration test of the migration in a nested level of its own that rolls back; and applies the migration again.
   - The structure after the second `up` goes unchecked: from the structure that the first `up` found, `up` builds the same one unless it depends on something else, such as data, so the verification describes the schema twice for each migration rather than three times.
   - Applying, rolling back, and applying again misses a `down` that leaves a change that `up` makes again without an error, such as `SET NOT NULL`, `SET DEFAULT`, or `CREATE INDEX IF NOT EXISTS`; comparing the structure catches it.
-    [rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing) 0.3.0 checks only the applied versions after each step.
 - It rejects at the first failure.
   `up` and `down` of a migration reject with their `MigrationError`; a structure that differs lists the lines before the migration that the rollback lost, with `-`, and those that it left, with `+`; a second `up` that fails names the migration and keeps its error in `cause`.
 - The structure (`src/verification/structure.ts`) is lines of text of the objects of the schema that `pg_catalog` gives: tables, columns, constraints, indexes, views, sequences, types, functions, triggers, rules, policies, statistics, and collations, with the owners other than the role that runs the verification, which owns the objects of the migrations, and the privileges that differ from the defaults.
@@ -160,7 +157,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   A test with `assertUpError`, instead of `assertUp` and `assertDown`, requires `up` to fail, and its callback receives the `MigrationError` of `up`.
   - `up` of such a test runs in a nested level, so that `assertUpError` queries the data after the failure.
   - A test is a plain value, like a migration, and its file is a fixed artifact that must not import the tables of the application.
-  - Its callbacks take the database of the migration, so that their SQL names tables without a schema, unlike the scenarios of rake-db-testing, which name them with `schemaRef`.
+  - Its callbacks take the database of the migration, so that their SQL names tables without a schema.
   - `defineMigrationTest`, and loading a file of tests, reject an unknown property, such as a misspelled `assertDown`, which would never run, `assertUpError` together with `assertUp` or `assertDown`, and a test without callbacks.
   - An error of a test names the test, its file, and the stage that failed, such as `assertUp`, and keeps the original error in `cause`.
 - The migration tests of a migration are the default exports, a test or a non-empty array of tests, of the files `<key>.migration-test.<extension>` and `<key>.<name>.migration-test.<extension>` beside it, with the extensions of migration modules.
@@ -168,13 +165,6 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - The tests of a migration run in the order of the names of their files, and of the tests in a file.
   - It imports the files of a directory by their `file:` URLs with the loader of the runtime, such as of Node.js or Bun; under Vitest, the loaders of `import.meta.glob` let Vite transform the files as it transforms test files, such as with the aliases of its configuration.
   - The suffix `.migration-test` keeps the default patterns of `bun test` and Vitest from running such a file as a test file; `node --test` without patterns runs it as a file without tests.
-
-## Not added
-
-- Generating migrations from tables, as [`db g`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/generate-migrations.md) of Orchid ORM 1.78.47 does, and generating tables from the database, as [`db pull`](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-commands.md#pull) does: tables of kern-orm state what the database guarantees rather than describe its DDL.
-- Column types of migrations, as `createTable` and `changeTable` of rake-db 2.37.48 take: migrations and helpers take SQL text, and the database names its constraints and indexes as the migration does.
-- Commands that create, drop, or reset a database, or rename migrations, as `rebase` and `change-ids` of rake-db do, and callbacks before and after migrating: the application calls `migrate` and runs its own code around it.
-- A command of the command line that verifies a history: migration tests need the assertions and the module resolution of the test runner, and a project adds such a command by handling its arguments before `runMigrationCli`.
 
 ## Open questions
 

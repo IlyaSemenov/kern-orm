@@ -19,11 +19,10 @@
 
 ## Joining
 
-- `ensureTransaction` of a `Database` and `$ensureTransaction` of a `Db` run their callback in the context of the current level without a savepoint when the code runs in a transaction, and start a transaction otherwise, as `$ensureTransaction` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#ensuretransaction)).
+- `ensureTransaction` of a `Database` and `$ensureTransaction` of a `Db` run their callback in the context of the current level without a savepoint when the code runs in a transaction, and start a transaction otherwise.
   A rejection of a joined callback undoes nothing; the enclosing level commits its changes unless it fails too.
-- `isInTransaction` of a `Database` and `$isInTransaction` of a `Db` tell whether the current level or an enclosing one is a level of `transaction`, as `$isInTransaction` of Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#isintransaction)).
+- `isInTransaction` of a `Database` and `$isInTransaction` of a `Db` tell whether the current level or an enclosing one is a level of `transaction`.
   A test transaction and the seed of a test fixture are not such levels, so code under test starts a transaction of its own where it does in production, which runs as a savepoint of the test level.
-  Orchid ORM ignores a test transaction in `$isInTransaction`.
 - Joining a level that accepts no statements, such as of late code of a finished transaction or beside a running nested level, rejects without calling the callback, as starting a nested level does; whether the level accepts statements does not affect `isInTransaction`.
 
 ## Locks
@@ -37,10 +36,6 @@
 ## Settings
 
 - Settings of a level, such as its search path, are statements on its connection, `set_config(..., true)` after its `BEGIN` or `SAVEPOINT`, completed before its callback starts.
-  Scenarios of settings that Orchid ORM failed:
-  - settings inside a test transaction were ignored ([orchid-orm#806](https://github.com/romeerez/orchid-orm/pull/806));
-  - a setting still in flight at the rollback of a test transaction was restored after it, which left it on the connection for later tests ([orchid-orm#813](https://github.com/romeerez/orchid-orm/pull/813));
-  - a callback that rejected before its settings completed crashed Node with an unhandled rejection ([orchid-orm#804](https://github.com/romeerez/orchid-orm/pull/804)).
 - `transaction` of a `Database` and `$transaction` of a `Db` take the search path of the level as a list of schemas, which they quote, such as the target schema and the schema of extensions of [migrations](migrations.md#applying-and-rolling-back).
   They take it in options after the callback, as `testTransaction` takes its options.
 - A nested level restores the settings it changed when it is released, since PostgreSQL keeps a setting of `SET LOCAL` or `set_config(..., true)` of a released savepoint until the transaction ends.

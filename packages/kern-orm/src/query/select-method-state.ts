@@ -85,7 +85,7 @@ export type AggregateState<
   { result: V; valueType: Type; rows: "one"; value: true; guaranteed: false; aggregate: true }
 >
 
-// Apart from `AggregateState`: a parameter of `AggregateState` for the relations made every aggregate and `exists` cost more, such as 3% more for `count` and for `exists` of a relation, and `ChangeState` of its result about 17% more for this state.
+// Apart from `AggregateState`: a parameter of `AggregateState` for the relations would make every aggregate and `exists` cost more, and `ChangeState` of its result would make this state cost more.
 /** State of a query of the value `V` of type `Type` of an aggregate over the rows of a query of state `S`, whose argument is `E`, an expression or a query of one value that a callback returns. */
 export type OperandAggregateState<
   S extends SelectQueryState,

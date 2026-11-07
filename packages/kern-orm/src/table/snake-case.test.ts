@@ -13,20 +13,20 @@ it("adds no underscore before a first capital letter", () => {
 })
 
 it("takes a run of capital letters for one word", () => {
-  // Orchid ORM 1.78.47 gives i_d and user_i_d: https://github.com/romeerez/orchid-orm/blob/main/packages/pqb/src/utils.ts
+  // Orchid ORM 1.78.47 gives i_d and user_i_d: https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/utils.ts
   expect(toSnakeCase("ID")).toBe("id")
   expect(toSnakeCase("userID")).toBe("user_id")
 })
 
 it("starts the next word at the last capital letter of a run before a lowercase letter", () => {
-  // Kysely 0.29.8 with its defaults gives jsondata and parse_htmldoc: https://github.com/kysely-org/kysely/blob/master/src/plugin/camel-case/camel-case.ts
+  // Kysely 0.29.8 with its defaults gives jsondata and parse_htmldoc: https://github.com/kysely-org/kysely/blob/v0.29.8/src/plugin/camel-case/camel-case.ts
   expect(toSnakeCase("JSONData")).toBe("json_data")
   expect(toSnakeCase("parseHTMLDoc")).toBe("parse_html_doc")
   expect(toSnakeCase("HTTPServer")).toBe("http_server")
 })
 
 it("keeps a plural s at the end of a key in the word of its run of capital letters", () => {
-  // Drizzle 0.45.4 gives user_i_ds and ap_is: https://github.com/drizzle-team/drizzle-orm/blob/main/drizzle-orm/src/casing.ts
+  // Drizzle 0.45.4 gives user_i_ds and ap_is: https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/casing.ts
   expect(toSnakeCase("userIDs")).toBe("user_ids")
   expect(toSnakeCase("APIs")).toBe("apis")
 })

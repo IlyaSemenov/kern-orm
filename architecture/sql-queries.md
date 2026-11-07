@@ -16,9 +16,7 @@
 - Records are read from the result columns by the keys of their fields, as the driver names the columns, rather than by position: the statement chooses the order of its columns, and two columns of one type in another order would decode silently.
   - A missing column, or a column that the result has twice, rejects with `ResultDecodeError`; other columns are ignored, such as those of `RETURNING *`.
   - A value of `get` and `pluck` is read from the only column, whatever its name, and another number of columns rejects.
-  - Decoding fails after the statement, so a statement that changes rows has made its change, as a mutation has.
-  - Wrapping the statement as `WITH q AS (...) SELECT q."id" FROM q` would let PostgreSQL check the columns before the statement runs, but it would rewrite the SQL of users and reject statements that `WITH` does not take, such as `EXPLAIN` and `SHOW`.
-- Orchid ORM 1.78.47 types the rows of `$query` by a type argument that nothing checks, over the values that its driver parses ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/orm-methods.md#query)); kern-orm decodes the text of each value by the type of its field.
+  - Decoding fails after the statement, so a statement that changes rows has made its change, as a mutation has ([decision](../decisions/sql-queries/columns-of-sql-text.md)).
 
 ## Scripts
 

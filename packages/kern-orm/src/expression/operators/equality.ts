@@ -28,7 +28,7 @@ interface ValuesQuerySource {
   [valuesQueryNode](): NestedQueryNode
 }
 
-// One signature of a union rather than overloads, which make the error of a wrong list name the overload of a query when it comes last, and add about 8% to a filter of a list when it comes first.
+// One signature of a union rather than overloads, which make the error of a wrong list name the overload of a query when it comes last, and make a filter of a list cost more when it comes first.
 /** Signature of `in`: membership in a list of operands of the expression type, or in the values of a query, such as of `pluck`; an empty list or query yields `FALSE`. */
 export interface InSignature extends OperatorSignature {
   readonly method: <

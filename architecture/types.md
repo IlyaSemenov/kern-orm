@@ -55,7 +55,6 @@
   The following operands are `const`, since TypeScript otherwise widens a literal of a union of literals, such as of an enum, which fails the constraint and leaves the constraint itself, whose operands can be `NULL`; a plain array, which the mutable values of an array type do not take as `const`, keeps `null` in the same way, unlike the expression of `param`.
 - Unlike the method `coalesce` of a query, which keeps a missing row missing, a query among the operands of `coalesce` is `NULL` without its row, as in any expression, so the function replaces a missing row too.
 - A call is a raw node of `createList`, so lowering takes it for a SQL fragment in a page after an offset ([SQL generation](sql.md#nested-rows)), which only costs the speed of the page.
-- A call of a function adds about 50 instantiations to a query of a column and about 140 to one of an aggregate of a relation ([benchmark](../benchmarks/types/queries.bench.ts)).
 - `caseWhen` is a searched SQL `CASE` expression of its branches in order, of a type given as its first argument rather than read from an operand, since its values are often plain values, which have no SQL type.
   - The type decodes the result and gives it its operators.
     It casts each plain value to the cast type, as `param` with a type does, since PostgreSQL resolves `CASE` of parameters alone as `text`, whose `max` compares strings, so that `50` is above `100`.
@@ -67,7 +66,7 @@
   - A condition is a predicate or a query of one Boolean value, at runtime too; an object of column values has no table here, and a plain Boolean value is a matter of the code that builds the branches.
   - Without branches, which PostgreSQL rejects in `CASE`, it is the fallback, or `NULL` of its type, so that a list built in code may be empty, as those of `and` and `or` may.
   - Simple `CASE x WHEN ...` is not offered: `x.eq(...)` in each condition writes it.
-  - A call is a raw node, as `createList` makes those of the other functions, and adds about 410 instantiations to a query of a column for two branches with their conditions ([benchmark](../benchmarks/types/queries.bench.ts)).
+  - A call is a raw node, as `createList` makes those of the other functions.
 
 ## Aggregate functions
 
@@ -83,7 +82,6 @@
 - The values follow the aggregate methods: `count` and `countDistinct` give a number, and the others the value of the argument or `null`, also without rows that `filter` takes.
   The type of the expression is the one of the method, so it decodes the value and gives it its operators; `sum` of `smallint` and `integer` values rejects a sum outside the safe integer range of numbers, and `avg` of a type of the cast type `bigint` rejects when it is called.
   Types do not check that PostgreSQL has the aggregate for the type of the argument, as for the methods.
-- A query of one field of `count()` takes about 250 instantiations, of `count` with a filter of a column about 320, of `max` of a column about 280, of `stringAgg` of a column in an order about 290, and of `max` of an aggregate of a relation about 600 ([benchmark](../benchmarks/types/queries.bench.ts)).
 
 ## Text functions
 
@@ -119,4 +117,4 @@
   - It does not qualify the name with the PostgreSQL schema of the statement, since the name may be of any object, such as a column; a table of a `Db` interpolates as the table.
   - It requires at least one name, and every name must be a non-empty string, since PostgreSQL rejects an empty name; it checks them when it is called.
   - It takes no `undefined` for a missing schema, such as `$schemaName` of a `Db` without one, so that a name never loses its schema silently.
-  - It is a function of its own, as `sql` and `param` are; Drizzle ([source](https://github.com/drizzle-team/drizzle-orm/blob/main/drizzle-orm/src/sql/sql.ts)) and Slonik ([docs](https://github.com/gajus/slonik#sqlidentifier)) have it as `sql.identifier`, and Kysely as `sql.id` ([docs](https://kysely-org.github.io/kysely-apidoc/interfaces/Sql.html#id)).
+  - It is a function of its own, as `sql` and `param` are ([decision](../decisions/expressions/identifier-function.md)).

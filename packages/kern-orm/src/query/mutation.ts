@@ -60,7 +60,7 @@ export interface InitialMutationState<
   readonly uses: U
 }
 
-// Apart from `ChangeState` of `select.ts`: a parameter of `ChangeState` for the parts of the state made each change of a select query cost more instantiations, such as 40% more for a helper, and an alias of the mapped type shared by both made methods reject a union of queries that differ by their fields, such as `cond ? query.select("id", "title") : query.select("id")`.
+// Apart from `ChangeState` of `select.ts`, so that changes of a select query cost no more and its methods take a union of queries that differ by their fields.
 /** State `S` of a mutation with the parts of `Changes` replaced. */
 type ChangeMutationState<
   S extends MutationQueryState,

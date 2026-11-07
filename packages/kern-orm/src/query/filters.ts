@@ -28,7 +28,7 @@ export type EqValue<T extends AnyTable, K extends keyof T["columns"]> =
   // Operators of a table of any columns are `any`, and its values accept any value, so that a query over a specific table is a query over any table.
   IsAny<ColumnOperators<T, K>> extends true
     ? ColumnValues<T>[K]
-    : // The operand of the `eq` of `equalityOperators` is read from the type of the column: inferring it from the method with the check of `EqOperand` evaluates the result type of the operator, which adds about 165 instantiations to the first object condition of each column.
+    : // The operand of the `eq` of `equalityOperators` is read from the type of the column, which costs less than inferring it from the method with the check of `EqOperand`, since that evaluates the result type of the operator.
       ColumnOperators<T, K> extends { readonly eq: EqualityOperator<ComparisonSignature> }
       ? Operand<TypeOutput<T["columns"][K]["type"]>, TypeInput<T["columns"][K]["type"]>>
       : EqOperand<ColumnRefs<T>[K]>
@@ -54,7 +54,7 @@ export type WhereFilter<T extends AnyTable, C extends SchemaContext = NoRelation
  * Argument of `where` of a query of state `S`: a `WhereFilter` of its table and schema, which TypeScript resolves with what it has inferred for `S` before it checks a callback in it.
  *
  * TypeScript types the body of a callback once, for every overload, and a plain `WhereFilter` leaves `S` unresolved there, so the body would widen a literal, such as of an enum column, to `string`.
- * It reads the filter only in its branch: a general alias that takes the filter as an argument resolves it on every call, which takes about 25 more instantiations.
+ * It reads the filter only in its branch, since a general alias that takes the filter as an argument resolves it on every call.
  */
 export type QueryWhereFilter<S extends SelectQueryState> = [S] extends [unknown]
   ? WhereFilter<S["table"], S["schema"]>

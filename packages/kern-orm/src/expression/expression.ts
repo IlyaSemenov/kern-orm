@@ -169,7 +169,7 @@ export function isOperandSource(value: unknown): value is OperandSource {
  * The method of a query takes a query of one value of a table, which lowering replaces with a scalar subquery, or with `EXISTS` for a query of `exists`, and rejects another query, such as of records or of `$query`.
  */
 export function toValueNode(value: unknown, type?: AnyType): ExpressionNode {
-  // The check of `isOperandSource` is written out, since calling it takes longer on Bun 1.4.4 for every value of a query.
+  // One lookup of the symbol recognizes an expression or a query, with the check of `isOperandSource` written out, since most values are neither and calling it takes longer.
   if (typeof value === "object" && value !== null && operandNode in value) {
     return (value as OperandSource)[operandNode]()
   }

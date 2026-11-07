@@ -22,7 +22,7 @@ A migration whose `down` cannot restore the structure, such as one that adds a v
 
 ## Through and many-to-many relations
 
-Relations through other relations, such as the answers of a form through its fields, and many-to-many relations through a join table, which queries select and filter by as other relations, as `chain` of Orchid ORM 1.78.47 queries the related records of related records ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/relation-queries.md#chain)).
+Relations through other relations, such as the answers of a form through its fields, and many-to-many relations through a join table, which queries select and filter by as other relations, as `chain` of Orchid ORM 1.78.47 queries the related records of related records ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/relation-queries.md#chain)).
 
 - `EXISTS` of a chain correlates each relation with its own source; Orchid ORM joined the chained table to the outer one by the columns of the chained relation ([orchid-orm#851](https://github.com/romeerez/orchid-orm/issues/851)).
 - Decide whether `$relations` declares a through relation, a query of a relation chains another relation, or both.
@@ -32,8 +32,8 @@ Relations through other relations, such as the answers of a form through its fie
 An insert that updates or skips the record it conflicts with on a key, as `INSERT ... ON CONFLICT ... DO UPDATE` or `DO NOTHING`, such as the row of a singleton table that the [motivation](architecture/README.md#motivation) names.
 
 - Upserts take their conflict target from the keys of the table, such as from `findBy` before the upsert, whose values the inserted record takes too.
-  Orchid ORM 1.78.47 `upsert` of a query of `find` or `findBy` updates the record and creates it when missing ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#upsert)).
-- `DO NOTHING` takes a key as its target, or no target to skip a record that conflicts on any key, as `onConflictDoNothing` of Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#onconflictdonothing)).
+  Orchid ORM 1.78.47 `upsert` of a query of `find` or `findBy` updates the record and creates it when missing ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#upsert)).
+- `DO NOTHING` takes a key as its target, or no target to skip a record that conflicts on any key, as `onConflictDoNothing` of Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflictdonothing)).
 - Decide how the values of the update refer to the values of the insert, `EXCLUDED` of PostgreSQL, such as by an argument of the callback of the update values.
 - `DO NOTHING` returns no row for a record that conflicts, so the fields that it selects for one record have rows `optional`, and those of several records lack the rows of the records that conflict.
 - The upsert of the row of a [singleton table](#singleton-tables) takes no key, which depends on what guarantees that the table holds one row: `ON CONFLICT` requires a unique index, such as of a constant expression.
@@ -41,27 +41,27 @@ An insert that updates or skips the record it conflicts with on a key, as `INSER
 
 ## Scopes and soft delete
 
-Predicates that a table applies to its queries, such as excluding soft-deleted records, kept as the `scope` filters of a query, like `scopes` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/scopes.md)).
+Predicates that a table applies to its queries, such as excluding soft-deleted records, kept as the `scope` filters of a query, like `scopes` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/scopes.md)).
 
 - Scope predicates are never operands of a user `OR`; test it ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
 - A scope that may exclude records ends the guarantee of the row as a filter does, so a query of a required relation to a table with such a scope starts with rows `nullable`.
 - A scope applies to every query of its table, including queries of relations to it, nested queries, and queries of expressions, unless a query leaves it out by name, as `unscope` of Orchid ORM, such as to list deleted records.
 - Decide whether a table or a schema declares scopes, as a schema declares relations.
-- Soft delete builds on a scope: `delete` of a table with soft delete sets its column, such as `deletedAt` to `now()`, instead of deleting the rows, and a hard delete deletes them, as `softDelete`, `includeDeleted`, and `hardDelete` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/soft-delete.md)).
+- Soft delete builds on a scope: `delete` of a table with soft delete sets its column, such as `deletedAt` to `now()`, instead of deleting the rows, and a hard delete deletes them, as `softDelete`, `includeDeleted`, and `hardDelete` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/soft-delete.md)).
 - A scope predicate does not restrict the rows of `update` and `delete`, which reject without another filter unless `all` allows it, as [architecture/mutations.md](architecture/mutations.md#rows-to-change) requires and as Orchid ORM does for soft delete.
 - A table interpolated into `sql` is its name, which no scope filters.
 
 ## String unions of text types
 
 Text types whose values are a union of strings, such as the visibility of a comment that a `CHECK` constraint limits rather than a PostgreSQL enum, as `json.of<T>()` declares a shape, such as `t.text.of<"public" | "private">()` and `t.varchar.of<...>()`.
-Orchid ORM 1.78.47 narrows a column with `narrowType` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/common-column-methods.md#narrowtype)).
+Orchid ORM 1.78.47 narrows a column with `narrowType` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#narrowtype)).
 
 - Decide whether `of` narrows the values of every type, such as number literals of `integer`, and which operators take the union, such as `eq` and `in`, while `like` keeps a string pattern.
 
 ## Inserting the records of a query
 
 Inserting the records that a query selects, as `INSERT ... SELECT`.
-Orchid ORM 1.78.47 inserts them with `createOneFrom` and `createForEachFrom` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/create.md#createonefrom-insertfrom)).
+Orchid ORM 1.78.47 inserts them with `createOneFrom` and `createForEachFrom` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#createonefrom-insertfrom)).
 
 ## Empty changes and `none()`
 
@@ -70,11 +70,11 @@ Two independent goals:
 
 1. Take them as changing nothing, so that code that passes the values of a request, such as of a PATCH, needs no check such as `if (Object.keys(values).length > 0)` before `update`.
    - An `update` without values changes no row, and with selected fields selects them from the rows it would change, so that a query of `find` still checks its record.
-     Orchid ORM 1.78.47 turns it into a select of the rows, `SELECT count(*)` without selected fields ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/update.md#empty-set)).
+     Orchid ORM 1.78.47 turns it into a select of the rows, `SELECT count(*)` without selected fields ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/update.md#empty-set)).
    - An `insertMany` without records changes no row: the number `0`, or an empty array of the selected fields.
    - Decide what an `update` without values and without selected fields resolves to, such as `0` without a statement, and whether a query of `find` then checks its record.
 2. Skip the statement when its result is known without the database: a query of `none()`, a filter of `FALSE`, such as of `in([])`, or an `insertMany` without records resolves to no rows without a roundtrip.
-   - Orchid ORM 1.78.47 resolves a query of `whereIn` of an empty list without querying the database ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/where.md#wherein)), and code that filters by a list from a request relies on it.
+   - Orchid ORM 1.78.47 resolves a query of `whereIn` of an empty list without querying the database ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/where.md#wherein)), and code that filters by a list from a request relies on it.
    - Decide what `toSQL` and `$compile` give for a query without a statement.
 
 ## Queries repeated in a statement
@@ -114,11 +114,11 @@ Rows of [`distinctOn`](architecture/queries.md#first-row-of-each-group) in an or
 ## Other options of aggregate functions
 
 Options of the [aggregate functions](architecture/types.md#aggregate-functions) beside `filter` and the `orderBy` of `stringAgg`, which SQL fragments cover until then: `distinct` of any aggregate, ordered-set aggregates as `WITHIN GROUP`, and window functions as `OVER`.
-Orchid ORM 1.78.47 takes `distinct`, `order`, `filter`, `filterOr`, `withinGroup`, and `over` ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/aggregate.md)).
+Orchid ORM 1.78.47 takes `distinct`, `order`, `filter`, `filterOr`, `withinGroup`, and `over` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/aggregate.md)).
 
 ## Arithmetic operators
 
-Operators of numeric expressions, such as `+` and `-`, and the increment of a column, such as of the number of comments of a record, which an update writes as ``sql(t.integer)`${record.commentsCount} + 1` ``, as `increment` and `decrement` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/update.md#increment)).
+Operators of numeric expressions, such as `+` and `-`, and the increment of a column, such as of the number of comments of a record, which an update writes as ``sql(t.integer)`${record.commentsCount} + 1` ``, as `increment` and `decrement` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/update.md#increment)).
 
 - They are a capability of numeric types, which [aggregates by the type of their argument](#aggregates-by-the-type-of-their-argument) would read too.
 - Decide the type of the result of operands of different types, such as `integer` and `bigint`, and of dates and intervals.
@@ -126,14 +126,14 @@ Operators of numeric expressions, such as `+` and `-`, and the increment of a co
 
 ## JSON operators
 
-Operators of `json` and `jsonb` expressions typed by the shape of `of<T>()`, such as `->` and `->>` of a key, to filter by a property, such as `config->>'fieldType' = 'rate'`, and functions of JSON paths, such as `jsonb_path_query_first`, as Orchid ORM 1.78.47 has them ([operators](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/where.md#jsonb-column-operators), [functions](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/json.md)).
+Operators of `json` and `jsonb` expressions typed by the shape of `of<T>()`, such as `->` and `->>` of a key, to filter by a property, such as `config->>'fieldType' = 'rate'`, and functions of JSON paths, such as `jsonb_path_query_first`, as Orchid ORM 1.78.47 has them ([operators](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/where.md#jsonb-column-operators), [functions](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/json.md)).
 
 - Decide the type of `->>` of a property that is not a string, which PostgreSQL gives as text.
 - A missing property is `NULL` whatever the shape, which kern-orm does not validate, so decide whether an expression of a required property is nullable.
 
 ## Computed columns
 
-Columns that a table defines as expressions over its other columns, which queries select, filter, and sort by their keys, such as the kind of an event that a key of its JSON details holds, and fields computed at runtime from selected columns, as `computed` and `computeAtRuntime` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/computed-columns.md)).
+Columns that a table defines as expressions over its other columns, which queries select, filter, and sort by their keys, such as the kind of an event that a key of its JSON details holds, and fields computed at runtime from selected columns, as `computed` and `computeAtRuntime` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/computed-columns.md)).
 
 - Decide whether a table or a schema defines them, so that they can read relations, as a schema defines relations, such as the profit of a record from its related records.
 - Inserts and updates reject them, as [generated columns](#generated-columns); decide whether `select("*")` selects them.
@@ -141,7 +141,7 @@ Columns that a table defines as expressions over its other columns, which querie
 
 ## Updating records with values of each
 
-An update of several records, each with its own values, such as the positions and titles of the fields of a form from a request, in one statement, `UPDATE ... FROM (VALUES ...)` matched by a key, with the values encoded by the types of their columns rather than SQL types written by hand, as `updateMany` and `updateManyBy` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/update.md#updatemany)).
+An update of several records, each with its own values, such as the positions and titles of the fields of a form from a request, in one statement, `UPDATE ... FROM (VALUES ...)` matched by a key, with the values encoded by the types of their columns rather than SQL types written by hand, as `updateMany` and `updateManyBy` of Orchid ORM 1.78.47 ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/update.md#updatemany)).
 
 - The parameters of `VALUES` have no column to type them, so the statement casts them to the cast types of their columns, as `param` with a type does.
 - Arrays of the values of each column, `unnest($1::uuid[], $2::text[])`, would keep the text of the statement the same for any number of records and their parameters within the limit, as [bulk inserts beyond the parameter limit](#bulk-inserts-beyond-the-parameter-limit) weighs for inserts.
@@ -149,12 +149,12 @@ An update of several records, each with its own values, such as the positions an
 
 ## After-commit hooks
 
-Callbacks that run after the current transaction commits, such as sending the notifications of the changes it made, as `$afterCommit` of Orchid ORM 1.78.47 does ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#aftercommit)).
+Callbacks that run after the current transaction commits, such as sending the notifications of the changes it made, as `$afterCommit` of Orchid ORM 1.78.47 does ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/transactions.md#aftercommit)).
 A hook belongs to the level that registers it: rolling the level back discards it, releasing the level passes it to the enclosing level, and it runs after the outermost commit, so that it runs only for the work that the commit keeps, whichever `Db` of the database registers it, as the [motivation](architecture/README.md#motivation) requires.
 
 - Decide what a hook registered outside a transaction does; Orchid ORM runs it on the next microtask.
 - Decide how a failure of a hook is reported once the transaction has committed; Orchid ORM leaves it to `uncaughtException` or `unhandledRejection`.
-- The outermost transaction of code under test is a nested level of the test level, which never commits: decide whether its hooks run when it is released, as in production, and whether the rollback of the test level waits for them, as in Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/transactions.md#after-commit-hooks-in-tests), [orchid-orm#822](https://github.com/romeerez/orchid-orm/pull/822)), so that their queries roll back with the test.
+- The outermost transaction of code under test is a nested level of the test level, which never commits: decide whether its hooks run when it is released, as in production, and whether the rollback of the test level waits for them, as in Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/transactions.md#after-commit-hooks-in-tests), [orchid-orm#822](https://github.com/romeerez/orchid-orm/pull/822)), so that their queries roll back with the test.
   A test level does not count as a transaction for [joining](architecture/transactions.md#joining).
 
 ## Type of the fields of a helper
@@ -184,7 +184,7 @@ A column can declare a default that kern-orm gives an insert that omits the colu
 
 - An insert may omit a column with a runtime default, as one marked with `hasDefault`.
 - Decide whether a default can be an expression, such as a `sql` fragment.
-- Orchid ORM 1.78.47 takes a value or a `sql` fragment of `.default` as a default of the database, which its migrations declare, and only a callback as a default at runtime ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/common-column-methods.md#default)); in kern-orm, a value of `.default` is a runtime default as well.
+- Orchid ORM 1.78.47 takes a value or a `sql` fragment of `.default` as a default of the database, which its migrations declare, and only a callback as a default at runtime ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#default)); in kern-orm, a value of `.default` is a runtime default as well.
 
 ## Generated columns
 
@@ -199,21 +199,9 @@ A helper or an opt-in option of a query for inserts of more values than the 6553
   Orchid ORM splits such an insert by itself, and a failure of a later statement left the transaction aborted ([orchid-orm#811](https://github.com/romeerez/orchid-orm/pull/811)).
 - Benchmark the variants against `VALUES` for small and large numbers of records before choosing.
 
-## Comparison with other ORMs
+## Comparison with other projects
 
-A "Why kern-orm" section of the README and a page of the site that compare kern-orm with other ORMs and query builders, such as Drizzle ORM, Kysely, Prisma, and Orchid ORM, in the scenarios where it differs.
-
-- Collect the differences from the records of other ORMs in tests, [architecture/](architecture/README.md), and this backlog.
-- State each behavior of another ORM only as checked in its documentation, issues, or a named version, with a link.
-
-### What to compare (incomplete list)
-
-- Related records in one statement.
-- Ambient transactions.
-- Tables and queries reused across PostgreSQL schemas.
-- Tests in transactions that roll back.
-- Conventions of column names ([orchid-orm#197](https://github.com/romeerez/orchid-orm/issues/197)).
-- Row locks of a query that selects related records, and of the related records themselves ([row locks](architecture/queries.md#row-locks)).
+A "Why kern-orm" section of the README and a page of the site that compare kern-orm with other ORMs and query builders, such as Drizzle ORM, Kysely, Prisma, and Orchid ORM, in the scenarios of [comparison/](comparison/README.md) where it differs.
 
 ## Keyset pagination
 
@@ -225,6 +213,18 @@ Pages after the sort keys of the last row of the previous page, reading the orde
 
 - Types do not tell a helper of `groupBy`, `orderBy`, `limit`, or `offset`, which a mutation lacks, from one that only selects; the state of a helper could record them.
 - Types do not tell a selection of no fields from none, which needs a new part of the state or of the marker of a helper, and each query would pay for it.
+
+## Index in the callback of `map`
+
+The callback of `map` takes only the record or the value; it should take the arguments of `Array.map`, with the index, as in Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/query-methods.md#map)).
+
+A query of one row passes the index 0, such as `take` after a helper that maps the records.
+
+## `map` only of records
+
+`map` converts the records of a query, but also applies to a query of values, such as of `get`, `pluck`, or an aggregate method, where it has no records to convert; it should reject a query of one value, whose value `transform` converts.
+
+- Decide whether it rejects a query of `pluck` too.
 
 ## `transform` and `map` beyond their current limits
 
@@ -313,7 +313,7 @@ Research: types reject an aggregate whose argument PostgreSQL cannot aggregate, 
 
 ## SQL nullability apart from the values of a type
 
-Research: types tell whether a value can be `NULL` apart from the values of the type, as Orchid ORM does with the type of the database value, so that a type can decode `NULL` to a value, such as `false`, like [`parseNull`](https://orchid-orm.netlify.app/guide/common-column-methods#parsenull) of Orchid ORM 1.78, or a value to `null`, such as `""` of a `varchar` column that is not nullable or a JSON `null` value, and encode it back.
+Research: types tell whether a value can be `NULL` apart from the values of the type, as Orchid ORM does with the type of the database value, so that a type can decode `NULL` to a value, such as `false`, like [`parseNull`](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#parsenull) of Orchid ORM 1.78, or a value to `null`, such as `""` of a `varchar` column that is not nullable or a JSON `null` value, and encode it back.
 
 - Every reading of `null` among the values of a type as `NULL` moves to it: `coalesce`, object conditions, keys and `primaryKey`, the results of operators, and the value of an aggregate without rows.
 - Encoding calls the type for `null` where the type maps it to a value.
@@ -363,11 +363,11 @@ Restricted views of schemas for business logic shared between schemas.
 
 ## Checking tables against the database
 
-A check, such as in tests after migrating, that each table of a schema exists with its columns and their nullability, that a constraint or a unique index backs each of its keys, and that a foreign key backs each required relation `one`, instead of generating migrations from tables, which [architecture/migrations.md](architecture/migrations.md#not-added) leaves out.
+A check, such as in tests after migrating, that each table of a schema exists with its columns and their nullability, that a constraint or a unique index backs each of its keys, and that a foreign key backs each required relation `one`, instead of generating migrations from tables, which [the scope of the migrator](decisions/migrations/migrator-scope.md) leaves out.
 
 ## Recurrent SQL of migrations
 
-SQL that the migrator runs again after every migration, such as of functions and views, as rake-db runs recurrent migrations ([docs](https://github.com/romeerez/orchid-orm/blob/main/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations)).
+SQL that the migrator runs again after every migration, such as of functions and views, as rake-db runs recurrent migrations ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations)).
 
 ## Migration helpers of enums
 
@@ -393,7 +393,7 @@ Types take a query of one value that is `NULL` without its row as a value of a c
 
 An opt-in `brand()` of a column gives its values a type distinct from other values of the same underlying type, so that types reject a mixed-up identifier, such as `db.field.find(formId)` or `db.field.where({ id: formId }).delete()`.
 
-Orchid ORM has [`brand()`](https://orchid-orm.netlify.app/guide/common-column-methods.html#brand), which brands a column by its table and column by default and takes a token for a brand that columns share.
+Orchid ORM has [`brand()`](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#brand), which brands a column by its table and column by default and takes a token for a brand that columns share.
 [orchid-orm#734](https://github.com/romeerez/orchid-orm/issues/734) also proposes inheriting the brand through a foreign key, which that documentation does not state.
 
 Preliminary decisions:

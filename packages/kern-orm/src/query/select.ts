@@ -963,7 +963,7 @@ export class SelectQuery<
     return createInsert(this, records, "many", "insertMany")
   }
 
-  // Overloads rather than one signature that infers the values of a callback, which costs about 10% more for a callback.
+  // Overloads rather than one signature that infers the values of a callback, which costs more for a callback.
   // The last overload takes a callback too, so that a call that matches no overload reports the error of its own form, and a value of `UpdateSet` applies.
   // It records no relations, as an object of values does not.
   // The first overload infers the callback rather than its values: the constraint of the callback types its body by the columns of the table, whereas a type parameter of the values would widen a literal of a column, such as of an enum, to `string` for every overload.
