@@ -110,6 +110,9 @@ export type { OperandUses, ScalarQuery, TypedScalarQuery, ValuesQuery } from "./
 export type { AnySelectQuery, BoundSelectQuery, ResultOf, SelectQuery } from "./query/select"
 export type {
   FilteredStateRows,
+  FoundKey,
+  FoundQueryState,
+  FoundState,
   GroupedState,
   SelectedOperandType,
 } from "./query/select-method-state"
@@ -143,6 +146,7 @@ export type {
   InsertValues,
   UpdateSet,
   UpdateValues,
+  UpsertValues,
 } from "./query/values"
 export type {
   AnySqlQuery,
@@ -179,7 +183,7 @@ export type {
 export { defineExpression } from "./query/reusable-expression"
 export type { ColumnRefKey, MatchCheck, MatchResult, NotAColumn } from "./query/matches"
 export { matches } from "./query/matches"
-export type { KeyCheck, NotAKey, PrimaryKeyValues } from "./query/find"
+export type { KeyCheck, NotAKey, PrimaryKeyColumn, PrimaryKeyValues } from "./query/find"
 export type {
   OrderColumns,
   OrderDirection,

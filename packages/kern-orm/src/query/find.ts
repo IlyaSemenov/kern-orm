@@ -21,6 +21,13 @@ export type PrimaryKeyValues<T extends AnyTable> = T extends AnyTable
     : never
   : never
 
+/** Columns of the primary key of table `T`, or `never` where the type of `T` tells no primary key. */
+export type PrimaryKeyColumn<T extends AnyTable> = T extends AnyTable
+  ? T["keys"] extends TableKeys<infer PrimaryKey extends KeyColumns, infer _UniqueKey>
+    ? PrimaryKey[number]
+    : never
+  : never
+
 /**
  * Check of columns `Columns`, of the object of `findBy` or of `onConflict`, that rejects them unless they are exactly a key of table `T`, primary or unique, as the type of `T` tells.
  *

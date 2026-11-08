@@ -243,6 +243,20 @@ beforeAll(async () => {
       include: ["primary-key/*.ts"],
     }),
   )
+  // The weakest options that kern-orm supports, as the install section of docs/getting-started.md states.
+  await writeFile(
+    join(consumer, "tsconfig.found-key.json"),
+    JSON.stringify({
+      extends: "./tsconfig.json",
+      compilerOptions: {
+        strict: false,
+        strictNullChecks: true,
+        noEmit: true,
+        emitDeclarationOnly: false,
+      },
+      include: ["found-key/*.ts"],
+    }),
+  )
   await writeFile(
     join(consumer, "tsconfig.primary-key-without-strict-null-checks.json"),
     JSON.stringify({
@@ -287,6 +301,10 @@ describe.each([
     run([...tsc, "-p", "tsconfig.type-tests.json"], consumer)
     run([...tsc, "-p", "postgres-js-v3"], consumer)
     run([...tsc, "-p", "postgres-js-v3/tsconfig.declarations.json"], consumer)
+  }, 60_000)
+
+  test("rejects a query of another key in upsert of a consumer with strictNullChecks alone", () => {
+    run([...tsc, "-p", "tsconfig.found-key.json"], consumer)
   }, 60_000)
 
   test("names the reason in the errors of primaryKey() of a nullable type and column", () => {

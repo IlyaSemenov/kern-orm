@@ -34,11 +34,36 @@ export type FilteredState<S extends SelectQueryState> = ChangeState<
   { rows: FilteredStateRows<S>; guaranteed: false }
 >
 
-/** State `S` after a filter followed by `take`, as `find` and `findBy` change it. */
-export type FoundState<S extends SelectQueryState> = ChangeState<
-  S,
-  { rows: OneRow<FilteredStateRows<S>>; guaranteed: false }
->
+// An interface of every part rather than `ChangeState` with `FoundKey`, whose intersection costs each `find` and `findBy` a third more instantiations.
+/** State `S` after a filter followed by `take`, as `find` and `findBy` change it, with the columns `K` of their key for `upsert`. */
+export interface FoundState<S extends SelectQueryState, K extends string>
+  extends SelectQueryState, FoundKey<K> {
+  readonly table: S["table"]
+  readonly schema: S["schema"]
+  readonly result: S["result"]
+  readonly rows: OneRow<FilteredStateRows<S>>
+  readonly value: S["value"]
+  readonly valueType: S["valueType"]
+  readonly fieldTypes: S["fieldTypes"]
+  readonly uses: S["uses"]
+  readonly guaranteed: false
+  readonly aggregate: S["aggregate"]
+}
+
+/** Key of the member of `FoundKey` that makes it invariant in the columns of the key. */
+declare const foundKeyVariance: unique symbol
+
+/** Part of the state of a query of `find` or `findBy` with the columns `K` of its key, which `upsert` applies to. */
+export interface FoundKey<K extends string> {
+  // Outside of `SelectQueryState`, so that every change of the state by `ChangeState` drops it; the methods that keep the state keep it too.
+  readonly foundKey: K
+  // With `foundKey`, it keeps a query of one key from standing for a query of another, even of a key of more columns, so that `upsert` takes the values by the key of the query.
+  // An object of the columns rather than a function of them, which needs `strictFunctionTypes`, and a member rather than a variance annotation, which TypeScript ignores where it compares the members of a state.
+  readonly [foundKeyVariance]: { readonly [C in K]: true }
+}
+
+/** State of a query of `find` or `findBy`, which `upsert` applies to. */
+export type FoundQueryState = SelectQueryState & { readonly foundKey: string }
 
 /** State of a query whose rows are records, which `select` and `clearSelect` change. */
 export type RecordQueryState = SelectQueryState & { readonly value: false }

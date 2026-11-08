@@ -71,6 +71,12 @@ export interface QueryNode extends ResultMode {
   readonly all: boolean
   /** How `map` and `transform` convert the decoded result. */
   readonly conversion: ResultConversion | undefined
+  /**
+   * Values of the columns of the key of `find` or `findBy` of a query of a table without clauses, which `upsert` inserts, or `undefined` for any other query.
+   *
+   * Every method that derives a node from the query drops them, whereas `use` returns the query of its callback, such as the query itself.
+   */
+  readonly foundKey: Readonly<Record<string, unknown>> | undefined
 }
 
 /**
@@ -113,6 +119,7 @@ export function createQueryNode(
     guaranteed: relation?.required ?? false,
     all: false,
     conversion: undefined,
+    foundKey: undefined,
   })
 }
 

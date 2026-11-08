@@ -45,6 +45,19 @@ Without its row, such a query gives `NULL`, so PostgreSQL rejects the statement 
 
 ## Records that already exist
 
+To save a record whether it exists or not, such as the answer of a submission to a field, choose it by its key with `find` or `findBy`, and pass the values of its other columns to `upsert`:
+
+```ts
+await db.answer.findBy({ submissionId, fieldId }).upsert({ value })
+```
+
+`upsert` inserts the record of the key with the values, or sets the values of the existing record, in one statement, so that a concurrent request that inserts the same record does not make it fail on a duplicate key.
+Pass the values that [`insert`](#inserting) takes, apart from the columns of the key, since a missing record is inserted.
+A column that you omit, or give as `undefined`, gets its default in a new record and keeps its value in an existing one.
+`upsert` takes at least one value other than `undefined`.
+
+Call `upsert` right after `find` or `findBy`, without other methods, such as `where`, and select the fields of the record after it, such as `upsert(values).get("id")`.
+
 To insert a record unless a record with the same key exists, such as to add a user to a group they may already belong to, call `onConflict` with the columns of the key right after `insert`, and then `doNothing`:
 
 ```ts
@@ -77,7 +90,7 @@ await db.field.insertMany(fields).onConflict("id").merge("label", "position")
 Give each column that `merge` sets in every record, since a record that omits it would set its default.
 Without columns, `merge` sets every column that the records give, apart from the key.
 
-To compute the new values, pass them to `update`, as to an [update](#updating) of records; its callback also receives the columns of the inserted record, such as to add a count to the existing one:
+To set other values on the existing record than on a new one, pass them to `update`, as to an [update](#updating) of records; its callback also receives the columns of the inserted record, such as to add a count to the existing one:
 
 ```ts
 await db.formView

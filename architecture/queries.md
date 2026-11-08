@@ -134,6 +134,13 @@ Queries come in two kinds that share the query methods and differ only by execut
   - `findBy` infers the columns of its object and checks them with `IsKey`, with an error at the call; a union of objects of the keys would accept the columns of two keys together.
     It takes only the keys that the type of the table tells, and any columns on a table of `any`, such as of `AnySelectQuery`.
 - At runtime, `find` rejects a table without a primary key and a number of values other than the number of its columns, `findBy` rejects columns that `isKey` does not take for a key, and both reject `null` and `undefined`.
+- A query of `find` or `findBy` keeps the key for [`upsert`](mutations.md#upserts):
+  - In types, its state is `FoundState`, which has the part `foundKey` of the columns of the key outside of `SelectQueryState`, so that every change of the state by `ChangeState` drops it; the methods that keep the state, such as `where`, `orderBy`, the row locks, and `use`, keep the part too.
+  - The part is the columns themselves, so that `upsert` takes the values by the key of the query.
+    A member of an object of the columns beside them keeps a query of one key from standing for a query of another, even of a key of more columns, such as a query of `id` for one of `tenantId` and `id`; it does so also where TypeScript compares the members of a state and without `strictFunctionTypes`.
+    So a union of queries of `find` and `findBy` by different keys is a union of different states, which rejects the methods that change the state, such as `select` and `get` ([decision](../decisions/queries/state-changing-methods-on-unions.md), [backlog](../BACKLOG.md#unions-of-queries-of-find-and-findby-by-different-keys)).
+  - `FoundState` is an interface of every part of the state rather than `ChangeState` with the part, so that `find` and `findBy` cost fewer instantiations ([decision](../decisions/mutations/upsert-types.md)).
+  - At runtime, its node keeps the values of the key as `foundKey` only after a query of a table without clauses; every method that derives a node from it drops them, whereas `use` returns the query of its callback, such as the query itself.
 
 ## Sorting and pagination
 

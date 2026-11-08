@@ -9,7 +9,10 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import { defineHelper } from "./helper"
-import type { ResultOf } from "./select"
+import type { SelectQueryKind } from "./kind"
+import type { ResultOf, SelectQuery } from "./select"
+import type { FoundKey } from "./select-method-state"
+import type { QueryStateOf } from "./state"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
 const post = defineTable("post", {
@@ -36,6 +39,21 @@ const blog = defineSchema({ post, comment }).$relations({
 })
 
 const db = createDatabase({ driver: createRecordingDriver().driver }).bind(blog)
+
+const vote = defineTable(
+  "vote",
+  {
+    id: t.uuid.primaryKey().hasDefault(),
+    postId: t.uuid,
+    userId: t.uuid,
+    votes: t.integer,
+    note: t.text.nullable(),
+  },
+  { unique: [["postId", "userId"]] },
+)
+const votes = createDatabase({ driver: createRecordingDriver().driver }).bind(
+  defineSchema({ vote }),
+)
 
 describe("values", () => {
   test("require the columns without a default that are not nullable", () => {
@@ -271,19 +289,6 @@ describe("results", () => {
 })
 
 describe("conflicts", () => {
-  const vote = defineTable(
-    "vote",
-    {
-      id: t.uuid.primaryKey().hasDefault(),
-      postId: t.uuid,
-      userId: t.uuid,
-      votes: t.integer,
-    },
-    { unique: [["postId", "userId"]] },
-  )
-  const votes = createDatabase({ driver: createRecordingDriver().driver }).bind(
-    defineSchema({ vote }),
-  )
   const record = { postId: "post-id", userId: "user-id", votes: 1 }
 
   test("skip the rows that conflict, which insert returns as a missing row", () => {
@@ -385,6 +390,90 @@ describe("conflicts", () => {
   test("need an action before the mutation runs", async () => {
     // @ts-expect-error A conflict without an action is no query to await.
     await votes.vote.insert(record).onConflict()
+  })
+})
+
+describe("upsert", () => {
+  const key = { postId: "post-id", userId: "user-id" }
+
+  test("inserts or updates the record of the key of find or findBy, returning its row", () => {
+    expectTypeOf(votes.vote.findBy(key).upsert({ votes: 1 })).resolves.toEqualTypeOf<number>()
+    expectTypeOf(
+      votes.vote
+        .find("vote-id")
+        .upsert({ ...key, votes: 1 })
+        .get("id"),
+    ).resolves.toEqualTypeOf<string>()
+    expectTypeOf(
+      votes.vote.findBy(key).upsert({ votes: 1, note: null }).select("id", "note"),
+    ).resolves.toEqualTypeOf<{ id: string; note: string | null }>()
+    expectTypeOf(
+      votes.$execute(defineSchema({ vote }).vote.findBy(key).upsert({ votes: 1 })),
+    ).resolves.toEqualTypeOf<number>()
+  })
+
+  test("takes the values of an insert without the columns of the key", () => {
+    votes.vote.findBy(key).upsert({ votes: sql<number>`1`, note: undefined })
+    // @ts-expect-error A column of the key.
+    votes.vote.findBy(key).upsert({ userId: "user-id", votes: 1 })
+    // @ts-expect-error A column of the key.
+    votes.vote.find("vote-id").upsert({ ...key, id: "vote-id", votes: 1 })
+    // @ts-expect-error A column that an insert requires.
+    votes.vote.find("vote-id").upsert({ votes: 1 })
+    // @ts-expect-error A value of another type.
+    votes.vote.findBy(key).upsert({ votes: "many" })
+    // @ts-expect-error Not a column.
+    votes.vote.findBy(key).upsert({ votes: 1, title: "Hello" })
+  })
+
+  test("takes the values by the key of the query, which a query of another key does not stand for", () => {
+    const item = defineTable(
+      "item",
+      {
+        id: t.uuid.primaryKey(),
+        tenantId: t.uuid,
+        title: t.text,
+      },
+      { unique: [["tenantId", "id"]] },
+    )
+    const items = createDatabase({ driver: createRecordingDriver().driver }).bind(
+      defineSchema({ item }),
+    )
+    let byId = items.item.find("item-id")
+    let byTenant = items.item.findBy({ tenantId: "tenant-id", id: "item-id" })
+    // @ts-expect-error A query of another key.
+    byId = items.item.findBy({ tenantId: "tenant-id", id: "item-id" })
+    // @ts-expect-error The query gives `id` but not `tenantId`.
+    byTenant = items.item.find("item-id")
+    const upsertById = (query: typeof byId) => query.upsert({ tenantId: "tenant-id", title: "A" })
+    const upsertByTenant = (query: typeof byTenant) => query.upsert({ title: "A" })
+    // @ts-expect-error A query of another key.
+    void upsertById(items.item.findBy({ tenantId: "tenant-id", id: "item-id" }))
+    // @ts-expect-error The query gives `id` but not `tenantId`.
+    void upsertByTenant(items.item.find("item-id"))
+    const upsertByState = (
+      query: SelectQuery<QueryStateOf<typeof item> & FoundKey<"tenantId" | "id">, SelectQueryKind>,
+    ) => query.upsert({ title: "A" })
+    void upsertByState(items.item.findBy({ tenantId: "tenant-id", id: "item-id" }))
+    // @ts-expect-error The query gives `id` but not `tenantId`.
+    void upsertByState(items.item.find("item-id"))
+  })
+
+  test("applies right after find or findBy", () => {
+    // @ts-expect-error Not a query of find.
+    votes.vote.upsert({ ...key, votes: 1 })
+    // @ts-expect-error Not a query of find.
+    votes.vote.where(key).take().upsert({ votes: 1 })
+    // @ts-expect-error After optional.
+    votes.vote.findBy(key).optional().upsert({ votes: 1 })
+    // @ts-expect-error After a selection.
+    votes.vote.findBy(key).select("id").upsert({ votes: 1 })
+    // @ts-expect-error After get.
+    votes.vote.findBy(key).get("id").upsert({ votes: 1 })
+    // @ts-expect-error After an update.
+    votes.vote.findBy(key).update({ votes: 1 }).upsert({ votes: 1 })
+    // @ts-expect-error After an upsert.
+    votes.vote.findBy(key).upsert({ votes: 1 }).onConflict()
   })
 })
 

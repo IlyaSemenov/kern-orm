@@ -112,7 +112,11 @@ export function transformQuery(
   callback: (result: unknown) => unknown,
 ): AnyTransformedQuery {
   return new TransformedQuery(
-    Object.freeze({ ...node, conversion: addTransform(node.conversion, callback) }),
+    Object.freeze({
+      ...node,
+      conversion: addTransform(node.conversion, callback),
+      foundKey: undefined,
+    }),
     db,
   )
 }

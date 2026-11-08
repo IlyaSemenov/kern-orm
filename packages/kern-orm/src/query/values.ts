@@ -40,6 +40,17 @@ export type InsertValues<T extends AnyTable> = {
   readonly [K in OptionalColumnKey<T>]?: ColumnValue<T, K> | undefined
 }
 
+// A mapped type of its own: a parameter of `InsertValues` for the columns of the key costs each insert more instantiations, and `Omit` of `InsertValues` costs each upsert a fifth more.
+/** Values of `upsert` into table `T`: a record of an insert without the columns `K` of the key, whose values `find` or `findBy` gives. */
+export type UpsertValues<T extends AnyTable, K extends string> = {
+  readonly [C in keyof T["columns"] as C extends OptionalColumnKey<T> | K ? never : C]: ColumnValue<
+    T,
+    C
+  >
+} & {
+  readonly [C in Exclude<OptionalColumnKey<T>, K>]?: ColumnValue<T, C> | undefined
+}
+
 /** Values of the columns of table `T` that an update sets; a column omitted or given as `undefined` keeps its value. */
 export type UpdateValues<T extends AnyTable> = {
   readonly [K in keyof T["columns"]]?: ColumnValue<T, K> | undefined

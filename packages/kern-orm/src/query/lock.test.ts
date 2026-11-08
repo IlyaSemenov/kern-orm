@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
-import { describePooledPostgres } from "../../testing/postgres"
-import { sql } from "../expression/sql"
+import {
+  describePooledPostgres,
+  startsWaiting,
+  startWaiting,
+  whileHolding,
+} from "../../testing/postgres"
 import { NotFoundError, RequiredRelationError } from "../result/result"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -216,75 +220,10 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
     }
   }
 
-  /**
-   * Runs `callback` while a transaction holds what `statement` takes, with what it gives, and commits it at the latest when `callback` ends.
-   *
-   * `callback` runs outside the transaction, on connections of its own, and can commit it earlier.
-   */
-  async function whileHolding<H>(
-    statement: () => PromiseLike<H>,
-    callback: (held: H, commit: () => Promise<void>) => Promise<void>,
-  ): Promise<void> {
-    const held = Promise.withResolvers<H>()
-    const release = Promise.withResolvers<void>()
-    const transaction = db.$transaction(async () => {
-      held.resolve(await statement())
-      await release.promise
-    })
-    const value = await Promise.race([held.promise, transaction.then(() => held.promise)])
-    const commit = () => {
-      release.resolve()
-      return transaction
-    }
-    try {
-      await callback(value, commit)
-    } finally {
-      await commit()
-    }
-  }
-
-  /** Tells whether the backend `pid` starts waiting for a lock soon; `pg_blocking_pids` reads the locks themselves, whereas `pg_stat_activity` keeps its snapshot in a transaction. */
-  async function startsWaiting(pid: number): Promise<boolean> {
-    const deadline = Date.now() + 3000
-    while (Date.now() < deadline) {
-      const { waiting } = await db.$select({
-        waiting: sql(t.boolean)`cardinality(pg_blocking_pids(${pid}::integer)) > 0`,
-      })
-      if (waiting) {
-        return true
-      }
-    }
-    return false
-  }
-
-  /** Starts a transaction that runs `statement` and returns once `statement` waits for a lock, with the backend of the transaction and the promise of what it gives after the wait. */
-  async function startWaiting<T>(
-    statement: () => PromiseLike<T>,
-  ): Promise<{ pid: number; result: Promise<T> }> {
-    const backend = Promise.withResolvers<number>()
-    const result = db.$transaction(async () => {
-      const { pid } = await db.$select({
-        pid: sql(t.integer)`pg_backend_pid()`,
-      })
-      backend.resolve(pid)
-      return await statement()
-    })
-    // It rejects the test if the transaction fails before it reads its backend.
-    const pid = await Promise.race([backend.promise, result.then(() => backend.promise)])
-    const waiting = await Promise.race([
-      startsWaiting(pid),
-      // It rejects the test if the transaction fails before the statement waits.
-      result.then(() => false),
-    ])
-    if (!waiting) {
-      throw new Error("The statement did not wait for a lock")
-    }
-    return { pid, result }
-  }
-
   // Orchid ORM 1.78.37 selects a relation with LEFT JOIN LATERAL, so its forUpdate() of such a query fails with "FOR UPDATE cannot be applied to the nullable side of an outer join", and it must name the table: forUpdate(["idea"]).
   it("locks only the row of the query, whatever related records it selects", async () => {
     await whileHolding(
+      db,
       () =>
         db.field
           .find(1)
@@ -304,6 +243,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks a related record that the query of its parent does not lock", async () => {
     await whileHolding(
+      db,
       () =>
         db.field.find(1).select(field => ({
           lockedFormId: field.form.where({ published: true }).get("id").forUpdate(),
@@ -318,6 +258,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks all the rows of a nested query of many rows", async () => {
     await whileHolding(
+      db,
       () =>
         db.form.find(1).select(form => ({
           fieldIds: form.fields.orderBy({ id: "desc" }).pluck("id").forUpdate(),
@@ -333,9 +274,10 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("takes the locks of a nested query of many rows in its order, whichever order a scan reads its rows in", async () => {
     await whileHolding(
+      db,
       () => db.field.find(1).forUpdate(),
       async (_held, commit) => {
-        const { result } = await startWaiting(() =>
+        const { result } = await startWaiting(db, () =>
           db.form.find(1).select(form => ({
             fieldIds: form.fields.orderBy({ id: "desc" }).pluck("id").forUpdate(),
           })),
@@ -351,6 +293,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks the rows of a sorted query and their related records", async () => {
     await whileHolding(
+      db,
       () =>
         db.field
           .where(field => field.id.in([1, 3]))
@@ -376,6 +319,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks a row without selecting a field, and rejects without the row", async () => {
     await whileHolding(
+      db,
       () => db.form.find(1).forUpdate(),
       async selected => {
         expect(selected).toEqual({})
@@ -389,6 +333,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks the rows of a page, of the rows it skips too, as PostgreSQL does", async () => {
     await whileHolding(
+      db,
       () => db.form.orderBy("id").limit(1).offset(1).pluck("id").forUpdate(),
       async ids => {
         expect(ids).toEqual([2])
@@ -400,6 +345,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("releases the lock of a nested transaction that rolls back", async () => {
     await whileHolding(
+      db,
       () =>
         db.$transaction(async () => {
           await db.form.find(1).forUpdate()
@@ -419,9 +365,10 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks a related record before the row of its parent, which stays free while it waits", async () => {
     await whileHolding(
+      db,
       () => db.form.find(1).forUpdate(),
       async (_held, commit) => {
-        const { result } = await startWaiting(() =>
+        const { result } = await startWaiting(db, () =>
           db.field
             .find(1)
             .select(field => ({
@@ -440,6 +387,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
   // Orchid ORM 1.78.37 selects a relation with LEFT JOIN LATERAL, whose row PostgreSQL 18 does not read again after the wait: its query gives and locks only the related record of the old row.
   it("reads and locks the related record of the row that another transaction moves while it waits, after locking the row, and keeps the lock of the old record", async () => {
     await whileHolding(
+      db,
       () => db.field.find(1).update({ formId: 2 }),
       async (_held, commitMove) => {
         const selectField = () =>
@@ -453,14 +401,15 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
         // It keeps the foreign key of the move, which holds `FOR KEY SHARE` of the new form, from waiting.
         await whileHolding(
+          db,
           () => db.form.find(2).forNoKeyUpdate(),
           async (_form, commitForm) => {
-            const { pid, result } = await startWaiting(selectField)
+            const { pid, result } = await startWaiting(db, selectField)
             expect(await isLocked(db.form.find(1))).toBe(true)
 
             // The move no longer holds the query, which now waits for the new form with the row locked.
             await commitMove()
-            expect(await startsWaiting(pid)).toBe(true)
+            expect(await startsWaiting(db, pid)).toBe(true)
             expect(await isLocked(db.field.find(1))).toBe(true)
 
             await commitForm()
@@ -473,6 +422,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("does not find a related record created after its statement started, which it reads again after the wait", async () => {
     await whileHolding(
+      db,
       async () => {
         await db.form.insert({
           id: 3,
@@ -481,7 +431,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
         await db.field.find(1).update({ formId: 3 })
       },
       async (_held, commit) => {
-        const { result } = await startWaiting(() =>
+        const { result } = await startWaiting(db, () =>
           db.field
             .find(1)
             .select(field => ({
@@ -498,9 +448,10 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("checks a filter of a related record against the row that another transaction commits while it waits", async () => {
     await whileHolding(
+      db,
       () => db.form.find(1).update({ published: false }),
       async (_held, commit) => {
-        const { result } = await startWaiting(() =>
+        const { result } = await startWaiting(db, () =>
           db.field.find(1).select(field => ({
             publishedFormId: field.form.where({ published: true }).get("id").forShare(),
           })),
@@ -514,6 +465,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("takes the next free row with skipLocked, and rejects a locked one with noWait", async () => {
     await whileHolding(
+      db,
       () => db.field.find(1).forUpdate(),
       async () => {
         await db.$transaction(async () => {
@@ -536,9 +488,11 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks the related record of a row that skipLocked leaves out, since a nested query runs before the lock of the row", async () => {
     await whileHolding(
+      db,
       () => db.field.find(3).forUpdate(),
       async () => {
         await whileHolding(
+          db,
           () =>
             db.field
               .orderBy({ formId: "desc" }, "id")
@@ -562,6 +516,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("takes the next free row in one statement of a mutation, outside a transaction", async () => {
     await whileHolding(
+      db,
       () => db.field.find(1).forUpdate(),
       async () => {
         const taken = await db.field
@@ -580,6 +535,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("locks the record that a value of an insert or an update reads", async () => {
     await whileHolding(
+      db,
       async () => {
         await db.field.insert({
           id: 4,
@@ -599,6 +555,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
   it("shows what the lock waited for only to the next statement, since one statement reads one snapshot", async () => {
     await whileHolding(
+      db,
       async () => {
         await db.form.find(1).forUpdate()
         await db.field.insert({
@@ -608,7 +565,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
         })
       },
       async (_held, commit) => {
-        const { result } = await startWaiting(async () => {
+        const { result } = await startWaiting(db, async () => {
           const inserted = await db.field
             .insert({
               id: 5,

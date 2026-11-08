@@ -1,6 +1,11 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
-import { describePostgres } from "../../testing/postgres"
+import {
+  describePooledPostgres,
+  describePostgres,
+  startWaiting,
+  whileHolding,
+} from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
 import { coalesce } from "../expression/functions"
@@ -37,6 +42,18 @@ const schema = defineSchema({ form, field }).$relations({
     form: one(form, { from: "formId", to: "id", required: true }),
   },
 })
+
+const vote = defineTable(
+  "vote",
+  {
+    id: t.integer.primaryKey().hasDefault(),
+    formId: t.integer.columnName("form_id"),
+    userId: t.integer.columnName("user_id"),
+    votes: t.integer,
+    note: t.text.nullable(),
+  },
+  { unique: [["formId", "userId"]] },
+)
 
 /** Binds the schema to a database whose driver answers every statement with `rows`, reporting `count` rows. */
 function connect(count: number, rows: string[][] = []) {
@@ -94,17 +111,6 @@ describe("insert", () => {
 })
 
 describe("conflicts", () => {
-  const vote = defineTable(
-    "vote",
-    {
-      id: t.integer.primaryKey().hasDefault(),
-      formId: t.integer.columnName("form_id"),
-      userId: t.integer.columnName("user_id"),
-      votes: t.integer,
-      note: t.text.nullable(),
-    },
-    { unique: [["formId", "userId"]] },
-  )
   const record = { formId: 1, userId: 2, votes: 3 }
 
   it("skip the rows that conflict on a key, named in its order, or on any key", () => {
@@ -258,6 +264,96 @@ describe("conflicts", () => {
     await expect(Promise.resolve(target as unknown)).rejects.toThrow(
       "onConflict needs an action before the mutation runs, such as doNothing()",
     )
+  })
+})
+
+describe("upsert", () => {
+  it("inserts the record of the key of find or findBy, updating the columns of the values on a conflict on the key, named in its order", () => {
+    expect(
+      from(vote).findBy({ userId: 2, formId: 1 }).upsert({ votes: 3, note: undefined }).toSQL(),
+    ).toEqual({
+      text: 'INSERT INTO "vote" AS "vote" ("user_id", "form_id", "votes") VALUES ($1, $2, $3) ON CONFLICT ("form_id", "user_id") DO UPDATE SET "votes" = "excluded"."votes"',
+      parameters: ["2", "1", "3"],
+    })
+    expect(from(vote).find(5).upsert({ formId: 1, userId: 2, votes: 3 }).toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("id", "form_id", "user_id", "votes") VALUES ($1, $2, $3, $4) ON CONFLICT ("id") DO UPDATE SET "form_id" = "excluded"."form_id", "user_id" = "excluded"."user_id", "votes" = "excluded"."votes"',
+    )
+  })
+
+  it("changes rows one and returns the fields selected after it", () => {
+    const upserted = from(vote).findBy({ formId: 1, userId: 2 }).upsert({ votes: 3 })
+
+    expect(upserted.node).toMatchObject({ rows: "one", value: false })
+    expect(upserted.get("id").toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3) ON CONFLICT ("form_id", "user_id") DO UPDATE SET "votes" = "excluded"."votes" RETURNING "vote"."id" AS "id"',
+    )
+  })
+
+  it("applies only right after find or findBy of a query of a table without clauses", () => {
+    let relation: AnySelectQuery | undefined
+    schema.form.select(columns => {
+      relation = columns.fields
+      return {}
+    })
+    const message =
+      "upsert applies only right after find or findBy of a query of a table without clauses, such as filters, optional, or selected fields; select the fields that it returns after it"
+
+    for (const query of [
+      schema.form,
+      schema.form.where({ name: "Survey" }).find(1),
+      schema.form.find(1).where({ name: "Survey" }),
+      schema.form.find(1).optional(),
+      schema.form.find(1).nullable(),
+      schema.form.find(1).required(),
+      schema.form.select("id").find(1),
+      schema.form.find(1).select("id"),
+      schema.form.orderBy("id").find(1),
+      schema.form.take().find(1),
+      schema.form.all().find(1),
+      schema.form.find(1).forUpdate(),
+      schema.form.find(1).map(row => row),
+      relation!.findBy({ id: 1 }),
+    ] as AnySelectQuery[]) {
+      expect(() => query.upsert({ name: "Survey" })).toThrow(message)
+    }
+    // `use` returns the query of its callback, here the query of `find` itself.
+    expect(
+      schema.form
+        .find(1)
+        .use(query => query)
+        .upsert({ name: "Survey" })
+        .toSQL().text,
+    ).toBe(
+      'INSERT INTO "form" AS "form" ("id", "name") VALUES ($1, $2) ON CONFLICT ("id") DO UPDATE SET "name" = "excluded"."name"',
+    )
+  })
+
+  it("rejects a value of a column of the key, values without a value, and values that are no object", () => {
+    const found = from(vote).find(5) as AnySelectQuery
+
+    expect(() => found.upsert({ id: 6, votes: 1 })).toThrow(
+      'upsert takes the values of the columns other than the key of find or findBy, not of "id"',
+    )
+    expect(found.upsert({ id: undefined, votes: 1 }).toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("id", "votes") VALUES ($1, $2) ON CONFLICT ("id") DO UPDATE SET "votes" = "excluded"."votes"',
+    )
+    for (const values of [{}, { votes: undefined }]) {
+      expect(() => found.upsert(values)).toThrow(
+        "upsert takes the value of at least one column other than the key; to insert the record of the key unless it exists, use insert(...).onConflict(...).doNothing()",
+      )
+    }
+    expect(() => found.upsert(null as never)).toThrow(
+      'upsert takes the values of the columns of table "vote"',
+    )
+  })
+
+  it("leaves the query of find unchanged and resolves to the number or the fields of the row", async () => {
+    const { db } = connect(1, [["1"]])
+    const found = db.form.find(1)
+
+    expect(await found.upsert({ name: "Survey" })).toBe(1)
+    expect(await found.upsert({ name: "Survey" }).get("id")).toBe(1)
+    expect(found.toSQL().text).toBe('SELECT FROM "app"."form" AS "form" WHERE "form"."id" = $1')
   })
 })
 
@@ -1001,6 +1097,97 @@ describePostgres("conflicts in PostgreSQL", ({ database, testTransaction, useTes
         }),
       ).rejects.toThrow(/duplicate key value violates unique constraint/)
     })
+  })
+})
+
+describePostgres("upsert in PostgreSQL", ({ database, testTransaction, useTestFixture }) => {
+  useTestFixture(() =>
+    database.script(`
+      CREATE TABLE vote (
+        id integer PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+        form_id integer NOT NULL,
+        user_id integer NOT NULL,
+        votes integer NOT NULL,
+        note text,
+        UNIQUE (form_id, user_id)
+      );
+      INSERT INTO vote (id, form_id, user_id, votes, note) OVERRIDING SYSTEM VALUE VALUES (100, 1, 1, 2, 'kept');
+    `),
+  )
+
+  const db = database.bind(defineSchema({ vote }))
+
+  it("inserts the record of a missing key and updates the values of an existing one, returning its row", async () => {
+    const result = await testTransaction(async () => ({
+      inserted: await db.vote
+        .findBy({ formId: 1, userId: 2 })
+        .upsert({ votes: 3 })
+        .select("votes", "note"),
+      updated: await db.vote
+        .findBy({ userId: 1, formId: 1 })
+        .upsert({ votes: 5 })
+        .select("id", "votes", "note"),
+      count: await db.vote.find(100).upsert({ formId: 1, userId: 1, votes: 7, note: null }),
+      votes: await db.vote.orderBy("userId").select("userId", "votes", "note"),
+    }))
+
+    expect(result).toEqual({
+      inserted: { votes: 3, note: null },
+      updated: { id: 100, votes: 5, note: "kept" },
+      count: 1,
+      votes: [
+        { userId: 1, votes: 7, note: null },
+        { userId: 2, votes: 3, note: null },
+      ],
+    })
+  })
+})
+
+// Testing concurrent upserts requires separate connections, which see only committed rows, so these tests commit them in a PostgreSQL schema of their own, which each test drops.
+describePooledPostgres("concurrent upserts in PostgreSQL", ({ database }) => {
+  const db = database.bind(defineSchema({ vote }), { schemaName: "upsert_test" })
+
+  // The lock timeout fails a test that a transaction left open rather than hanging the others.
+  beforeEach(() =>
+    database.script(`
+      SET LOCAL client_min_messages = warning;
+      SET LOCAL lock_timeout = '5s';
+      DROP SCHEMA IF EXISTS upsert_test CASCADE;
+      CREATE SCHEMA upsert_test;
+      CREATE TABLE upsert_test.vote (
+        id integer PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+        form_id integer NOT NULL,
+        user_id integer NOT NULL,
+        votes integer NOT NULL,
+        note text,
+        UNIQUE (form_id, user_id)
+      );
+    `),
+  )
+  afterEach(() =>
+    database.script(`
+      SET LOCAL client_min_messages = warning;
+      SET LOCAL lock_timeout = '5s';
+      DROP SCHEMA upsert_test CASCADE;
+    `),
+  )
+
+  // Orchid ORM 1.78.47 runs an UPDATE and, without its row, a second statement that inserts the record, so of two concurrent upserts of a missing record one rejects with a unique violation: https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/sql/to-sql.ts#L196-L280
+  it("updates the record that a concurrent upsert inserted once its transaction commits", async () => {
+    const upsert = (votes: number) =>
+      db.vote.findBy({ formId: 1, userId: 1 }).upsert({ votes }).get("votes")
+
+    await whileHolding(
+      db,
+      () => upsert(1),
+      async (inserted, commit) => {
+        expect(inserted).toBe(1)
+        const { result } = await startWaiting(db, () => upsert(2))
+        await commit()
+        expect(await result).toBe(2)
+      },
+    )
+    expect(await db.vote.select("votes")).toEqual([{ votes: 2 }])
   })
 })
 

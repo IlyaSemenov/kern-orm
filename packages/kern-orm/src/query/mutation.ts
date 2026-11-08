@@ -12,7 +12,7 @@ import type { OperandValue } from "../expression/operators/comparison"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable, Selectable } from "../table/table"
-import { requireColumn } from "../table/table"
+import { findKey, requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import type { SynchronousResult } from "./conversion"
@@ -685,12 +685,69 @@ export function createInsert(
   rows: "one" | "many",
   method: string,
 ): AnyMutationQuery {
-  const { node } = query
-  if (!isTableQuery(node)) {
+  if (!isTableQuery(query.node)) {
     throw new Error(
       `${method} applies only to a query of a table without clauses, such as filters or selected fields; select the fields that it returns after it`,
     )
   }
+  return createInsertInto(query, records, rows, method)
+}
+
+// One statement of `ON CONFLICT ... DO UPDATE`, rather than an update followed by an insert without its row, so that concurrent upserts of a missing record do not reject with a unique violation.
+/**
+ * Creates the upsert of `values` by `query`, a query of `find` or `findBy` of a table without other clauses.
+ *
+ * It inserts the values of the key of `query` with `values`, and on a conflict on that key sets the columns of `values` of the existing record, as `merge` of `onConflict` does.
+ * It rejects another query, values that are not an object, a value of a column of the key, and values without a value other than `undefined`.
+ */
+export function createUpsert(query: AnySelectQuery, values: unknown): AnyMutationQuery {
+  const { table } = query
+  const { foundKey } = query.node
+  if (foundKey === undefined) {
+    throw new Error(
+      "upsert applies only right after find or findBy of a query of a table without clauses, such as filters, optional, or selected fields; select the fields that it returns after it",
+    )
+  }
+  if (typeof values !== "object" || values === null) {
+    throw new TypeError(`upsert takes the values of the columns of table "${table.name}"`)
+  }
+  const key = Object.keys(foundKey)
+  const record: Record<string, unknown> = {}
+  for (const column of key) {
+    record[column] = foundKey[column]
+  }
+  let hasValues = false
+  for (const column of Object.keys(values)) {
+    const value = (values as Record<string, unknown>)[column]
+    if (value === undefined) {
+      continue
+    }
+    if (Object.hasOwn(foundKey, column)) {
+      throw new Error(
+        `upsert takes the values of the columns other than the key of find or findBy, not of "${column}"`,
+      )
+    }
+    record[column] = value
+    hasValues = true
+  }
+  if (!hasValues) {
+    throw new Error(
+      "upsert takes the value of at least one column other than the key; to insert the record of the key unless it exists, use insert(...).onConflict(...).doNothing()",
+    )
+  }
+  const insert = createInsertInto(query, [record], "one", "upsert")
+  // `find` and `findBy` take only the values of the columns of a key.
+  return new ConflictTarget(insert, findKey(table, key)!).merge()
+}
+
+/** Creates the insert of `records` into the occurrence of the table of `query`, whose clauses it does not read, in rows mode `rows` of the method named by `method`. */
+function createInsertInto(
+  query: AnySelectQuery,
+  records: readonly unknown[],
+  rows: "one" | "many",
+  method: string,
+): AnyMutationQuery {
+  const { node } = query
   const { columns, values } = toInsertRows(node.from.table, records, method)
   return new MutationQuery(
     query.table,

@@ -257,6 +257,11 @@ export const conflictMethods = {
   then: insertFormConflict("Draft").then,
 }
 
+/** Starts a query of the form of a name, which `upsert` applies to; see the file header. */
+export function findFormByName(name: string) {
+  return schema.form.findBy({ name })
+}
+
 /** Deletes the forms of a name and returns the records of a relation of each; see the file header. */
 export const deleteFormsWithFields = schema.form
   .where({ name: "Draft" })
@@ -321,6 +326,7 @@ export const formMethods = {
   use: schema.form.use,
   insert: schema.form.insert,
   insertMany: schema.form.insertMany,
+  upsert: schema.form.upsert,
   update: schema.form.update,
   delete: schema.form.delete,
   all: schema.form.all,

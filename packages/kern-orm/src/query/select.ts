@@ -22,7 +22,7 @@ import type { ExistsValueType } from "./exists"
 import { getExistsProjection, isExistsQuery } from "./exists"
 import type { EqValue, QueryWhereFilter, WhereFilter } from "./filters"
 import { addUserFilter } from "./filters"
-import type { KeyCheck, PrimaryKeyValues } from "./find"
+import type { KeyCheck, PrimaryKeyColumn, PrimaryKeyValues } from "./find"
 import { toKeyValues, toPrimaryKeyValues } from "./find"
 import type { GroupTerms, QueryHavingFilter } from "./group"
 import { addGroupKeys, addHaving } from "./group"
@@ -31,9 +31,9 @@ import { compileToSQL, executeOnAwait } from "./kind"
 import type { RowLockOptions } from "./lock"
 import { createRowLock } from "./lock"
 import type { AnyMutationQuery, InitialInsertState, InitialMutationState } from "./mutation"
-import { createDelete, createInsert, createUpdate, MutationQuery } from "./mutation"
+import { createDelete, createInsert, createUpdate, createUpsert, MutationQuery } from "./mutation"
 import type { QueryNode } from "./node"
-import { createQueryNode } from "./node"
+import { createQueryNode, isTableQuery } from "./node"
 import type {
   ExpressionQueryState,
   OperandUses,
@@ -55,6 +55,7 @@ import type {
   ColumnValueType,
   CountState,
   FilteredState,
+  FoundQueryState,
   FoundState,
   GroupedState,
   LockableQueryState,
@@ -89,7 +90,7 @@ import type {
   QueryStateOf,
   SelectQueryState,
 } from "./state"
-import type { InsertValues, UpdateSet, UpdateValues } from "./values"
+import type { InsertValues, UpdateSet, UpdateValues, UpsertValues } from "./values"
 
 // Declared in the module of `SelectQuery`: declared in another module, it keeps TypeScript 6 and `bun check` from reducing a union of queries that differ by their fields, such as `cond ? query.select("id", "title") : query.select("id")`, to one query, so that methods that change the state reject the union.
 /** State `S` with the parts of `Changes` replaced. */
@@ -251,11 +252,12 @@ export class SelectQuery<
    *
    * A value is what `where` takes for its column, such as an expression, but never `null` or `undefined`.
    * Without a row, it rejects with `NotFoundError` unless `optional` or `nullable` makes the query resolve to `undefined` or `null`.
+   * To insert the record of the key or update the existing one, call `upsert` right after it.
    */
   find<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
     ...values: PrimaryKeyValues<S["table"]>
-  ): SelectQuery<FoundState<S>, Kind>
+  ): SelectQuery<FoundState<S, PrimaryKeyColumn<S["table"]>>, Kind>
   find(...values: readonly unknown[]): unknown {
     return this.takeWhere(toPrimaryKeyValues(this.table, values))
   }
@@ -265,6 +267,7 @@ export class SelectQuery<
    *
    * A value is what `where` takes for its column, such as an expression, but never `null` or `undefined`.
    * Without a row, it rejects with `NotFoundError` unless `optional` or `nullable` makes the query resolve to `undefined` or `null`.
+   * To insert the record of the key or update the existing one, call `upsert` right after it.
    */
   findBy<
     S extends SelectQueryState,
@@ -274,7 +277,7 @@ export class SelectQuery<
     this: SelectQuery<S, Kind>,
     // A mapped type rather than an alias, so that errors show the columns and their values rather than the table.
     values: { readonly [C in K]: NonNullable<EqValue<S["table"], C>> } & KeyCheck<S["table"], K>,
-  ): SelectQuery<FoundState<S>, Kind>
+  ): SelectQuery<FoundState<S, K>, Kind>
   findBy(values: unknown): unknown {
     return this.takeWhere(toKeyValues(this.table, values))
   }
@@ -989,6 +992,22 @@ export class SelectQuery<
     return createInsert(this, records, "many", "insertMany")
   }
 
+  /**
+   * Inserts the record of the key of `find` or `findBy` with `values`, or updates `values` of the existing record of the key, in one statement, and resolves to the number of the inserted or updated rows, `1`.
+   *
+   * `values` takes what `insert` takes, apart from the columns of the key, and at least one value other than `undefined`; a column omitted or given as `undefined` gets its default when the record is inserted and keeps its value when the record is updated.
+   * Call it right after `find` or `findBy` of a query of a table without other clauses, such as filters.
+   * Select the fields that it returns after it, such as `upsert(values).get("id")`.
+   * To update the existing record with other values than the inserted ones, such as to increment a counter, call `onConflict` after `insert` instead.
+   */
+  upsert<S extends FoundQueryState, Kind extends SelectQueryKind>(
+    this: SelectQuery<S, Kind>,
+    values: UpsertValues<S["table"], S["foundKey"]>,
+  ): MutationQuery<InitialMutationState<S["table"], S["schema"], "one">, Kind>
+  upsert(values: unknown): unknown {
+    return createUpsert(this, values)
+  }
+
   // Overloads rather than one signature that infers the values of a callback, which costs more for a callback.
   // The last overload takes a callback too, so that a call that matches no overload reports the error of its own form, and a value of `UpdateSet` applies.
   // It records no relations, as an object of values does not.
@@ -1165,11 +1184,11 @@ export class SelectQuery<
     return createNode({ kind: "nestedQuery", query: node, db: this.db as AnyDb | undefined })
   }
 
-  /** Creates a query of the same kind and `Db` with the node changes applied. */
+  /** Creates a query of the same kind and `Db` with the node changes applied, dropping the key of `find` and `findBy` unless the changes give it. */
   private derive(changes: Partial<QueryNode>): AnySelectQuery {
     return new SelectQuery(
       this.table,
-      Object.freeze({ ...this.node, ...changes }),
+      Object.freeze({ ...this.node, foundKey: undefined, ...changes }),
       this.context,
       this.db as AnyDb | undefined,
     )
@@ -1234,11 +1253,18 @@ export class SelectQuery<
 
   // The values of a key match at most one row, so a query of many rows becomes a query of rows `one` without a limit, which rejects several rows, such as where the database lacks the key or a value depends on the row, as a relation `one` does.
   // Without a limit, a mutation tells a query of `find` from one of `take`, whose rows it cannot limit.
-  /** Creates the query of `find` and `findBy`: `where` of `values`, an object of column values, returning one row like `take`. */
+  /**
+   * Creates the query of `find` and `findBy`: `where` of `values`, an object of the values of the columns of a key, returning one row like `take`.
+   *
+   * On a query of a table without clauses, it keeps `values` as the key that `upsert` inserts.
+   */
   private takeWhere(values: Record<string, unknown>): AnySelectQuery {
     const changes = this.addFilter(values)
     if (changes.rows === "many") {
       changes.rows = "one"
+    }
+    if (isTableQuery(this.node)) {
+      changes.foundKey = Object.freeze(values)
     }
     return this.derive(changes)
   }

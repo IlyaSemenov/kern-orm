@@ -20,6 +20,7 @@ import { desc, orderBy } from "./order"
 import type { QueryResult } from "./rows"
 import type { AnySelectQuery, ResultOf, SelectQuery } from "./select"
 import { from } from "./select"
+import type { FoundKey } from "./select-method-state"
 import type { Selection } from "./selection"
 import type { EmptyRecord, InitialQueryState, QueryStateOf } from "./state"
 
@@ -265,9 +266,13 @@ describe("find and findBy", () => {
     defineSchema({ user, membership }),
   )
 
-  test("find returns one row by the values of the primary key, as where followed by take", () => {
+  test("find returns one row by the values of the primary key, as where followed by take, and keeps the columns of the key for upsert", () => {
     const query = from(user).select("name").find("user-id")
-    expectTypeOf(query).toEqualTypeOf(from(user).select("name").where({ id: "user-id" }).take())
+    const taken = from(user).select("name").where({ id: "user-id" }).take()
+    expectTypeOf<Omit<(typeof query)["types"], keyof FoundKey<string>>>().toEqualTypeOf<
+      (typeof taken)["types"]
+    >()
+    expectTypeOf<(typeof query)["types"]["foundKey"]>().toEqualTypeOf<"id">()
     expectTypeOf<Executed<typeof query>>().toEqualTypeOf<{ name: string }>()
 
     const role = usersDb.membership.find("user-id", "group-id").get("role")
@@ -303,11 +308,13 @@ describe("find and findBy", () => {
     from(widenedUser).find("user-id")
   })
 
-  test("findBy returns one row by the values of the columns of one key, primary or unique, in any order", () => {
+  test("findBy returns one row by the values of the columns of one key, primary or unique, in any order, and keeps the columns of the key for upsert", () => {
     const query = from(user).select("name").findBy({ email: "ann@example.com" })
-    expectTypeOf(query).toEqualTypeOf(
-      from(user).select("name").where({ email: "ann@example.com" }).take(),
-    )
+    const taken = from(user).select("name").where({ email: "ann@example.com" }).take()
+    expectTypeOf<Omit<(typeof query)["types"], keyof FoundKey<string>>>().toEqualTypeOf<
+      (typeof taken)["types"]
+    >()
+    expectTypeOf<(typeof query)["types"]["foundKey"]>().toEqualTypeOf<"email">()
     expectTypeOf<Executed<typeof query>>().toEqualTypeOf<{ name: string }>()
 
     const role = usersDb.membership.findBy({ groupId: "group-id", userId: "user-id" }).get("role")
@@ -317,6 +324,18 @@ describe("find and findBy", () => {
     from(membership).select(columns => ({
       user: from(user).findBy({ id: columns.userId }),
     }))
+  })
+
+  test("find and findBy of different keys give queries of different states, whose union rejects the methods that change the state", () => {
+    const query =
+      Math.random() > 0.5
+        ? from(user).find("user-id")
+        : from(user).findBy({ email: "ann@example.com" })
+    expectTypeOf(query.where({ name: "Ann" })).toEqualTypeOf(query)
+    // @ts-expect-error No single state describes both queries.
+    query.select("name")
+    // @ts-expect-error No single state describes both queries.
+    query.get("name")
   })
 
   test("findBy rejects columns that are not exactly one key", () => {

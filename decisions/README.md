@@ -48,6 +48,7 @@ Filters, queries in expressions, and SQL fragments.
 - [Overloads of `update`](mutations/update-overloads.md).
 - [No guaranteed order of the rows of `insertMany`](mutations/order-of-inserted-rows.md).
 - [Actions of a conflict as methods of `onConflict`](mutations/conflict-actions.md).
+- [Types of `upsert`](mutations/upsert-types.md): the state of `find` as an interface, and values of a mapped type of their own.
 
 ## Queries of SQL text
 

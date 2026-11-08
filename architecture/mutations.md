@@ -1,6 +1,6 @@
 # Mutations
 
-- **Mutation** (`query/mutation.ts`): immutable insert, update, or delete of a table, which `insert`, `insertMany`, `update`, and `delete` of a select query start, as a `MutationQuery` over the semantic mutation node (`MutationNode` of `query/node.ts`).
+- **Mutation** (`query/mutation.ts`): immutable insert, update, or delete of a table, which `insert`, `insertMany`, `upsert`, `update`, and `delete` of a select query start, as a `MutationQuery` over the semantic mutation node (`MutationNode` of `query/node.ts`).
   It is a class apart from `SelectQuery`, like `RecordQuery`, with the members that differ by kind, `toSQL`, the methods that return the fields of the changed rows, `select`, `get`, and `pluck`, those that convert them, `map` and `transform`, and `use`, since the methods of a select query do not apply to it.
   It is covariant in its state and its kind, like `SelectQuery`, and of the same two kinds: an unbound mutation starts from a schema and executes with `$execute`, and a bound one starts from a `Db` and executes when awaited.
   Its methods change its state by a mapped type of its own, apart from `ChangeState` of select queries, so that changes of a select query cost no more ([decision](../decisions/mutations/mutation-state-changes.md)).
@@ -60,7 +60,20 @@
   - `update` takes what `update` of a query takes, and its callback receives the columns of the row proposed for insertion as a second argument, which refer to their own occurrence of the table, `excluded` of `ConflictUpdateNode`; its overloads and the relations of its values follow those of `update` of a query.
   - The values of `DO UPDATE SET` see the existing row under the alias of the target and the proposed row as `excluded`, so the statement takes the alias `excluded` before any source, since PostgreSQL finds `excluded` ambiguous beside a source of that alias, even the table of the insert.
   - PostgreSQL rejects a statement whose rows update one existing record twice, with SQLSTATE `21000`; kern-orm does not compare the values of the records.
+  - PostgreSQL checks `NOT NULL` and `CHECK` of a row before its conflict, so a record must be complete even when it updates the existing one; the row also takes the values of sequences and fires `BEFORE INSERT` triggers.
 - A `ConflictTarget` is no query: its `then` takes no callback and rejects, so that TypeScript rejects awaiting it and an insert without an action rejects instead of resolving without running.
+
+## Upserts
+
+- `upsert` of a query of `find` or `findBy` inserts the record of the values of the key with its values and, on a conflict on that key, sets the columns of its values of the existing record: it is the insert of the record with `onConflict` of the key and `merge` without columns, as `INSERT ... ON CONFLICT (key) DO UPDATE SET column = EXCLUDED.column`, one statement, so that concurrent upserts of a missing record do not reject with a unique violation.
+  An update of other values than the inserted ones, such as an increment of a counter, is an insert with `onConflict` and `update`.
+- It applies only right after `find` or `findBy` of a query of a table without clauses, by the key that they keep ([finding by a key](queries.md#finding-by-a-key)).
+  - Types reject it on a query whose state has no part `foundKey`, such as after `optional`, `select`, or `get`, but not after the methods that keep the state, such as `where`, `orderBy`, the row locks, and `use`.
+  - At runtime, it rejects a query whose node keeps no values of the key, such as with `where` before or after `find`, `optional`, a relation, selected fields, an order, or a row lock.
+- Its values are those of an insert without the columns of the key, `UpsertValues`, a mapped type of its own ([decision](../decisions/mutations/upsert-types.md)).
+  - A column that they omit or give as `undefined` gets its default in an inserted record and keeps its value in an updated one.
+  - At runtime, it rejects values that are no object, a value of a column of the key, and values without a value other than `undefined`, as `update` does ([backlog](../BACKLOG.md#empty-changes-and-none)).
+- It changes rows `one`, since the statement inserts or updates the record, so it resolves to `1`, and the fields selected after it are those of the record, inserted or updated.
 
 ## Results
 

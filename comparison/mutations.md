@@ -24,6 +24,13 @@ A mutation reads the related records that it selects in its own statement, atomi
 
 - Orchid ORM, same: `onConflict` with `merge` and `set` is `DO UPDATE` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflict)).
 
+## Upserts of the record of a key
+
+`upsert` of a query of `find` or `findBy` inserts the record of the key with its values, or sets the values of the existing record, in one statement of `ON CONFLICT ... DO UPDATE`, so that concurrent upserts of a missing record do not reject with a unique violation.
+
+- Orchid ORM, fails: `upsert` of a query of `find` or `findBy`, which takes the values of the update and of the insert apart, runs an `UPDATE`, and without a row a second statement that inserts the record unless the update in it finds one ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#upsert), [source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/sql/to-sql.ts#L196-L280)).
+  So of two concurrent upserts of a missing record, one rejects with a unique violation, and its scopes, such as soft delete, filter the update but not the insert, so the upsert of a soft-deleted record by its key rejects with a unique violation too, unless the query includes the deleted records.
+
 ## Inserts beyond the parameter limit
 
 A mutation is one statement, and the compiler rejects a statement of more than 65535 parameters, so an insert of more values must be split.

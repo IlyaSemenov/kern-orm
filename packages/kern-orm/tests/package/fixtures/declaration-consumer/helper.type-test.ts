@@ -10,6 +10,7 @@ import {
   defineSnakeCaseTable,
   deleteForm,
   deleteFormsWithFields,
+  findFormByName,
   firstFormByName,
   groupedTotals,
   groupNames,
@@ -240,6 +241,11 @@ describe("emitted declarations of queries that change rows", () => {
     expectTypeOf(db.$execute(insertFormConflict("Survey").merge("id").get("id"))).toEqualTypeOf<
       Promise<string>
     >()
+    expectTypeOf(
+      db.$execute(findFormByName("Survey").upsert({ id: "form-id" }).get("id")),
+    ).toEqualTypeOf<Promise<string>>()
+    // @ts-expect-error A column of the key of findBy.
+    findFormByName("Survey").upsert({ id: "form-id", name: "Survey" })
     expectTypeOf(db.$execute(insertFormWithFieldIds("Survey"))).toEqualTypeOf<
       Promise<{ fields: string[] }>
     >()
