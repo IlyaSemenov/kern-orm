@@ -58,6 +58,8 @@ A column that you omit, or give as `undefined`, gets its default in a new record
 
 Call `upsert` right after `find` or `findBy`, without other methods, such as `where`, and select the fields of the record after it, such as `upsert(values).get("id")`.
 
+To save the row of a [singleton table](../singleton-tables), call `upsert` on the query of the table itself, such as `db.settings.upsert({ locale })`.
+
 To insert a record unless a record with the same key exists, such as to add a user to a group they may already belong to, call `onConflict` with the columns of the key right after `insert`, and then `doNothing`:
 
 ```ts
@@ -153,6 +155,8 @@ To change every row of the table, call `all` first:
 await db.form.all().update({ published: false })
 ```
 
+A query of a [singleton table](../singleton-tables), such as `db.settings.update(values)`, changes its row without `all`.
+
 PostgreSQL cannot limit the rows of an update or a delete, so choose them with filters rather than `take`, `limit`, `offset`, or `orderBy`.
 
 ## Results
@@ -164,7 +168,7 @@ const deleted = await db.form.where({ published: false }).delete()
 // deleted: number
 ```
 
-After `find` or `findBy`, they reject with `NotFoundError` without the record, unless you add `optional` or `nullable`:
+After `find` or `findBy`, they reject with `NotFoundError` without the record, unless you add `optional` or `nullable`, or the query is of a [singleton table](../singleton-tables), which resolves to `0` without its row:
 
 ```ts
 const deleted = await db.form.find(formId).optional().delete()

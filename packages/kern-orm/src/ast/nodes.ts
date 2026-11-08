@@ -310,10 +310,12 @@ export interface InsertNode<Field = ProjectionNode> extends MutationParts<Field>
   readonly conflict?: ConflictNode | undefined
 }
 
-/** `ON CONFLICT` of an insert: a row that conflicts on the key of `target` updates the existing row by `update`, or is skipped, as `DO NOTHING`, without it. */
+/** `ON CONFLICT` of an insert: a row that conflicts on `target` updates the existing row by `update`, or is skipped, as `DO NOTHING`, without it. */
 export interface ConflictNode {
-  /** Keys of the columns of a key of the table, in its order, or none for a conflict on any key, which only `DO NOTHING` takes. */
-  readonly target: readonly string[]
+  /**
+   * What a row conflicts on: the keys of the columns of a key of the table, in its order, none for any key, which only `DO NOTHING` takes, or `"singleton"` for the unique index of `(true)` of a singleton table, which holds its one row.
+   */
+  readonly target: readonly string[] | "singleton"
   readonly update?: ConflictUpdateNode | undefined
 }
 

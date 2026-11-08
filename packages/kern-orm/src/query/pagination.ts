@@ -25,8 +25,8 @@ export function createPageCount(
 
 /** Creates the hint of the error of `limit` or `offset` of query `node` of one row: the method to call them before, if any. */
 function createPaginationHint(node: QueryNode): string {
-  // A query of a relation `one` has one row from its start.
-  if (node.relation?.kind === "one") {
+  // A query of a relation `one` and of a singleton table has one row from its start.
+  if (node.relation === undefined ? node.from.table.singleton : node.relation.kind === "one") {
     return ""
   }
   // An aggregate and `exists` take the rows of the page that a limit and an offset before them choose.

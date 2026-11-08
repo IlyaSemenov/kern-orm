@@ -10,7 +10,7 @@ import type { Operand, OperandValue } from "../expression/operators/comparison"
 import { valuesQueryNode } from "../expression/operators/equality"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext } from "../schema/relation"
-import type { AnyTable, Selectable } from "../table/table"
+import type { AnyTable, AnyTableKeys, ColumnShape, Selectable, Table } from "../table/table"
 
 import type { AggregateMethod, CountValueType } from "./aggregate"
 import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate"
@@ -89,6 +89,7 @@ import type {
   InitialQueryState,
   QueryStateOf,
   SelectQueryState,
+  SingletonQueryState,
 } from "./state"
 import type { InsertValues, UpdateSet, UpdateValues, UpsertValues } from "./values"
 
@@ -980,10 +981,11 @@ export class SelectQuery<
    * A record takes the values that `insert` takes, and a column that a record omits gets its default.
    * Select the fields that it returns for the inserted rows after it, such as `insertMany(records).select("id", "email")`, and match them to the records by a key rather than by their order, which PostgreSQL does not guarantee.
    * To handle a conflict of a record with an existing one on a key, call `onConflict` right after `insertMany`.
+   * A singleton table, which holds one row, takes `insert` or `upsert` instead.
    */
   insertMany<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
-    records: readonly InsertValues<S["table"]>[],
+    records: readonly InsertValues<S["table"]>[] & InsertManyCheck<S["table"]>,
   ): MutationQuery<InitialInsertState<S["table"], S["schema"], "many">, Kind>
   insertMany(records: readonly unknown[]): unknown {
     if (!Array.isArray(records)) {
@@ -996,7 +998,7 @@ export class SelectQuery<
    * Inserts the record of the key of `find` or `findBy` with `values`, or updates `values` of the existing record of the key, in one statement, and resolves to the number of the inserted or updated rows, `1`.
    *
    * `values` takes what `insert` takes, apart from the columns of the key, and at least one value other than `undefined`; a column omitted or given as `undefined` gets its default when the record is inserted and keeps its value when the record is updated.
-   * Call it right after `find` or `findBy` of a query of a table without other clauses, such as filters.
+   * Call it right after `find` or `findBy` of a query of a table without other clauses, such as filters, or on a query of a singleton table without clauses, such as `db.settings.upsert(values)`, to insert or update its row.
    * Select the fields that it returns after it, such as `upsert(values).get("id")`.
    * To update the existing record with other values than the inserted ones, such as to increment a counter, call `onConflict` after `insert` instead.
    */
@@ -1019,7 +1021,7 @@ export class SelectQuery<
    * `callback` receives the columns and the queries of the relations of the changed rows, such as to set a column from another one or from related records, and returns the values of the columns to update; a column omitted or given as `undefined` keeps its value.
    * A value is what `insert` takes as a value, such as a query of an aggregate of related records.
    * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
-   * A query without a filter must call `all` to update every row.
+   * A query without a filter must call `all` to update every row, unless it is a query of a singleton table, which updates its row.
    * Select the fields that it returns after it, with their values after the update, such as `update(callback).select("id")`.
    */
   update<
@@ -1046,7 +1048,7 @@ export class SelectQuery<
    * `set` gives the values of the columns to update, or is a callback that returns them; a column omitted or given as `undefined` keeps its value.
    * A value is what `insert` takes as a value.
    * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
-   * A query without a filter must call `all` to update every row.
+   * A query without a filter must call `all` to update every row, unless it is a query of a singleton table, which updates its row.
    * Select the fields that it returns after it, with their values after the update, such as `update(set).select("id")`.
    */
   update<S extends SelectQueryState, Kind extends SelectQueryKind>(
@@ -1061,7 +1063,7 @@ export class SelectQuery<
    * Deletes the rows that the filters of the query choose, and resolves to the number of the deleted rows.
    *
    * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
-   * A query without a filter must call `all` to delete every row.
+   * A query without a filter must call `all` to delete every row, unless it is a query of a singleton table, which deletes its row.
    * Select the fields that it returns after it, such as `delete().pluck("id")`.
    */
   delete<S extends SelectQueryState, Kind extends SelectQueryKind>(
@@ -1322,6 +1324,16 @@ export class SelectQuery<
   }
 }
 
+/** Check of the records of `insertMany` into table `T` that rejects them for a singleton table, which holds one row. */
+type InsertManyCheck<T extends AnyTable> = T["singleton"] extends true
+  ? SingletonInsertMany
+  : unknown
+
+/** Type that the records of `insertMany` into a singleton table are checked against, naming the reason. */
+export interface SingletonInsertMany {
+  readonly "insertMany cannot insert into a singleton table, which holds one row; use insert or upsert": never
+}
+
 /** Select query bound to a `Db`, executed by awaiting it; every method returns a query bound to the same `Db`. */
 export type BoundSelectQuery<S extends SelectQueryState> = SelectQuery<S, "bound">
 
@@ -1366,8 +1378,20 @@ export type TableOrQuery<T extends AnyTable, C extends SchemaContext = SchemaCon
   | T
   | QueryOf<QueryStateOf<T, C>>
 
+// Overloads rather than `TableQueryState`, a conditional type, which TypeScript defers for a table of a generic type, such as `T extends typeof form`, so that the table of the state of the query would not be `T`, and `insert` would reject values of `InsertValues<T>`.
 /** Starts a query over a new occurrence of the table. */
-export function from<T extends AnyTable>(table: T): SelectQuery<InitialQueryState<T>> {
+export function from<T extends Table<string, ColumnShape, AnyTableKeys, false>>(
+  table: T,
+): SelectQuery<InitialQueryState<T>>
+/** Starts a query of the one row of a singleton table over a new occurrence of the table. */
+export function from<T extends Table<string, ColumnShape, AnyTableKeys, true>>(
+  table: T,
+): SelectQuery<SingletonQueryState<T>>
+/** Starts a query over a new occurrence of a table whose type does not tell whether it is a singleton table, of all its rows or of its one row. */
+export function from<T extends AnyTable>(
+  table: T,
+): SelectQuery<InitialQueryState<T> | SingletonQueryState<T>>
+export function from(table: AnyTable): AnySelectQuery {
   return startQuery(table, noContext)
 }
 

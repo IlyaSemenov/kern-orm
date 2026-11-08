@@ -10,13 +10,15 @@
 
 ## Rows to change
 
-- `insert` and `insertMany` apply only to a query of a table without clauses: no relation, filters, selected fields, [`groupBy`](queries.md#groups), order, limit, offset, `distinct`, `distinctOn`, row lock, rows other than `many`, or `all`.
+- `insert` and `insertMany` apply only to a query of a table without clauses: no relation, filters, selected fields, [`groupBy`](queries.md#groups), order, limit, offset, `distinct`, `distinctOn`, row lock, rows other than those that the table starts with, `many` or `optional` of a [singleton table](queries.md#queries-of-a-singleton-table), or `all`.
   `insert` changes rows `one` and `insertMany` rows `many`.
+  `insertMany` rejects a singleton table, which holds one row, in types by `SingletonInsertMany` and at runtime.
 - `update` and `delete` change the rows that the filters of the query choose, in the rows mode of the query, such as `one` of `find` or `optional` after `optional`.
   They reject a query of a relation, a query with selected fields, which a mutation selects after it, and a query with an order, a limit, an offset, `distinct`, or `distinctOn`: PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters.
   They also reject a query with a [row lock](queries.md#row-locks), since they lock the rows they change themselves, and a query of [`groupBy`](queries.md#groups), since a group is no row to change.
   `find` and `findBy` add no limit, since the values of a key match at most one row, so a mutation of their query changes its row, and tells it from a query of `take`; a value that depends on the row, such as ``find(sql`id`)``, may match several, which the mutation changes before it rejects them.
 - `update` and `delete` require an effective restriction or `all`: they reject a query whose filters combine into `TRUE`, such as of `where({})`, unless `all` allows it.
+  A query of a singleton table needs neither, since the table holds one row at most, so that `update` and `delete` of its entry change its row in the rows mode `optional` of the entry.
   - A filter that matches no row, such as `in([])`, which is `FALSE`, restricts the rows, and so does a SQL fragment, whose text kern-orm does not read.
   - `all` applies to a query of many rows and is recorded by the node of the query; a later filter restricts the rows as without it.
   - Types do not check the restriction: `where` keeps the state of a query whose row is not guaranteed, so that a union of queries takes it, and types cannot tell `where({})` from a filter.
@@ -46,7 +48,7 @@
 ## Conflicts
 
 - `onConflict` takes the columns of exactly one key of the table, primary or unique, in any order, checked as the object of `findBy` is: by `KeyCheck` in types, and by `findKey` at runtime, which gives the key in its own order for the target of `ON CONFLICT`.
-  Without columns, the conflict is on any key.
+  Without columns, the conflict is on any key for `doNothing`, and on the row of a singleton table for `merge` and `update`.
 - It applies only right after `insert` and `insertMany`, in types and at runtime, as `ON CONFLICT` precedes `RETURNING`.
   - The state of an insert has the part `insert` outside of `MutationQueryState`, so that every change of the state by `ChangeMutationState` drops it and other mutations do not carry it; types reject `onConflict` without it, after any other method, as on an update or a delete.
   - At runtime, it rejects a mutation other than an insert, and an insert with returned fields, a conversion, or a conflict.
@@ -55,6 +57,7 @@
   - The insert changes rows `optional` after `insert`, which resolve to `0` or to `undefined` of the returned fields when the row conflicts, and rows `many` after `insertMany`, whose number and returned fields are those of the inserted rows.
 - `merge` and `update` give the insert of `ON CONFLICT ... DO UPDATE SET`, which updates the existing record of each row that conflicts on the key, and keep rows `one` of `insert` and `many` of `insertMany`, since each row is inserted or updated.
   - They require the columns of a key, as PostgreSQL requires a target of `DO UPDATE`: types reject them on a target of no columns by `ConflictKeyRequired`, which the type of its columns, `never`, gives, and they reject it at runtime.
+    An insert into a singleton table is the exception: they take a target of no columns as the row of the table, `ON CONFLICT ((true))`, whose expression PostgreSQL matches to the unique index of `(true)`, whatever its name; `doNothing` keeps a conflict on any key.
   - `merge` sets each of its columns to the value of the row proposed for insertion, `EXCLUDED`, and without columns every column of the statement apart from the key.
     It rejects a column that a record does not give, also without columns, since `EXCLUDED` holds the default of such a column, which would replace the value of the record; it also rejects a column of the key, which types reject too, a repeated column, and a statement without a column apart from the key.
   - `update` takes what `update` of a query takes, and its callback receives the columns of the row proposed for insertion as a second argument, which refer to their own occurrence of the table, `excluded` of `ConflictUpdateNode`; its overloads and the relations of its values follow those of `update` of a query.
@@ -67,9 +70,9 @@
 
 - `upsert` of a query of `find` or `findBy` inserts the record of the values of the key with its values and, on a conflict on that key, sets the columns of its values of the existing record: it is the insert of the record with `onConflict` of the key and `merge` without columns, as `INSERT ... ON CONFLICT (key) DO UPDATE SET column = EXCLUDED.column`, one statement, so that concurrent upserts of a missing record do not reject with a unique violation.
   An update of other values than the inserted ones, such as an increment of a counter, is an insert with `onConflict` and `update`.
-- It applies only right after `find` or `findBy` of a query of a table without clauses, by the key that they keep ([finding by a key](queries.md#finding-by-a-key)).
+- It applies only right after `find` or `findBy` of a query of a table without clauses, by the key that they keep ([finding by a key](queries.md#finding-by-a-key)), and to a [query of a singleton table](queries.md#queries-of-a-singleton-table) without clauses, by the key without columns that it keeps, whose conflict is on the row of the table, as of `onConflict()` and `merge` of an insert into it.
   - Types reject it on a query whose state has no part `foundKey`, such as after `optional`, `select`, or `get`, but not after the methods that keep the state, such as `where`, `orderBy`, the row locks, and `use`.
-  - At runtime, it rejects a query whose node keeps no values of the key, such as with `where` before or after `find`, `optional`, a relation, selected fields, an order, or a row lock.
+  - At runtime, it rejects a query whose node keeps no values of the key, such as with `where` before or after `find`, `optional`, a relation, selected fields, an order, or a row lock, also on a singleton table, such as after `take` or `where`.
 - Its values are those of an insert without the columns of the key, `UpsertValues`, a mapped type of its own ([decision](../decisions/mutations/upsert-types.md)).
   - A column that they omit or give as `undefined` gets its default in an inserted record and keeps its value in an updated one.
   - At runtime, it rejects values that are no object, a value of a column of the key, and values without a value other than `undefined`, as `update` does ([backlog](../BACKLOG.md#empty-changes-and-none)).

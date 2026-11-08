@@ -232,6 +232,57 @@ describe("find and findBy", () => {
   })
 })
 
+describe("queries of a singleton table", () => {
+  const license = defineTable(
+    "license",
+    {
+      id: t.uuid.primaryKey(),
+      token: t.text,
+    },
+    { singleton: true },
+  )
+
+  it("start as a query of its one row without a limit, which resolves to undefined without it", () => {
+    expect(compile(from(license))).toMatchObject({
+      text: 'SELECT FROM "license" AS "license"',
+      rows: "optional",
+      value: false,
+    })
+    expect(compile(from(license).get("token"))).toMatchObject({
+      text: 'SELECT "license"."token" AS "token" FROM "license" AS "license"',
+      rows: "optional",
+      value: true,
+    })
+    expect(compile(from(license).take())).toEqual(compile(from(license)))
+  })
+
+  it("take the methods of a query of one row, such as required, nullable, find, count, and exists", () => {
+    expect(compile(from(license).required()).rows).toBe("one")
+    expect(compile(from(license).nullable()).rows).toBe("nullable")
+    expect(compile(from(license).find("license-id"))).toMatchObject({
+      text: 'SELECT FROM "license" AS "license" WHERE "license"."id" = $1',
+      rows: "optional",
+    })
+    expect(compile(from(license).count())).toMatchObject({
+      text: 'SELECT count(*) AS "count" FROM "license" AS "license"',
+      rows: "one",
+    })
+    expect(compile(from(license).exists()).text).toBe(
+      'SELECT EXISTS (SELECT FROM "license" AS "license") AS "exists"',
+    )
+  })
+
+  it("reject the methods of a query of many rows", () => {
+    // Types reject these calls, which a query held as any query can still make.
+    const query: AnySelectQuery = from(license)
+
+    expect(() => query.all()).toThrow("all applies only to a query of many rows")
+    expect(() => query.limit(1)).toThrow("limit applies only to a query of many rows")
+    expect(() => query.offset(1)).toThrow(/^offset applies only to a query of many rows$/)
+    expect(() => query.distinct()).toThrow("distinct applies only to a query of many rows")
+  })
+})
+
 describe("get", () => {
   it("replaces the selected fields with a column or an expression and limits the query to one row", () => {
     const base = from(post).select("id", "createdAt")

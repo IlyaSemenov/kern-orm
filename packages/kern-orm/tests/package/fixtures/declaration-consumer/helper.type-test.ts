@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import type { ResultOf, TableKeys } from "kern-orm"
+import type { EmptyRecord, ResultOf, TableKeys } from "kern-orm"
 import { createDatabase, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
@@ -12,6 +12,7 @@ import {
   deleteFormsWithFields,
   findFormByName,
   firstFormByName,
+  getLicenseToken,
   groupedTotals,
   groupNames,
   groupOptionalTotal,
@@ -21,8 +22,12 @@ import {
   insertFormWithFieldIds,
   insertFormWithLength,
   isNamed,
+  licenseQuery,
+  licenseSchema,
   namesWithFields,
+  pageOfForms,
   renameForm,
+  requireLicenseToken,
   schema,
   selectName,
   selectNameAsTitle,
@@ -31,6 +36,7 @@ import {
   snakeCaseField,
   totalValues,
   upsertForm,
+  upsertLicense,
   withFieldIds,
   withNameLength,
 } from "../declarations/helper.js"
@@ -256,5 +262,38 @@ describe("emitted declarations of queries that change rows", () => {
     >()
     // @ts-expect-error The schema lacks the relations of the shared schema.
     void database.bind(defineSchema(schema.$tables)).$execute(deleteFormsWithFields)
+  })
+})
+
+describe("emitted declarations of a singleton table", () => {
+  test("start a query of its row, which upsert inserts or updates", () => {
+    const database = createDatabase({
+      driver: {
+        execute: () => Promise.reject(new Error("unused")),
+        executeScript: () => Promise.reject(new Error("unused")),
+        acquire: () => Promise.reject(new Error("unused")),
+        close: () => Promise.resolve(),
+      },
+    })
+    const db = database.bind(licenseSchema)
+
+    expectTypeOf(db.$execute(licenseQuery)).toEqualTypeOf<Promise<EmptyRecord | undefined>>()
+    expectTypeOf(db.$execute(upsertLicense("token"))).toEqualTypeOf<Promise<string>>()
+    expectTypeOf(getLicenseToken(db)).resolves.toEqualTypeOf<string | undefined>()
+    expectTypeOf(db.$execute(requireLicenseToken(licenseSchema.$tables.license))).toEqualTypeOf<
+      Promise<string>
+    >()
+    expectTypeOf(database.bind(schema).$execute(pageOfForms(schema.$tables.form))).toEqualTypeOf<
+      Promise<{ name: string }[]>
+    >()
+    expectTypeOf(db.license.update({ token: "token" }).get("id")).resolves.toEqualTypeOf<
+      string | undefined
+    >()
+    // @ts-expect-error A singleton table holds one row.
+    licenseQuery.insertMany([{ token: "token" }])
+    // @ts-expect-error A column of another table.
+    licenseQuery.upsert({ token: "token", name: "Survey" })
+    // @ts-expect-error A query of one row.
+    licenseQuery.all()
   })
 })

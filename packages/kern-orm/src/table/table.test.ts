@@ -232,6 +232,33 @@ describe("defineTable", () => {
       ).toThrow('Unique keys in the options of table "user" must be an array')
     })
   })
+
+  describe("singleton", () => {
+    it("tells whether the table holds at most one row, as its option declares", () => {
+      const columns = {
+        token: t.text,
+      }
+
+      expect(defineTable("license", columns, { singleton: true }).singleton).toBe(true)
+      expect(defineTable("license", columns, { singleton: false }).singleton).toBe(false)
+      expect(defineTable("license", columns, {}).singleton).toBe(false)
+      expect(defineTable("license", columns).singleton).toBe(false)
+    })
+
+    it("rejects an option that is not a boolean", () => {
+      const options = { singleton: "yes" } as unknown as TableOptions<"token">
+
+      expect(() =>
+        defineTable(
+          "license",
+          {
+            token: t.text,
+          },
+          options,
+        ),
+      ).toThrow('The singleton option of table "license" must be a boolean')
+    })
+  })
 })
 
 describe("createTableFactory", () => {

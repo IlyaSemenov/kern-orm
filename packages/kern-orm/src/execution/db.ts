@@ -14,7 +14,7 @@ import { bindQuery, startQuery } from "../query/select"
 import type { Selection } from "../query/selection"
 import type { InitialSqlQueryState, SqlQuery, SqlQueryState } from "../query/sql-query"
 import { startSqlQuery } from "../query/sql-query"
-import type { EmptyRecord, InitialQueryState, QueryStateOf } from "../query/state"
+import type { EmptyRecord, QueryStateOf, TableQueryState } from "../query/state"
 import { decodeStatement } from "../result/result"
 import type {
   SchemaRelations,
@@ -45,9 +45,9 @@ export interface BindOptions {
 export type Db<T extends Tables, R extends SchemaRelations = EmptyRecord> = DbEntries<T, R> &
   DbMethods<T, R>
 
-/** Bound query entry points; each access starts a query over a new table occurrence. */
+/** Bound query entry points; each access starts a query over a new table occurrence, of the one row of a singleton table. */
 type DbEntries<T extends Tables, R extends SchemaRelations> = {
-  readonly [K in keyof T]: BoundSelectQuery<InitialQueryState<T[K], TableContext<R, K>>>
+  readonly [K in keyof T]: BoundSelectQuery<TableQueryState<T[K], TableContext<R, K>>>
 }
 
 /** Bound or unbound query over a table of `T`, also converted by `transform`, of `$select`, or that changes the rows of a table of `T`, that selects records only of relations of `R`, or a query of SQL text. */

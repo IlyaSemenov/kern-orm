@@ -95,6 +95,23 @@ export const membership = defineTable(
 
 Declare the keys that the database guarantees, such as by a constraint, a unique index, or the query of a view: [relations](#relations) and [`find` and `findBy`](./queries/selecting#record-by-key) rely on them, and a query of a relation `one` fails when it finds several records.
 
+## Tables of one row
+
+To keep a table to one row, such as the settings of an application, declare it with `singleton: true` in the options of `defineTable`, and give it a unique index of `(true)` in its migration:
+
+```ts
+export const settings = defineTable(
+  "settings",
+  {
+    id: t.uuid.primaryKey().hasDefault(),
+    locale: t.text,
+  },
+  { singleton: true },
+)
+```
+
+A query of the table is then a query of its row, such as `await db.settings.upsert({ locale })`; see [Singleton Tables](./singleton-tables).
+
 ## Schemas
 
 Put the tables you query in a schema and bind it to the [database](./getting-started#connect) with `database.bind`:

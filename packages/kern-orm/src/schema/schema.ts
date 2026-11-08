@@ -4,7 +4,7 @@ import { createQueryContexts } from "../query/relations"
 import type { SelectQuery } from "../query/select"
 import { startQuery } from "../query/select"
 import type { Selection } from "../query/selection"
-import type { EmptyRecord, InitialQueryState } from "../query/state"
+import type { EmptyRecord, TableQueryState } from "../query/state"
 import type { AnyTable } from "../table/table"
 
 import type {
@@ -38,9 +38,9 @@ export type Schema<T extends Tables, R extends SchemaRelations = EmptyRecord> = 
 > &
   SchemaMembers<T, R>
 
-/** Query entry points; each access starts a query over a new table occurrence. */
+/** Query entry points; each access starts a query over a new table occurrence, of the one row of a singleton table. */
 type SchemaEntries<T extends Tables, R extends SchemaRelations> = {
-  readonly [K in keyof T]: SelectQuery<InitialQueryState<T[K], TableContext<R, K>>>
+  readonly [K in keyof T]: SelectQuery<TableQueryState<T[K], TableContext<R, K>>>
 }
 
 /** Members of a schema that composition reads: its tables and the relations of its tables. */

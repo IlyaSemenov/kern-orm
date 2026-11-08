@@ -2,6 +2,7 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createDatabase } from "../execution/database"
+import type { DbOf } from "../execution/db"
 import { avg, count, every, max, min, some, stringAgg, sum } from "../expression/aggregates"
 import type { AnyExpression, Expression, TypedExpression } from "../expression/expression"
 import type { Operand } from "../expression/operators/comparison"
@@ -18,11 +19,17 @@ import type { SelectQueryKind } from "./kind"
 import { literal } from "./literal"
 import { desc, orderBy } from "./order"
 import type { QueryResult } from "./rows"
-import type { AnySelectQuery, ResultOf, SelectQuery } from "./select"
+import type { AnySelectQuery, BoundSelectQuery, ResultOf, SelectQuery } from "./select"
 import { from } from "./select"
-import type { FoundKey } from "./select-method-state"
 import type { Selection } from "./selection"
-import type { EmptyRecord, InitialQueryState, QueryStateOf } from "./state"
+import type {
+  EmptyRecord,
+  FoundKey,
+  InitialQueryState,
+  QueryStateOf,
+  SingletonQueryState,
+} from "./state"
+import type { InsertValues, UpsertValues } from "./values"
 
 declare const flag: boolean
 
@@ -375,6 +382,89 @@ describe("find and findBy", () => {
     from(tag).find(null)
     // @ts-expect-error A value of a key is never undefined.
     from(tag).findBy({ name: undefined })
+  })
+})
+
+describe("queries of a singleton table", () => {
+  const license = defineTable(
+    "license",
+    {
+      id: t.uuid.primaryKey(),
+      token: t.text,
+    },
+    { singleton: true },
+  )
+  const licenseSchema = defineSchema({ license })
+  const licenses = createDatabase({ driver: createRecordingDriver().driver }).bind(licenseSchema)
+
+  test("start as a query of its one row, which resolves to undefined without it", () => {
+    expectTypeOf(licenses.license).toEqualTypeOf<
+      BoundSelectQuery<SingletonQueryState<typeof license>>
+    >()
+    expectTypeOf(licenseSchema.license).toEqualTypeOf<
+      SelectQuery<SingletonQueryState<typeof license>>
+    >()
+    expectTypeOf(from(license)).toEqualTypeOf<SelectQuery<SingletonQueryState<typeof license>>>()
+    expectTypeOf(licenses.license).resolves.toEqualTypeOf<EmptyRecord | undefined>()
+    expectTypeOf(licenses.license.get("token")).resolves.toEqualTypeOf<string | undefined>()
+    expectTypeOf(licenses.license.select("token")).resolves.toEqualTypeOf<
+      { token: string } | undefined
+    >()
+    const shared: DbOf<typeof licenseSchema> = licenses
+    void shared
+  })
+
+  test("take the methods of a query of one row, and take keeps its row", () => {
+    expectTypeOf(licenses.license.take()).resolves.toEqualTypeOf<EmptyRecord | undefined>()
+    expectTypeOf(licenses.license.required().get("token")).resolves.toEqualTypeOf<string>()
+    expectTypeOf(licenses.license.nullable().select("token")).resolves.toEqualTypeOf<{
+      token: string
+    } | null>()
+    expectTypeOf(licenses.license.find("license-id").get("token")).resolves.toEqualTypeOf<
+      string | undefined
+    >()
+    expectTypeOf(licenses.license.count()).resolves.toEqualTypeOf<number>()
+    expectTypeOf(licenses.license.exists()).resolves.toEqualTypeOf<boolean>()
+  })
+
+  test("apply a helper of the table in the rows mode of the query", () => {
+    const withToken = defineHelper(licenseSchema.license, query => query.select("token"))
+
+    expectTypeOf(licenses.license.use(withToken)).resolves.toEqualTypeOf<
+      { token: string } | undefined
+    >()
+  })
+
+  test("reject the methods of a query of many rows", () => {
+    // @ts-expect-error A query of one row.
+    licenses.license.all()
+    // @ts-expect-error A query of one row.
+    licenses.license.limit(1)
+    // @ts-expect-error A query of one row.
+    licenses.license.offset(1)
+    // @ts-expect-error A query of one row.
+    licenses.license.distinct()
+  })
+
+  test("start as a query of either where the type of the table does not tell whether it is a singleton", () => {
+    const widened: Table<"license", typeof license.columns> = license
+    const query = from(widened)
+
+    expectTypeOf<Executed<typeof query>>().toEqualTypeOf<EmptyRecord[] | EmptyRecord | undefined>()
+  })
+
+  test("start a query of a table of a generic type by the constraint of its type", () => {
+    const tokenOf = <T extends typeof license>(table: T, values: UpsertValues<T, never>) => {
+      void from(table).upsert(values)
+      return from(table).required().get("token")
+    }
+    const titlesOf = <T extends typeof post>(table: T, values: InsertValues<T>) => {
+      void from(table).insert(values)
+      return from(table).limit(10).pluck("title")
+    }
+
+    expectTypeOf<Executed<ReturnType<typeof tokenOf<typeof license>>>>().toEqualTypeOf<string>()
+    expectTypeOf<Executed<ReturnType<typeof titlesOf<typeof post>>>>().toEqualTypeOf<string[]>()
   })
 })
 

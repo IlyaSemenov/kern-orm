@@ -1,6 +1,7 @@
 // Schemas and Dbs of the benchmarks of types.
 // - A schema of forms of 2 tables, and a tenant schema that includes it and adds answers.
 // - A catalog schema of 12 tables, and a store schema that includes it and adds reviews, for the cost of a large schema.
+// - A schema of a singleton table of settings.
 
 import type { Driver } from "kern-orm"
 import { createDatabase, defineSchema, defineTable, many, one } from "kern-orm"
@@ -163,8 +164,19 @@ const storeSchema = defineSchema(catalogSchema, { review }).$relations({
   review: { product: one(product, { from: "productId", to: "id", required: true }) },
 })
 
+const settings = defineTable(
+  "settings",
+  {
+    id: t.uuid.primaryKey().hasDefault(),
+    locale: t.text.nullable(),
+    theme: t.text.nullable(),
+  },
+  { singleton: true },
+)
+
 // The benchmarks only check the types of queries and never run them.
 const database = createDatabase({ driver: {} as Driver })
 export const formsDb = database.bind(formsSchema)
 export const tenantDb = database.bind(tenantSchema)
 export const storeDb = database.bind(storeSchema)
+export const settingsDb = database.bind(defineSchema({ settings }))

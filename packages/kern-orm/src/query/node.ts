@@ -15,7 +15,7 @@ import type { AnyDb } from "../execution/db"
 import type { ResultConversion, ResultMode } from "../result/result"
 import type { RelationDefinition } from "../schema/relation"
 
-import { getRelationRows } from "./rows"
+import { getRelationRows, getTableRows } from "./rows"
 
 /** Selection of the rows of a nested query as the value of the field `key`. */
 export interface NestedSelectionNode {
@@ -72,7 +72,7 @@ export interface QueryNode extends ResultMode {
   /** How `map` and `transform` convert the decoded result. */
   readonly conversion: ResultConversion | undefined
   /**
-   * Values of the columns of the key of `find` or `findBy` of a query of a table without clauses, which `upsert` inserts, or `undefined` for any other query.
+   * Values of the columns of the key of `find` or `findBy` of a query of a table without clauses, which `upsert` inserts, an empty object for a query that starts from a singleton table, whose key has no columns, or `undefined` for any other query.
    *
    * Every method that derives a node from the query drops them, whereas `use` returns the query of its callback, such as the query itself.
    */
@@ -93,12 +93,20 @@ export interface RecordQueryNode {
   readonly projections: readonly SelectedNode[]
 }
 
-/** Creates a query of all rows of `from`, or of the records of `relation` with `filters` in the rows mode of the relation. */
+/** Empty values of the key without columns of a query that starts from a singleton table. */
+const singletonKey: Readonly<Record<string, unknown>> = /* @__PURE__ */ Object.freeze({})
+
+/**
+ * Creates a query of all rows of `from`, or of the records of `relation` with `filters` in the rows mode of the relation.
+ *
+ * A query of a singleton table without `relation` is a query of its one row, as of `find` of a key without columns, which `upsert` applies to.
+ */
 export function createQueryNode(
   from: TableSourceNode,
   relation?: RelationDefinition,
   filters: QueryFilters = noFilters,
 ): QueryNode {
+  const singleton = relation === undefined && from.table.singleton
   return Object.freeze({
     kind: "query",
     from,
@@ -114,16 +122,16 @@ export function createQueryNode(
     distinctOn: [],
     distinctFields: undefined,
     lock: undefined,
-    rows: relation === undefined ? "many" : getRelationRows(relation),
+    rows: relation === undefined ? getTableRows(from.table) : getRelationRows(relation),
     value: false,
     guaranteed: relation?.required ?? false,
     all: false,
     conversion: undefined,
-    foundKey: undefined,
+    foundKey: singleton ? singletonKey : undefined,
   })
 }
 
-/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, keys of groups, order, limit, offset, `distinct`, keys of `distinctOn`, row lock, rows other than `many`, `all`, or conversion. */
+/** Tells whether `node` is a query of a table without clauses, such as a table of a `Db`: no relation, filters, selected fields, keys of groups, order, limit, offset, `distinct`, keys of `distinctOn`, row lock, rows other than those that the table starts with, `many` or `optional` of a singleton table, `all`, or conversion. */
 export function isTableQuery(node: QueryNode): boolean {
   return (
     node.relation === undefined &&
@@ -138,7 +146,7 @@ export function isTableQuery(node: QueryNode): boolean {
     !node.distinct &&
     node.distinctOn.length === 0 &&
     node.lock === undefined &&
-    node.rows === "many" &&
+    node.rows === getTableRows(node.from.table) &&
     !node.all &&
     node.conversion === undefined
   )

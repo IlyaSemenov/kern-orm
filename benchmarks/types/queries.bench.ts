@@ -20,7 +20,7 @@ import {
 } from "kern-orm"
 import * as t from "kern-orm/types"
 
-import { formsDb, formsSchema, storeDb, tenantDb } from "./fixture.ts"
+import { formsDb, formsSchema, settingsDb, storeDb, tenantDb } from "./fixture.ts"
 
 // Code shared by several Dbs runs queries on a Db typed by the shared schema.
 const sharedDb: DbOf<typeof formsSchema> = tenantDb
@@ -211,6 +211,8 @@ bench.baseline(async () => {
     .find("baseline")
     .upsert({ formId: "baseline", position: 1, label: "baseline" })
     .get("id")
+  await settingsDb.settings.get("theme")
+  await settingsDb.settings.upsert({ theme: "baseline" }).get("theme")
   await tenantDb.field.find("baseline").update({ label: "baseline" }).select("label", "position")
   await tenantDb.field.find("baseline").update({
     label: tenantDb.answer.min("value").coalesce("baseline"),
@@ -267,6 +269,10 @@ bench("find", async () => {
 bench("findBy", async () => {
   await tenantDb.form.findBy({ id: "x" }).select("name")
 }).types([242, "instantiations"])
+
+bench("query of a singleton table", async () => {
+  await settingsDb.settings.get("locale")
+}).types([103, "instantiations"])
 
 bench("forUpdate", async () => {
   await tenantDb.form.find("x").select("name").forUpdate()
@@ -454,7 +460,7 @@ bench("filter of the values of a query", async () => {
 
 bench("comparison with an aggregate of a relation", async () => {
   await tenantDb.field.where(field => field.label.eq(field.answers.min("value"))).pluck("label")
-}).types([517, "instantiations"])
+}).types([518, "instantiations"])
 
 bench("comparison of an aggregate of a relation", async () => {
   await tenantDb.form.where(form => form.fields.count().expr().gt(3)).pluck("name")
@@ -501,7 +507,7 @@ bench("helper of map", async () => {
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
-}).types([1011, "instantiations"])
+}).types([1013, "instantiations"])
 
 bench("transform of the number of the rows", async () => {
   await tenantDb.form
@@ -520,7 +526,7 @@ bench("helper of relations", async () => {
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
-}).types([1210, "instantiations"])
+}).types([1212, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -645,7 +651,7 @@ bench("insert with merge", async () => {
     .insert({ id: "x", name: "x", published: true })
     .onConflict("id")
     .merge("name", "published")
-}).types([576, "instantiations"])
+}).types([578, "instantiations"])
 
 bench("insert with update of a callback", async () => {
   await tenantDb.form
@@ -655,11 +661,15 @@ bench("insert with update of a callback", async () => {
       name: excluded.name,
       published: form.published,
     }))
-}).types([775, "instantiations"])
+}).types([777, "instantiations"])
 
 bench("upsert", async () => {
   await tenantDb.form.find("x").upsert({ name: "x", published: true }).get("id")
 }).types([461, "instantiations"])
+
+bench("upsert of a singleton table", async () => {
+  await settingsDb.settings.upsert({ locale: "x" }).get("id")
+}).types([137, "instantiations"])
 
 bench("update", async () => {
   await tenantDb.form.find("x").update({ name: "x" }).select("id", "name")
@@ -681,7 +691,7 @@ bench("update of an aggregate of a relation", async () => {
   await tenantDb.form.find("x").update(form => ({
     name: form.fields.min("label").coalesce("x"),
   }))
-}).types([808, "instantiations"])
+}).types([809, "instantiations"])
 
 bench("delete with get of a callback", async () => {
   await tenantDb.form

@@ -15,6 +15,7 @@ import * as t from "../types"
 import { defineHelper } from "./helper"
 import type { NestedSelectionNode } from "./node"
 import { desc } from "./order"
+import type { AnySelectQuery } from "./select"
 import { from, SelectQuery } from "./select"
 
 /** Integer of a rating in stars, decoded into an object, as a custom scalar of nested records. */
@@ -106,6 +107,40 @@ describe("relation queries", () => {
         form: field.form.limit(1),
       })),
     ).toThrow(/^limit applies only to a query of many rows$/)
+  })
+
+  it("keep the rows mode of a relation to a singleton table, whose query upsert rejects", () => {
+    const license = defineTable(
+      "license",
+      {
+        id: t.integer.primaryKey(),
+        ownerId: t.integer.columnName("owner_id"),
+      },
+      { singleton: true },
+    )
+    const owner = defineTable("owner", {
+      id: t.integer.primaryKey(),
+      licenseId: t.integer.columnName("license_id"),
+    })
+    const licensed = defineSchema({ owner, license }).$relations({
+      owner: {
+        licenses: many(license, { from: "id", to: "ownerId" }),
+        license: one(license, { from: "licenseId", to: "id" }),
+        requiredLicense: one(license, { from: "licenseId", to: "id", required: true }),
+      },
+    })
+    const relations: AnySelectQuery[] = []
+    licensed.owner.select(columns => {
+      relations.push(columns.licenses, columns.license, columns.requiredLicense)
+      return {}
+    })
+
+    expect(relations.map(relation => relation.node.rows)).toEqual(["many", "nullable", "one"])
+    for (const relation of relations) {
+      expect(() => relation.upsert({ ownerId: 1 })).toThrow(
+        /^upsert applies only to a query of a singleton table or right after find or findBy/,
+      )
+    }
   })
 
   it("compare the columns of a composite key in order, combined with AND", () => {

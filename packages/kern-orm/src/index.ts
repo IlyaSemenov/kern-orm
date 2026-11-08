@@ -107,10 +107,15 @@ export type { Connection, Driver, DriverResult, TransactionFailure } from "./exe
 export type { TransactionCoordinator } from "./execution/transaction/coordinator"
 export { createStatement } from "./execution/driver"
 export type { OperandUses, ScalarQuery, TypedScalarQuery, ValuesQuery } from "./query/operand"
-export type { AnySelectQuery, BoundSelectQuery, ResultOf, SelectQuery } from "./query/select"
+export type {
+  AnySelectQuery,
+  BoundSelectQuery,
+  ResultOf,
+  SelectQuery,
+  SingletonInsertMany,
+} from "./query/select"
 export type {
   FilteredStateRows,
-  FoundKey,
   FoundQueryState,
   FoundState,
   GroupedState,
@@ -119,12 +124,15 @@ export type {
 export { from } from "./query/select"
 export type {
   EmptyRecord,
+  FoundKey,
   Grouped,
   InitialQueryState,
   QueryState,
   QueryStateOf,
   QueryValueType,
   SelectQueryState,
+  SingletonQueryState,
+  TableQueryState,
 } from "./query/state"
 export type { CountValueType } from "./query/aggregate"
 export type { ExistsValueType } from "./query/exists"

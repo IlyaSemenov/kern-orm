@@ -44,7 +44,7 @@ export interface TableKeys<
 }
 
 /**
- * Immutable table descriptor: physical name, columns, and keys.
+ * Immutable table descriptor: physical name, columns, keys, and whether it holds at most one row.
  *
  * A table knows nothing about relations, schemas, or database connections, so the same table can belong to several schemas.
  * Its object identity is the logical identity of the table.
@@ -53,18 +53,21 @@ export interface Table<
   Name extends string = string,
   Columns extends ColumnShape = ColumnShape,
   Keys extends AnyTableKeys = AnyTableKeys,
+  Singleton extends boolean = boolean,
 > {
   readonly kind: "table"
   readonly name: Name
   readonly columns: Columns
   readonly keys: Keys
+  /** Whether the table holds at most one row, as the `singleton` option of `defineTable` declares; `boolean` where the type of the table does not tell it. */
+  readonly singleton: Singleton
 }
 
 /** Table of any name, columns, and keys. */
 export type AnyTable = Table<string, ColumnShape>
 
 /**
- * Options of `defineTable` over column keys `Column`: the keys of several columns, whose columns are listed in their order.
+ * Options of `defineTable` over column keys `Column`: the keys of several columns, whose columns are listed in their order, and whether the table holds at most one row.
  *
  * The columns of the primary key are of `PrimaryKeyColumn`.
  */
@@ -76,6 +79,12 @@ export interface TableOptions<
   readonly primaryKey?: readonly [PrimaryKeyColumn, PrimaryKeyColumn, ...PrimaryKeyColumn[]]
   /** Unique keys of several columns; mark a unique key of one column with `unique()`. */
   readonly unique?: readonly (readonly [Column, Column, ...Column[]])[]
+  /**
+   * Whether the table holds at most one row, such as the settings of an application, which a unique index of `(true)` must guarantee.
+   *
+   * A query of the table starts as a query of that row, which resolves to `undefined` without it, and `upsert` inserts or updates it.
+   */
+  readonly singleton?: boolean
 }
 
 /** Options of `createTableFactory`. */
@@ -217,6 +226,16 @@ type DefinedUniqueKey<C extends ColumnShape, UniqueKey> =
   | Extract<UniqueKey, KeyColumns>
   | SingleColumnKey<KeyedColumn<C, "unique">>
 
+// Distributive, so that a union of options of different values, such as `{ singleton: true } | undefined`, gives `boolean`.
+/** Whether a table of options `O` holds at most one row: `true` or `false` of their `singleton`, `false` without it, or `boolean` where its type does not tell it. */
+type DefinedSingleton<O> = O extends unknown
+  ? [O["singleton" & keyof O]] extends [false | undefined]
+    ? false
+    : [O["singleton" & keyof O]] extends [true]
+      ? true
+      : boolean
+  : never
+
 /** Key of each single column of `K`. */
 type SingleColumnKey<K> = K extends string ? readonly [K] : never
 
@@ -265,12 +284,12 @@ export type IsExactKey<K> =
 export function defineTable<Name extends string, Definitions extends ColumnDefinitions>(
   name: Name,
   definitions: Definitions,
-): Table<Name, ToColumns<Definitions>, DefinedKeys<ToColumns<Definitions>, undefined>>
+): Table<Name, ToColumns<Definitions>, DefinedKeys<ToColumns<Definitions>, undefined>, false>
 // A required parameter, rather than an optional one, keeps `undefined` of an argument such as `flag ? options : undefined` in `Options`, so that its keys are not taken for certain.
 /**
  * Defines a table; a type without column attributes becomes a column as it is.
  *
- * A key of one column is marked on its column, and `options` list the columns of the keys of several columns.
+ * A key of one column is marked on its column, and `options` list the columns of the keys of several columns and tell whether the table holds at most one row.
  */
 export function defineTable<
   Name extends string,
@@ -282,7 +301,12 @@ export function defineTable<
   name: Name,
   definitions: Definitions,
   options: Options,
-): Table<Name, ToColumns<Definitions>, DefinedKeys<ToColumns<Definitions>, Options>>
+): Table<
+  Name,
+  ToColumns<Definitions>,
+  DefinedKeys<ToColumns<Definitions>, Options>,
+  DefinedSingleton<Options>
+>
 export function defineTable(
   name: string,
   definitions: ColumnDefinitions,
@@ -331,11 +355,16 @@ function createTable(
   if (deriveColumnName) {
     nameColumns(name, columns, deriveColumnName)
   }
+  const singleton = options?.singleton
+  if (singleton !== undefined && typeof singleton !== "boolean") {
+    throw new TypeError(`The singleton option of table "${name}" must be a boolean`)
+  }
   return Object.freeze({
     kind: "table",
     name,
     columns: Object.freeze(columns),
     keys: defineKeys(name, columns, options),
+    singleton: singleton === true,
   })
 }
 

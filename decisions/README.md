@@ -75,6 +75,7 @@ The SQL that loads nested queries and relations.
 ## Tables and schemas
 
 - [Column naming conventions of the table factory](schemas/column-naming-conventions.md).
+- [Singleton tables](schemas/singleton-tables.md): an option of a table whose queries start as queries of its row.
 
 ## Migrations
 

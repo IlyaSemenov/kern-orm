@@ -1167,6 +1167,27 @@ describe("mutations", () => {
     )
   })
 
+  it("compiles the target of the row of a singleton table as the expression of its unique index", () => {
+    const excluded: TableSourceNode = { kind: "table", table: form }
+    const node: InsertNode = {
+      kind: "insert",
+      target,
+      columns: ["name"],
+      values: [[createParameter("Survey")]],
+      conflict: {
+        target: "singleton",
+        update: { set: [{ key: "name", value: createRef(excluded, "name") }], excluded },
+      },
+      returning: undefined,
+      rows: "one",
+      value: false,
+    }
+
+    expect(compileStatement(node).text).toBe(
+      'INSERT INTO "form" AS "form" ("name") VALUES ($1) ON CONFLICT ((true)) DO UPDATE SET "name" = "excluded"."name"',
+    )
+  })
+
   it("keeps the alias excluded of DO UPDATE from a table of that name", () => {
     const table = defineTable("excluded", {
       id: t.integer.primaryKey(),

@@ -57,6 +57,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   The same rows mode gives the same result to an executed query and to nested rows.
   `take`, `get`, and `pluck` keep `optional`, so `take().optional().get("a")` and `take().get("a").optional()` are the same query.
   - A query of a relation `many` starts with rows `many`, and of a relation `one` with rows `one` when the relation is required and `nullable` otherwise.
+    A query of a table starts with rows `many`, and of a [singleton table](#queries-of-a-singleton-table) with rows `optional`.
   - The row of a query of a required relation is guaranteed, which the state of the query records apart from its rows mode.
     The relation guarantees only the record it relates, not one that also passes a filter, so `where`, `find`, and `findBy` end the guarantee and turn rows `one` of a guaranteed query into `nullable`, or `optional` for a query of values; `optional`, `nullable`, and `required` end it as well.
     So `field.form.where(...)` resolves to `null` without a matching record, while `required` before or after the filter keeps rows `one`.
@@ -134,13 +135,26 @@ Queries come in two kinds that share the query methods and differ only by execut
   - `findBy` infers the columns of its object and checks them with `IsKey`, with an error at the call; a union of objects of the keys would accept the columns of two keys together.
     It takes only the keys that the type of the table tells, and any columns on a table of `any`, such as of `AnySelectQuery`.
 - At runtime, `find` rejects a table without a primary key and a number of values other than the number of its columns, `findBy` rejects columns that `isKey` does not take for a key, and both reject `null` and `undefined`.
-- A query of `find` or `findBy` keeps the key for [`upsert`](mutations.md#upserts):
+- A query of `find` or `findBy` keeps the key for [`upsert`](mutations.md#upserts), as a [query of a singleton table](#queries-of-a-singleton-table) keeps the key without columns:
   - In types, its state is `FoundState`, which has the part `foundKey` of the columns of the key outside of `SelectQueryState`, so that every change of the state by `ChangeState` drops it; the methods that keep the state, such as `where`, `orderBy`, the row locks, and `use`, keep the part too.
   - The part is the columns themselves, so that `upsert` takes the values by the key of the query.
     A member of an object of the columns beside them keeps a query of one key from standing for a query of another, even of a key of more columns, such as a query of `id` for one of `tenantId` and `id`; it does so also where TypeScript compares the members of a state and without `strictFunctionTypes`.
     So a union of queries of `find` and `findBy` by different keys is a union of different states, which rejects the methods that change the state, such as `select` and `get` ([decision](../decisions/queries/state-changing-methods-on-unions.md), [backlog](../BACKLOG.md#unions-of-queries-of-find-and-findby-by-different-keys)).
   - `FoundState` is an interface of every part of the state rather than `ChangeState` with the part, so that `find` and `findBy` cost fewer instantiations ([decision](../decisions/mutations/upsert-types.md)).
   - At runtime, its node keeps the values of the key as `foundKey` only after a query of a table without clauses; every method that derives a node from it drops them, whereas `use` returns the query of its callback, such as the query itself.
+
+## Queries of a singleton table
+
+- A query of a [singleton table](schemas.md) starts as a query of its row in rows `optional`, as of `find` of a key without columns: a schema, a `Db`, and `from` start it so, whereas a query of a relation to the table starts in the rows mode of the relation.
+  - It adds no limit, as a query of `find` adds none, so it rejects a second row, such as of a table without its unique index, and a [mutation](mutations.md#rows-to-change) tells it from a query of `take`.
+  - It takes the methods of a query of one row: `optional`, `nullable`, `required`, `get`, `find`, `findBy`, the aggregate methods, and `exists` apply to it, `take` keeps it as it is, and `all`, `limit`, `offset`, `distinct`, and `distinctOn` reject it, in types and at runtime.
+- In types, its state is `SingletonQueryState`, `InitialQueryState` of rows `optional` with the part `FoundKey<never>`, so that [`upsert`](mutations.md#upserts) applies to it as to a query of `find`, and the methods that change the state drop the part, as they drop it after `find`.
+  - The entries of a schema and a `Db` type a query by `TableQueryState` of its table: `InitialQueryState`, `SingletonQueryState`, or their union where the type of the table does not tell whether it is a singleton.
+    It is distributive over the `singleton` of the type of the table, so that a table of a generic type gives the state of the constraint of its `singleton`; but TypeScript defers it for such a table, as for the tables of a schema of a type parameter, so that the table of the state is not the type of the table, and `insert` rejects values of `InsertValues` of that type.
+  - `from` types its query by overloads of those states rather than by `TableQueryState`, so that a query of a table of a generic type, such as `from(table)` of `T extends typeof form`, has a state of `T` itself.
+  - `TableQueryState` is a conditional type of the table, which costs the first use of an entry and the first comparison of two `Db` types more instantiations than `InitialQueryState` alone, whereas the methods of a query cost the same ([decision](../decisions/schemas/singleton-tables.md)).
+- At runtime, its node keeps the values of the key without columns, an empty object, as `foundKey`.
+  `isTableQuery` takes it for a query of a table without clauses by the rows mode that its table starts with, so that `insert`, `find` and `findBy`, which keep their key, and `sql`, which interpolates the name of the table, take it as such.
 
 ## Sorting and pagination
 

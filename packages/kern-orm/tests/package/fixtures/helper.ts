@@ -262,6 +262,51 @@ export function findFormByName(name: string) {
   return schema.form.findBy({ name })
 }
 
+const license = defineTable(
+  "license",
+  {
+    id: t.uuid.primaryKey().hasDefault(),
+    token: t.text,
+  },
+  { singleton: true },
+)
+
+/** Schema of a singleton table, whose entry point starts a query of its row; see the file header. */
+export const licenseSchema = defineSchema({ license })
+
+/** Query of the row of a singleton table; see the file header. */
+export const licenseQuery = licenseSchema.license
+
+/** Upserts the row of a singleton table and returns its ID; see the file header. */
+export function upsertLicense(token: string) {
+  return licenseSchema.license.upsert({ token }).get("id")
+}
+
+/** Reads the token of the row of a singleton table through a `Db` of its schema; see the file header. */
+export function getLicenseToken(db: DbOf<typeof licenseSchema>) {
+  return db.license.get("token")
+}
+
+/** Reads a page of the forms of a table of their type, which a generic function takes; see the file header. */
+export function pageOfForms<T extends typeof form>(table: T) {
+  return from(table).limit(10).select("name")
+}
+
+/** Reads the token of the row of a singleton table of its type, which a generic function takes; see the file header. */
+export function requireLicenseToken<T extends typeof license>(table: T) {
+  return from(table).required().get("token")
+}
+
+/** Methods of the query of a singleton table, standing for `export const upsert = query.upsert` and the like; see the file header. */
+export const licenseMethods = {
+  upsert: licenseQuery.upsert,
+  insert: licenseQuery.insert,
+  insertMany: licenseQuery.insertMany,
+  update: licenseQuery.update,
+  delete: licenseQuery.delete,
+  required: licenseQuery.required,
+}
+
 /** Deletes the forms of a name and returns the records of a relation of each; see the file header. */
 export const deleteFormsWithFields = schema.form
   .where({ name: "Draft" })

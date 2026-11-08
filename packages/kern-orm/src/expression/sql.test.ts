@@ -21,15 +21,23 @@ it("rejects a column passed to sql as a type", () => {
   expect(() => sql(t.uuid.primaryKey())).toThrow("sql() accepts a type, not a column")
 })
 
-it("interpolates a query of a table without clauses as the name of the table of its Db", () => {
+it("interpolates a query of a table without clauses, also of a singleton table, as the name of the table of its Db", () => {
   const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+  const license = defineTable(
+    "license",
+    {
+      token: t.text,
+    },
+    { singleton: true },
+  )
 
-  expect(toNode(sql`SELECT FROM ${schema.form} JOIN ${db.form}`)).toEqual({
+  expect(toNode(sql`SELECT FROM ${schema.form} JOIN ${db.form} JOIN ${from(license)}`)).toEqual({
     kind: "raw",
-    fragments: ["SELECT FROM ", " JOIN ", ""],
+    fragments: ["SELECT FROM ", " JOIN ", " JOIN ", ""],
     values: [
       { kind: "tableName", table: form, db: undefined },
       { kind: "tableName", table: form, db },
+      { kind: "tableName", table: license, db: undefined },
     ],
   })
 })

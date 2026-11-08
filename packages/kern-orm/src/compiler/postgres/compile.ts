@@ -170,7 +170,7 @@ function compileValues(context: CompileContext, node: InsertNode): string {
 const excludedAlias = "excluded"
 
 /**
- * Compiles `ON CONFLICT` of an insert, which names the physical columns of its key, or nothing for an insert without it.
+ * Compiles `ON CONFLICT` of an insert, which names the physical columns of its key, or the expression `(true)` of the unique index of a singleton table, or nothing for an insert without it.
  *
  * The values of `DO UPDATE SET` see the existing row in `scope`, the occurrence of the table of the insert, and the row proposed for insertion as `excluded`.
  */
@@ -181,11 +181,16 @@ function compileConflict(context: CompileContext, scope: Scope, node: InsertNode
   }
   const { target, update } = conflict
   let text = " ON CONFLICT"
-  for (let index = 0; index < target.length; index++) {
-    text += `${index === 0 ? " (" : ", "}${compileColumnName(node.target, target[index]!)}`
-  }
-  if (target.length > 0) {
-    text += ")"
+  // PostgreSQL infers the unique index of the expression `(true)`, whatever its name, as it infers the index of the columns of a key.
+  if (target === "singleton") {
+    text += " ((true))"
+  } else {
+    for (let index = 0; index < target.length; index++) {
+      text += `${index === 0 ? " (" : ", "}${compileColumnName(node.target, target[index]!)}`
+    }
+    if (target.length > 0) {
+      text += ")"
+    }
   }
   if (update === undefined) {
     return `${text} DO NOTHING`

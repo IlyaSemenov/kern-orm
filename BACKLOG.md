@@ -29,9 +29,8 @@ Relations through other relations, such as the answers of a form through its fie
 
 ## Upsert
 
-What [`upsert`](architecture/mutations.md#upserts) of a query of `find` or `findBy` and [`onConflict`](architecture/mutations.md#conflicts) of an insert do not cover:
+What [`upsert`](architecture/mutations.md#upserts) and [`onConflict`](architecture/mutations.md#conflicts) of an insert do not cover:
 
-- The upsert of the row of a [singleton table](#singleton-tables), `upsert(values)` of its entry point, whose conflict target is the unique index of `(true)`, which PostgreSQL infers from `ON CONFLICT ((true))`.
 - Telling an inserted row from an updated one, which `old` of [values before an update](#values-before-an-update) gives on PostgreSQL 18.
 - A partial unique index as the conflict target, such as of the records that are not soft-deleted, whose predicate `ON CONFLICT` requires, as the SQL target of `onConflict` of Orchid ORM does ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflict)).
 - A condition of the update, `DO UPDATE ... WHERE`, which makes rows `optional`; decide whether `where` before `upsert`, which `upsert` rejects, becomes it.
@@ -71,6 +70,7 @@ Two independent goals:
      Orchid ORM 1.78.47 turns it into a select of the rows, `SELECT count(*)` without selected fields ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/update.md#empty-set)).
    - An `upsert` without values, such as of the empty values of a PATCH, changes no value of an existing record: after it, the record of the key exists and is returned, and a missing record is inserted with its defaults.
      - An update of the key, `ON CONFLICT (key) DO UPDATE SET <column of the key> = EXCLUDED.<column of the key>`, returns the record atomically in every case, but updates an existing row physically: it fires `UPDATE` triggers, such as of `updated_at`, locks the row, and writes a new version of it.
+       The upsert of the row of a [singleton table](architecture/queries.md#queries-of-a-singleton-table) has no column of a key to set this way.
      - A select after `DO NOTHING`, `WITH inserted AS (INSERT ... ON CONFLICT DO NOTHING RETURNING ...) SELECT ... FROM inserted UNION ALL SELECT ... FROM <table> WHERE <key> AND NOT EXISTS (SELECT FROM inserted)`, leaves an existing row untouched, but its `SELECT` misses a record that a concurrent transaction inserted after the statement started, so it returns no row and rejects with `NotFoundError`.
      - Orchid ORM 1.78.47 turns `upsert` without the values of the update into `orCreate`: a `SELECT`, and then an `INSERT ... WHERE NOT EXISTS` in a second statement, which rejects with a unique violation when a concurrent transaction inserts the record between them ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/basic-features/mutate/upsert.ts#L47-L66)).
    - An `insertMany` without records changes no row: the number `0`, or an empty array of the selected fields.
@@ -167,14 +167,6 @@ A variant of [`$lock`](architecture/transactions.md#locks) that returns whether 
 ## Migrating every tenant
 
 A command of the migration command line for every schema of a target whose PostgreSQL schema is a function, such as all tenants, from a list of schemas that the project gives.
-
-## Singleton tables
-
-Tables that hold at most one row, such as the settings of an application, whose entry points start queries of one row, so that reading, updating, and [upserting](#upsert) the row need no sentinel key or `all().take()` ([orchid-orm#752](https://github.com/romeerez/orchid-orm/issues/752)).
-
-- `optional`, `nullable`, and `required` apply to the queries of their entry points, as to other queries of one row.
-- A table declares that it holds at most one row by an option of `defineTable`, such as `singleton: true`, which requires a unique index of `(true)`, the conflict target of its [upsert](#upsert).
-- Decide whether that guarantee lets its mutations go without a restriction or `all()`, which [architecture/mutations.md](architecture/mutations.md#rows-to-change) otherwise requires.
 
 ## Runtime defaults of columns
 
@@ -371,7 +363,7 @@ Restricted views of schemas for business logic shared between schemas.
 
 ## Checking tables against the database
 
-A check, such as in tests after migrating, that each table of a schema exists with its columns and their nullability, that a constraint or a unique index backs each of its keys, and that a foreign key backs each required relation `one`, instead of generating migrations from tables, which [the scope of the migrator](decisions/migrations/migrator-scope.md) leaves out.
+A check, such as in tests after migrating, that each table of a schema exists with its columns and their nullability, that a constraint or a unique index backs each of its keys, that a unique index of `(true)` backs each singleton table, and that a foreign key backs each required relation `one`, instead of generating migrations from tables, which [the scope of the migrator](decisions/migrations/migrator-scope.md) leaves out.
 
 ## Recurrent SQL of migrations
 

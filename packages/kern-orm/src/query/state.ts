@@ -88,6 +88,41 @@ export interface InitialQueryState<
   readonly aggregate: false
 }
 
+/**
+ * State of a query that starts from table `T` with schema context `C`, as the entry points of a schema and a `Db` and `from` start it: of all the rows of the table, or of the one row of a singleton table.
+ *
+ * Where the type of `T` does not tell whether it is a singleton, such as `Table<Name, Columns>`, it is the union of both.
+ */
+export type TableQueryState<
+  T extends AnyTable,
+  C extends SchemaContext = NoRelations,
+> = SingletonOrInitialState<T, C, T["singleton"]>
+
+// Distributive over `Singleton`, so that `boolean` gives the union of both states, and a table of a generic type, such as `T extends typeof form`, gives the state of the constraint of its `singleton`, which a conditional type of `T["singleton"]` itself defers.
+/** State of a query that starts from table `T` with schema context `C`, as `TableQueryState` gives it, by `Singleton`, the `singleton` of the type of `T`. */
+type SingletonOrInitialState<
+  T extends AnyTable,
+  C extends SchemaContext,
+  Singleton,
+> = Singleton extends true ? SingletonQueryState<T, C> : InitialQueryState<T, C>
+
+// The state of `find` of a key without columns, so that `upsert` applies to it as to a query of `find`, and the methods that change the state drop the key as they do for `find`.
+/** State of a query that starts from singleton table `T` with schema context `C`: its one row as a record without fields, which resolves to `undefined` without it. */
+export interface SingletonQueryState<T extends AnyTable, C extends SchemaContext = NoRelations>
+  extends InitialQueryState<T, C, never, "optional">, FoundKey<never> {}
+
+/** Key of the member of `FoundKey` that makes it invariant in the columns of the key. */
+declare const foundKeyVariance: unique symbol
+
+/** Part of the state of a query of `find` or `findBy` with the columns `K` of its key, or of a query of a singleton table without them, which `upsert` applies to. */
+export interface FoundKey<K extends string> {
+  // Outside of `SelectQueryState`, so that every change of the state by `ChangeState` drops it; the methods that keep the state keep it too.
+  readonly foundKey: K
+  // With `foundKey`, it keeps a query of one key from standing for a query of another, even of a key of more columns, so that `upsert` takes the values by the key of the query.
+  // An object of the columns rather than a function of them, which needs `strictFunctionTypes`, and a member rather than a variance annotation, which TypeScript ignores where it compares the members of a state.
+  readonly [foundKeyVariance]: { readonly [C in K]: true }
+}
+
 /** Mark of `aggregate: false` of a query of groups, which aggregate methods replace. */
 export interface Grouped {
   readonly grouped: true

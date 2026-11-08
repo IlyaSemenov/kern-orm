@@ -406,7 +406,7 @@ export class MutationQuery<
 
   // Rest columns take one key in any order, as the object of `findBy` does; each is checked, so that the error names the keys of the table.
   /**
-   * Chooses the key, primary or unique, of `columns` on which a row of the insert may conflict with an existing record, or any key without columns.
+   * Chooses the key, primary or unique, of `columns` on which a row of the insert may conflict with an existing record; without columns, `doNothing` skips a row that conflicts on any key, and `merge` and `update` update the row of a singleton table.
    *
    * Call it right after `insert` or `insertMany`, choose the action on its result, such as `doNothing()`, and select the fields that the mutation returns after the action.
    */
@@ -487,7 +487,7 @@ export class MutationQuery<
 export type AnyMutationQuery = MutationQuery<any, SelectQueryKind>
 
 /**
- * Conflict target of an insert of state `S` on the key of columns `K`, or on any key for `never`, with methods that choose the action and return the mutation.
+ * Conflict target of an insert of state `S` on the key of columns `K`, or without columns for `never`, with methods that choose the action and return the mutation: without columns, `doNothing` takes any key, and `merge` and `update` the row of a singleton table.
  *
  * It is no query: awaiting it is a type error and rejects, so that an insert without an action does not resolve without running.
  */
@@ -500,7 +500,7 @@ export class ConflictTarget<
   constructor(
     /** Insert whose rows conflict. */
     readonly insert: MutationQuery<S, Kind>,
-    /** Columns of the key that the rows conflict on, in its order, or none for any key. */
+    /** Columns of the key that the rows conflict on, in its order, or none, as `onConflict` without columns gives them. */
     readonly target: readonly K[],
   ) {
     Object.freeze(this)
@@ -525,6 +525,7 @@ export class ConflictTarget<
    * Updates the existing record of each row that conflicts with the values of `columns` of the row, as `DO UPDATE SET column = EXCLUDED.column`, or with every column that the insert gives, apart from the key, without columns, and returns the mutation of the inserted and the updated rows.
    *
    * Every record must give each column that it sets.
+   * After `onConflict()` without columns, it updates the row of a singleton table.
    */
   merge<
     S extends InsertMutationState,
@@ -532,19 +533,19 @@ export class ConflictTarget<
     K extends string,
     C extends Exclude<keyof S["table"]["columns"] & string, K>,
   >(
-    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<K>,
+    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<S, K>,
     ...columns: C[]
   ): MutationQuery<ChangeMutationState<S, { changed: S["changed"] }>, Kind>
   merge(...columns: string[]): unknown {
     const { insert } = this
     const target: readonly string[] = this.target
-    requireConflictKey(target, "merge")
+    const updateTarget = toUpdateTarget(insert.table, target, "merge")
     const node = this.insertNode()
     const merged =
       columns.length === 0 ? node.columns.filter(key => !target.includes(key)) : columns
     if (merged.length === 0) {
       throw new Error(
-        "merge has no column to set, since the insert gives only the columns of the key of onConflict; use doNothing",
+        "merge has no column to set, since the insert gives no column apart from the key of onConflict; use doNothing",
       )
     }
     const excluded = createExcluded(insert.table)
@@ -566,7 +567,7 @@ export class ConflictTarget<
       set.push(Object.freeze({ key, value: createNode({ kind: "column", source: excluded, key }) }))
     }
     return this.derive(
-      Object.freeze({ target, update: Object.freeze({ set, excluded }) }),
+      Object.freeze({ target: updateTarget, update: Object.freeze({ set, excluded }) }),
       node.rows,
     )
   }
@@ -576,6 +577,7 @@ export class ConflictTarget<
    * Updates the existing record of each row that conflicts with the values that `callback` returns, as `DO UPDATE SET`, and returns the mutation of the inserted and the updated rows.
    *
    * `callback` receives the columns and the queries of the relations of the existing record, and the columns of the row proposed for insertion, `excluded`, such as to add its value to the existing one.
+   * After `onConflict()` without columns, it updates the row of a singleton table.
    */
   update<
     S extends InsertMutationState,
@@ -586,7 +588,7 @@ export class ConflictTarget<
       excluded: ColumnRefs<S["table"]>,
     ) => UpdateValues<S["table"]>,
   >(
-    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<K>,
+    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<S, K>,
     callback: F,
   ): MutationQuery<
     ChangeMutationState<S, { uses: S["uses"] | OperandUses<ReturnType<F>[keyof ReturnType<F>]> }>,
@@ -596,14 +598,15 @@ export class ConflictTarget<
    * Updates the existing record of each row that conflicts with the values of `set`, as `DO UPDATE SET`, and returns the mutation of the inserted and the updated rows.
    *
    * `set` gives the values of the columns to update, or is a callback that returns them from the existing record and the row proposed for insertion, `excluded`.
+   * After `onConflict()` without columns, it updates the row of a singleton table.
    */
   update<S extends InsertMutationState, Kind extends SelectQueryKind, K extends string>(
-    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<K>,
+    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<S, K>,
     set: ConflictUpdateSet<S["table"], S["schema"]>,
   ): MutationQuery<ChangeMutationState<S, { changed: S["changed"] }>, Kind>
   update(set: unknown): unknown {
-    const { insert, target } = this
-    requireConflictKey(target, "update")
+    const { insert } = this
+    const target = toUpdateTarget(insert.table, this.target, "update")
     const node = this.insertNode()
     const excluded = createExcluded(insert.table)
     const assignments = toAssignments(node.target, set, insert.context, excluded)
@@ -652,21 +655,38 @@ export interface ConflictActionRequired {
   readonly "onConflict needs an action, such as doNothing()": never
 }
 
-/** Check of the columns `K` of a conflict target that rejects `merge` and `update` of a conflict on any key, which PostgreSQL does not update. */
-type ConflictKeyCheck<K extends string> = [K] extends [never] ? ConflictKeyRequired : unknown
+// The state rather than its table, which only a target of no columns reads.
+/** Check of the columns `K` of a conflict target of an insert of state `S` that rejects `merge` and `update` of a conflict on any key, which PostgreSQL does not update, unless the table is a singleton table, whose row they update. */
+type ConflictKeyCheck<S extends InsertMutationState, K extends string> = [K] extends [never]
+  ? S["table"]["singleton"] extends true
+    ? unknown
+    : ConflictKeyRequired
+  : unknown
 
 /** Type that a conflict target on any key is checked against by `merge` and `update`, naming the reason. */
 export interface ConflictKeyRequired {
   readonly "merge and update need the columns of a key in onConflict": never
 }
 
-/** Rejects `method` of a conflict target on any key, without columns, since PostgreSQL requires the columns of a key for `DO UPDATE`. */
-function requireConflictKey(target: readonly string[], method: string): void {
-  if (target.length === 0) {
-    throw new Error(
-      `${method} needs the columns of a key in onConflict, since PostgreSQL updates a record only on a conflict of a named key`,
-    )
+/**
+ * Returns the target of `DO UPDATE` of `method` of a conflict on the columns `target` of a key of `table`: the columns, or without them the unique index of `(true)` of a singleton table.
+ *
+ * It rejects a target without columns of another table, since PostgreSQL requires an explicit conflict target for `DO UPDATE`.
+ */
+function toUpdateTarget(
+  table: AnyTable,
+  target: readonly string[],
+  method: string,
+): readonly string[] | "singleton" {
+  if (target.length > 0) {
+    return target
   }
+  if (table.singleton) {
+    return "singleton"
+  }
+  throw new Error(
+    `${method} needs the columns of a key in onConflict, since PostgreSQL updates a record only on a conflict of a named key`,
+  )
 }
 
 /** Creates the occurrence of `table` that stands for the row proposed for insertion in `DO UPDATE`, `EXCLUDED` of PostgreSQL. */
@@ -678,6 +698,7 @@ function createExcluded(table: AnyTable): TableSourceNode {
  * Creates the insert of `records` into the table of `query`, which must have no clauses, in rows mode `rows`: `one` for `insert` and `many` for `insertMany`, named by `method`.
  *
  * It returns the number of the inserted rows, until a selection returns their fields.
+ * It rejects an insert of rows `many` into a singleton table, which holds one row.
  */
 export function createInsert(
   query: AnySelectQuery,
@@ -690,14 +711,20 @@ export function createInsert(
       `${method} applies only to a query of a table without clauses, such as filters or selected fields; select the fields that it returns after it`,
     )
   }
+  const { table } = query
+  if (rows === "many" && table.singleton) {
+    throw new Error(
+      `${method} cannot insert into singleton table "${table.name}", which holds one row; use insert or upsert`,
+    )
+  }
   return createInsertInto(query, records, rows, method)
 }
 
 // One statement of `ON CONFLICT ... DO UPDATE`, rather than an update followed by an insert without its row, so that concurrent upserts of a missing record do not reject with a unique violation.
 /**
- * Creates the upsert of `values` by `query`, a query of `find` or `findBy` of a table without other clauses.
+ * Creates the upsert of `values` by `query`, a query of `find` or `findBy` of a table without other clauses, or of a singleton table without clauses.
  *
- * It inserts the values of the key of `query` with `values`, and on a conflict on that key sets the columns of `values` of the existing record, as `merge` of `onConflict` does.
+ * It inserts the values of the key of `query` with `values`, and on a conflict on that key, or on the row of a singleton table, sets the columns of `values` of the existing record, as `merge` of `onConflict` does.
  * It rejects another query, values that are not an object, a value of a column of the key, and values without a value other than `undefined`.
  */
 export function createUpsert(query: AnySelectQuery, values: unknown): AnyMutationQuery {
@@ -705,7 +732,7 @@ export function createUpsert(query: AnySelectQuery, values: unknown): AnyMutatio
   const { foundKey } = query.node
   if (foundKey === undefined) {
     throw new Error(
-      "upsert applies only right after find or findBy of a query of a table without clauses, such as filters, optional, or selected fields; select the fields that it returns after it",
+      "upsert applies only to a query of a singleton table or right after find or findBy of a query of a table, without clauses such as filters, optional, or selected fields; select the fields that it returns after it",
     )
   }
   if (typeof values !== "object" || values === null) {
@@ -732,12 +759,14 @@ export function createUpsert(query: AnySelectQuery, values: unknown): AnyMutatio
   }
   if (!hasValues) {
     throw new Error(
-      "upsert takes the value of at least one column other than the key; to insert the record of the key unless it exists, use insert(...).onConflict(...).doNothing()",
+      key.length === 0
+        ? "upsert takes the value of at least one column; to insert the row unless it exists, use insert(...).onConflict().doNothing()"
+        : "upsert takes the value of at least one column other than the key; to insert the record of the key unless it exists, use insert(...).onConflict(...).doNothing()",
     )
   }
   const insert = createInsertInto(query, [record], "one", "upsert")
-  // `find` and `findBy` take only the values of the columns of a key.
-  return new ConflictTarget(insert, findKey(table, key)!).merge()
+  // `find` and `findBy` take only the values of the columns of a key, and the query of a singleton table has none, whose conflict `merge` takes on its row.
+  return new ConflictTarget(insert, key.length === 0 ? key : findKey(table, key)!).merge()
 }
 
 /** Creates the insert of `records` into the occurrence of the table of `query`, whose clauses it does not read, in rows mode `rows` of the method named by `method`. */
@@ -806,7 +835,7 @@ export function createDelete(query: AnySelectQuery): AnyMutationQuery {
 
 // PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters; `find` and `findBy` add no limit, since the values of a key match at most one row.
 /**
- * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a relation, with selected fields, which a mutation selects after it, with a conversion of `map`, which a mutation takes after it too, with keys of groups, whose rows SQL does not give, with an order, a limit, an offset, `distinct`, or `distinctOn`, with a row lock, which a mutation takes on its rows itself, or without a filter that restricts its rows unless `all` allows it.
+ * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a relation, with selected fields, which a mutation selects after it, with a conversion of `map`, which a mutation takes after it too, with keys of groups, whose rows SQL does not give, with an order, a limit, an offset, `distinct`, or `distinctOn`, with a row lock, which a mutation takes on its rows itself, or without a filter that restricts its rows unless `all` allows it or the table is a singleton table.
  *
  * A filter simplified to `TRUE`, such as `where({})`, restricts no row.
  */
@@ -843,8 +872,12 @@ function checkChangedRows(node: QueryNode, method: string): void {
   if (node.lock !== undefined) {
     throw new Error(`${method} locks the rows it changes itself, so its query takes no row lock`)
   }
+  // A singleton table holds one row at most, so a query of it changes that row without a filter, as a query of `find` changes the row of its key.
+  if (node.all || node.from.table.singleton) {
+    return
+  }
   const predicate = combineFilters(node.filters)
-  if (!node.all && predicate.kind === "boolean" && predicate.value) {
+  if (predicate.kind === "boolean" && predicate.value) {
     throw new Error(
       `${method} requires a filter that restricts the rows, such as of where or find; call all() to ${method} every row`,
     )

@@ -1,9 +1,10 @@
-// Rows modes of select queries: the mode of a query of a relation, how `take`, `get`, `pluck`, and filters change them, and the result that each of them gives.
+// Rows modes of select queries: the mode of a query of a table or of a relation, how `take`, `get`, `pluck`, and filters change them, and the result that each of them gives.
 
 import type { ExpressionNode } from "../ast/nodes"
 import { oneNode } from "../ast/nodes"
 import type { ResultRows } from "../result/result"
 import type { RelationDefinition, RelationKind } from "../schema/relation"
+import type { AnyTable } from "../table/table"
 
 import type { QueryState } from "./state"
 
@@ -53,6 +54,11 @@ export type ResultByRows<Result, Rows extends ResultRows> = Rows extends "many"
     : Rows extends "nullable"
       ? Result | null
       : Result | undefined
+
+/** Returns the rows mode of a query that starts from `table`, as `TableQueryState` gives it in types: `optional` of the one row of a singleton table, and `many` of the rows of another table. */
+export function getTableRows(table: AnyTable): ResultRows {
+  return table.singleton ? "optional" : "many"
+}
 
 /** Returns the rows mode of a query of the records of `relation`, as `RelationRows` gives it in types. */
 export function getRelationRows(relation: RelationDefinition): ResultRows {

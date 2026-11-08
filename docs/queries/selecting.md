@@ -96,7 +96,7 @@ const form = await db.form.where({ name: "Survey" }).select("id", "published").t
 `take` can come before `select`: `take().select("id")` also returns one record.
 Call [`limit` and `offset`](./sorting#pagination) before `take`.
 
-Without a row, `take` rejects with `NotFoundError`; when the row may be missing, add `optional` to get `undefined` instead:
+Without a row, `take` rejects with `NotFoundError`, unless the query is of a [singleton table](../singleton-tables), which resolves to `undefined`; when the row may be missing, add `optional` to get `undefined` instead:
 
 ```ts
 const form = await db.form.where({ name: "Survey" }).select("id").take().optional()
@@ -131,7 +131,7 @@ const user = await db.user.findBy({ email }).select("id")
 ```
 
 `find(formId)` filters like `where({ id: formId })` and returns one row like `take()`, and `findBy({ email })` works the same way.
-Without the record, they reject with `NotFoundError` unless you add `optional` or `nullable`, as for [one row](#one-row).
+Without the record, they reject with `NotFoundError` unless you add `optional` or `nullable`, or the query is of a [singleton table](../singleton-tables), as for [one row](#one-row).
 Call them on any query, such as `form.fields.find(fieldId)` of a [relation](./relations), and pass them what `where` takes, such as a column of the parent row in [another nested query](./relations#other-queries).
 
 ## Values

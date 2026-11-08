@@ -67,7 +67,7 @@ bench("table with keys", () => {
     },
     { unique: [["shelf", "slot"]] },
   )
-}).types([298, "instantiations"])
+}).types([306, "instantiations"])
 
 bench("schema with relations", () => {
   defineSchema({ node }).$relations({
@@ -80,8 +80,8 @@ bench("schema with relations", () => {
 
 bench("first expression of a table", () => {
   defineExpression(formsSchema.form, (form, name: string) => form.name.eq(name))
-}).types([153, "instantiations"])
+}).types([167, "instantiations"])
 
 bench("first helper of a table", () => {
   defineHelper(formsSchema.form, query => query.where({ published: true }))
-}).types([585, "instantiations"])
+}).types([599, "instantiations"])

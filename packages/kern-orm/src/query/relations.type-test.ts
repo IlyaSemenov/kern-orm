@@ -119,6 +119,47 @@ describe("select", () => {
     }))
   })
 
+  test("gives the records of a relation to a singleton table in the rows mode of the relation", () => {
+    const license = defineTable(
+      "license",
+      {
+        id: t.uuid.primaryKey(),
+        ownerId: t.uuid,
+      },
+      { singleton: true },
+    )
+    const owner = defineTable("owner", {
+      id: t.uuid.primaryKey(),
+      licenseId: t.uuid,
+    })
+    const licensed = defineSchema({ owner, license }).$relations({
+      owner: {
+        licenses: many(license, { from: "id", to: "ownerId" }),
+        license: one(license, { from: "licenseId", to: "id" }),
+        requiredLicense: one(license, { from: "licenseId", to: "id", required: true }),
+      },
+    })
+    const query = licensed.owner.select(owner => ({
+      licenses: owner.licenses.select("id"),
+      license: owner.license.select("id"),
+      requiredLicense: owner.requiredLicense.select("id"),
+    }))
+
+    expectTypeOf<Executed<typeof query>>().toEqualTypeOf<
+      {
+        licenses: { id: string }[]
+        license: { id: string } | null
+        requiredLicense: { id: string }
+      }[]
+    >()
+    licensed.license.upsert({ id: "license-id", ownerId: "owner-id" })
+    licensed.owner.select(owner => {
+      // @ts-expect-error A query of a relation keeps no key.
+      owner.license.upsert({ id: "license-id", ownerId: "owner-id" })
+      return {}
+    })
+  })
+
   test("gives one record or value after take, and null or undefined without it after nullable or optional", () => {
     const query = forms.form.select(form => ({
       first: form.fields.select("label").take(),

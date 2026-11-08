@@ -155,6 +155,27 @@ describe("defineTable", () => {
     expectTypeOf(choices[2].keys).toEqualTypeOf<AnyTableKeys>()
     expectTypeOf<ReturnType<typeof define>["keys"]>().toEqualTypeOf<AnyTableKeys>()
   })
+
+  test("types whether the table holds at most one row, or boolean where the options do not tell it", () => {
+    const columns = {
+      token: t.text,
+    }
+    const options: TableOptions<"token"> = { singleton: true }
+
+    expectTypeOf(
+      defineTable("license", columns, { singleton: true }).singleton,
+    ).toEqualTypeOf<true>()
+    expectTypeOf(
+      defineTable("license", columns, { singleton: false }).singleton,
+    ).toEqualTypeOf<false>()
+    expectTypeOf(defineTable("license", columns, {}).singleton).toEqualTypeOf<false>()
+    expectTypeOf(defineTable("license", columns).singleton).toEqualTypeOf<false>()
+    expectTypeOf(
+      defineTable("license", columns, flag ? { singleton: true } : undefined).singleton,
+    ).toEqualTypeOf<boolean>()
+    expectTypeOf(defineTable("license", columns, options).singleton).toEqualTypeOf<boolean>()
+    expectTypeOf<Table<"license">["singleton"]>().toEqualTypeOf<boolean>()
+  })
 })
 
 describe("createTableFactory", () => {

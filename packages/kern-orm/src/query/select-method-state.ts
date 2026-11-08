@@ -14,7 +14,7 @@ import type { OperandUses } from "./operand"
 import type { FilteredRows, OneRow } from "./rows"
 import type { ChangeState } from "./select"
 import type { GroupedField, GroupedRecord, HelperFields, SelectedFieldTypes } from "./selection"
-import type { Grouped, QueryValueType, SelectQueryState } from "./state"
+import type { FoundKey, Grouped, QueryValueType, SelectQueryState } from "./state"
 
 // Non-distributive over the guarantee, so that a state that may be guaranteed relaxes its rows.
 // The guarantee of the query of a helper callback, whose records are the marker, records only whether the callback filters, so its rows stay.
@@ -50,19 +50,7 @@ export interface FoundState<S extends SelectQueryState, K extends string>
   readonly aggregate: S["aggregate"]
 }
 
-/** Key of the member of `FoundKey` that makes it invariant in the columns of the key. */
-declare const foundKeyVariance: unique symbol
-
-/** Part of the state of a query of `find` or `findBy` with the columns `K` of its key, which `upsert` applies to. */
-export interface FoundKey<K extends string> {
-  // Outside of `SelectQueryState`, so that every change of the state by `ChangeState` drops it; the methods that keep the state keep it too.
-  readonly foundKey: K
-  // With `foundKey`, it keeps a query of one key from standing for a query of another, even of a key of more columns, so that `upsert` takes the values by the key of the query.
-  // An object of the columns rather than a function of them, which needs `strictFunctionTypes`, and a member rather than a variance annotation, which TypeScript ignores where it compares the members of a state.
-  readonly [foundKeyVariance]: { readonly [C in K]: true }
-}
-
-/** State of a query of `find` or `findBy`, which `upsert` applies to. */
+/** State of a query of `find` or `findBy`, or of a singleton table, which `upsert` applies to. */
 export type FoundQueryState = SelectQueryState & { readonly foundKey: string }
 
 /** State of a query whose rows are records, which `select` and `clearSelect` change. */

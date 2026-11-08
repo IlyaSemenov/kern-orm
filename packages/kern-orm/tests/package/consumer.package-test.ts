@@ -303,7 +303,7 @@ describe.each([
     run([...tsc, "-p", "postgres-js-v3/tsconfig.declarations.json"], consumer)
   }, 60_000)
 
-  test("rejects a query of another key in upsert of a consumer with strictNullChecks alone", () => {
+  test("rejects a query of another key in upsert, also of a singleton table, of a consumer with strictNullChecks alone", () => {
     run([...tsc, "-p", "tsconfig.found-key.json"], consumer)
   }, 60_000)
 

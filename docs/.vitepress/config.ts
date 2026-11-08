@@ -54,6 +54,7 @@ export default defineConfig({
           { text: "SQL Statements", link: "/queries/sql" },
         ],
       },
+      { text: "Singleton Tables", link: "/singleton-tables" },
       { text: "Multiple Schemas", link: "/multiple-schemas" },
       { text: "Transactions", link: "/transactions" },
       { text: "Migrations", link: "/migrations" },

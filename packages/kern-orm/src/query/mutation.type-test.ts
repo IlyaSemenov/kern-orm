@@ -11,8 +11,7 @@ import * as t from "../types"
 import { defineHelper } from "./helper"
 import type { SelectQueryKind } from "./kind"
 import type { ResultOf, SelectQuery } from "./select"
-import type { FoundKey } from "./select-method-state"
-import type { QueryStateOf } from "./state"
+import type { FoundKey, QueryStateOf } from "./state"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
 const post = defineTable("post", {
@@ -474,6 +473,79 @@ describe("upsert", () => {
     votes.vote.findBy(key).update({ votes: 1 }).upsert({ votes: 1 })
     // @ts-expect-error After an upsert.
     votes.vote.findBy(key).upsert({ votes: 1 }).onConflict()
+  })
+})
+
+describe("singleton tables", () => {
+  const license = defineTable(
+    "license",
+    {
+      id: t.uuid.primaryKey().hasDefault(),
+      token: t.text,
+      note: t.text.nullable(),
+    },
+    { singleton: true },
+  )
+  const licenses = createDatabase({ driver: createRecordingDriver().driver }).bind(
+    defineSchema({ license }),
+  )
+
+  test("upsert the row of the query of the table with the values of an insert, returning the row", () => {
+    expectTypeOf(licenses.license.upsert({ token: "token" })).resolves.toEqualTypeOf<number>()
+    expectTypeOf(
+      licenses.license.upsert({ token: "token", note: null }).get("id"),
+    ).resolves.toEqualTypeOf<string>()
+    expectTypeOf(
+      licenses.$execute(
+        defineSchema({ license }).license.upsert({ token: "token" }).select("id", "note"),
+      ),
+    ).resolves.toEqualTypeOf<{ id: string; note: string | null }>()
+    // @ts-expect-error A column that an insert requires.
+    licenses.license.upsert({ note: "note" })
+    // @ts-expect-error A column of another table.
+    licenses.license.upsert({ token: "token", votes: 1 })
+    // @ts-expect-error A value of another type.
+    licenses.license.upsert({ token: 1 })
+  })
+
+  test("upsert only the query of the table without the methods that change its state, or of find", () => {
+    expectTypeOf(
+      licenses.license.find("license-id").upsert({ token: "token" }),
+    ).resolves.toEqualTypeOf<number>()
+    // @ts-expect-error After take.
+    licenses.license.take().upsert({ token: "token" })
+    // @ts-expect-error After required.
+    licenses.license.required().upsert({ token: "token" })
+    // @ts-expect-error After a selection.
+    licenses.license.select("id").upsert({ token: "token" })
+  })
+
+  test("insert the row, but not several rows", () => {
+    expectTypeOf(
+      licenses.license.insert({ token: "token" }).get("id"),
+    ).resolves.toEqualTypeOf<string>()
+    // @ts-expect-error A singleton table holds one row.
+    licenses.license.insertMany([{ token: "token" }])
+  })
+
+  test("update the row on a conflict without columns", () => {
+    expectTypeOf(
+      licenses.license.insert({ token: "token" }).onConflict().merge().get("id"),
+    ).resolves.toEqualTypeOf<string>()
+    expectTypeOf(
+      licenses.license.insert({ token: "token" }).onConflict().update({ note: null }),
+    ).resolves.toEqualTypeOf<number>()
+  })
+
+  test("update and delete the row without all, allowing a missing row unless required", () => {
+    expectTypeOf(licenses.license.update({ token: "token" })).resolves.toEqualTypeOf<number>()
+    expectTypeOf(licenses.license.update({ token: "token" }).get("id")).resolves.toEqualTypeOf<
+      string | undefined
+    >()
+    expectTypeOf(licenses.license.delete().select("token")).resolves.toEqualTypeOf<
+      { token: string } | undefined
+    >()
+    expectTypeOf(licenses.license.required().delete().get("id")).resolves.toEqualTypeOf<string>()
   })
 })
 

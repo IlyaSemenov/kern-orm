@@ -55,6 +55,16 @@ const vote = defineTable(
   { unique: [["formId", "userId"]] },
 )
 
+const license = defineTable(
+  "license",
+  {
+    id: t.integer.primaryKey().hasDefault(),
+    token: t.text,
+    note: t.text.nullable(),
+  },
+  { singleton: true },
+)
+
 /** Binds the schema to a database whose driver answers every statement with `rows`, reporting `count` rows. */
 function connect(count: number, rows: string[][] = []) {
   const { driver, statements } = createRecordingDriver({ respond: () => ({ count, rows }) })
@@ -106,6 +116,16 @@ describe("insert", () => {
     }
     expect(() => schema.form.insertMany({ name: "Survey" } as never)).toThrow(
       "insertMany takes an array of records",
+    )
+  })
+
+  it("inserts the row of a singleton table, but not several rows", () => {
+    expect(from(license).insert({ token: "Token" }).toSQL().text).toBe(
+      'INSERT INTO "license" AS "license" ("token") VALUES ($1)',
+    )
+    // @ts-expect-error A singleton table.
+    expect(() => from(license).insertMany([{ token: "Token" }])).toThrow(
+      'insertMany cannot insert into singleton table "license", which holds one row; use insert or upsert',
     )
   })
 })
@@ -191,7 +211,7 @@ describe("conflicts", () => {
         .onConflict("formId", "userId")
         .merge(),
     ).toThrow(
-      "merge has no column to set, since the insert gives only the columns of the key of onConflict; use doNothing",
+      "merge has no column to set, since the insert gives no column apart from the key of onConflict; use doNothing",
     )
   })
 
@@ -205,6 +225,23 @@ describe("conflicts", () => {
     // @ts-expect-error A conflict on any key.
     expect(() => anyKey.update({ votes: 0 })).toThrow(
       "update needs the columns of a key in onConflict",
+    )
+  })
+
+  it("update the row of a singleton table without columns, and skip a row that conflicts on any key", () => {
+    const inserted = from(license).insert({ token: "Token" })
+
+    expect(inserted.onConflict().merge().toSQL().text).toBe(
+      'INSERT INTO "license" AS "license" ("token") VALUES ($1) ON CONFLICT ((true)) DO UPDATE SET "token" = "excluded"."token"',
+    )
+    expect(inserted.onConflict().update({ note: "Note" }).toSQL().text).toBe(
+      'INSERT INTO "license" AS "license" ("token") VALUES ($1) ON CONFLICT ((true)) DO UPDATE SET "note" = $2',
+    )
+    expect(inserted.onConflict().doNothing().toSQL().text).toBe(
+      'INSERT INTO "license" AS "license" ("token") VALUES ($1) ON CONFLICT DO NOTHING',
+    )
+    expect(inserted.onConflict("id").merge().toSQL().text).toBe(
+      'INSERT INTO "license" AS "license" ("token") VALUES ($1) ON CONFLICT ("id") DO UPDATE SET "token" = "excluded"."token"',
     )
   })
 
@@ -280,6 +317,20 @@ describe("upsert", () => {
     )
   })
 
+  it("inserts the row of a singleton table, updating the columns of the values on a conflict on its row", () => {
+    expect(from(license).upsert({ token: "Token", note: undefined }).toSQL()).toEqual({
+      text: 'INSERT INTO "license" AS "license" ("token") VALUES ($1) ON CONFLICT ((true)) DO UPDATE SET "token" = "excluded"."token"',
+      parameters: ["Token"],
+    })
+    expect(from(license).upsert({ token: "Token" }).get("id").toSQL().text).toBe(
+      'INSERT INTO "license" AS "license" ("token") VALUES ($1) ON CONFLICT ((true)) DO UPDATE SET "token" = "excluded"."token" RETURNING "license"."id" AS "id"',
+    )
+    // `find` of its row keeps the key, as of another table.
+    expect(from(license).find(5).upsert({ token: "Token" }).toSQL().text).toBe(
+      'INSERT INTO "license" AS "license" ("id", "token") VALUES ($1, $2) ON CONFLICT ("id") DO UPDATE SET "token" = "excluded"."token"',
+    )
+  })
+
   it("changes rows one and returns the fields selected after it", () => {
     const upserted = from(vote).findBy({ formId: 1, userId: 2 }).upsert({ votes: 3 })
 
@@ -289,14 +340,14 @@ describe("upsert", () => {
     )
   })
 
-  it("applies only right after find or findBy of a query of a table without clauses", () => {
+  it("applies only right after find or findBy of a query of a table without clauses, or to a query of a singleton table without clauses", () => {
     let relation: AnySelectQuery | undefined
     schema.form.select(columns => {
       relation = columns.fields
       return {}
     })
     const message =
-      "upsert applies only right after find or findBy of a query of a table without clauses, such as filters, optional, or selected fields; select the fields that it returns after it"
+      "upsert applies only to a query of a singleton table or right after find or findBy of a query of a table, without clauses such as filters, optional, or selected fields; select the fields that it returns after it"
 
     for (const query of [
       schema.form,
@@ -315,6 +366,16 @@ describe("upsert", () => {
       relation!.findBy({ id: 1 }),
     ] as AnySelectQuery[]) {
       expect(() => query.upsert({ name: "Survey" })).toThrow(message)
+    }
+    for (const query of [
+      from(license).where({ token: "Token" }),
+      from(license).take(),
+      from(license).optional(),
+      from(license).required(),
+      from(license).select("id"),
+      from(license).forUpdate(),
+    ] as AnySelectQuery[]) {
+      expect(() => query.upsert({ token: "Token" })).toThrow(message)
     }
     // `use` returns the query of its callback, here the query of `find` itself.
     expect(
@@ -344,6 +405,9 @@ describe("upsert", () => {
     }
     expect(() => found.upsert(null as never)).toThrow(
       'upsert takes the values of the columns of table "vote"',
+    )
+    expect(() => from(license).upsert({ token: undefined } as never)).toThrow(
+      "upsert takes the value of at least one column; to insert the row unless it exists, use insert(...).onConflict().doNothing()",
     )
   })
 
@@ -572,6 +636,20 @@ describe("update and delete", () => {
     expect(schema.form.find(1).delete().node.rows).toBe("one")
     expect(schema.form.find(1).optional().update({ name: "Survey" }).node.rows).toBe("optional")
     expect(schema.field.findBy({ id: 1 }).nullable().delete().node.rows).toBe("nullable")
+  })
+
+  it("change the row of a singleton table without a filter, in the rows mode of its query", () => {
+    const deleted = from(license).delete()
+
+    expect(deleted.toSQL().text).toBe('DELETE FROM "license" AS "license"')
+    expect(deleted.node.rows).toBe("optional")
+    expect(from(license).update({ token: "Token" }).toSQL().text).toBe(
+      'UPDATE "license" AS "license" SET "token" = $1',
+    )
+    expect(from(license).required().update({ token: "Token" }).node.rows).toBe("one")
+    expect(from(license).where({ token: "Token" }).delete().toSQL().text).toBe(
+      'DELETE FROM "license" AS "license" WHERE "license"."token" = $1',
+    )
   })
 })
 
@@ -1143,9 +1221,75 @@ describePostgres("upsert in PostgreSQL", ({ database, testTransaction, useTestFi
   })
 })
 
+describePostgres(
+  "singleton tables in PostgreSQL",
+  ({ database, testTransaction, useTestFixture }) => {
+    useTestFixture(() =>
+      database.script(`
+        CREATE TABLE license (
+          id integer PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+          token text NOT NULL,
+          note text
+        );
+        CREATE UNIQUE INDEX license_singleton_idx ON license ((true));
+      `),
+    )
+
+    const db = database.bind(defineSchema({ license }))
+
+    it("upserts the missing row and the values of the existing one, keeping its other values", async () => {
+      const result = await testTransaction(async () => ({
+        missing: await db.license,
+        inserted: await db.license.upsert({ token: "first", note: "kept" }).select("id", "token"),
+        updated: await db.license.upsert({ token: "second" }).select("id", "token", "note"),
+        token: await db.license.get("token"),
+      }))
+
+      expect(result).toEqual({
+        missing: undefined,
+        inserted: { id: expect.any(Number), token: "first" },
+        updated: { id: result.inserted.id, token: "second", note: "kept" },
+        token: "second",
+      })
+    })
+
+    it("updates and deletes its row without all, resolving to 0 without it unless required", async () => {
+      const result = await testTransaction(async () => {
+        const missing = await db.license.update({ note: "none" })
+        await expect(Promise.resolve(db.license.required().delete())).rejects.toThrow(NotFoundError)
+        await db.license.insert({ token: "first" })
+        return {
+          missing,
+          note: await db.license.update({ note: "set" }).get("note"),
+          deleted: await db.license.delete().get("token"),
+          exists: await db.license.exists(),
+        }
+      })
+
+      expect(result).toEqual({ missing: 0, note: "set", deleted: "first", exists: false })
+    })
+
+    it("rejects a second row by its unique index, and its query rejects a second row without the index", async () => {
+      await testTransaction(async () => {
+        await db.license.insert({ token: "first" })
+        await expect(
+          db.$transaction(async () => {
+            await db.license.insert({ token: "second" })
+          }),
+        ).rejects.toThrow(/duplicate key value violates unique constraint "license_singleton_idx"/)
+        await db.$script("DROP INDEX license_singleton_idx")
+        await db.license.insert({ token: "second" })
+        await expect(Promise.resolve(db.license.get("token"))).rejects.toThrow(
+          "Query of one row returned 2 rows",
+        )
+      })
+    })
+  },
+)
+
 // Testing concurrent upserts requires separate connections, which see only committed rows, so these tests commit them in a PostgreSQL schema of their own, which each test drops.
 describePooledPostgres("concurrent upserts in PostgreSQL", ({ database }) => {
-  const db = database.bind(defineSchema({ vote }), { schemaName: "upsert_test" })
+  const db = database.bind(defineSchema({ vote, license }), { schemaName: "upsert_test" })
 
   // The lock timeout fails a test that a transaction left open rather than hanging the others.
   beforeEach(() =>
@@ -1162,6 +1306,12 @@ describePooledPostgres("concurrent upserts in PostgreSQL", ({ database }) => {
         note text,
         UNIQUE (form_id, user_id)
       );
+      CREATE TABLE upsert_test.license (
+        id integer PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+        token text NOT NULL,
+        note text
+      );
+      CREATE UNIQUE INDEX license_singleton_idx ON upsert_test.license ((true));
     `),
   )
   afterEach(() =>
@@ -1188,6 +1338,23 @@ describePooledPostgres("concurrent upserts in PostgreSQL", ({ database }) => {
       },
     )
     expect(await db.vote.select("votes")).toEqual([{ votes: 2 }])
+  })
+
+  // Orchid ORM 1.78.47 upserts the row of a singleton table with all().take().upsert(), which runs an UPDATE and, without its row, a second statement that inserts it, so of two concurrent upserts of the missing row one rejects with a unique violation of the index of (true): https://github.com/romeerez/orchid-orm/issues/752, https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/sql/to-sql.ts#L196-L280
+  it("updates the row of a singleton table that a concurrent upsert inserted once its transaction commits", async () => {
+    const upsert = (token: string) => db.license.upsert({ token }).get("token")
+
+    await whileHolding(
+      db,
+      () => upsert("first"),
+      async (inserted, commit) => {
+        expect(inserted).toBe("first")
+        const { result } = await startWaiting(db, () => upsert("second"))
+        await commit()
+        expect(await result).toBe("second")
+      },
+    )
+    expect(await db.license.required().select("token")).toEqual({ token: "second" })
   })
 })
 
