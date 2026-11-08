@@ -55,7 +55,7 @@
   - `LIMIT` and `OFFSET` see only the sources of enclosing queries.
 - A query without a source compiles without `FROM` and has no joins; its clauses see only the sources of enclosing queries.
 - A table interpolated into a SQL fragment compiles as its name, qualified as an occurrence of the table is; it is not a source, so it has no alias and no column reference sees it.
-- A mutation statement declares the occurrence of its table with an alias, such as `UPDATE "form" AS "form"`, which `SET`, `WHERE`, and `RETURNING` see; the values of `VALUES` of an insert see no source, and `SET` and the columns of an insert name physical columns without the alias.
+- A mutation statement declares the occurrence of its table with an alias, such as `UPDATE "form" AS "form"`, which `SET`, `WHERE`, and `RETURNING` see; the values of `VALUES` of an insert see no source, and `SET`, the columns of an insert, and the target of its `ON CONFLICT` name physical columns without the alias.
 - A statement takes at most 65535 parameters, which the protocol of PostgreSQL counts in 16 bits, so the compiler rejects a further parameter.
 - A query of groups binds the parameter of a cast node, such as of `param(type, value)`, once, under one placeholder at every place of the cast in the query: PostgreSQL takes an expression in `HAVING`, `ORDER BY`, or the select list for a key of `GROUP BY` only when it is equal to the key, and the cast gives the parameter the same type at every place.
   A bare parameter binds at each place, since it takes its type from its place, so one placeholder could convert its value by the type of another place.

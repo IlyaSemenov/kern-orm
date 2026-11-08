@@ -5,18 +5,18 @@ import { createDatabase, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import {
+  aggregateValue,
   convertedFormCount,
   defineSnakeCaseTable,
   deleteForm,
   deleteFormsWithFields,
   firstFormByName,
-  aggregateValue,
   groupedTotals,
-  totalValues,
   groupNames,
   groupOptionalTotal,
   hasFieldId,
   insertForm,
+  insertFormConflict,
   insertFormWithFieldIds,
   insertFormWithLength,
   isNamed,
@@ -28,6 +28,7 @@ import {
   selectNames,
   selectNameWithHelper,
   snakeCaseField,
+  totalValues,
   upsertForm,
   withFieldIds,
   withNameLength,
@@ -233,6 +234,9 @@ describe("emitted declarations of queries that change rows", () => {
       Promise<{ id: string; name: string }>
     >()
     expectTypeOf(db.$execute(insertForm("Survey"))).toEqualTypeOf<Promise<string>>()
+    expectTypeOf(db.$execute(insertFormConflict("Survey").doNothing().get("id"))).toEqualTypeOf<
+      Promise<string | undefined>
+    >()
     expectTypeOf(db.$execute(insertFormWithFieldIds("Survey"))).toEqualTypeOf<
       Promise<{ fields: string[] }>
     >()

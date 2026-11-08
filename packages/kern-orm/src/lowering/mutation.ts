@@ -25,6 +25,7 @@ export function lowerMutation(node: MutationNode, context: LoweringContext): Mut
         target,
         columns: node.columns,
         values,
+        conflict: node.conflict,
         returning: lowered,
         recordTemplate,
         conversion,

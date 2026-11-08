@@ -306,6 +306,14 @@ export interface InsertNode<Field = ProjectionNode> extends MutationParts<Field>
   readonly columns: readonly string[]
   /** Rows of `VALUES`, at least one, each with a value of every column in their order, or `undefined` for `DEFAULT`. */
   readonly values: readonly (readonly (ExpressionNode | undefined)[])[]
+  /** `ON CONFLICT` of the insert, or `undefined` for an insert that rejects a row that conflicts on a key. */
+  readonly conflict?: ConflictNode | undefined
+}
+
+/** `ON CONFLICT ... DO NOTHING` of an insert, which skips each row that conflicts on the key of `target`. */
+export interface ConflictNode {
+  /** Keys of the columns of a key of the table, in its order, or none for a conflict on any key. */
+  readonly target: readonly string[]
 }
 
 /** Update statement of the rows that its filters choose. */

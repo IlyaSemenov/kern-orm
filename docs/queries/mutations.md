@@ -43,6 +43,31 @@ await db.field.insert({
 
 Without its row, such a query gives `NULL`, so PostgreSQL rejects the statement for a column that is not nullable.
 
+## Records that already exist
+
+To insert a record unless a record with the same key exists, such as to add a user to a group they may already belong to, call `onConflict` with the columns of the key right after `insert`, and then `doNothing`:
+
+```ts
+await db.membership
+  .insert({ userId, groupId, position })
+  .onConflict("userId", "groupId")
+  .doNothing()
+```
+
+Pass the columns of a [primary or unique key](../schemas#keys) of the table, in any order.
+A record that conflicts only on another key, such as on `groupId` and `position`, still rejects; call `onConflict()` without columns to skip a record that conflicts on any key.
+
+A skipped record is not returned: `insert` resolves to `0`, and the fields that you select after `doNothing` to `undefined`.
+After `insertMany`, select the fields of the inserted records, such as to notify only the users who were added:
+
+```ts
+const addedUserIds = await db.membership
+  .insertMany(members)
+  .onConflict("userId", "groupId")
+  .doNothing()
+  .pluck("userId")
+```
+
 ## Updating
 
 To update records, choose them with `where`, `find`, or `findBy`, and pass the new values to `update`:

@@ -1,6 +1,7 @@
 // Mutations of a table: inserts, updates, and deletes, which return the number of the rows they change or the fields of those rows.
 
 import { combineFilters } from "../ast/boolean"
+import type { InsertNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
@@ -14,10 +15,12 @@ import type { AnyTable, Selectable } from "../table/table"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import type { SynchronousResult } from "./conversion"
 import { addMap, addTransform } from "./conversion"
+import type { KeyCheck } from "./find"
+import { toConflictTarget } from "./find"
 import type { Helper, HelperEffect, HelperError, ReadsContext } from "./helper"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
-import type { MutationNode, QueryNode } from "./node"
+import type { MutationNode, QueryNode, SelectedNode } from "./node"
 import { isTableQuery } from "./node"
 import type { OperandUses } from "./operand"
 import { mergeProjections, projectValue } from "./projections"
@@ -59,6 +62,24 @@ export interface InitialMutationState<
   readonly value: true
   readonly uses: U
 }
+
+/** State of an insert of `insert` or `insertMany` of table `T` with schema context `C` in rows mode `Rows`, before any other method. */
+export interface InitialInsertState<
+  T extends AnyTable,
+  C extends SchemaContext,
+  Rows extends ResultRows,
+> extends InitialMutationState<T, C, Rows> {
+  readonly insert: true
+}
+
+/** State of an insert that no method has changed since `insert` or `insertMany`, which `onConflict` applies to. */
+export interface InsertMutationState extends MutationQueryState {
+  // Outside of `MutationQueryState`, so that every change of the state by `ChangeMutationState` drops it, and other mutations do not carry it.
+  readonly insert: true
+}
+
+/** Rows mode of the rows that an insert of rows mode `Rows` changes when it skips the rows that conflict: a missing row of an insert of one record. */
+type SkippedRows<Rows extends ResultRows> = Rows extends "one" ? "optional" : Rows
 
 // Apart from `ChangeState` of `select.ts`, so that changes of a select query cost no more and its methods take a union of queries that differ by their fields.
 /** State `S` of a mutation with the parts of `Changes` replaced. */
@@ -380,6 +401,37 @@ export class MutationQuery<
     return result
   }
 
+  // Rest columns take one key in any order, as the object of `findBy` does; each is checked, so that the error names the keys of the table.
+  /**
+   * Chooses the key, primary or unique, of `columns` on which a row of the insert may conflict with an existing record, or any key without columns.
+   *
+   * Call it right after `insert` or `insertMany`, choose the action on its result, such as `doNothing()`, and select the fields that the mutation returns after the action.
+   */
+  onConflict<
+    S extends InsertMutationState,
+    Kind extends SelectQueryKind,
+    K extends keyof S["table"]["columns"] & string = never,
+  >(
+    this: MutationQuery<S, Kind>,
+    ...columns: (K & KeyCheck<S["table"], K>)[]
+  ): ConflictTarget<S, Kind>
+  onConflict(...columns: string[]): unknown {
+    const { node } = this
+    if (node.kind !== "insert") {
+      throw new Error("onConflict applies only to insert and insertMany")
+    }
+    if (
+      node.returning !== undefined ||
+      node.conversion !== undefined ||
+      node.conflict !== undefined
+    ) {
+      throw new Error(
+        "onConflict applies right after insert or insertMany, once; call select, get, pluck, map, and transform after its action",
+      )
+    }
+    return new ConflictTarget(this as AnyMutationQuery, toConflictTarget(this.table, columns))
+  }
+
   /**
    * Compiles the query into SQL text and parameters; `schemaName` qualifies its tables.
    *
@@ -430,6 +482,68 @@ export class MutationQuery<
 /** Query of any state and kind that inserts, updates, or deletes rows. */
 // oxlint-disable-next-line typescript/no-explicit-any -- any mutation regardless of its result
 export type AnyMutationQuery = MutationQuery<any, SelectQueryKind>
+
+/**
+ * Conflict target of an insert of state `S`, a key or any key, with methods that choose the action and return the mutation.
+ *
+ * It is no query: awaiting it is a type error and rejects, so that an insert without an action does not resolve without running.
+ */
+// Like `MutationQuery`, it is covariant in its state and its kind.
+export class ConflictTarget<
+  out S extends InsertMutationState,
+  out Kind extends SelectQueryKind = "unbound",
+> {
+  constructor(
+    /** Insert whose rows conflict. */
+    readonly insert: MutationQuery<S, Kind>,
+    /** Columns of the key that the rows conflict on, in its order, or none for any key. */
+    readonly target: readonly string[],
+  ) {
+    Object.freeze(this)
+  }
+
+  /**
+   * Skips each row that conflicts, as `ON CONFLICT DO NOTHING`, and returns the mutation.
+   *
+   * After `insert`, the mutation resolves to `0` when the row conflicts, and the fields selected after it to `undefined`.
+   * After `insertMany`, it resolves to the number of the inserted rows, and the fields selected after it are those of the inserted rows.
+   */
+  doNothing<S extends InsertMutationState, Kind extends SelectQueryKind>(
+    this: ConflictTarget<S, Kind>,
+  ): MutationQuery<ChangeMutationState<S, { changed: SkippedRows<S["changed"]> }>, Kind>
+  doNothing(): unknown {
+    const { insert } = this
+    // `onConflict` creates a conflict only of an insert.
+    const node = insert.node as InsertNode<SelectedNode>
+    return new MutationQuery(
+      insert.table,
+      Object.freeze({
+        kind: "insert",
+        target: node.target,
+        columns: node.columns,
+        values: node.values,
+        conflict: Object.freeze({ target: this.target }),
+        returning: undefined,
+        rows: node.rows === "one" ? "optional" : node.rows,
+        value: false,
+      }),
+      insert.context,
+      insert.db as AnyDb | undefined,
+    )
+  }
+
+  // TypeScript rejects awaiting an object whose `then` takes no callback, and `await` rejects with the error of its call.
+  /** Rejects awaiting the conflict target, which needs an action, such as `doNothing()`. */
+  // oxlint-disable-next-line unicorn/no-thenable -- a `then` that takes no callback makes awaiting it a type error
+  then(_action: ConflictActionRequired): never {
+    throw new Error("onConflict needs an action before the mutation runs, such as doNothing()")
+  }
+}
+
+/** Type of the parameter of `then` of a conflict target, which makes awaiting the target before an action a type error. */
+export interface ConflictActionRequired {
+  readonly "onConflict needs an action, such as doNothing()": never
+}
 
 /**
  * Creates the insert of `records` into the table of `query`, which must have no clauses, in rows mode `rows`: `one` for `insert` and `many` for `insertMany`, named by `method`.

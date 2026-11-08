@@ -30,7 +30,7 @@ import type { AnyQuery, QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from ".
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { RowLockOptions } from "./lock"
 import { createRowLock } from "./lock"
-import type { AnyMutationQuery, InitialMutationState } from "./mutation"
+import type { AnyMutationQuery, InitialInsertState, InitialMutationState } from "./mutation"
 import { createDelete, createInsert, createUpdate, MutationQuery } from "./mutation"
 import type { QueryNode } from "./node"
 import { createQueryNode } from "./node"
@@ -961,11 +961,12 @@ export class SelectQuery<
    * A column omitted or given as `undefined` gets its default, so only columns marked with `hasDefault` and nullable columns may be omitted.
    * A value is what the type of its column takes, `null` for `NULL`, an expression, such as a `sql` fragment, or a query of one value, which gives `NULL` without its row.
    * Select the fields that it returns after it, such as `insert(values).get("id")`.
+   * To handle a conflict of the record with an existing one on a key, call `onConflict` right after `insert`.
    */
   insert<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
     values: InsertValues<S["table"]>,
-  ): MutationQuery<InitialMutationState<S["table"], S["schema"], "one">, Kind>
+  ): MutationQuery<InitialInsertState<S["table"], S["schema"], "one">, Kind>
   insert(values: unknown): unknown {
     return createInsert(this, [values], "one", "insert")
   }
@@ -975,11 +976,12 @@ export class SelectQuery<
    *
    * A record takes the values that `insert` takes, and a column that a record omits gets its default.
    * Select the fields that it returns for the inserted rows after it, such as `insertMany(records).select("id", "email")`, and match them to the records by a key rather than by their order, which PostgreSQL does not guarantee.
+   * To handle a conflict of a record with an existing one on a key, call `onConflict` right after `insertMany`.
    */
   insertMany<S extends SelectQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
     records: readonly InsertValues<S["table"]>[],
-  ): MutationQuery<InitialMutationState<S["table"], S["schema"], "many">, Kind>
+  ): MutationQuery<InitialInsertState<S["table"], S["schema"], "many">, Kind>
   insertMany(records: readonly unknown[]): unknown {
     if (!Array.isArray(records)) {
       throw new TypeError("insertMany takes an array of records")

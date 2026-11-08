@@ -47,6 +47,7 @@ Filters, queries in expressions, and SQL fragments.
 - [Changes of the state of a mutation](mutations/mutation-state-changes.md).
 - [Overloads of `update`](mutations/update-overloads.md).
 - [No guaranteed order of the rows of `insertMany`](mutations/order-of-inserted-rows.md).
+- [Actions of a conflict as methods of `onConflict`](mutations/conflict-actions.md).
 
 ## Queries of SQL text
 

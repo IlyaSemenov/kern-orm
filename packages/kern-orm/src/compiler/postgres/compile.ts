@@ -114,7 +114,7 @@ function compileMutation(context: CompileContext, node: MutationStatementNode): 
   let text: string
   switch (node.kind) {
     case "insert":
-      text = `INSERT INTO ${target}${compileValues(context, node)}`
+      text = `INSERT INTO ${target}${compileValues(context, node)}${compileConflict(node)}`
       break
     case "update": {
       text = `UPDATE ${target} SET`
@@ -166,7 +166,21 @@ function compileValues(context: CompileContext, node: InsertNode): string {
   return text
 }
 
-/** Compiles the physical name of the column of the table of `target` under `key`, as `SET` and the column list of an insert name it, without an alias. */
+/** Compiles `ON CONFLICT` of an insert, which names the physical columns of its key, or nothing for an insert without it. */
+function compileConflict(node: InsertNode): string {
+  const { conflict } = node
+  if (conflict === undefined) {
+    return ""
+  }
+  const { target } = conflict
+  let text = " ON CONFLICT"
+  for (let index = 0; index < target.length; index++) {
+    text += `${index === 0 ? " (" : ", "}${compileColumnName(node.target, target[index]!)}`
+  }
+  return `${text}${target.length === 0 ? "" : ")"} DO NOTHING`
+}
+
+/** Compiles the physical name of the column of the table of `target` under `key`, as `SET`, the column list of an insert, and the target of `ON CONFLICT` name it, without an alias. */
 function compileColumnName(target: TableSourceNode, key: string): string {
   return quoteIdentifier(requireColumn(target.table, key).attributes.name ?? key)
 }

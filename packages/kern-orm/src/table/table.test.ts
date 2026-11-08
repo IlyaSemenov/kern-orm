@@ -5,7 +5,7 @@ import * as t from "../types"
 import type { Column } from "./column"
 import { toSnakeCase } from "./snake-case"
 import type { TableOptions } from "./table"
-import { containsKey, createTableFactory, defineTable, findColumn, isKey } from "./table"
+import { containsKey, createTableFactory, defineTable, findColumn, findKey, isKey } from "./table"
 
 describe("defineTable", () => {
   it("rejects column keys reserved for column reference members", () => {
@@ -444,7 +444,7 @@ describe("findColumn", () => {
   })
 })
 
-describe("isKey and containsKey", () => {
+describe("isKey, findKey, and containsKey", () => {
   const membership = defineTable(
     "membership",
     {
@@ -461,6 +461,12 @@ describe("isKey and containsKey", () => {
     expect(isKey(membership, ["code"])).toBe(true)
     expect(isKey(membership, ["userId"])).toBe(false)
     expect(isKey(membership, ["userId", "groupId", "role"])).toBe(false)
+  })
+
+  it("find the key of exactly the columns, in the order of the key", () => {
+    expect(findKey(membership, ["groupId", "userId"])).toBe(membership.keys.primaryKey)
+    expect(findKey(membership, ["code"])).toBe(membership.keys.unique[0])
+    expect(findKey(membership, ["userId"])).toBeUndefined()
   })
 
   it("tell whether the columns include a key, primary or unique", () => {

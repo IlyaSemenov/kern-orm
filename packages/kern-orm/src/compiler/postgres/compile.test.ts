@@ -1109,6 +1109,32 @@ describe("mutations", () => {
     )
   })
 
+  it("compiles ON CONFLICT of an insert, naming the physical columns of its key, before RETURNING", () => {
+    const node: InsertNode = {
+      kind: "insert",
+      target: from(field).node.from,
+      columns: ["id", "formId"],
+      values: [[createParameter(1), createParameter(2)]],
+      conflict: { target: ["id", "formId"] },
+      returning: undefined,
+      rows: "optional",
+      value: false,
+    }
+
+    expect(compileStatement(node).text).toBe(
+      'INSERT INTO "form_field" AS "form_field" ("id", "form_id") VALUES ($1, $2) ON CONFLICT ("id", "form_id") DO NOTHING',
+    )
+    expect(
+      compileStatement({
+        ...node,
+        conflict: { target: [] },
+        returning: [{ key: "id", expression: createRef(node.target, "id"), type: t.integer }],
+      }).text,
+    ).toBe(
+      'INSERT INTO "form_field" AS "form_field" ("id", "form_id") VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING "form_field"."id" AS "id"',
+    )
+  })
+
   it("compiles DEFAULT VALUES for one row without columns and rejects several such rows", () => {
     const node: InsertNode = {
       kind: "insert",

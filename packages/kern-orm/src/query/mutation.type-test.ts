@@ -270,6 +270,66 @@ describe("results", () => {
   })
 })
 
+describe("conflicts", () => {
+  const vote = defineTable(
+    "vote",
+    {
+      id: t.uuid.primaryKey().hasDefault(),
+      postId: t.uuid,
+      userId: t.uuid,
+      votes: t.integer,
+    },
+    { unique: [["postId", "userId"]] },
+  )
+  const votes = createDatabase({ driver: createRecordingDriver().driver }).bind(
+    defineSchema({ vote }),
+  )
+  const record = { postId: "post-id", userId: "user-id", votes: 1 }
+
+  test("skip the rows that conflict, which insert returns as a missing row", () => {
+    expectTypeOf(
+      votes.vote.insert(record).onConflict("userId", "postId").doNothing(),
+    ).resolves.toEqualTypeOf<number>()
+    expectTypeOf(
+      votes.vote.insert(record).onConflict().doNothing().get("id"),
+    ).resolves.toEqualTypeOf<string | undefined>()
+    expectTypeOf(
+      votes.vote.insert(record).onConflict("id").doNothing().select("id", "votes"),
+    ).resolves.toEqualTypeOf<{ id: string; votes: number } | undefined>()
+    expectTypeOf(
+      votes.vote.insertMany([record]).onConflict("postId", "userId").doNothing().pluck("id"),
+    ).resolves.toEqualTypeOf<string[]>()
+    expectTypeOf(
+      votes.$execute(defineSchema({ vote }).vote.insert(record).onConflict().doNothing()),
+    ).resolves.toEqualTypeOf<number>()
+  })
+
+  test("take the columns of exactly one key", () => {
+    // @ts-expect-error Not a key.
+    votes.vote.insert(record).onConflict("userId")
+    // @ts-expect-error More columns than a key.
+    votes.vote.insert(record).onConflict("id", "votes")
+    // @ts-expect-error Not a column.
+    votes.vote.insert(record).onConflict("name")
+  })
+
+  test("apply only right after insert or insertMany, once", () => {
+    // @ts-expect-error Not an insert.
+    votes.vote.find("vote-id").update({ votes: 2 }).onConflict()
+    // @ts-expect-error Not an insert.
+    votes.vote.find("vote-id").delete().onConflict()
+    // @ts-expect-error After a selection.
+    votes.vote.insert(record).select("id").onConflict()
+    // @ts-expect-error After an action.
+    votes.vote.insert(record).onConflict().doNothing().onConflict()
+  })
+
+  test("need an action before the mutation runs", async () => {
+    // @ts-expect-error A conflict without an action is no query to await.
+    await votes.vote.insert(record).onConflict()
+  })
+})
+
 describe("use", () => {
   const values = { title: "Hello" }
   const withTitle = defineHelper(blog.post, query => query.select("title"))

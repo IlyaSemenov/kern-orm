@@ -469,8 +469,15 @@ export function findColumn(table: AnyTable, key: string): AnyColumn | undefined 
 
 /** Tells whether the columns of `table` under `columns` are exactly a key of it, primary or unique, in any order, as `IsKey` does in types. */
 export function isKey(table: AnyTable, columns: readonly string[]): boolean {
+  return findKey(table, columns) !== undefined
+}
+
+/** Returns the key of `table`, primary or unique, whose columns are exactly those under `columns` in any order, as `isKey` tells, or `undefined`. */
+export function findKey(table: AnyTable, columns: readonly string[]): KeyColumns | undefined {
   const listed = new Set(columns)
-  return someKey(table, key => key.length === listed.size && isKeyAmong(key, listed))
+  const isListed = (key: KeyColumns) => key.length === listed.size && isKeyAmong(key, listed)
+  const { primaryKey, unique } = table.keys
+  return primaryKey !== undefined && isListed(primaryKey) ? primaryKey : unique.find(isListed)
 }
 
 /** Tells whether the columns of `table` under `columns` include a key of it, primary or unique, as `ContainsKey` does in types. */

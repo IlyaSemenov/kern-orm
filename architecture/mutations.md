@@ -4,6 +4,7 @@
   It is a class apart from `SelectQuery`, like `RecordQuery`, with the members that differ by kind, `toSQL`, the methods that return the fields of the changed rows, `select`, `get`, and `pluck`, those that convert them, `map` and `transform`, and `use`, since the methods of a select query do not apply to it.
   It is covariant in its state and its kind, like `SelectQuery`, and of the same two kinds: an unbound mutation starts from a schema and executes with `$execute`, and a bound one starts from a `Db` and executes when awaited.
   Its methods change its state by a mapped type of its own, apart from `ChangeState` of select queries, so that changes of a select query cost no more ([decision](../decisions/mutations/mutation-state-changes.md)).
+- **Conflict** (`ConflictTarget` of `query/mutation.ts`): the conflict of the rows of an insert with existing records on a key, which `onConflict` starts, and whose methods choose its action and return the mutation.
 - **Values** (`query/values.ts`): the records of an insert and the values of an update, their types, and their nodes.
 - Lowering and the compiler turn a mutation into an `INSERT`, `UPDATE`, or `DELETE` statement of the SQL AST, as [SQL generation](sql.md) describes.
 
@@ -41,6 +42,18 @@
     The values of a callback annotated with `UpdateValues` may hold a query of any relation, as a `Selection` may, so types reject them on a `Db` of known relations.
   - `update` has an overload that infers the type of a callback for the relations of its values, and then one of a value of `UpdateSet`, which takes an object or a callback, so that a call that matches no overload reports the error of its own form and a value of `UpdateSet` applies, whose relations stay out of the state ([decision](../decisions/mutations/update-overloads.md)).
     The overload infers the callback rather than its values, so that the constraint of the callback types its body by the columns of the table.
+
+## Conflicts
+
+- `onConflict` takes the columns of exactly one key of the table, primary or unique, in any order, checked as the object of `findBy` is: by `KeyCheck` in types, and by `findKey` at runtime, which gives the key in its own order for the target of `ON CONFLICT`.
+  Without columns, the conflict is on any key.
+- It applies only right after `insert` and `insertMany`, in types and at runtime, as `ON CONFLICT` precedes `RETURNING`.
+  - The state of an insert has the part `insert` outside of `MutationQueryState`, so that every change of the state by `ChangeMutationState` drops it and other mutations do not carry it; types reject `onConflict` without it, after any other method, as on an update or a delete.
+  - At runtime, it rejects a mutation other than an insert, and an insert with returned fields, a conversion, or a conflict.
+- It returns a `ConflictTarget`, whose methods choose the action and return the mutation ([decision](../decisions/mutations/conflict-actions.md)): `doNothing` gives the insert of `ON CONFLICT ... DO NOTHING`, which skips each row that conflicts on the key.
+  - A row that conflicts only on another key rejects, as without `onConflict`.
+  - The insert changes rows `optional` after `insert`, which resolve to `0` or to `undefined` of the returned fields when the row conflicts, and rows `many` after `insertMany`, whose number and returned fields are those of the inserted rows.
+- A `ConflictTarget` is no query: its `then` takes no callback and rejects, so that TypeScript rejects awaiting it and an insert without an action rejects instead of resolving without running.
 
 ## Results
 

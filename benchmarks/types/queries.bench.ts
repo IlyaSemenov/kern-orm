@@ -191,6 +191,11 @@ bench.baseline(async () => {
   await tenantDb.field
     .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
     .get("id")
+  await tenantDb.field
+    .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
+    .onConflict("id")
+    .doNothing()
+    .get("id")
   await tenantDb.field.find("baseline").update({ label: "baseline" }).select("label", "position")
   await tenantDb.field.find("baseline").update({
     label: tenantDb.answer.min("value").coalesce("baseline"),
@@ -481,7 +486,7 @@ bench("helper of map", async () => {
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
-}).types([1004, "instantiations"])
+}).types([1011, "instantiations"])
 
 bench("transform of the number of the rows", async () => {
   await tenantDb.form
@@ -500,7 +505,7 @@ bench("helper of relations", async () => {
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
-}).types([1203, "instantiations"])
+}).types([1210, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -610,7 +615,15 @@ bench("$select", async () => {
 
 bench("insert", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).get("id")
-}).types([523, "instantiations"])
+}).types([527, "instantiations"])
+
+bench("insert with onConflict", async () => {
+  await tenantDb.form
+    .insert({ id: "x", name: "x", published: true })
+    .onConflict("id")
+    .doNothing()
+    .get("id")
+}).types([646, "instantiations"])
 
 bench("update", async () => {
   await tenantDb.form.find("x").update({ name: "x" }).select("id", "name")

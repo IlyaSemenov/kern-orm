@@ -128,7 +128,11 @@ export type { ExistsValueType } from "./query/exists"
 export type { AnyQuery, SelectQueryKind } from "./query/kind"
 export type {
   AnyMutationQuery,
+  ConflictActionRequired,
+  ConflictTarget,
+  InitialInsertState,
   InitialMutationState,
+  InsertMutationState,
   MutationQuery,
   MutationQueryState,
 } from "./query/mutation"

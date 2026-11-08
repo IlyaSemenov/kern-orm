@@ -1,7 +1,7 @@
-// Values of `find` and `findBy`: the values of the columns of a key of a table, which they filter a query by.
+// Keys of a table that queries take: the values of `find` and `findBy`, which they filter a query by, and the columns of `onConflict`.
 
 import type { AnyTable, IsKey, KeyColumns, KeyOf, TableKeys } from "../table/table"
-import { isKey } from "../table/table"
+import { findKey, isKey } from "../table/table"
 import type { IsAny } from "../utils/type-helpers"
 
 import type { EqValue } from "./filters"
@@ -22,7 +22,7 @@ export type PrimaryKeyValues<T extends AnyTable> = T extends AnyTable
   : never
 
 /**
- * Check of columns `Columns` of the object of `findBy` that rejects them unless they are exactly a key of table `T`, primary or unique, as the type of `T` tells.
+ * Check of columns `Columns`, of the object of `findBy` or of `onConflict`, that rejects them unless they are exactly a key of table `T`, primary or unique, as the type of `T` tells.
  *
  * A table of `any`, such as of `AnySelectQuery`, takes any columns, as `where` takes any values there.
  */
@@ -32,7 +32,7 @@ export type KeyCheck<T extends AnyTable, Columns> = [IsKey<T, Columns>] extends 
     ? unknown
     : NotAKey<KeyOf<T["keys"]>>
 
-/** Type that the object of `findBy` is checked against when its columns are not exactly a key of the table, naming the keys of the table. */
+/** Type that the columns of `findBy` and `onConflict` are checked against when they are not exactly a key of the table, naming the keys of the table. */
 export interface NotAKey<Keys> {
   readonly "columns must be exactly one key of the table": Keys
 }
@@ -90,6 +90,27 @@ export function toKeyValues(table: AnyTable, values: unknown): Record<string, un
   }
   return filter
 }
+
+/**
+ * Returns the target of `onConflict` of `columns`: the key of `table` of exactly these columns, primary or unique, in the order of the key, or none for a conflict on any key when there are no columns.
+ *
+ * It rejects columns that are not exactly a key of `table`, as `isKey` tells.
+ */
+export function toConflictTarget(table: AnyTable, columns: readonly string[]): readonly string[] {
+  if (columns.length === 0) {
+    return noColumns
+  }
+  const key = findKey(table, columns)
+  if (key === undefined) {
+    throw new Error(
+      `onConflict takes the columns of one key of table "${table.name}", primary or unique, or none for any key, not columns ${quoteColumns(columns)}`,
+    )
+  }
+  return key
+}
+
+/** Columns of the target of a conflict on any key. */
+const noColumns: readonly string[] = /* @__PURE__ */ Object.freeze([])
 
 // `IS NULL` matches every record whose column of a unique key is `NULL`, and `undefined` is no value.
 /** Returns `value` of column `column` of a key of `table` that `method` takes, rejecting `null` and `undefined`. */

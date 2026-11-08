@@ -243,6 +243,18 @@ export function insertForm(name: string) {
   return schema.form.insert({ id: "form-id", name }).get("id")
 }
 
+/** Starts an insert of a form whose conflict on its name needs an action; see the file header. */
+export function insertFormConflict(name: string) {
+  return schema.form.insert({ id: "form-id", name }).onConflict("name")
+}
+
+/** Methods of the conflict of an insert, standing for `export const doNothing = conflict.doNothing` and the like; see the file header. */
+export const conflictMethods = {
+  doNothing: insertFormConflict("Draft").doNothing,
+  // oxlint-disable-next-line unicorn/no-thenable -- the method that makes awaiting a conflict a type error
+  then: insertFormConflict("Draft").then,
+}
+
 /** Deletes the forms of a name and returns the records of a relation of each; see the file header. */
 export const deleteFormsWithFields = schema.form
   .where({ name: "Draft" })
@@ -256,6 +268,7 @@ export const mutationMethods = {
   select: deleteFormsWithFields.select,
   get: schema.form.find("form-id").delete().get,
   pluck: deleteFormsWithFields.pluck,
+  onConflict: schema.form.insert({ id: "form-id", name: "Draft" }).onConflict,
   toSQL: deleteFormsWithFields.toSQL,
 }
 

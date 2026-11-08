@@ -12,6 +12,12 @@ A mutation reads the related records that it selects in its own statement, atomi
 
 - Orchid ORM, fails: it loaded them with a second query; for a mutation whose failure is caught, it left the savepoint across both open, and kept the changes of the mutation when an after hook between them threw ([orchid-orm#824](https://github.com/romeerez/orchid-orm/pull/824)).
 
+## Inserts that skip the rows that conflict
+
+`onConflict` of an insert takes the columns of a key of the table, or none for any key, and `doNothing` skips each row that conflicts on it, for which the insert returns no row.
+
+- Orchid ORM, same: `onConflictDoNothing` takes the columns of a primary or unique key of the table definition, or none, and adds `undefined` to the result of one record ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflictdonothing)).
+
 ## Inserts beyond the parameter limit
 
 A mutation is one statement, and the compiler rejects a statement of more than 65535 parameters, so an insert of more values must be split.

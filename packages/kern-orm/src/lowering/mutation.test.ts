@@ -56,13 +56,17 @@ it("lowers a mutation to its statement, packing the nested queries of its return
   ])
 })
 
-it("replaces the queries in the filters, the values, and the returned fields of a mutation", () => {
+it("replaces the queries in the filters, the values, and the returned fields of a mutation, keeping the conflict of an insert", () => {
   const hasForms = sql(t.integer)`CASE WHEN ${and(schema.form.exists())} THEN 1 ELSE 0 END`
   const remove = schema.form.where(form => not(form.fields.exists())).delete()
   const update = schema.field.where({ id: 1 }).update({ formId: hasForms })
-  const insert = schema.option.insert({ fieldId: hasForms }).select(option => ({
-    orphan: not(schema.field.where(field => field.id.eq(option.fieldId)).exists()),
-  }))
+  const insert = schema.option
+    .insert({ fieldId: hasForms })
+    .onConflict()
+    .doNothing()
+    .select(option => ({
+      orphan: not(schema.field.where(field => field.id.eq(option.fieldId)).exists()),
+    }))
 
   expect(compileStatement(lowerStatement(remove.node)).text).toBe(
     'DELETE FROM "form" AS "form" WHERE NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id")',
@@ -71,7 +75,7 @@ it("replaces the queries in the filters, the values, and the returned fields of 
     'UPDATE "form_field" AS "form_field" SET "formId" = CASE WHEN EXISTS (SELECT FROM "form" AS "form") THEN 1 ELSE 0 END WHERE "form_field"."id" = $1',
   )
   expect(compileStatement(lowerStatement(insert.node)).text).toBe(
-    'INSERT INTO "field_option" AS "field_option" ("fieldId") VALUES (CASE WHEN EXISTS (SELECT FROM "form" AS "form") THEN 1 ELSE 0 END) RETURNING NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."id" = "field_option"."fieldId") AS "orphan"',
+    'INSERT INTO "field_option" AS "field_option" ("fieldId") VALUES (CASE WHEN EXISTS (SELECT FROM "form" AS "form") THEN 1 ELSE 0 END) ON CONFLICT DO NOTHING RETURNING NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."id" = "field_option"."fieldId") AS "orphan"',
   )
 })
 

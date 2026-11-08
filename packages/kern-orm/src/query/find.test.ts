@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { toKeyValues, toPrimaryKeyValues } from "./find"
+import { toConflictTarget, toKeyValues, toPrimaryKeyValues } from "./find"
 
 const membership = defineTable(
   "membership",
@@ -96,6 +96,29 @@ describe("toKeyValues", () => {
     )
     expect(() => toKeyValues(membership, { userId: "user-id", groupId: undefined })).toThrow(
       'findBy got undefined for column "groupId" of table "membership"; a value of a key is never null or undefined',
+    )
+  })
+})
+
+describe("toConflictTarget", () => {
+  it("gives the key of the columns, primary or unique, in its order, or none for any key", () => {
+    expect(toConflictTarget(membership, ["groupId", "userId"])).toEqual(["userId", "groupId"])
+    expect(toConflictTarget(membership, ["code"])).toEqual(["code"])
+    expect(toConflictTarget(membership, [])).toEqual([])
+  })
+
+  it("rejects columns that are not exactly one key", () => {
+    const message =
+      'onConflict takes the columns of one key of table "membership", primary or unique, or none for any key'
+
+    expect(() => toConflictTarget(membership, ["userId"])).toThrow(
+      `${message}, not columns "userId"`,
+    )
+    expect(() => toConflictTarget(membership, ["code", "role"])).toThrow(
+      `${message}, not columns "code", "role"`,
+    )
+    expect(() => toConflictTarget(log, ["id"])).toThrow(
+      'onConflict takes the columns of one key of table "log", primary or unique, or none for any key, not columns "id"',
     )
   })
 })

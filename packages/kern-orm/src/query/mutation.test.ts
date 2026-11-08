@@ -93,6 +93,98 @@ describe("insert", () => {
   })
 })
 
+describe("conflicts", () => {
+  const vote = defineTable(
+    "vote",
+    {
+      id: t.integer.primaryKey().hasDefault(),
+      formId: t.integer.columnName("form_id"),
+      userId: t.integer.columnName("user_id"),
+      votes: t.integer,
+    },
+    { unique: [["formId", "userId"]] },
+  )
+  const record = { formId: 1, userId: 2, votes: 3 }
+
+  it("skip the rows that conflict on a key, named in its order, or on any key", () => {
+    expect(from(vote).insert(record).onConflict("userId", "formId").doNothing().toSQL()).toEqual({
+      text: 'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3) ON CONFLICT ("form_id", "user_id") DO NOTHING',
+      parameters: ["1", "2", "3"],
+    })
+    expect(from(vote).insertMany([record]).onConflict().doNothing().toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+    )
+  })
+
+  it("make the row of insert optional, keep the rows of insertMany, and return fields after the conflict", () => {
+    const inserted = from(vote).insert(record).onConflict("id").doNothing()
+
+    expect(inserted.node).toMatchObject({ rows: "optional", value: false })
+    expect(inserted.get("id").node).toMatchObject({ rows: "optional", value: true })
+    expect(from(vote).insertMany([record]).onConflict("id").doNothing().node.rows).toBe("many")
+    expect(inserted.select("id").toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3) ON CONFLICT ("id") DO NOTHING RETURNING "vote"."id" AS "id"',
+    )
+  })
+
+  it("applies only right after insert or insertMany, once", () => {
+    const inserted: AnyMutationQuery = from(vote).insert(record)
+    const message =
+      "onConflict applies right after insert or insertMany, once; call select, get, pluck, map, and transform after its action"
+
+    for (const mutation of [
+      from(vote).find(1).update({ votes: 1 }),
+      from(vote).find(1).delete(),
+    ] as AnyMutationQuery[]) {
+      expect(() => mutation.onConflict()).toThrow(
+        "onConflict applies only to insert and insertMany",
+      )
+    }
+    for (const mutation of [
+      inserted.select("id"),
+      inserted.get("id"),
+      inserted.transform(count => count),
+      inserted.onConflict().doNothing(),
+    ] as AnyMutationQuery[]) {
+      expect(() => mutation.onConflict()).toThrow(message)
+    }
+  })
+
+  it("leaves the insert it derives from unchanged", () => {
+    const inserted = from(vote).insert(record)
+    inserted.onConflict().doNothing()
+
+    expect(inserted.toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3)',
+    )
+  })
+
+  it("resolves to the number or the fields of the inserted rows, without a row when it conflicts", async () => {
+    const { db } = connect(0)
+
+    expect(await db.form.insert({ name: "Survey" }).onConflict().doNothing()).toBe(0)
+    expect(await db.form.insert({ name: "Survey" }).onConflict().doNothing().get("id")).toBe(
+      undefined,
+    )
+    expect(
+      await db.form
+        .insertMany([{ name: "Survey" }])
+        .onConflict("id")
+        .doNothing()
+        .select("id"),
+    ).toEqual([])
+  })
+
+  it("rejects awaiting a conflict without an action", async () => {
+    const { db } = connect(1)
+    const target = db.form.insert({ name: "Survey" }).onConflict()
+
+    await expect(Promise.resolve(target as unknown)).rejects.toThrow(
+      "onConflict needs an action before the mutation runs, such as doNothing()",
+    )
+  })
+})
+
 describe("values of queries", () => {
   const value = schema.form.find(2).get("note")
 
@@ -691,6 +783,61 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       ]),
       0,
     ])
+  })
+})
+
+describePostgres("conflicts in PostgreSQL", ({ database, testTransaction, useTestFixture }) => {
+  const tag = defineTable("tag", {
+    id: t.integer.primaryKey(),
+    name: t.text.unique(),
+  })
+
+  useTestFixture(() =>
+    database.script(`
+      CREATE TABLE tag (id integer PRIMARY KEY, name text NOT NULL UNIQUE);
+      INSERT INTO tag (id, name) VALUES (1, 'urgent');
+    `),
+  )
+
+  const db = database.bind(defineSchema({ tag }))
+
+  it("skips the rows that conflict on the key of its target or on any key, returning the inserted rows", async () => {
+    const result = await testTransaction(async () => ({
+      skipped: await db.tag
+        .insert({ id: 1, name: "other" })
+        .onConflict("id")
+        .doNothing()
+        .get("name"),
+      inserted: await db.tag.insert({ id: 2, name: "later" }).onConflict().doNothing().get("name"),
+      many: await db.tag
+        .insertMany([
+          { id: 3, name: "urgent" },
+          { id: 4, name: "new" },
+        ])
+        .onConflict()
+        .doNothing()
+        .pluck("id"),
+      count: await db.tag.insert({ id: 1, name: "urgent" }).onConflict("name").doNothing(),
+      names: await db.tag.orderBy("id").pluck("name"),
+    }))
+
+    expect(result).toEqual({
+      skipped: undefined,
+      inserted: "later",
+      many: [4],
+      count: 0,
+      names: ["urgent", "later", "new"],
+    })
+  })
+
+  it("rejects a row that conflicts on a key other than its target", async () => {
+    await testTransaction(async () => {
+      await expect(
+        db.$transaction(async () => {
+          await db.tag.insert({ id: 2, name: "urgent" }).onConflict("id").doNothing()
+        }),
+      ).rejects.toThrow(/duplicate key value violates unique constraint/)
+    })
   })
 })
 
