@@ -129,6 +129,7 @@ export type { AnyQuery, SelectQueryKind } from "./query/kind"
 export type {
   AnyMutationQuery,
   ConflictActionRequired,
+  ConflictKeyRequired,
   ConflictTarget,
   InitialInsertState,
   InitialMutationState,
@@ -136,7 +137,13 @@ export type {
   MutationQuery,
   MutationQueryState,
 } from "./query/mutation"
-export type { ColumnValue, InsertValues, UpdateSet, UpdateValues } from "./query/values"
+export type {
+  ColumnValue,
+  ConflictUpdateSet,
+  InsertValues,
+  UpdateSet,
+  UpdateValues,
+} from "./query/values"
 export type {
   AnySqlQuery,
   DecodedFields,

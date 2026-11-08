@@ -56,7 +56,7 @@ it("lowers a mutation to its statement, packing the nested queries of its return
   ])
 })
 
-it("replaces the queries in the filters, the values, and the returned fields of a mutation, keeping the conflict of an insert", () => {
+it("replaces the queries in the filters, the values, and the returned fields of a mutation, and in the values of DO UPDATE", () => {
   const hasForms = sql(t.integer)`CASE WHEN ${and(schema.form.exists())} THEN 1 ELSE 0 END`
   const remove = schema.form.where(form => not(form.fields.exists())).delete()
   const update = schema.field.where({ id: 1 }).update({ formId: hasForms })
@@ -67,6 +67,12 @@ it("replaces the queries in the filters, the values, and the returned fields of 
     .select(option => ({
       orphan: not(schema.field.where(field => field.id.eq(option.fieldId)).exists()),
     }))
+  const upsert = schema.form
+    .insert({ id: 1 })
+    .onConflict("id")
+    .update((form, excluded) => ({
+      id: sql(t.integer)`${excluded.id} + ${form.fields.count()}`,
+    }))
 
   expect(compileStatement(lowerStatement(remove.node)).text).toBe(
     'DELETE FROM "form" AS "form" WHERE NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id")',
@@ -76,6 +82,9 @@ it("replaces the queries in the filters, the values, and the returned fields of 
   )
   expect(compileStatement(lowerStatement(insert.node)).text).toBe(
     'INSERT INTO "field_option" AS "field_option" ("fieldId") VALUES (CASE WHEN EXISTS (SELECT FROM "form" AS "form") THEN 1 ELSE 0 END) ON CONFLICT DO NOTHING RETURNING NOT EXISTS (SELECT FROM "form_field" AS "form_field" WHERE "form_field"."id" = "field_option"."fieldId") AS "orphan"',
+  )
+  expect(compileStatement(lowerStatement(upsert.node)).text).toBe(
+    'INSERT INTO "form" AS "form" ("id") VALUES ($1) ON CONFLICT ("id") DO UPDATE SET "id" = "excluded"."id" + (SELECT count(*) AS "count" FROM "form_field" AS "form_field" WHERE "form_field"."formId" = "form"."id")',
   )
 })
 

@@ -8,7 +8,7 @@ import type { AnyTable, ColumnValues, Selectable } from "../table/table"
 import { requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
-import { createSelectionRefs } from "./column-refs"
+import { createSelectionRefs, noContext } from "./column-refs"
 import type { ScalarQuery } from "./operand"
 
 /**
@@ -49,6 +49,11 @@ export type UpdateValues<T extends AnyTable> = {
 export type UpdateSet<T extends AnyTable, C extends SchemaContext = NoRelations> =
   | UpdateValues<T>
   | ((columns: ColumnRefs<T> & RelationRefs<C>) => UpdateValues<T>)
+
+/** Argument of `update` of a conflict of an insert into table `T` with schema context `C`: the values that it sets on the existing record, or a callback that receives the columns and the queries of the relations of the existing record and the columns of the row proposed for insertion, and returns them. */
+export type ConflictUpdateSet<T extends AnyTable, C extends SchemaContext = NoRelations> =
+  | UpdateValues<T>
+  | ((columns: ColumnRefs<T> & RelationRefs<C>, excluded: ColumnRefs<T>) => UpdateValues<T>)
 
 /** Columns and rows of `VALUES` of an insert. */
 export interface InsertRows {
@@ -110,7 +115,7 @@ export function toInsertRows(
 }
 
 /**
- * Returns the assignments of an update of the rows of `source` that `set` gives: the values of its columns, or a callback that receives the references of `source` with the relations of `context` and returns them, read when it is called.
+ * Returns the assignments of an update of the rows of `source` that `set` gives: the values of its columns, or a callback that receives the references of `source` with the relations of `context`, and those of `excluded` for `DO UPDATE` of a conflict, and returns them, read when it is called.
  *
  * A value of `undefined` keeps its column, and an update must set at least one column.
  * It rejects a key that is not a column of the table of `source`, and a query other than of one value.
@@ -119,10 +124,15 @@ export function toAssignments(
   source: TableSourceNode,
   set: unknown,
   context: QueryContext,
+  excluded?: TableSourceNode,
 ): AssignmentNode[] {
   const { table } = source
   const values: unknown =
-    typeof set === "function" ? set(createSelectionRefs(source, context)) : set
+    typeof set !== "function"
+      ? set
+      : excluded === undefined
+        ? set(createSelectionRefs(source, context))
+        : set(createSelectionRefs(source, context), createSelectionRefs(excluded, noContext))
   if (typeof values !== "object" || values === null) {
     throw new TypeError(
       `update takes the values of the columns of table "${table.name}" or a callback that returns them`,

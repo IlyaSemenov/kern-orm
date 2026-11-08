@@ -1,7 +1,8 @@
 // Mutations of a table: inserts, updates, and deletes, which return the number of the rows they change or the fields of those rows.
 
 import { combineFilters } from "../ast/boolean"
-import type { InsertNode } from "../ast/nodes"
+import type { AssignmentNode, ConflictNode, InsertNode, TableSourceNode } from "../ast/nodes"
+import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import type { SqlStatement } from "../execution/driver"
@@ -11,6 +12,7 @@ import type { OperandValue } from "../expression/operators/comparison"
 import type { ResultRows } from "../result/result"
 import type { SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable, Selectable } from "../table/table"
+import { requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import type { SynchronousResult } from "./conversion"
@@ -30,6 +32,7 @@ import type { AnySelectQuery } from "./select"
 import { requireDerived } from "./select"
 import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
 import type { EmptyRecord, QueryState } from "./state"
+import type { ConflictUpdateSet, UpdateValues } from "./values"
 import { toAssignments, toInsertRows } from "./values"
 
 /**
@@ -414,7 +417,7 @@ export class MutationQuery<
   >(
     this: MutationQuery<S, Kind>,
     ...columns: (K & KeyCheck<S["table"], K>)[]
-  ): ConflictTarget<S, Kind>
+  ): ConflictTarget<S, Kind, K>
   onConflict(...columns: string[]): unknown {
     const { node } = this
     if (node.kind !== "insert") {
@@ -484,20 +487,21 @@ export class MutationQuery<
 export type AnyMutationQuery = MutationQuery<any, SelectQueryKind>
 
 /**
- * Conflict target of an insert of state `S`, a key or any key, with methods that choose the action and return the mutation.
+ * Conflict target of an insert of state `S` on the key of columns `K`, or on any key for `never`, with methods that choose the action and return the mutation.
  *
  * It is no query: awaiting it is a type error and rejects, so that an insert without an action does not resolve without running.
  */
-// Like `MutationQuery`, it is covariant in its state and its kind.
+// Like `MutationQuery`, it is covariant in its state, its kind, and its columns.
 export class ConflictTarget<
   out S extends InsertMutationState,
   out Kind extends SelectQueryKind = "unbound",
+  out K extends string = string,
 > {
   constructor(
     /** Insert whose rows conflict. */
     readonly insert: MutationQuery<S, Kind>,
     /** Columns of the key that the rows conflict on, in its order, or none for any key. */
-    readonly target: readonly string[],
+    readonly target: readonly K[],
   ) {
     Object.freeze(this)
   }
@@ -512,23 +516,100 @@ export class ConflictTarget<
     this: ConflictTarget<S, Kind>,
   ): MutationQuery<ChangeMutationState<S, { changed: SkippedRows<S["changed"]> }>, Kind>
   doNothing(): unknown {
+    const rows = this.insert.node.rows
+    return this.derive(Object.freeze({ target: this.target }), rows === "one" ? "optional" : rows)
+  }
+
+  // The values come from the inserted rows, so a column that a record omits would take its default; it must be given by every record.
+  /**
+   * Updates the existing record of each row that conflicts with the values of `columns` of the row, as `DO UPDATE SET column = EXCLUDED.column`, or with every column that the insert gives, apart from the key, without columns, and returns the mutation of the inserted and the updated rows.
+   *
+   * Every record must give each column that it sets.
+   */
+  merge<
+    S extends InsertMutationState,
+    Kind extends SelectQueryKind,
+    K extends string,
+    C extends Exclude<keyof S["table"]["columns"] & string, K>,
+  >(
+    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<K>,
+    ...columns: C[]
+  ): MutationQuery<ChangeMutationState<S, { changed: S["changed"] }>, Kind>
+  merge(...columns: string[]): unknown {
     const { insert } = this
-    // `onConflict` creates a conflict only of an insert.
-    const node = insert.node as InsertNode<SelectedNode>
-    return new MutationQuery(
-      insert.table,
-      Object.freeze({
-        kind: "insert",
-        target: node.target,
-        columns: node.columns,
-        values: node.values,
-        conflict: Object.freeze({ target: this.target }),
-        returning: undefined,
-        rows: node.rows === "one" ? "optional" : node.rows,
-        value: false,
-      }),
-      insert.context,
-      insert.db as AnyDb | undefined,
+    const target: readonly string[] = this.target
+    requireConflictKey(target, "merge")
+    const node = this.insertNode()
+    const merged =
+      columns.length === 0 ? node.columns.filter(key => !target.includes(key)) : columns
+    if (merged.length === 0) {
+      throw new Error(
+        "merge has no column to set, since the insert gives only the columns of the key of onConflict; use doNothing",
+      )
+    }
+    const excluded = createExcluded(insert.table)
+    const set: AssignmentNode[] = []
+    for (const key of merged) {
+      requireColumn(insert.table, key)
+      if (target.includes(key)) {
+        throw new Error(`merge cannot set "${key}", a column of the key of onConflict`)
+      }
+      if (set.some(assignment => assignment.key === key)) {
+        throw new Error(`merge takes each column once, not "${key}" twice`)
+      }
+      const index = node.columns.indexOf(key)
+      if (index === -1 || node.values.some(row => row[index] === undefined)) {
+        throw new Error(
+          `merge cannot set "${key}", which a record does not give, so that its default would replace the value of the record; give it in every record or leave it out of merge`,
+        )
+      }
+      set.push(Object.freeze({ key, value: createNode({ kind: "column", source: excluded, key }) }))
+    }
+    return this.derive(
+      Object.freeze({ target, update: Object.freeze({ set, excluded }) }),
+      node.rows,
+    )
+  }
+
+  // Overloads as those of `update` of a select query, so that a callback records the relations of its values and a call that matches no overload reports the error of its own form.
+  /**
+   * Updates the existing record of each row that conflicts with the values that `callback` returns, as `DO UPDATE SET`, and returns the mutation of the inserted and the updated rows.
+   *
+   * `callback` receives the columns and the queries of the relations of the existing record, and the columns of the row proposed for insertion, `excluded`, such as to add its value to the existing one.
+   */
+  update<
+    S extends InsertMutationState,
+    Kind extends SelectQueryKind,
+    K extends string,
+    F extends (
+      columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>,
+      excluded: ColumnRefs<S["table"]>,
+    ) => UpdateValues<S["table"]>,
+  >(
+    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<K>,
+    callback: F,
+  ): MutationQuery<
+    ChangeMutationState<S, { uses: S["uses"] | OperandUses<ReturnType<F>[keyof ReturnType<F>]> }>,
+    Kind
+  >
+  /**
+   * Updates the existing record of each row that conflicts with the values of `set`, as `DO UPDATE SET`, and returns the mutation of the inserted and the updated rows.
+   *
+   * `set` gives the values of the columns to update, or is a callback that returns them from the existing record and the row proposed for insertion, `excluded`.
+   */
+  update<S extends InsertMutationState, Kind extends SelectQueryKind, K extends string>(
+    this: ConflictTarget<S, Kind, K> & ConflictKeyCheck<K>,
+    set: ConflictUpdateSet<S["table"], S["schema"]>,
+  ): MutationQuery<ChangeMutationState<S, { changed: S["changed"] }>, Kind>
+  update(set: unknown): unknown {
+    const { insert, target } = this
+    requireConflictKey(target, "update")
+    const node = this.insertNode()
+    const excluded = createExcluded(insert.table)
+    const assignments = toAssignments(node.target, set, insert.context, excluded)
+    return this.derive(
+      Object.freeze({ target, update: Object.freeze({ set: assignments, excluded }) }),
+      node.rows,
     )
   }
 
@@ -538,11 +619,59 @@ export class ConflictTarget<
   then(_action: ConflictActionRequired): never {
     throw new Error("onConflict needs an action before the mutation runs, such as doNothing()")
   }
+
+  /** Returns the node of the insert, which `onConflict` takes only of an insert. */
+  private insertNode(): InsertNode<SelectedNode> {
+    return this.insert.node as InsertNode<SelectedNode>
+  }
+
+  /** Creates the insert of the same kind and `Db` with `conflict`, changing rows `rows`. */
+  private derive(conflict: ConflictNode, rows: ResultRows): AnyMutationQuery {
+    const { insert } = this
+    const node = this.insertNode()
+    return new MutationQuery(
+      insert.table,
+      Object.freeze({
+        kind: "insert",
+        target: node.target,
+        columns: node.columns,
+        values: node.values,
+        conflict,
+        returning: undefined,
+        rows,
+        value: false,
+      }),
+      insert.context,
+      insert.db as AnyDb | undefined,
+    )
+  }
 }
 
 /** Type of the parameter of `then` of a conflict target, which makes awaiting the target before an action a type error. */
 export interface ConflictActionRequired {
   readonly "onConflict needs an action, such as doNothing()": never
+}
+
+/** Check of the columns `K` of a conflict target that rejects `merge` and `update` of a conflict on any key, which PostgreSQL does not update. */
+type ConflictKeyCheck<K extends string> = [K] extends [never] ? ConflictKeyRequired : unknown
+
+/** Type that a conflict target on any key is checked against by `merge` and `update`, naming the reason. */
+export interface ConflictKeyRequired {
+  readonly "merge and update need the columns of a key in onConflict": never
+}
+
+/** Rejects `method` of a conflict target on any key, without columns, since PostgreSQL requires the columns of a key for `DO UPDATE`. */
+function requireConflictKey(target: readonly string[], method: string): void {
+  if (target.length === 0) {
+    throw new Error(
+      `${method} needs the columns of a key in onConflict, since PostgreSQL updates a record only on a conflict of a named key`,
+    )
+  }
+}
+
+/** Creates the occurrence of `table` that stands for the row proposed for insertion in `DO UPDATE`, `EXCLUDED` of PostgreSQL. */
+function createExcluded(table: AnyTable): TableSourceNode {
+  return Object.freeze({ kind: "table", table })
 }
 
 /**

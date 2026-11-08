@@ -29,24 +29,16 @@ Relations through other relations, such as the answers of a form through its fie
 
 ## Upsert
 
-An insert that updates the record it conflicts with on a key, as one `INSERT ... ON CONFLICT ... DO UPDATE` statement, such as the row of a singleton table that the [motivation](architecture/README.md#motivation) names; [`onConflict`](architecture/mutations.md#conflicts) of an insert gives `DO NOTHING`.
+An upsert of the record of a key, which inserts the record or updates the existing one as one statement of [`onConflict`](architecture/mutations.md#conflicts) with `DO UPDATE`, such as the row of a singleton table that the [motivation](architecture/README.md#motivation) names.
 
-- `ConflictTarget` gets the actions of `DO UPDATE`:
-  - `merge(...columns)` sets the columns to the values of the inserted row, `EXCLUDED` of PostgreSQL, or without columns the columns of the statement apart from the key.
-    Without columns, it rejects records of different columns, since a record that lacks a column inserts its `DEFAULT`, which would overwrite the value of the row.
-  - `update` takes what `update` of a query takes, and its callback receives the columns of the inserted row as a second argument, named `excluded` in the documentation, after the columns and the relations of the row.
-  - Types reject `merge` and `update` of `onConflict()` without columns by an interface named after the reason, since PostgreSQL requires a target of `DO UPDATE`.
-  - They return every record: rows `one` of an insert and `many` of `insertMany`.
 - `upsert(values)` of a query of `find` or `findBy` inserts the record of the key and the values, and on a conflict on that key sets the columns of the values to those of the inserted row, in rows `one`, such as `db.ideaVote.findBy({ ideaId, userId }).upsert({ votes })`.
   - Its values are those of an insert without the columns of the key, so the state of a query of `find` and `findBy` keeps the columns of its key; measure the cost with `bench:types`.
-  - An upsert whose update differs from the insert, such as of a counter that the update increments, is an insert with `onConflict`.
+  - An upsert whose update differs from the insert, such as of a counter that the update increments, is an insert with `onConflict` and `update`.
   - It rejects a query with other clauses, such as `where`, `optional`, a relation, or selected fields; decide whether `where` becomes the condition of `DO UPDATE ... WHERE`, which makes rows `optional`.
 - The upsert of the row of a [singleton table](#singleton-tables) is `upsert(values)` of its entry point, whose conflict target is the unique index of `(true)`, which PostgreSQL infers from `ON CONFLICT ((true))`.
 - PostgreSQL checks `NOT NULL` and `CHECK` before the conflict, so the record must be complete even when the row is updated; an update also takes the values of sequences and fires `BEFORE INSERT` triggers.
-- PostgreSQL rejects `DO UPDATE` of a statement whose records conflict with the same row twice, such as an `insertMany` of two records of one key, with SQLSTATE `21000`.
 - Orchid ORM `upsert` of a query of `find` or `findBy` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#upsert)) runs an `UPDATE`, and without a row a second statement that inserts the record unless the update in it finds one ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/sql/to-sql.ts#L196-L280)).
   So two concurrent upserts of a missing record reject one with a unique violation, and its scopes, such as soft delete, filter the update but not the insert, so the upsert of a soft-deleted record by its key rejects with a unique violation too.
-  Its `onConflict` with `merge` and `set` is a statement of `ON CONFLICT` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflict)).
 - Decide whether to tell an inserted row from an updated one, which `old` of [values before an update](#values-before-an-update) gives on PostgreSQL 18, and how to target a partial unique index, such as of the records that are not soft-deleted, whose predicate `ON CONFLICT` requires, as the SQL target of `onConflict` of Orchid ORM does ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflict)).
 
 ## Scopes and soft delete

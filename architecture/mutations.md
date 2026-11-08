@@ -53,6 +53,13 @@
 - It returns a `ConflictTarget`, whose methods choose the action and return the mutation ([decision](../decisions/mutations/conflict-actions.md)): `doNothing` gives the insert of `ON CONFLICT ... DO NOTHING`, which skips each row that conflicts on the key.
   - A row that conflicts only on another key rejects, as without `onConflict`.
   - The insert changes rows `optional` after `insert`, which resolve to `0` or to `undefined` of the returned fields when the row conflicts, and rows `many` after `insertMany`, whose number and returned fields are those of the inserted rows.
+- `merge` and `update` give the insert of `ON CONFLICT ... DO UPDATE SET`, which updates the existing record of each row that conflicts on the key, and keep rows `one` of `insert` and `many` of `insertMany`, since each row is inserted or updated.
+  - They require the columns of a key, as PostgreSQL requires a target of `DO UPDATE`: types reject them on a target of no columns by `ConflictKeyRequired`, which the type of its columns, `never`, gives, and they reject it at runtime.
+  - `merge` sets each of its columns to the value of the row proposed for insertion, `EXCLUDED`, and without columns every column of the statement apart from the key.
+    It rejects a column that a record does not give, also without columns, since `EXCLUDED` holds the default of such a column, which would replace the value of the record; it also rejects a column of the key, which types reject too, a repeated column, and a statement without a column apart from the key.
+  - `update` takes what `update` of a query takes, and its callback receives the columns of the row proposed for insertion as a second argument, which refer to their own occurrence of the table, `excluded` of `ConflictUpdateNode`; its overloads and the relations of its values follow those of `update` of a query.
+  - The values of `DO UPDATE SET` see the existing row under the alias of the target and the proposed row as `excluded`, so the statement takes the alias `excluded` before any source, since PostgreSQL finds `excluded` ambiguous beside a source of that alias, even the table of the insert.
+  - PostgreSQL rejects a statement whose rows update one existing record twice, with SQLSTATE `21000`; kern-orm does not compare the values of the records.
 - A `ConflictTarget` is no query: its `then` takes no callback and rejects, so that TypeScript rejects awaiting it and an insert without an action rejects instead of resolving without running.
 
 ## Results

@@ -310,10 +310,19 @@ export interface InsertNode<Field = ProjectionNode> extends MutationParts<Field>
   readonly conflict?: ConflictNode | undefined
 }
 
-/** `ON CONFLICT ... DO NOTHING` of an insert, which skips each row that conflicts on the key of `target`. */
+/** `ON CONFLICT` of an insert: a row that conflicts on the key of `target` updates the existing row by `update`, or is skipped, as `DO NOTHING`, without it. */
 export interface ConflictNode {
-  /** Keys of the columns of a key of the table, in its order, or none for a conflict on any key. */
+  /** Keys of the columns of a key of the table, in its order, or none for a conflict on any key, which only `DO NOTHING` takes. */
   readonly target: readonly string[]
+  readonly update?: ConflictUpdateNode | undefined
+}
+
+/** `DO UPDATE SET` of `ON CONFLICT`, whose values see the existing row as the target of the insert and the row proposed for insertion as `excluded`. */
+export interface ConflictUpdateNode {
+  /** Assignments of `SET`, at least one, with unique keys. */
+  readonly set: readonly AssignmentNode[]
+  /** Occurrence of the table that stands for the row proposed for insertion, `EXCLUDED` of PostgreSQL, which the values of `set` refer to and which is in no `FROM`. */
+  readonly excluded: TableSourceNode
 }
 
 /** Update statement of the rows that its filters choose. */

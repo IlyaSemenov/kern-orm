@@ -196,6 +196,17 @@ bench.baseline(async () => {
     .onConflict("id")
     .doNothing()
     .get("id")
+  await tenantDb.field
+    .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
+    .onConflict("id")
+    .merge("label")
+  await tenantDb.field
+    .insert({ id: "baseline", formId: "baseline", position: 1, label: "baseline" })
+    .onConflict("id")
+    .update((field, excluded) => ({
+      label: excluded.label,
+      position: field.position,
+    }))
   await tenantDb.field.find("baseline").update({ label: "baseline" }).select("label", "position")
   await tenantDb.field.find("baseline").update({
     label: tenantDb.answer.min("value").coalesce("baseline"),
@@ -623,7 +634,24 @@ bench("insert with onConflict", async () => {
     .onConflict("id")
     .doNothing()
     .get("id")
-}).types([646, "instantiations"])
+}).types([647, "instantiations"])
+
+bench("insert with merge", async () => {
+  await tenantDb.form
+    .insert({ id: "x", name: "x", published: true })
+    .onConflict("id")
+    .merge("name", "published")
+}).types([576, "instantiations"])
+
+bench("insert with update of a callback", async () => {
+  await tenantDb.form
+    .insert({ id: "x", name: "x", published: true })
+    .onConflict("id")
+    .update((form, excluded) => ({
+      name: excluded.name,
+      published: form.published,
+    }))
+}).types([775, "instantiations"])
 
 bench("update", async () => {
   await tenantDb.form.find("x").update({ name: "x" }).select("id", "name")

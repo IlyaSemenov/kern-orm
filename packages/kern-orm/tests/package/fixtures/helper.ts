@@ -251,6 +251,8 @@ export function insertFormConflict(name: string) {
 /** Methods of the conflict of an insert, standing for `export const doNothing = conflict.doNothing` and the like; see the file header. */
 export const conflictMethods = {
   doNothing: insertFormConflict("Draft").doNothing,
+  merge: insertFormConflict("Draft").merge,
+  update: insertFormConflict("Draft").update,
   // oxlint-disable-next-line unicorn/no-thenable -- the method that makes awaiting a conflict a type error
   then: insertFormConflict("Draft").then,
 }

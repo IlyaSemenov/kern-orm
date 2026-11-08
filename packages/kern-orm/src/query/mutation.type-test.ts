@@ -304,6 +304,62 @@ describe("conflicts", () => {
     ).resolves.toEqualTypeOf<number>()
   })
 
+  test("update the existing records by merge and update, returning a row of each record", () => {
+    expectTypeOf(
+      votes.vote.insert(record).onConflict("postId", "userId").merge("votes").get("id"),
+    ).resolves.toEqualTypeOf<string>()
+    expectTypeOf(
+      votes.vote.insertMany([record]).onConflict("id").merge().pluck("votes"),
+    ).resolves.toEqualTypeOf<number[]>()
+    expectTypeOf(
+      votes.vote
+        .insert(record)
+        .onConflict("postId", "userId")
+        .update((existing, excluded) => ({
+          votes: sql(t.integer)`${existing.votes} + ${excluded.votes}`,
+        })),
+    ).resolves.toEqualTypeOf<number>()
+    expectTypeOf(
+      votes.vote.insert(record).onConflict("id").update({ votes: 0 }).select("votes"),
+    ).resolves.toEqualTypeOf<{ votes: number }>()
+  })
+
+  test("check the columns of merge and the values of update", () => {
+    const byId = votes.vote.insert(record).onConflict("id")
+
+    // @ts-expect-error A column of the key.
+    votes.vote.insert(record).onConflict("postId", "userId").merge("userId")
+    // @ts-expect-error Not a column.
+    byId.merge("title")
+    // @ts-expect-error A value of another type.
+    byId.update({ votes: "many" })
+    // @ts-expect-error An expression of another type.
+    byId.update((_, excluded) => ({ votes: excluded.userId }))
+  })
+
+  test("reject merge and update of a conflict on any key", () => {
+    // @ts-expect-error A conflict on any key.
+    votes.vote.insert(record).onConflict().merge("votes")
+    // @ts-expect-error A conflict on any key.
+    votes.vote.insert(record).onConflict().update({ votes: 0 })
+  })
+
+  test("add the relations of the queries of update to the state, which a Db must have", () => {
+    const other = createDatabase({ driver: createRecordingDriver().driver }).bind(
+      defineSchema({ post, comment }),
+    )
+    const updated = blog.post
+      .insert({ title: "Hello" })
+      .onConflict("id")
+      .update(existing => ({
+        commentCount: existing.comments.count(),
+      }))
+
+    expectTypeOf(db.$execute(updated)).resolves.toEqualTypeOf<number>()
+    // @ts-expect-error The schema of the Db lacks the relation.
+    other.$execute(updated)
+  })
+
   test("take the columns of exactly one key", () => {
     // @ts-expect-error Not a key.
     votes.vote.insert(record).onConflict("userId")
@@ -322,6 +378,8 @@ describe("conflicts", () => {
     votes.vote.insert(record).select("id").onConflict()
     // @ts-expect-error After an action.
     votes.vote.insert(record).onConflict().doNothing().onConflict()
+    // @ts-expect-error After an action.
+    votes.vote.insert(record).onConflict("id").merge().onConflict()
   })
 
   test("need an action before the mutation runs", async () => {

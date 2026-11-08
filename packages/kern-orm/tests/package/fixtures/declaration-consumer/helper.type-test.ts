@@ -237,6 +237,9 @@ describe("emitted declarations of queries that change rows", () => {
     expectTypeOf(db.$execute(insertFormConflict("Survey").doNothing().get("id"))).toEqualTypeOf<
       Promise<string | undefined>
     >()
+    expectTypeOf(db.$execute(insertFormConflict("Survey").merge("id").get("id"))).toEqualTypeOf<
+      Promise<string>
+    >()
     expectTypeOf(db.$execute(insertFormWithFieldIds("Survey"))).toEqualTypeOf<
       Promise<{ fields: string[] }>
     >()

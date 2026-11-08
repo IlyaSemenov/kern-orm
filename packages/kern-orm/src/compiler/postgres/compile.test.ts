@@ -8,6 +8,7 @@ import type {
   ProjectionNode,
   RawSqlNode,
   SelectNode,
+  TableSourceNode,
   TextStatementNode,
   UpdateNode,
 } from "../../ast/nodes"
@@ -1132,6 +1133,65 @@ describe("mutations", () => {
       }).text,
     ).toBe(
       'INSERT INTO "form_field" AS "form_field" ("id", "form_id") VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING "form_field"."id" AS "id"',
+    )
+  })
+
+  it("compiles DO UPDATE of ON CONFLICT, whose values see the existing row and the inserted row as excluded", () => {
+    const excluded: TableSourceNode = { kind: "table", table: form }
+    const node: InsertNode = {
+      kind: "insert",
+      target,
+      columns: ["id", "name"],
+      values: [[createParameter(1), createParameter("Survey")]],
+      conflict: {
+        target: ["id"],
+        update: {
+          set: [
+            {
+              key: "name",
+              value: toNode(
+                sql`${toExpression(name)} || ${toExpression(createRef(excluded, "name"))}`,
+              ),
+            },
+          ],
+          excluded,
+        },
+      },
+      returning: undefined,
+      rows: "one",
+      value: false,
+    }
+
+    expect(compileStatement(node).text).toBe(
+      'INSERT INTO "form" AS "form" ("id", "name") VALUES ($1, $2) ON CONFLICT ("id") DO UPDATE SET "name" = "form"."name" || "excluded"."name"',
+    )
+  })
+
+  it("keeps the alias excluded of DO UPDATE from a table of that name", () => {
+    const table = defineTable("excluded", {
+      id: t.integer.primaryKey(),
+    })
+    const occurrence: TableSourceNode = { kind: "table", table }
+    const excluded: TableSourceNode = { kind: "table", table }
+    const node: InsertNode = {
+      kind: "insert",
+      target: occurrence,
+      columns: ["id"],
+      values: [[createParameter(1)]],
+      conflict: {
+        target: ["id"],
+        update: {
+          set: [{ key: "id", value: createRef(excluded, "id") }],
+          excluded,
+        },
+      },
+      returning: [{ key: "id", expression: createRef(occurrence, "id"), type: t.integer }],
+      rows: "one",
+      value: false,
+    }
+
+    expect(compileStatement(node).text).toBe(
+      'INSERT INTO "excluded" AS "excluded_2" ("id") VALUES ($1) ON CONFLICT ("id") DO UPDATE SET "id" = "excluded"."id" RETURNING "excluded_2"."id" AS "id"',
     )
   })
 

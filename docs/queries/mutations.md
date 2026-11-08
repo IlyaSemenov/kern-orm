@@ -68,6 +68,29 @@ const addedUserIds = await db.membership
   .pluck("userId")
 ```
 
+To update the existing record instead, call `merge` with the columns to take from the inserted record, such as to save the fields of a form editor, inserting the new fields and updating the others by their IDs:
+
+```ts
+await db.field.insertMany(fields).onConflict("id").merge("label", "position")
+```
+
+Give each column that `merge` sets in every record, since a record that omits it would set its default.
+Without columns, `merge` sets every column that the records give, apart from the key.
+
+To compute the new values, pass them to `update`, as to an [update](#updating) of records; its callback also receives the columns of the inserted record, such as to add a count to the existing one:
+
+```ts
+await db.formView
+  .insert({ formId, day, count: 1 })
+  .onConflict("formId", "day")
+  .update((view, excluded) => ({
+    count: sql(t.integer)`${view.count} + ${excluded.count}`,
+  }))
+```
+
+After `merge` and `update`, the number of the changed rows counts both the inserted and the updated records, and the fields that you select are returned for both.
+PostgreSQL rejects a statement that updates one existing record twice, so pass `insertMany` at most one record of each key.
+
 ## Updating
 
 To update records, choose them with `where`, `find`, or `findBy`, and pass the new values to `update`:

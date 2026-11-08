@@ -18,6 +18,12 @@ A mutation reads the related records that it selects in its own statement, atomi
 
 - Orchid ORM, same: `onConflictDoNothing` takes the columns of a primary or unique key of the table definition, or none, and adds `undefined` to the result of one record ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflictdonothing)).
 
+## Inserts that update the records they conflict with
+
+`onConflict` of an insert with `merge` or `update` updates the existing record of each row that conflicts on a key, as `DO UPDATE`, from the values of the row or of a callback that receives the existing row and the row proposed for insertion.
+
+- Orchid ORM, same: `onConflict` with `merge` and `set` is `DO UPDATE` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/create.md#onconflict)).
+
 ## Inserts beyond the parameter limit
 
 A mutation is one statement, and the compiler rejects a statement of more than 65535 parameters, so an insert of more values must be split.

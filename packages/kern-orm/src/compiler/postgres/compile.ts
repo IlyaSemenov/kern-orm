@@ -1,5 +1,6 @@
 import { combineFilters } from "../../ast/boolean"
 import type {
+  AssignmentNode,
   ColumnRefNode,
   ExpressionNode,
   InsertNode,
@@ -107,22 +108,21 @@ export function compileStatement(
   }
 }
 
-/** Compiles a mutation, whose expressions see only the occurrence of its table, apart from the values of an insert, which see no source. */
+/** Compiles a mutation, whose expressions see the occurrence of its table, apart from the values of an insert, which see no source, and the values of `DO UPDATE SET`, which also see the row proposed for insertion as `excluded`. */
 function compileMutation(context: CompileContext, node: MutationStatementNode): string {
+  // PostgreSQL finds `excluded` of `DO UPDATE` ambiguous beside a source of that alias, even the table of the insert, so the statement takes the alias before any source.
+  if (node.kind === "insert" && node.conflict?.update !== undefined) {
+    context.createAlias(excludedAlias)
+  }
   const scope = declareSource(context, undefined, node.target)
   const target = compileSource(context, undefined, scope)
   let text: string
   switch (node.kind) {
     case "insert":
-      text = `INSERT INTO ${target}${compileValues(context, node)}${compileConflict(node)}`
+      text = `INSERT INTO ${target}${compileValues(context, node)}${compileConflict(context, scope, node)}`
       break
     case "update": {
-      text = `UPDATE ${target} SET`
-      const { set } = node
-      for (let index = 0; index < set.length; index++) {
-        const { key, value } = set[index]!
-        text += `${index === 0 ? " " : ", "}${compileColumnName(node.target, key)} = ${compileExpression(context, scope, value)}`
-      }
+      text = `UPDATE ${target} SET${compileAssignments(context, scope, node.target, node.set)}`
       text += compileWhere(context, scope, node.filters)
       break
     }
@@ -166,18 +166,48 @@ function compileValues(context: CompileContext, node: InsertNode): string {
   return text
 }
 
-/** Compiles `ON CONFLICT` of an insert, which names the physical columns of its key, or nothing for an insert without it. */
-function compileConflict(node: InsertNode): string {
+/** Alias of the row proposed for insertion in `DO UPDATE` of `ON CONFLICT`, which PostgreSQL names `EXCLUDED`. */
+const excludedAlias = "excluded"
+
+/**
+ * Compiles `ON CONFLICT` of an insert, which names the physical columns of its key, or nothing for an insert without it.
+ *
+ * The values of `DO UPDATE SET` see the existing row in `scope`, the occurrence of the table of the insert, and the row proposed for insertion as `excluded`.
+ */
+function compileConflict(context: CompileContext, scope: Scope, node: InsertNode): string {
   const { conflict } = node
   if (conflict === undefined) {
     return ""
   }
-  const { target } = conflict
+  const { target, update } = conflict
   let text = " ON CONFLICT"
   for (let index = 0; index < target.length; index++) {
     text += `${index === 0 ? " (" : ", "}${compileColumnName(node.target, target[index]!)}`
   }
-  return `${text}${target.length === 0 ? "" : ")"} DO NOTHING`
+  if (target.length > 0) {
+    text += ")"
+  }
+  if (update === undefined) {
+    return `${text} DO NOTHING`
+  }
+  // `compileMutation` took the alias before any source, so no source of the statement takes it.
+  const excluded: Scope = { source: update.excluded, alias: excludedAlias, outer: scope }
+  return `${text} DO UPDATE SET${compileAssignments(context, excluded, node.target, update.set)}`
+}
+
+/** Compiles the assignments of `SET` of an update or of `DO UPDATE` to the columns of the table of `target`, whose values see the sources of `scope`. */
+function compileAssignments(
+  context: CompileContext,
+  scope: Scope,
+  target: TableSourceNode,
+  set: readonly AssignmentNode[],
+): string {
+  let text = ""
+  for (let index = 0; index < set.length; index++) {
+    const { key, value } = set[index]!
+    text += `${index === 0 ? " " : ", "}${compileColumnName(target, key)} = ${compileExpression(context, scope, value)}`
+  }
+  return text
 }
 
 /** Compiles the physical name of the column of the table of `target` under `key`, as `SET`, the column list of an insert, and the target of `ON CONFLICT` name it, without an alias. */

@@ -101,6 +101,7 @@ describe("conflicts", () => {
       formId: t.integer.columnName("form_id"),
       userId: t.integer.columnName("user_id"),
       votes: t.integer,
+      note: t.text.nullable(),
     },
     { unique: [["formId", "userId"]] },
   )
@@ -127,6 +128,80 @@ describe("conflicts", () => {
     )
   })
 
+  it("update the existing record with the inserted values of the columns of merge, or of every column apart from the key", () => {
+    const merged = from(vote)
+      .insertMany([record, { formId: 2, userId: 2, votes: 1 }])
+      .onConflict("userId", "formId")
+      .merge("votes")
+
+    expect(merged.toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3), ($4, $5, $6) ON CONFLICT ("form_id", "user_id") DO UPDATE SET "votes" = "excluded"."votes"',
+    )
+    expect(merged.node.rows).toBe("many")
+    expect(from(vote).insert(record).onConflict("id").merge().toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3) ON CONFLICT ("id") DO UPDATE SET "form_id" = "excluded"."form_id", "user_id" = "excluded"."user_id", "votes" = "excluded"."votes"',
+    )
+  })
+
+  it("update the existing record with the values of update, which see it and the inserted row as excluded", () => {
+    const updated = from(vote)
+      .insert(record)
+      .onConflict("formId", "userId")
+      .update((existing, excluded) => ({
+        votes: sql(t.integer)`${existing.votes} + ${excluded.votes}`,
+        note: null,
+      }))
+
+    expect(updated.toSQL()).toEqual({
+      text: 'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3) ON CONFLICT ("form_id", "user_id") DO UPDATE SET "votes" = "vote"."votes" + "excluded"."votes", "note" = $4',
+      parameters: ["1", "2", "3", null],
+    })
+    expect(updated.node.rows).toBe("one")
+    expect(from(vote).insert(record).onConflict("id").update({ votes: 0 }).toSQL().text).toBe(
+      'INSERT INTO "vote" AS "vote" ("form_id", "user_id", "votes") VALUES ($1, $2, $3) ON CONFLICT ("id") DO UPDATE SET "votes" = $4',
+    )
+  })
+
+  it("rejects merge of a column that a record does not give, of the key, or twice, and without a column", () => {
+    const inserted = from(vote)
+      .insertMany([{ ...record, note: "Note" }, record])
+      .onConflict("id")
+    const missing = (key: string) =>
+      `merge cannot set "${key}", which a record does not give, so that its default would replace the value of the record; give it in every record or leave it out of merge`
+
+    expect(() => inserted.merge("note")).toThrow(missing("note"))
+    expect(() => inserted.merge()).toThrow(missing("note"))
+    expect(() => from(vote).insert(record).onConflict("id").merge("note")).toThrow(missing("note"))
+    // @ts-expect-error A column of the key.
+    expect(() => inserted.merge("id")).toThrow(
+      'merge cannot set "id", a column of the key of onConflict',
+    )
+    expect(() => inserted.merge("votes", "votes")).toThrow(
+      'merge takes each column once, not "votes" twice',
+    )
+    expect(() =>
+      from(vote)
+        .insert({ formId: 1, userId: 2 } as never)
+        .onConflict("formId", "userId")
+        .merge(),
+    ).toThrow(
+      "merge has no column to set, since the insert gives only the columns of the key of onConflict; use doNothing",
+    )
+  })
+
+  it("rejects merge and update of a conflict on any key", () => {
+    const anyKey = from(vote).insert(record).onConflict()
+
+    // @ts-expect-error A conflict on any key.
+    expect(() => anyKey.merge()).toThrow(
+      "merge needs the columns of a key in onConflict, since PostgreSQL updates a record only on a conflict of a named key",
+    )
+    // @ts-expect-error A conflict on any key.
+    expect(() => anyKey.update({ votes: 0 })).toThrow(
+      "update needs the columns of a key in onConflict",
+    )
+  })
+
   it("applies only right after insert or insertMany, once", () => {
     const inserted: AnyMutationQuery = from(vote).insert(record)
     const message =
@@ -145,6 +220,7 @@ describe("conflicts", () => {
       inserted.get("id"),
       inserted.transform(count => count),
       inserted.onConflict().doNothing(),
+      inserted.onConflict("id").merge("votes"),
     ] as AnyMutationQuery[]) {
       expect(() => mutation.onConflict()).toThrow(message)
     }
@@ -790,11 +866,12 @@ describePostgres("conflicts in PostgreSQL", ({ database, testTransaction, useTes
   const tag = defineTable("tag", {
     id: t.integer.primaryKey(),
     name: t.text.unique(),
+    uses: t.integer.hasDefault(),
   })
 
   useTestFixture(() =>
     database.script(`
-      CREATE TABLE tag (id integer PRIMARY KEY, name text NOT NULL UNIQUE);
+      CREATE TABLE tag (id integer PRIMARY KEY, name text NOT NULL UNIQUE, uses integer NOT NULL DEFAULT 0);
       INSERT INTO tag (id, name) VALUES (1, 'urgent');
     `),
   )
@@ -827,6 +904,92 @@ describePostgres("conflicts in PostgreSQL", ({ database, testTransaction, useTes
       many: [4],
       count: 0,
       names: ["urgent", "later", "new"],
+    })
+  })
+
+  it("updates the existing records by merge and update, returning the inserted and the updated rows", async () => {
+    const result = await testTransaction(async () => ({
+      merged: await db.tag
+        .insertMany([
+          { id: 1, name: "renamed" },
+          { id: 2, name: "new" },
+        ])
+        .onConflict("id")
+        .merge("name")
+        .select("id", "name"),
+      count: await db.tag
+        .insertMany([
+          { id: 2, name: "again" },
+          { id: 3, name: "third" },
+        ])
+        .onConflict("id")
+        .merge("name"),
+      uses: [
+        await db.tag
+          .insert({ id: 1, name: "ignored", uses: 2 })
+          .onConflict("id")
+          .update((existing, excluded) => ({
+            uses: sql(t.integer)`${existing.uses} + ${excluded.uses}`,
+          }))
+          .get("uses"),
+        await db.tag
+          .insert({ id: 1, name: "ignored", uses: 3 })
+          .onConflict("id")
+          .update((existing, excluded) => ({
+            uses: sql(t.integer)`${existing.uses} + ${excluded.uses}`,
+          }))
+          .get("uses"),
+      ],
+      tags: await db.tag.orderBy("id").select("name", "uses"),
+    }))
+
+    expect(result).toEqual({
+      merged: expect.arrayContaining([
+        { id: 1, name: "renamed" },
+        { id: 2, name: "new" },
+      ]),
+      count: 2,
+      uses: [2, 5],
+      tags: [
+        { name: "renamed", uses: 5 },
+        { name: "again", uses: 0 },
+        { name: "third", uses: 0 },
+      ],
+    })
+  })
+
+  it("reads the existing and the proposed rows in a nested query of update", async () => {
+    // The existing row, the proposed row, and the rows of the nested query differ, so that a reference to another of them counts 0 or 2 rows.
+    const uses = await testTransaction(async () => {
+      await db.tag.insert({ id: 2, name: "later" })
+      return db.tag
+        .insert({ id: 99, name: "urgent", uses: 2 })
+        .onConflict("name")
+        .update((existing, excluded) => ({
+          uses: db.tag
+            .where(tag => tag.id.eq(existing.id))
+            .where(tag => tag.uses.lt(excluded.uses))
+            .count(),
+        }))
+        .get("uses")
+    })
+
+    expect(uses).toBe(1)
+  })
+
+  it("rejects two rows of one statement that update the same record", async () => {
+    await testTransaction(async () => {
+      await expect(
+        db.$transaction(async () => {
+          await db.tag
+            .insertMany([
+              { id: 1, name: "first" },
+              { id: 1, name: "second" },
+            ])
+            .onConflict("id")
+            .merge("name")
+        }),
+      ).rejects.toThrow(/cannot affect row a second time/)
     })
   })
 
