@@ -132,13 +132,28 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
     )
   }
 
+  /**
+   * Throws once closing starts.
+   *
+   * Closing waits for the transactions of the driver before it calls `sql.end()`, and the pool runs the statements sent until then.
+   */
+  function assertOpen(operation: string): void {
+    if (closing) {
+      throw new Error(`Cannot ${operation}: the driver is closed`)
+    }
+  }
+
   return {
-    execute: statement => execute(sql, statement),
-    executeScript: text => executeScript(sql, text),
+    async execute(statement) {
+      assertOpen("execute a statement")
+      return execute(sql, statement)
+    },
+    async executeScript(text) {
+      assertOpen("execute a script")
+      return executeScript(sql, text)
+    },
     async acquire() {
-      if (closing) {
-        throw new Error("Cannot acquire a connection: the driver is closed")
-      }
+      assertOpen("acquire a connection")
       acquiring++
       let connection: ReservedSql
       try {

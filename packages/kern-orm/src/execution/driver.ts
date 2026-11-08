@@ -36,7 +36,11 @@ export interface Driver {
   executeScript(text: string): Promise<void>
   /** Reserves a dedicated connection, such as for a transaction. */
   acquire(): Promise<Connection>
-  /** Closes the connections once the transactions on reserved connections end. */
+  /**
+   * Closes the connections once the statements on the pool and the transactions on reserved connections end.
+   *
+   * From the call, it rejects a new statement or script on the pool and a new connection.
+   */
   close(): Promise<void>
 }
 

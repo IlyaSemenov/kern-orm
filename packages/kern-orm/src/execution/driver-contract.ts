@@ -451,6 +451,31 @@ export function describeDriverContract(
         assert.equal(await query, "slept")
         assert.deepEqual(settled, ["query", "database"])
       })
+
+      it("rejects a statement, a script, and a connection requested right after it starts", async () => {
+        // The held connection of a client with one connection keeps the closing going, so a statement the driver lets through waits for it.
+        const driver = createDriver({ max: 1 })
+        const held = await driver.acquire()
+
+        const closing = driver.close()
+        // Requested at once: a client may still run a statement sent before it starts closing its pool.
+        const acquiring = driver.acquire()
+        const rejections = [
+          assert.rejects(driver.execute(createStatement("SELECT 1"))),
+          assert.rejects(driver.executeScript("SELECT 1")),
+          assert.rejects(acquiring),
+        ]
+        // A connection handed out by mistake is released, so that closing ends and the test fails instead of hanging.
+        acquiring.then(connection => connection.release()).catch(() => {})
+        // Released before awaiting the rejections, so that a statement waiting for the connection runs and fails the test instead of hanging it.
+        await held.release()
+
+        try {
+          await Promise.all(rejections)
+        } finally {
+          await closing
+        }
+      })
     })
 
     // Tests that create tables and data run in test transactions, which leave the database unchanged.

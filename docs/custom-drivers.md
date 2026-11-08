@@ -47,7 +47,7 @@ Follow these rules in the driver:
 - Send a statement with the extended protocol also without parameters, so that PostgreSQL rejects a text of several statements, and a script with the simple protocol.
 - Run the statements and scripts of a reserved connection one at a time in the order of calls.
 - When `release` gets a failure, return the connection to the pool only once it is idle, and never return a lost one.
-- In `close`, reject new connections, wait for the reserved ones and for those still waiting for a connection, and then close the connections.
+- In `close`, reject new statements and scripts on the pool and new connections at once, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
 
 ## Test the driver
 

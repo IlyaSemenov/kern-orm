@@ -37,13 +37,28 @@ export function postgresJsDriver(sql: Sql): Driver {
     await client.unsafe(text).simple().raw()
   }
 
+  /**
+   * Throws once closing starts.
+   *
+   * `sql.end()` ends the pool only after a few microtasks, and the pool still queues and runs a statement sent before then.
+   */
+  function assertOpen(operation: string): void {
+    if (closing) {
+      throw new Error(`Cannot ${operation}: the driver is closed`)
+    }
+  }
+
   return {
-    execute: statement => execute(sql, statement),
-    executeScript: text => executeScript(sql, text),
+    async execute(statement) {
+      assertOpen("execute a statement")
+      return execute(sql, statement)
+    },
+    async executeScript(text) {
+      assertOpen("execute a script")
+      return executeScript(sql, text)
+    },
     async acquire() {
-      if (closing) {
-        throw new Error("Cannot acquire a connection: the driver is closed")
-      }
+      assertOpen("acquire a connection")
       const connection = await sql.reserve()
       return {
         execute: statement => execute(connection, statement),
@@ -53,7 +68,7 @@ export function postgresJsDriver(sql: Sql): Driver {
       }
     },
     close() {
-      // `sql.end()` waits for the reserved connections to be released and serves the pending `sql.reserve()` calls first.
+      // `sql.end()` waits for the reserved connections to be released and for the statements already sent, and serves the pending `sql.reserve()` calls first.
       closing ??= sql.end()
       return closing
     },
