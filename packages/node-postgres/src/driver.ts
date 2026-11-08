@@ -96,9 +96,10 @@ export function nodePostgresDriver(pool: Pool): Driver {
     }
   }
 
-  async function checkOut(): Promise<PoolClient> {
+  /** Gets a client from the pool for `operation`, which names it in the error once closing starts. */
+  async function checkOut(operation: string): Promise<PoolClient> {
     if (closing) {
-      throw new Error("Cannot acquire a connection: the driver is closed")
+      throw new Error(`Cannot ${operation}: the driver is closed`)
     }
     checkouts++
     try {
@@ -122,8 +123,11 @@ export function nodePostgresDriver(pool: Pool): Driver {
   }
 
   /** Runs a statement or a script on a client of its own, unlike `pool.query`, which closes the connection of any failed statement. */
-  async function runOnPool<T>(run: (client: PoolClient) => Promise<T>): Promise<T> {
-    const client = await checkOut()
+  async function runOnPool<T>(
+    operation: string,
+    run: (client: PoolClient) => Promise<T>,
+  ): Promise<T> {
+    const client = await checkOut(operation)
     let destroy = false
     try {
       return await run(client)
@@ -144,10 +148,10 @@ export function nodePostgresDriver(pool: Pool): Driver {
   }
 
   return {
-    execute: statement => runOnPool(client => execute(client, statement)),
-    executeScript: text => runOnPool(client => executeScript(client, text)),
+    execute: statement => runOnPool("execute a statement", client => execute(client, statement)),
+    executeScript: text => runOnPool("execute a script", client => executeScript(client, text)),
     async acquire(): Promise<Connection> {
-      const client = await checkOut()
+      const client = await checkOut("acquire a connection")
       let last: Promise<void> = Promise.resolve()
 
       // `pg` deprecates calling `client.query` while a query runs, and removes it in its next major version, so a connection runs its statements one at a time by itself.

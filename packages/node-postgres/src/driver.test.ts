@@ -337,10 +337,15 @@ describe("closing", () => {
 
     const closing = driver.close()
 
-    const message = "Cannot acquire a connection: the driver is closed"
-    await expect(driver.acquire()).rejects.toThrow(message)
-    await expect(driver.execute(createStatement("SELECT 1"))).rejects.toThrow(message)
-    await expect(driver.executeScript("SELECT 1")).rejects.toThrow(message)
+    await expect(driver.acquire()).rejects.toThrow(
+      "Cannot acquire a connection: the driver is closed",
+    )
+    await expect(driver.execute(createStatement("SELECT 1"))).rejects.toThrow(
+      "Cannot execute a statement: the driver is closed",
+    )
+    await expect(driver.executeScript("SELECT 1")).rejects.toThrow(
+      "Cannot execute a script: the driver is closed",
+    )
     await closing
   })
 
