@@ -10,6 +10,7 @@
 - Test transactions reuse the ambient transaction coordinator and always roll back.
   A test transaction runs a callback in a context created on each call, so every run and retry of a test gets its own level.
   A test wraps its body, or a Vitest `aroundEach` hook wraps the test with its other hooks, since test runners do not carry the async context of an ordinary hook into the test.
+- A test transaction and a test fixture take an [isolation level](transactions.md#isolation), which the transactions of code under test nested in them must match.
 - A database created for tests rejects every statement and transaction outside a test transaction or the seed of a test fixture instead of running them on the pool.
 - Late code of a timed-out test never runs in the transaction of another test, but it keeps running in its own level until that level ends, is aborted, or, in a fixture, is preempted.
 - A test transaction takes the abort signal of its test, such as `t.signal` of `node:test` or the signal of the test context of Vitest; `bun:test` has no signal for each test and relies on preemption.

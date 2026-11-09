@@ -2,20 +2,25 @@
 
 import { AsyncLocalStorage } from "node:async_hooks"
 
-import type { DatabaseOptions, TransactionOptions } from "../database"
+import type { DatabaseOptions, IsolationLevel, TransactionOptions } from "../database"
 import type { Connection, Driver, DriverResult, SqlStatement } from "../driver"
 import { ConnectionError } from "../driver-error"
-import type { OpenedTestFixture, PendingTestFixture, TestTransactionOptions } from "../testing"
+import type {
+  OpenedTestFixture,
+  PendingTestFixture,
+  TestFixtureOptions,
+  TestTransactionOptions,
+} from "../testing"
 
 import { acquireUnlessAborted } from "./abort"
 import { TransactionConnectionError } from "./connection-loss"
 import { TestFixtureStack } from "./fixture-stack"
 import type { Outcome, Rejection, TransactionLevel } from "./level"
 import {
-  beginStatement,
   createLevel,
   createUnavailableError,
   endLevel,
+  getBeginStatement,
   getEndedOutcome,
   runLevel,
   startNestedLevel,
@@ -77,22 +82,23 @@ export class TransactionCoordinator {
   /**
    * Runs `callback` in a transaction that commits when it resolves and rolls back when it rejects, with the settings of `options`.
    *
-   * Inside a transaction, it runs `callback` in a savepoint nested in it, which restores the settings it changed when it ends.
+   * Inside a transaction, it runs `callback` in a savepoint nested in it, which restores the settings it changed when it ends, and rejects without the savepoint when the isolation level of `options` differs from that of the transaction.
    * A failed cleanup after an error rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
    * A transaction that it starts rolls back instead of `COMMIT` after a `ConnectionError` on its connection, and when it rejects after such an error, also of `COMMIT`, it rejects with `TransactionConnectionError` of the phase of the failure, whose `cause` is the error it would reject with otherwise.
    */
   transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T> {
     const settings = getLevelSettings(options)
+    const isolation = options?.isolation
     const parent = this.#storage.getStore()
     if (parent) {
-      return this.#runNested(parent, callback, true, undefined, settings)
+      return this.#runNested(parent, callback, true, undefined, settings, isolation)
     }
     if (this.#closed) {
       return Promise.reject(createDatabaseClosedError("start a transaction"))
     }
     return this.test
       ? Promise.reject(new Error(describeOutsideTest("start a transaction")))
-      : this.#runRoot(callback, true, undefined, settings)
+      : this.#runRoot(callback, true, undefined, settings, isolation)
   }
 
   /**
@@ -134,7 +140,7 @@ export class TransactionCoordinator {
    */
   testTransaction<T>(
     callback: () => Promise<T>,
-    { signal }: TestTransactionOptions = {},
+    { signal, isolation }: TestTransactionOptions = {},
   ): Promise<T> {
     if (!this.test) {
       return Promise.reject(
@@ -146,17 +152,17 @@ export class TransactionCoordinator {
     }
     const parent = this.#storage.getStore()
     if (parent) {
-      return this.#runNested(parent, callback, false, signal)
+      return this.#runNested(parent, callback, false, signal, undefined, isolation)
     }
     if (this.#closed) {
       return Promise.reject(createDatabaseClosedError("start a test transaction"))
     }
     return this.#fixtures
-      .startTestLevel(signal)
+      .startTestLevel(signal, isolation)
       .then(level =>
         level
           ? this.#runStarted(level, callback, false, signal)
-          : this.#runRoot(callback, false, signal),
+          : this.#runRoot(callback, false, signal, undefined, isolation),
       )
   }
 
@@ -166,8 +172,11 @@ export class TransactionCoordinator {
    * Test transactions started outside any transaction run in the innermost fixture.
    * A fixture whose `seed` rejects rolls back and closes.
    */
-  createTestFixture<T>(seed: () => Promise<T>): Promise<OpenedTestFixture<T>> {
-    return this.startTestFixture(seed).fixture
+  createTestFixture<T>(
+    seed: () => Promise<T>,
+    options?: TestFixtureOptions,
+  ): Promise<OpenedTestFixture<T>> {
+    return this.startTestFixture(seed, options).fixture
   }
 
   /**
@@ -176,8 +185,8 @@ export class TransactionCoordinator {
    * Closing before the fixture opens rejects the opening without waiting for `seed` and rolls the fixture back, so a fixture or test transaction started after `close` never nests in it, even when its `seed` never settles.
    * Closing an open fixture also closes the fixtures opening in it.
    */
-  startTestFixture<T>(seed: () => Promise<T>): PendingTestFixture<T> {
-    return this.#fixtures.start(seed, this.#getFixtureRefusal())
+  startTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions): PendingTestFixture<T> {
+    return this.#fixtures.start(seed, this.#getFixtureRefusal(), options?.isolation)
   }
 
   /** Returns the error that rejects a test fixture created now, or `undefined` when it can open. */
@@ -240,6 +249,7 @@ export class TransactionCoordinator {
     commits: boolean,
     signal?: AbortSignal,
     settings?: readonly LevelSetting[],
+    isolation?: IsolationLevel,
   ): Promise<T> {
     let connection: Connection
     try {
@@ -257,11 +267,11 @@ export class TransactionCoordinator {
       throw signal.reason
     }
     // A level that commits is a transaction of `transaction`; test transactions roll back.
-    const level = createLevel(connection, undefined, commits)
+    const level = createLevel(connection, undefined, commits, isolation)
     const { watch } = level
     let outcome: Outcome<T> | undefined
     try {
-      await level.connection.execute(beginStatement)
+      await level.connection.execute(getBeginStatement(isolation))
     } catch (error) {
       level.state = "closed"
       outcome = { rejection: { error: suppressAbortReason(error, signal) } }
@@ -295,13 +305,14 @@ export class TransactionCoordinator {
     commits: boolean,
     signal?: AbortSignal,
     settings?: readonly LevelSetting[],
+    isolation?: IsolationLevel,
   ): Promise<T> {
     const unavailable = createUnavailableError(parent, "start a nested transaction")
     if (unavailable) {
       throw unavailable
     }
     return this.#runStarted(
-      await startNestedLevel(parent, commits, signal, settings),
+      await startNestedLevel(parent, commits, signal, settings, isolation),
       callback,
       commits,
       signal,

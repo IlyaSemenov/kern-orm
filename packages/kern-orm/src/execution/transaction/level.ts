@@ -2,6 +2,7 @@
 
 import type { AsyncLocalStorage } from "node:async_hooks"
 
+import type { IsolationLevel } from "../database"
 import type { Connection, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 
@@ -25,8 +26,12 @@ export interface TransactionLevel {
    * Code under test then starts a transaction of its own where it does in production, which runs as a savepoint of the test level.
    */
   readonly inTransaction: boolean
-  /** A level accepts statements only while `open`; it is `starting` until its `BEGIN` or `SAVEPOINT` and its settings complete. */
-  state: "starting" | "open" | "closing" | "closed"
+  /**
+   * A level accepts statements only while `open`; it is `starting` until its `BEGIN` or `SAVEPOINT` and its settings complete.
+   *
+   * A nested level is `reserved` before `starting` while it checks the isolation level of its transaction, before its `SAVEPOINT` is sent, so ending it sends nothing.
+   */
+  state: "reserved" | "starting" | "open" | "closing" | "closed"
   /** Active nested level, reserved before its `SAVEPOINT` is sent. */
   child: TransactionLevel | undefined
   /** Failure to end a nested level: the statement may not have reached PostgreSQL, so this level can only roll back. */
@@ -37,6 +42,8 @@ export interface TransactionLevel {
   endedBy: "enclosing level" | "preemption" | "abort" | undefined
   /** Statement that restores the values that the settings of a nested level replaced, sent before its `RELEASE`. */
   restore: SqlStatement | undefined
+  /** Isolation level of the transaction, such as `read committed`, when it is known: given to its `BEGIN`, or read for a nested level. */
+  isolation: string | undefined
 }
 
 /** Error to reject with; a later cleanup error suppresses it instead of replacing it. */
@@ -54,10 +61,26 @@ export interface Outcome<T> extends Cleanup {
   readonly result?: T
 }
 
-/** Statement that starts the transaction of a level without a parent: a transaction of `transaction`, a test transaction, or the first test fixture. */
-export const beginStatement = /* @__PURE__ */ createStatement("BEGIN")
+const beginStatement = /* @__PURE__ */ createStatement("BEGIN")
+const isolatedBeginStatements: Readonly<Record<IsolationLevel, SqlStatement>> = {
+  "read committed": /* @__PURE__ */ createStatement("BEGIN ISOLATION LEVEL READ COMMITTED"),
+  "repeatable read": /* @__PURE__ */ createStatement("BEGIN ISOLATION LEVEL REPEATABLE READ"),
+  serializable: /* @__PURE__ */ createStatement("BEGIN ISOLATION LEVEL SERIALIZABLE"),
+}
+const readIsolationStatement = /* @__PURE__ */ createStatement(
+  "SELECT current_setting('transaction_isolation')",
+)
 const commitStatement = /* @__PURE__ */ createStatement("COMMIT")
 const rollbackStatement = /* @__PURE__ */ createStatement("ROLLBACK")
+
+/**
+ * Statement that starts the transaction of a level without a parent, a transaction of `transaction`, a test transaction, or the first test fixture, at `isolation` if given.
+ *
+ * PostgreSQL takes the isolation level only before the first query of a transaction, so `BEGIN` sets it.
+ */
+export function getBeginStatement(isolation: IsolationLevel | undefined): SqlStatement {
+  return isolation ? isolatedBeginStatements[isolation] : beginStatement
+}
 
 /**
  * Creates the state of a `starting` level on `connection`, nested in `parent` if given.
@@ -65,11 +88,13 @@ const rollbackStatement = /* @__PURE__ */ createStatement("ROLLBACK")
  * It sends no SQL and does not reserve the level as the `child` of `parent`; the caller does both.
  * `transaction` tells whether the level is a transaction of `transaction` rather than a level of the test helpers.
  * A transaction of `transaction` without a parent watches its connection for a `ConnectionError`.
+ * `isolation` is the isolation level that a level without a parent begins with.
  */
 export function createLevel(
   connection: Connection,
   parent: TransactionLevel | undefined,
   transaction: boolean,
+  isolation?: IsolationLevel,
 ): TransactionLevel {
   const watch = transaction && !parent ? new ConnectionWatch(connection) : undefined
   return {
@@ -84,14 +109,17 @@ export function createLevel(
     cleanup: undefined,
     endedBy: undefined,
     restore: undefined,
+    isolation: parent ? parent.isolation : isolation,
   }
 }
 
 /**
- * Reserves a nested level of `parent`, sends its `SAVEPOINT`, and applies its `settings`, rejecting when one of them fails.
+ * Starts a nested level of `parent` with `settings`, at the isolation level of its transaction, rejecting when it cannot start.
  *
  * `transaction` tells whether the level is a transaction of `transaction` rather than a level of the test helpers.
+ * A level whose `isolation` differs from that of its transaction rejects without `SAVEPOINT`, since PostgreSQL sets the isolation level only for a whole transaction.
  * A level whose settings fail rolls back to its savepoint first.
+ * Aborted by `signal` while it checks `isolation`, it rejects with the reason without `SAVEPOINT`.
  * The failure suppresses the reason of `signal` when the signal aborted before it.
  */
 export async function startNestedLevel(
@@ -99,10 +127,25 @@ export async function startNestedLevel(
   transaction: boolean,
   signal?: AbortSignal,
   settings?: readonly LevelSetting[],
+  isolation?: IsolationLevel,
 ): Promise<TransactionLevel> {
   // Reserving the level before SAVEPOINT is sent keeps statements of the parent from running inside it.
   const level = createLevel(parent.connection, parent, transaction)
   parent.child = level
+  if (isolation) {
+    // Ending the level before its SAVEPOINT is sent must not roll back to a savepoint that does not exist.
+    level.state = "reserved"
+    await checkIsolation(level, isolation, signal)
+    // A level that its enclosing level ended during the check must not create its savepoint.
+    if (level.cleanup) {
+      return level
+    }
+    if (signal?.aborted) {
+      closeStarting(level)
+      throw signal.reason
+    }
+    level.state = "starting"
+  }
   try {
     await level.connection.execute(createStatement(`SAVEPOINT ${getSavepointName(level)}`))
   } catch (error) {
@@ -125,6 +168,45 @@ export async function startNestedLevel(
     }
   }
   return level
+}
+
+/**
+ * Checks that the transaction of a `reserved` nested `level` runs at `isolation`, and rejects otherwise, closing the level.
+ *
+ * A failure suppresses the reason of `signal` when the signal aborted before it.
+ * A level that its enclosing level ended during the check returns with its cleanup started.
+ */
+async function checkIsolation(
+  level: TransactionLevel,
+  isolation: IsolationLevel,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  let actual = level.isolation
+  if (!actual) {
+    try {
+      actual = (await level.connection.execute(readIsolationStatement)).rows[0]![0]!
+    } catch (error) {
+      if (!level.cleanup) {
+        closeStarting(level)
+      }
+      throw suppressAbortReason(error, signal)
+    }
+    // A transaction keeps its isolation level once its first query runs, so its later nested levels need not read it again.
+    level.parent!.isolation = actual
+    level.isolation = actual
+    if (level.cleanup) {
+      return
+    }
+  }
+  if (actual !== isolation) {
+    closeStarting(level)
+    throw suppressAbortReason(
+      new Error(
+        `Cannot start a nested transaction at isolation level ${isolation}: its transaction runs at ${actual}, and PostgreSQL sets the isolation level of a whole transaction`,
+      ),
+      signal,
+    )
+  }
 }
 
 /**
@@ -206,6 +288,12 @@ export function endLevel(
     return level.cleanup
   }
   level.endedBy = endedBy
+  // A level reserved before its SAVEPOINT was sent has neither a savepoint nor a nested level to end.
+  if (level.state === "reserved") {
+    closeStarting(level)
+    level.cleanup = Promise.resolve({})
+    return level.cleanup
+  }
   // Rejecting statements before COMMIT or ROLLBACK keeps late ones from queuing after it and running outside of the level.
   level.state = "closing"
   const nested = level.child && endLevel(level.child, false, "enclosing level")
@@ -291,7 +379,7 @@ function getSavepointName(level: TransactionLevel): string {
   return `kern_${level.depth}`
 }
 
-/** Closes a nested level whose `SAVEPOINT` failed, freeing its parent for other statements. */
+/** Closes a nested level whose `SAVEPOINT` was not sent or failed, freeing its parent for other statements. */
 function closeStarting(level: TransactionLevel): void {
   level.state = "closed"
   if (level.parent?.child === level) {

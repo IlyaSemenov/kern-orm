@@ -1,4 +1,4 @@
-import type { Database } from "./database"
+import type { Database, IsolationLevel } from "./database"
 
 /** Test fixture of `useTestFixture`, open while the tests of its `describe` block or test file run. */
 export interface TestFixture<T = unknown> {
@@ -41,6 +41,22 @@ export interface TestTransactionOptions {
    * Queries that the test has already sent complete before the rollback.
    */
   signal?: AbortSignal
+  /**
+   * Isolation level of the test transaction, such as `serializable`, for code under test that starts a transaction at that level.
+   *
+   * Inside a test fixture, the test transaction runs at the level of the fixture: given another level, it rejects.
+   */
+  isolation?: IsolationLevel
+}
+
+/** Options of `useTestFixture`. */
+export interface TestFixtureOptions {
+  /**
+   * Isolation level of the transaction of the fixture, such as `serializable`, at which the test transactions and fixtures nested in it run.
+   *
+   * A fixture nested in another one runs at the level of that fixture: given another level, it rejects.
+   */
+  isolation?: IsolationLevel
 }
 
 /** Test transactions and test fixtures of a database created with `test: true`. */
@@ -60,7 +76,7 @@ export interface TestHelpers {
    * Test fixtures nest: a new one opens inside the innermost open one, and test transactions run in the innermost one.
    * A fixture whose `seed` rejects rolls back and closes.
    */
-  useTestFixture<T>(seed: () => Promise<T>): TestFixture<T>
+  useTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions): TestFixture<T>
 }
 
 /** Creates the test helpers of a database created with `test: true`, registering fixtures with the hooks of a test runner. */
@@ -71,11 +87,11 @@ export function createTestHelpers(database: Database, hooks: TestHooks): TestHel
   }
   return {
     testTransaction: (callback, options) => coordinator.testTransaction(callback, options),
-    useTestFixture<T>(seed: () => Promise<T>) {
+    useTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions) {
       let pending: PendingTestFixture<T> | undefined
       let fixture: OpenedTestFixture<T> | undefined
       hooks.before(async () => {
-        const current = coordinator.startTestFixture(seed)
+        const current = coordinator.startTestFixture(seed, options)
         pending = current
         // The after hook has already closed a fixture whose before hook timed out, and its closing reports the failures of the rollback.
         try {

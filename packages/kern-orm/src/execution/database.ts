@@ -69,8 +69,17 @@ export interface Database extends AsyncDisposable {
   close(): Promise<void>
 }
 
+/** Isolation level of a transaction in PostgreSQL. */
+export type IsolationLevel = "read committed" | "repeatable read" | "serializable"
+
 /** Options of `transaction` of a `Database` and `$transaction` of a `Db`. */
 export interface TransactionOptions {
+  /**
+   * Isolation level of the transaction, such as `serializable`.
+   *
+   * A nested transaction runs at the level of its transaction: given another level, it rejects.
+   */
+  isolation?: IsolationLevel
   /**
    * PostgreSQL schemas where the unqualified names of the statements of the transaction resolve, in their order, such as the schema of a tenant followed by the schema of extensions.
    *

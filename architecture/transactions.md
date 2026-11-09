@@ -57,6 +57,12 @@
   It reads their values in a statement of its own before it changes them, since PostgreSQL does not define the order in which it evaluates the expressions of one statement, and restores them before its `RELEASE`.
   `ROLLBACK TO` restores them itself, so a level that rolls back sends no settings after its rollback.
 
+## Isolation
+
+- A transaction, a test transaction, or a test fixture that is not nested runs at the isolation level of its options.
+- A nested level runs at the isolation level of its transaction, which PostgreSQL sets for the whole transaction, and one whose options give another level rejects without starting.
+- At `repeatable read` and `serializable`, the snapshot of a transaction with [settings](#settings) comes from the statement of its settings, so it is taken before the callback starts.
+
 ## Lifecycle
 
 - Objects with an explicit lifecycle, such as a database and a test fixture, are async disposable.

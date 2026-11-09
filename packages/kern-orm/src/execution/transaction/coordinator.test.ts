@@ -892,6 +892,360 @@ describe("settings", () => {
   }
 })
 
+describe("isolation levels", () => {
+  const readIsolation = "SELECT current_setting('transaction_isolation')"
+
+  /** Response that awaits `respond`, such as of `failOn` or `holdOn`, for every statement, and answers reading the isolation level with `isolation`. */
+  function respondWithIsolation(
+    isolation: string,
+    respond: (statement: SqlStatement) => unknown = () => {},
+  ) {
+    return async (statement: SqlStatement) => {
+      await respond(statement)
+      return statement.text === readIsolation ? { rows: [[isolation]] } : {}
+    }
+  }
+
+  it.each([
+    ["read committed", "READ COMMITTED"],
+    ["repeatable read", "REPEATABLE READ"],
+    ["serializable", "SERIALIZABLE"],
+  ] as const)("begins a transaction at isolation level %s", async (isolation, sql) => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.transaction(() => Promise.resolve(), { isolation })
+
+    expect(statements.map(({ text }) => text)).toEqual([`BEGIN ISOLATION LEVEL ${sql}`, "COMMIT"])
+  })
+
+  it("begins a test transaction and the first test fixture at their isolation levels", async () => {
+    const { coordinator, statements } = createTestCoordinator()
+
+    await coordinator.testTransaction(() => Promise.resolve(), { isolation: "serializable" })
+    await using _fixture = await coordinator.createTestFixture(seedNothing, {
+      isolation: "repeatable read",
+    })
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN ISOLATION LEVEL SERIALIZABLE",
+      "ROLLBACK",
+      "BEGIN ISOLATION LEVEL REPEATABLE READ",
+      "SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+    ])
+  })
+
+  it("starts a nested transaction at the isolation level that its transaction began with, without reading it", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.transaction(
+      () => coordinator.transaction(() => Promise.resolve(), { isolation: "serializable" }),
+      { isolation: "serializable" },
+    )
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN ISOLATION LEVEL SERIALIZABLE",
+      "SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "COMMIT",
+    ])
+  })
+
+  it("reads the isolation level of a transaction once for its nested transactions with an isolation level", async () => {
+    const { driver, statements } = createRecordingDriver({
+      respond: respondWithIsolation("read committed"),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.transaction(async () => {
+      await coordinator.transaction(() => Promise.resolve(), { isolation: "read committed" })
+      await coordinator.transaction(() => Promise.resolve(), { isolation: "read committed" })
+    })
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      readIsolation,
+      "SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "COMMIT",
+    ])
+  })
+
+  it.each([
+    { transaction: "began at its isolation level", options: { isolation: "read committed" } },
+    { transaction: "began without an isolation level", options: undefined },
+  ] as const)(
+    "rejects a nested transaction at another isolation level without its SAVEPOINT or its callback, when the transaction $transaction",
+    async ({ options }) => {
+      const { driver, statements } = createRecordingDriver({
+        respond: respondWithIsolation("read committed"),
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      let called = false
+      await coordinator.transaction(async () => {
+        const nested = coordinator.transaction(
+          async () => {
+            called = true
+          },
+          { isolation: "serializable" },
+        )
+        await expect(nested).rejects.toThrow(
+          "Cannot start a nested transaction at isolation level serializable: its transaction runs at read committed",
+        )
+        await coordinator.execute(createStatement("after"))
+      }, options)
+
+      expect(called).toBe(false)
+      expect(statements.map(({ text }) => text)).not.toContain("SAVEPOINT kern_1")
+      expect(statements.map(({ text }) => text).slice(-2)).toEqual(["after", "COMMIT"])
+    },
+  )
+
+  it("rejects a test transaction at another isolation level than its test fixture", async () => {
+    const { coordinator, statements } = createTestCoordinator()
+
+    await using _fixture = await coordinator.createTestFixture(seedNothing, {
+      isolation: "repeatable read",
+    })
+    await expect(
+      coordinator.testTransaction(() => Promise.resolve(), { isolation: "serializable" }),
+    ).rejects.toThrow("its transaction runs at repeatable read")
+    await coordinator.testTransaction(() => Promise.resolve(), { isolation: "repeatable read" })
+
+    expect(statements.map(({ text }) => text).slice(3)).toEqual([
+      "SAVEPOINT kern_1",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+    ])
+  })
+
+  it("rolls back a transaction whose callback resolves while a nested transaction reads the isolation level, without the nested SAVEPOINT or callback", async () => {
+    const read = holdOn(readIsolation)
+    const { driver, statements } = createRecordingDriver({
+      respond: respondWithIsolation("read committed", read.respond),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    let called = false
+    let nested: Promise<void> | undefined
+    const transaction = markHandled(
+      coordinator.transaction(async () => {
+        nested = markHandled(
+          coordinator.transaction(
+            async () => {
+              called = true
+            },
+            { isolation: "read committed" },
+          ),
+        )
+        await read.reached
+      }),
+    )
+    await read.reached
+    // The callback has resolved, and the rollback of the transaction waits behind the read.
+    await settleCallbacks()
+    read.resume()
+
+    await expect(transaction).rejects.toThrow("a nested transaction was still running")
+    await expect(nested!).rejects.toThrow("its enclosing transaction ended first")
+    expect(called).toBe(false)
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", readIsolation, "ROLLBACK"])
+  })
+
+  it("ends a nested transaction whose transaction ends after the check of a known isolation level, without the nested SAVEPOINT", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    let nested: Promise<void> | undefined
+    const transaction = coordinator.transaction(
+      () => {
+        const result = Promise.resolve()
+        // Starting the nested transaction in a reaction to the result, registered before the transaction awaits it, ends the transaction while the nested one awaits its check.
+        void result.then(() => {
+          nested = markHandled(
+            coordinator.transaction(() => Promise.resolve(), { isolation: "serializable" }),
+          )
+        })
+        return result
+      },
+      { isolation: "serializable" },
+    )
+
+    await expect(transaction).rejects.toThrow("a nested transaction was still running")
+    await expect(nested!).rejects.toThrow("its enclosing transaction ended first")
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN ISOLATION LEVEL SERIALIZABLE",
+      "ROLLBACK",
+    ])
+  })
+
+  it("ends a nested transaction whose transaction ends after the read of the isolation level, without the nested SAVEPOINT", async () => {
+    const { coordinator, driver, statements } = createTestCoordinator()
+    const read = Promise.withResolvers<DriverResult>()
+    const acquire = driver.acquire.bind(driver)
+    driver.acquire = async () => {
+      const connection = await acquire()
+      return {
+        ...connection,
+        execute: statement =>
+          statement.text === readIsolation ? read.promise : connection.execute(statement),
+      }
+    }
+
+    const finished = Promise.withResolvers<void>()
+    let nested: Promise<void> | undefined
+    const test = coordinator.testTransaction(() => {
+      nested = markHandled(
+        coordinator.transaction(() => Promise.resolve(), { isolation: "read committed" }),
+      )
+      return finished.promise
+    })
+    await settleCallbacks()
+    // Resolving the read before the callback ends the test transaction after the check and before the nested one continues.
+    read.resolve({
+      command: "SELECT",
+      count: 1,
+      columns: ["current_setting"],
+      rows: [["read committed"]],
+    })
+    finished.resolve()
+
+    await expect(test).rejects.toThrow("a nested transaction was still running")
+    await expect(nested!).rejects.toThrow("its enclosing transaction ended first")
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "ROLLBACK"])
+  })
+
+  it("ends a nested transaction that reads the isolation level when its test transaction is preempted, without the nested SAVEPOINT", async () => {
+    const read = holdOn(readIsolation)
+    const { coordinator, statements } = createTestCoordinator({
+      respond: respondWithIsolation("read committed", read.respond),
+    })
+
+    await using _fixture = await coordinator.createTestFixture(seedNothing)
+    const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+    let nested: Promise<void> | undefined
+    const preempted = markHandled(
+      coordinator.testTransaction(async () => {
+        nested = markHandled(
+          coordinator.transaction(() => Promise.resolve(), { isolation: "read committed" }),
+        )
+        await finished
+      }),
+    )
+    await read.reached
+    const next = coordinator.testTransaction(() => Promise.resolve())
+    await settleCallbacks()
+    read.resume()
+    await next
+    finish()
+
+    await expect(preempted).rejects.toThrow("its test fixture started another level")
+    await expect(nested!).rejects.toThrow("its enclosing transaction ended first")
+    expect(statements.map(({ text }) => text).slice(3)).toEqual([
+      "SAVEPOINT kern_1",
+      readIsolation,
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+    ])
+  })
+
+  describe("abort signal of a test transaction while it checks the isolation level", () => {
+    const readError = new Error("read")
+    const reason = new Error("test aborted")
+
+    it("rejects with the reason, without SAVEPOINT, when the isolation level is known", async () => {
+      const { coordinator, statements } = createTestCoordinator()
+      const controller = new AbortController()
+
+      let called = false
+      await coordinator.testTransaction(
+        async () => {
+          const nested = coordinator.testTransaction(
+            async () => {
+              called = true
+            },
+            { signal: controller.signal, isolation: "serializable" },
+          )
+          controller.abort(reason)
+          await expect(nested).rejects.toBe(reason)
+        },
+        { isolation: "serializable" },
+      )
+
+      expect(called).toBe(false)
+      expect(statements.map(({ text }) => text)).toEqual([
+        "BEGIN ISOLATION LEVEL SERIALIZABLE",
+        "ROLLBACK",
+      ])
+    })
+
+    it.each([
+      {
+        read: "finds the same level",
+        respond: respondWithIsolation("read committed"),
+        check: (rejection: unknown) => expect(rejection).toBe(reason),
+      },
+      {
+        read: "fails",
+        respond: failOn(readIsolation, readError),
+        check: (rejection: unknown) => {
+          expect(rejection).toBeInstanceOf(SuppressedError)
+          expect(rejection).toMatchObject({ error: readError, suppressed: reason })
+        },
+      },
+      {
+        read: "finds another level",
+        respond: respondWithIsolation("serializable"),
+        check: (rejection: unknown) => {
+          expect(rejection).toBeInstanceOf(SuppressedError)
+          expect((rejection as SuppressedError).error).toMatchObject({
+            message: expect.stringContaining("its transaction runs at serializable"),
+          })
+          expect(rejection).toMatchObject({ suppressed: reason })
+        },
+      },
+    ])(
+      "rejects with the reason, without SAVEPOINT, when the read $read",
+      async ({ respond, check }) => {
+        const read = holdOn(readIsolation)
+        const { coordinator, statements } = createTestCoordinator({
+          async respond(statement) {
+            await read.respond(statement)
+            return respond(statement)
+          },
+        })
+        const controller = new AbortController()
+
+        await using _fixture = await coordinator.createTestFixture(seedNothing)
+        let called = false
+        const test = markHandled(
+          coordinator.testTransaction(
+            async () => {
+              called = true
+            },
+            { signal: controller.signal, isolation: "read committed" },
+          ),
+        )
+        await read.reached
+        controller.abort(reason)
+        read.resume()
+
+        check(await test.catch((error: unknown) => error))
+        expect(called).toBe(false)
+        expect(statements.map(({ text }) => text).slice(3)).toEqual([readIsolation])
+      },
+    )
+  })
+})
+
 describe("abort signal of a test transaction", () => {
   /** Signal of a test and the function that aborts it with `reason`. */
   function createTestAbort() {

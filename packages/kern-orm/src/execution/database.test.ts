@@ -9,6 +9,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
+import type { IsolationLevel } from "./database"
 import { createDatabase } from "./database"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
@@ -175,6 +176,91 @@ describePostgres("search path in PostgreSQL", ({ database, testTransaction }) =>
 
     expect(paths.after).toBe(paths.initial)
   })
+})
+
+describePooledPostgres("isolation levels in PostgreSQL", ({ database }) => {
+  const getIsolation = async () =>
+    await database.query`SELECT current_setting('transaction_isolation')`.get(t.text)
+
+  it.each(["read committed", "repeatable read", "serializable"] as const)(
+    "runs a transaction and its nested transactions at isolation level %s",
+    async isolation => {
+      const levels = await database.transaction(
+        async () => ({
+          transaction: await getIsolation(),
+          inherited: await database.transaction(getIsolation),
+          given: await database.transaction(getIsolation, { isolation }),
+        }),
+        { isolation },
+      )
+
+      expect(levels).toEqual({ transaction: isolation, inherited: isolation, given: isolation })
+    },
+  )
+
+  it("rejects a nested transaction at another isolation level and continues the transaction", async () => {
+    const isolation = await database.transaction(
+      async () => {
+        await expect(
+          database.transaction(getIsolation, { isolation: "serializable" }),
+        ).rejects.toThrow("its transaction runs at repeatable read")
+        return await getIsolation()
+      },
+      { isolation: "repeatable read" },
+    )
+
+    expect(isolation).toBe("repeatable read")
+  })
+
+  it("starts a nested transaction at the isolation level that a transaction without one runs at", async () => {
+    const levels = await database.transaction(async () => {
+      const transaction = (await getIsolation()) as IsolationLevel
+      return {
+        transaction,
+        nested: await database.transaction(getIsolation, { isolation: transaction }),
+      }
+    })
+
+    expect(levels.nested).toBe(levels.transaction)
+  })
+
+  // The snapshot of a transaction at repeatable read or serializable comes from its first statement, which is that of its settings.
+  it.each([
+    { isolation: "read committed", count: 1 },
+    { isolation: "repeatable read", count: 0 },
+  ] as const)(
+    "counts at $isolation with a search path a row that another connection commits once the callback starts",
+    async ({ isolation, count }) => {
+      await database.script("CREATE TABLE public.kern_snapshot_test (id integer)")
+      try {
+        const entered = Promise.withResolvers<void>()
+        const committed = Promise.withResolvers<void>()
+        const counted = database.transaction(
+          async () => {
+            entered.resolve()
+            await committed.promise
+            return await database.query`SELECT count(*)::integer FROM kern_snapshot_test`.get(
+              t.integer,
+            )
+          },
+          { isolation, searchPath: ["public"] },
+        )
+        try {
+          await Promise.race([entered.promise, counted])
+          // The callback has started, so the settings have completed; this statement runs on the pool.
+          await database.script("INSERT INTO public.kern_snapshot_test VALUES (1)")
+        } finally {
+          // The transaction ends before the table is dropped, also when the insert fails.
+          committed.resolve()
+          await Promise.allSettled([counted])
+        }
+
+        expect(await counted).toBe(count)
+      } finally {
+        await database.script("DROP TABLE public.kern_snapshot_test")
+      }
+    },
+  )
 })
 
 describePooledPostgres("connection failures of transactions in PostgreSQL", ({ database }) => {

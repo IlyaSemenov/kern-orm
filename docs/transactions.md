@@ -177,6 +177,24 @@ A [nested transaction](#nested-transactions) that rolls back releases the locks 
 
 Call `$lock` in `$transaction` or `$ensureTransaction`, also in code under test: outside a transaction, the lock would end with its own statement, and a [test transaction](./testing) alone does not count as one.
 
+## Isolation level
+
+To run a transaction at an isolation level other than the default of the database, pass `isolation`: `"read committed"`, `"repeatable read"`, or `"serializable"`.
+
+```ts
+await db.$transaction(
+  async () => {
+    const lastPosition = await db.field.where({ formId }).max("position")
+    await db.field.insert({ formId, position: (lastPosition ?? 0) + 1, label: "Name" })
+  },
+  { isolation: "serializable" },
+)
+```
+
+At `repeatable read` and `serializable`, PostgreSQL rejects a transaction that conflicts with a concurrent one with a [`serialization_failure` error](./errors): run the transaction again then.
+
+A nested transaction runs at the isolation level of its transaction, which PostgreSQL sets for the whole transaction, so a nested transaction with another `isolation` rejects without running its callback.
+
 ## Search path
 
 To run SQL whose unqualified names resolve in a PostgreSQL schema of your choice, such as SQL that creates tables in the schema of a new tenant, pass the schemas as `searchPath`:

@@ -50,6 +50,18 @@ aroundEach(runTest => testTransaction(runTest))
 ```
 
 Transactions of the tested code run as [nested transactions](./transactions#nested-transactions) of the test transaction.
+When the tested code starts a transaction at an [isolation level](./transactions#isolation-level), pass the same `isolation` to `testTransaction`, or to `useTestFixture` when the test runs in a fixture, since a nested transaction runs at the level of its transaction:
+
+```ts
+test("assigns the next position", () =>
+  testTransaction(
+    async () => {
+      await addField(formId, "Name")
+      // ...
+    },
+    { isolation: "serializable" },
+  ))
+```
 
 A test transaction does not count as a transaction for [`$isInTransaction()` and `$ensureTransaction`](./transactions#joining-the-current-transaction), so that the tested code behaves as in production.
 To test how the code behaves inside a transaction, wrap the call in `$transaction` in the test.

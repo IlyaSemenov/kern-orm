@@ -101,7 +101,12 @@ export type { CompileOptions } from "./compiler/postgres/compile"
 export type { ResultMode, ResultRows } from "./result/result"
 export { NotFoundError, RequiredRelationError, ResultDecodeError } from "./result/result"
 export type { SqlStatement } from "./execution/driver"
-export type { Database, DatabaseOptions, TransactionOptions } from "./execution/database"
+export type {
+  Database,
+  DatabaseOptions,
+  IsolationLevel,
+  TransactionOptions,
+} from "./execution/database"
 export { createDatabase } from "./execution/database"
 export type { Connection, Driver, DriverResult } from "./execution/driver"
 export type { TransactionCoordinator } from "./execution/transaction/coordinator"

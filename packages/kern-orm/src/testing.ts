@@ -4,6 +4,7 @@ export type {
   OpenedTestFixture,
   PendingTestFixture,
   TestFixture,
+  TestFixtureOptions,
   TestHelpers,
   TestHooks,
   TestTransactionOptions,

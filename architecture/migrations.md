@@ -168,4 +168,4 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 
 ## Open questions
 
-- Isolation: reading the versions again after the lock sees the commit of another process only under `READ COMMITTED`, so decide what `migrate` does in a transaction of a stricter isolation level, which kern-orm does not start yet.
+- Isolation: reading the versions again after the lock sees the commit of another process only under `READ COMMITTED`, so decide what `migrate` does in a transaction of a stricter isolation level.
