@@ -51,7 +51,7 @@
     },
     "packages/kern-orm": {
       "name": "kern-orm",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "devDependencies": {
         "@kern-orm/postgres-js": "workspace:*",
         "postgres": "catalog:",
@@ -72,7 +72,7 @@
     },
     "packages/node-postgres": {
       "name": "@kern-orm/node-postgres",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "@types/pg": "^8.23.1",
         "kern-orm": "workspace:*",
@@ -80,7 +80,7 @@
       },
       "peerDependencies": {
         "@types/pg": "^8.0.0",
-        "kern-orm": ">=0.2.0 <1",
+        "kern-orm": ">=0.8.0 <1",
         "pg": "^8.23.1",
       },
       "optionalPeers": [
@@ -89,25 +89,25 @@
     },
     "packages/postgres-js": {
       "name": "@kern-orm/postgres-js",
-      "version": "0.1.3",
+      "version": "0.2.0",
       "devDependencies": {
         "kern-orm": "workspace:*",
         "postgres": "catalog:",
       },
       "peerDependencies": {
-        "kern-orm": ">=0.2.0 <1",
+        "kern-orm": ">=0.8.0 <1",
         "postgres": "^4.0.0",
       },
     },
     "packages/postgres-js-v3": {
       "name": "@kern-orm/postgres-js-v3",
-      "version": "0.1.3",
+      "version": "0.2.0",
       "devDependencies": {
         "kern-orm": "workspace:*",
         "postgres": "^3.4.9",
       },
       "peerDependencies": {
-        "kern-orm": ">=0.2.0 <1",
+        "kern-orm": ">=0.8.0 <1",
         "postgres": "^3.4.9",
       },
     },

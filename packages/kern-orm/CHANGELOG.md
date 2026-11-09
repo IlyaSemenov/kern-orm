@@ -1,5 +1,12 @@
 # kern-orm
 
+## 0.8.0
+
+### Minor Changes
+
+- 17acc74: Add `closesReservedConnections` to `Driver`, which tells whether a driver closes a reserved connection that it cannot return to the pool, `false` for postgres.js 3; `describeDriverContract` reads it from the driver instead of its option.
+- c2a2ee9: Add `QueryError` and `ConnectionError`, which drivers reject with, and `toDriverError` to classify errors in custom drivers.
+
 ## 0.7.0
 
 ### Minor Changes

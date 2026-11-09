@@ -1,5 +1,13 @@
 # @kern-orm/postgres-js-v3
 
+## 0.2.0
+
+### Minor Changes
+
+- 17acc74: Add `closesReservedConnections` to `Driver`, which tells whether a driver closes a reserved connection that it cannot return to the pool, `false` for postgres.js 3; `describeDriverContract` reads it from the driver instead of its option.
+- fbd09a2: Throw a `TypeError` for a client that transforms the column names or rows of results, such as with `postgres.camel`, whose results kern-orm cannot read.
+- c2a2ee9: Reject with `QueryError` and `ConnectionError`, which requires `kern-orm` 0.8.0 or later.
+
 ## 0.1.3
 
 ### Patch Changes
