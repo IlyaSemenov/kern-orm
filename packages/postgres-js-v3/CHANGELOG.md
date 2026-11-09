@@ -1,5 +1,11 @@
 # @kern-orm/postgres-js-v3
 
+## 0.1.3
+
+### Patch Changes
+
+- cdcac34: Fix a statement or script on the pool of a closing driver running instead of rejecting when it was sent right after `close()`, or, with postgres.js 3, while closing waited for transactions.
+
 ## 0.1.2
 
 ### Patch Changes

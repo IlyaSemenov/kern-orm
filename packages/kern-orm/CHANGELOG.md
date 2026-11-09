@@ -1,5 +1,17 @@
 # kern-orm
 
+## 0.7.0
+
+### Minor Changes
+
+- cdcac34: `describeDriverContract` requires a closing driver to reject a statement or a script on the pool and a new connection requested right after `close()`.
+- c5b57b2: Require `json` and `jsonb` columns that are not `nullable` and have no default in inserts and reject `null` as their value in types, and keep `null` among the values that `transform` returns for a type that accepts `null`, such as a `nullable` JSON column.
+- c5b57b2: Add `of<T>()` to every type to narrow its values in TypeScript, such as `t.text.of<"draft" | "published">()` for a column that a `CHECK` constraint limits.
+- 090606d: Add the `singleton` option of `defineTable` for a table of at most one row, whose query reads, upserts, updates, and deletes the row without a key or `all()`.
+- d17bb23: Add `onConflict(...columns).doNothing()` after `insert` and `insertMany` to skip records that conflict with existing ones on a key.
+- 1d6518f: Add `merge` and `update` after `onConflict(...columns)` to update the existing records that inserted records conflict with on a key.
+- 834a6b6: Add `upsert(values)` after `find` and `findBy` to insert the record of the key with the values or set the values of the existing record in one statement.
+
 ## 0.6.0
 
 ### Minor Changes
