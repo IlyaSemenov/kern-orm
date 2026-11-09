@@ -103,7 +103,7 @@ export { NotFoundError, RequiredRelationError, ResultDecodeError } from "./resul
 export type { SqlStatement } from "./execution/driver"
 export type { Database, DatabaseOptions, TransactionOptions } from "./execution/database"
 export { createDatabase } from "./execution/database"
-export type { Connection, Driver, DriverResult, TransactionFailure } from "./execution/driver"
+export type { Connection, Driver, DriverResult } from "./execution/driver"
 export type { TransactionCoordinator } from "./execution/transaction/coordinator"
 export { createStatement } from "./execution/driver"
 export type { DriverErrorFields } from "./execution/driver-error"

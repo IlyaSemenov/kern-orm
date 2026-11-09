@@ -9,7 +9,7 @@ import type { TextValue } from "../type/type"
 import * as t from "../types"
 
 import { createDatabase } from "./database"
-import type { Connection, Driver, TransactionFailure } from "./driver"
+import type { Connection, Driver } from "./driver"
 import { createStatement } from "./driver"
 import { ConnectionError, QueryError } from "./driver-error"
 import type { TestHooks } from "./testing"
@@ -234,7 +234,6 @@ export function describeDriverContract(
       try {
         const connection = await own.acquire()
         const { runStatement, selectValue } = createStatementRunners(connection)
-        let failure: TransactionFailure | undefined
         try {
           await runStatement("CREATE TEMP TABLE pg_order_test (id integer)")
           await runStatement("BEGIN")
@@ -246,12 +245,8 @@ export function describeDriverContract(
           ])
 
           assert.equal(await selectValue("SELECT count(*) FROM pg_order_test"), "0")
-        } catch (error) {
-          // A failed statement may leave the connection in the transaction or lost.
-          failure = { error }
-          throw error
         } finally {
-          await connection.release(failure)
+          await connection.release()
         }
       } finally {
         await own.close()
@@ -354,23 +349,22 @@ export function describeDriverContract(
       }
     })
 
-    it("leaves no failed transaction on the pool after a release with its error", async () => {
-      // One pooled connection makes the next statement run on the connection that follows the released one.
-      const driver = createDriver({ max: 1 })
+    it("returns a connection to the pool after PostgreSQL rejected its last statement outside a transaction", async () => {
+      // One pooled connection makes the next statement run on the released connection unless the driver closed it.
+      const own = createDriver({ max: 1 })
       try {
-        const connection = await driver.acquire()
-        await connection.execute(createStatement("BEGIN"))
-        const error = await connection
-          .execute(createStatement("SELECT 1/0"))
-          .catch((error: unknown) => error)
-        await connection.release({ error })
+        const connection = await own.acquire()
+        let pid: TextValue | undefined
+        try {
+          pid = await createStatementRunners(connection).selectValue("SELECT pg_backend_pid()")
+          await assert.rejects(connection.execute(createStatement("SELECT 1/0")), QueryError)
+        } finally {
+          await connection.release()
+        }
 
-        await assert.rejects(
-          driver.execute(createStatement("SAVEPOINT probe")),
-          /transaction blocks/,
-        )
+        assert.equal(await createStatementRunners(own).selectValue("SELECT pg_backend_pid()"), pid)
       } finally {
-        await driver.close()
+        await own.close()
       }
     })
 
@@ -380,22 +374,67 @@ export function describeDriverContract(
     ] as const) {
       it(`does not return a connection in ${state} transaction to the pool`, async () => {
         // One pooled connection makes the next statement run on the connection that follows the released one.
-        const driver = createDriver({ max: 1 })
+        const own = createDriver({ max: 1 })
         try {
-          const connection = await driver.acquire()
-          await connection.execute(createStatement("BEGIN"))
-          await connection.execute(createStatement(text)).catch(() => {})
-          await connection.release({ error: new Error("failure") })
+          const connection = await own.acquire()
+          try {
+            await connection.execute(createStatement("BEGIN"))
+            await connection.execute(createStatement(text)).catch(() => {})
+          } finally {
+            await connection.release()
+          }
 
           await assert.rejects(
-            driver.execute(createStatement("SAVEPOINT probe")),
+            own.execute(createStatement("SAVEPOINT probe")),
             /transaction blocks/,
           )
         } finally {
-          await driver.close()
+          await own.close()
         }
       })
     }
+
+    describe("a statement on the pool that leaves a transaction open", () => {
+      const cases: readonly (readonly [
+        string,
+        (own: Driver) => Promise<unknown>,
+        new (...args: never) => Error,
+      ])[] = [
+        ["a statement", own => own.execute(createStatement("BEGIN")), ConnectionError],
+        ["a script", own => own.executeScript("BEGIN; SELECT 1"), ConnectionError],
+        // The failed statement leaves the transaction block open and aborted; the driver rejects with its QueryError or with ConnectionError.
+        [
+          "a script that fails in the transaction",
+          own => own.executeScript("BEGIN; SELECT 1/0"),
+          Error,
+        ],
+      ]
+      for (const [name, run, rejection] of cases) {
+        it(`rejects ${name} and leaves no transaction on the pool`, async () => {
+          // postgres.js runs the pool of a client with one connection as one session, so the client has two connections.
+          const own = createDriver({ max: 2 })
+          const held: Connection[] = []
+          try {
+            await assert.rejects(run(own), rejection)
+
+            // Reserving every connection checks each one that the pool kept, whichever ran the statement.
+            for (let count = 0; count < 2; count++) {
+              held.push(await own.acquire())
+            }
+            for (const connection of held) {
+              await assert.rejects(
+                connection.execute(createStatement("SAVEPOINT probe")),
+                /transaction blocks/,
+              )
+            }
+          } finally {
+            // Closing waits for the reserved connections, so a failure before their release would hang it.
+            await Promise.allSettled(held.map(async connection => connection.release()))
+            await own.close()
+          }
+        })
+      }
+    })
 
     it("rejects a transaction whose connection is lost and keeps the pool usable", async () => {
       // One pooled connection makes the next transaction run on the connection that replaces the lost one.
@@ -424,7 +463,6 @@ export function describeDriverContract(
         const connection = await own.acquire()
         const { runStatement, selectValue: selectValueOnConnection } =
           createStatementRunners(connection)
-        let failure: TransactionFailure | undefined
         try {
           await runStatement("BEGIN")
           await runStatement("CREATE TEMP TABLE pg_lost_test (id integer) ON COMMIT DROP")
@@ -438,16 +476,12 @@ export function describeDriverContract(
           const error = await runStatement("INSERT INTO pg_lost_test VALUES (1)").catch(
             (error: unknown) => error,
           )
-          failure = { error }
           assert.ok(
             error instanceof ConnectionError,
             `Expected ConnectionError, got ${String(error)}`,
           )
-        } catch (error) {
-          failure ??= { error }
-          throw error
         } finally {
-          await connection.release(failure)
+          await connection.release()
         }
       } finally {
         await own.close()

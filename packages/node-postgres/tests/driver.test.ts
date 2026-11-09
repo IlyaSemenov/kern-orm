@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 
 import { nodePostgresDriver } from "@kern-orm/node-postgres"
 import type { Driver, TextValue } from "kern-orm"
-import { createStatement } from "kern-orm"
+import { ConnectionError, createStatement } from "kern-orm"
 import { describeDriverContract } from "kern-orm/testing"
 import type { PoolConfig } from "pg"
 import { Pool } from "pg"
@@ -70,8 +70,8 @@ describe.skipIf(!DATABASE_URL)("nodePostgresDriver", () => {
       const error = await connection
         .execute(createStatement("SELECT 1"))
         .catch((error: unknown) => error)
-      expect(error).toBeInstanceOf(Error)
-      await connection.release({ error })
+      expect(error).toBeInstanceOf(ConnectionError)
+      await connection.release()
 
       expect(await selectValue(driver, "SELECT 'usable'")).toBe("usable")
     } finally {

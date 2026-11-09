@@ -1,6 +1,6 @@
 // Returning reserved connections to the driver at the end of a transaction, so that a failed release never changes the result or error of the transaction.
 
-import type { Connection, TransactionFailure } from "../driver"
+import type { Connection } from "../driver"
 
 /** Receives a failure to return a connection to the driver, see `onReleaseError` of `createDatabase`. */
 export type ReleaseErrorHandler = (error: unknown) => void
@@ -14,12 +14,11 @@ export type ReleaseErrorHandler = (error: unknown) => void
  */
 export async function releaseConnection(
   connection: Connection,
-  failure: TransactionFailure | undefined,
   onReleaseError: ReleaseErrorHandler | undefined,
 ): Promise<void> {
   try {
-    // A failed BEGIN, COMMIT, or ROLLBACK may leave the transaction open; the driver decides whether the connection can return to the pool.
-    await connection.release(failure)
+    // The driver decides whether the connection can return to the pool, such as after a failed BEGIN, COMMIT, or ROLLBACK.
+    await connection.release()
   } catch (error) {
     reportReleaseError(error, onReleaseError)
   }

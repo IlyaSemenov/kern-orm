@@ -69,6 +69,6 @@ export function acquireUnlessAborted(
     () => driver.acquire(),
     signal,
     () => true,
-    connection => void releaseConnection(connection, undefined, onReleaseError),
+    connection => void releaseConnection(connection, onReleaseError),
   )
 }

@@ -16,22 +16,43 @@ interface RecordedQuery {
   types?: { getTypeParser: () => (value: string) => unknown }
 }
 
-/** Fake node-postgres client that records its queries and releases; a query answers with no rows unless `respond` answers it. */
-function createFakeClient(respond?: (query: RecordedQuery) => Promise<unknown>) {
+/** Status of the transaction of a fake client, as `getTransactionStatus` of `pg` gives it. */
+interface FakeTransaction {
+  status: string
+}
+
+/** Answers a query of a fake client, and can change the status of its transaction. */
+type Respond = (query: RecordedQuery, transaction: FakeTransaction) => Promise<unknown>
+
+/** Error of `pg` of a statement that PostgreSQL rejected. */
+const divisionByZero = Object.assign(new Error("division by zero"), {
+  severity: "ERROR",
+  code: "22012",
+})
+
+/** Fake node-postgres client that records its queries and releases; a query answers with no rows unless `respond` answers it, and the client is outside a transaction block unless `respond` changes its status. */
+function createFakeClient(respond?: Respond) {
   const queries: RecordedQuery[] = []
   const releases: unknown[] = []
+  const transaction: FakeTransaction = { status: "I" }
   const client = Object.assign(new EventEmitter(), {
     query(query: RecordedQuery) {
       queries.push(query)
       return respond
-        ? respond(query)
+        ? respond(query, transaction)
         : Promise.resolve({ command: "SELECT", rowCount: 0, fields: [], rows: [] })
     },
+    getTransactionStatus: () => transaction.status,
     release(destroy: unknown) {
       releases.push(destroy)
     },
   })
   return { client, queries, releases }
+}
+
+/** Answer of a fake client to a query that completed without rows. */
+function answerEmpty() {
+  return Promise.resolve({ command: null, rowCount: null, fields: [], rows: [] })
 }
 
 /** Fake node-postgres pool over `client`; `connect` can delay handing it out or fail. */
@@ -48,7 +69,7 @@ function createFakePool(client: unknown, connect = () => Promise.resolve(client)
 }
 
 /** Creates a driver over a fake pool with one fake client. */
-function createFakeDriver(respond?: (query: RecordedQuery) => Promise<unknown>) {
+function createFakeDriver(respond?: Respond) {
   const fake = createFakeClient(respond)
   const { pool } = createFakePool(fake.client)
   return { ...fake, pool, driver: nodePostgresDriver(pool) }
@@ -187,23 +208,102 @@ describe("connection", () => {
     await expect(failed).rejects.toMatchObject({ cause: failure })
     expect((await next).command).toBe("SELECT 2")
   })
+})
 
-  it("returns to the pool after a transaction", async () => {
-    const { driver, releases } = createFakeDriver()
+describe("release", () => {
+  it("returns an idle connection to the pool", async () => {
+    const { driver, queries, releases } = createFakeDriver()
 
     const connection = await driver.acquire()
+    await connection.execute(createStatement("SELECT 1"))
     await connection.release()
 
+    expect(queries.map(({ text }) => text)).toEqual(["SELECT 1"])
     expect(releases).toEqual([false])
   })
 
-  it("closes when released with a failure instead of returning to the pool", async () => {
-    const { driver, releases } = createFakeDriver()
+  it("closes a connection left in a transaction", async () => {
+    const { driver, releases } = createFakeDriver((_query, transaction) => {
+      transaction.status = "T"
+      return answerEmpty()
+    })
 
     const connection = await driver.acquire()
-    await connection.release({ error: new Error("failure") })
+    await connection.execute(createStatement("BEGIN"))
+    await connection.release()
 
     expect(releases).toEqual([true])
+  })
+
+  it.each([
+    ["returns an idle connection to the pool", "I", false],
+    ["closes a connection in a failed transaction", "E", true],
+  ])(
+    "after a statement that PostgreSQL rejected, waits for the status that follows it, and %s",
+    async (_name, status, destroyed) => {
+      // `pg` rejects the statement before it reads the status that follows it, which the empty query waits for.
+      const { driver, queries, releases } = createFakeDriver(({ text }, transaction) => {
+        if (text === "SELECT 1/0") {
+          transaction.status = "T"
+          return Promise.reject(divisionByZero)
+        }
+        transaction.status = status
+        return answerEmpty()
+      })
+
+      const connection = await driver.acquire()
+      await expect(connection.execute(createStatement("SELECT 1/0"))).rejects.toBeInstanceOf(
+        QueryError,
+      )
+      await connection.release()
+
+      expect(queries.map(({ text }) => text)).toEqual(["SELECT 1/0", ""])
+      expect(releases).toEqual([destroyed])
+    },
+  )
+
+  it("closes a connection whose wait for the status fails", async () => {
+    const { driver, releases } = createFakeDriver(({ text }) =>
+      Promise.reject(text === "" ? new Error("connection lost") : divisionByZero),
+    )
+
+    const connection = await driver.acquire()
+    await connection.execute(createStatement("SELECT 1/0")).catch(() => {})
+    await connection.release()
+
+    expect(releases).toEqual([true])
+  })
+
+  it("closes a connection on which a statement failed with ConnectionError, also after a later statement completes", async () => {
+    const { driver, queries, releases } = createFakeDriver(({ text }) =>
+      text === "SELECT 1" ? Promise.reject(new Error("Query read timeout")) : answerEmpty(),
+    )
+
+    const connection = await driver.acquire()
+    await expect(connection.execute(createStatement("SELECT 1"))).rejects.toBeInstanceOf(
+      ConnectionError,
+    )
+    await connection.execute(createStatement("SELECT 2"))
+    await connection.release()
+
+    expect(queries.map(({ text }) => text)).toEqual(["SELECT 1", "SELECT 2"])
+    expect(releases).toEqual([true])
+  })
+
+  it("returns a connection once its statements complete", async () => {
+    const answer = Promise.withResolvers<unknown>()
+    const { driver, releases } = createFakeDriver(() => answer.promise)
+
+    const connection = await driver.acquire()
+    const statement = connection.execute(createStatement("SELECT pg_sleep(1)"))
+    const released = connection.release()
+    await Promise.resolve()
+    expect(releases).toEqual([])
+
+    answer.resolve({ command: "SELECT", rowCount: 0, fields: [], rows: [] })
+    await statement
+    await released
+    expect(releases).toEqual([false])
   })
 })
 
@@ -230,12 +330,14 @@ describe("statement on the pool", () => {
         code: "23505",
         constraint: "form_pkey",
       })
-      const { driver, releases } = createFakeDriver(() => Promise.reject(failure))
+      const { driver, queries, releases } = createFakeDriver(() => Promise.reject(failure))
 
       const error = await driver.execute(createStatement("INSERT")).catch((error: unknown) => error)
 
       expect(error).toBeInstanceOf(QueryError)
       expect(error).toMatchObject({ code: "23505", constraint: "form_pkey", cause: failure })
+      // A rejected statement of the extended protocol leaves an idle connection idle, so the driver does not wait for its status.
+      expect(queries).toHaveLength(1)
       expect(releases).toEqual([false])
     },
   )
@@ -260,15 +362,45 @@ describe("statement on the pool", () => {
     expect(releases).toEqual([true])
   })
 
-  it("rejects a script that PostgreSQL rejected with QueryError", async () => {
-    const failure = Object.assign(new Error("division by zero"), {
-      severity: "ERROR",
-      code: "22012",
-    })
-    const { driver } = createFakeDriver(() => Promise.reject(failure))
+  it.each([
+    ["execute", (driver: Driver) => driver.execute(createStatement("BEGIN"))],
+    ["executeScript", (driver: Driver) => driver.executeScript("BEGIN; SELECT 1")],
+  ])(
+    "%s rejects what leaves a transaction open with ConnectionError and closes its connection",
+    async (_name, run) => {
+      const { driver, releases } = createFakeDriver((_query, transaction) => {
+        transaction.status = "T"
+        return answerEmpty()
+      })
 
-    await expect(driver.executeScript("SELECT 1/0")).rejects.toBeInstanceOf(QueryError)
-  })
+      const error = await run(driver).catch((error: unknown) => error)
+
+      expect(error).toBeInstanceOf(ConnectionError)
+      expect(error).toMatchObject({ message: expect.stringContaining("leaves a transaction open") })
+      expect(releases).toEqual([true])
+    },
+  )
+
+  it.each([
+    ["keeps its connection outside a transaction block", "I", false],
+    ["closes its connection in a failed transaction block", "E", true],
+  ])(
+    "rejects a script that PostgreSQL rejected with QueryError, waits for the status that follows it, and %s",
+    async (_name, status, destroyed) => {
+      const { driver, queries, releases } = createFakeDriver(({ text }, transaction) => {
+        if (text === "") {
+          transaction.status = status
+          return answerEmpty()
+        }
+        return Promise.reject(divisionByZero)
+      })
+
+      await expect(driver.executeScript("BEGIN; SELECT 1/0")).rejects.toBeInstanceOf(QueryError)
+
+      expect(queries.map(({ text }) => text)).toEqual(["BEGIN; SELECT 1/0", ""])
+      expect(releases).toEqual([destroyed])
+    },
+  )
 })
 
 describe.each([
@@ -310,7 +442,7 @@ describe.each([
 })
 
 describe("errors of a client of a real pool", () => {
-  /** Client of a pool without a connection, which `lose` makes emit `error`. */
+  /** Client of a pool without a connection, outside a transaction block, which `lose` makes emit `error`. */
   class FakeClient extends EventEmitter {
     _queryable = true
 
@@ -320,6 +452,10 @@ describe("errors of a client of a real pool", () => {
 
     end(callback?: () => void) {
       callback?.()
+    }
+
+    getTransactionStatus() {
+      return "I"
     }
 
     lose() {

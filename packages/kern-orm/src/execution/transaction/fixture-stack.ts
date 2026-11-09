@@ -281,11 +281,11 @@ export class TestFixtureStack {
 
   /** Rolls back a fixture and releases the connection of the first one, returning the error to reject with. */
   async #endFixture(fixture: TransactionLevel): Promise<Rejection | undefined> {
-    const cleanup = await endLevel(fixture, false)
+    const { rejection } = await endLevel(fixture, false)
     if (!fixture.parent) {
-      await releaseConnection(fixture.connection, cleanup.failure, this.#onReleaseError)
+      await releaseConnection(fixture.connection, this.#onReleaseError)
     }
-    return cleanup.rejection
+    return rejection
   }
 
   /** Runs a change of the fixture stack after the earlier ones. */
@@ -301,7 +301,7 @@ export class TestFixtureStack {
     try {
       await connection.execute(beginStatement)
     } catch (error) {
-      await releaseConnection(connection, { error }, this.#onReleaseError)
+      await releaseConnection(connection, this.#onReleaseError)
       throw error
     }
     return createLevel(connection, undefined, false)

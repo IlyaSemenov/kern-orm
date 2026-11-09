@@ -1,4 +1,4 @@
-import type { Connection, Driver, DriverResult, SqlStatement, TransactionFailure } from "kern-orm"
+import type { Connection, Driver, DriverResult, SqlStatement } from "kern-orm"
 
 /** Executed statement with the connection that ran it: `pool` or the number of an acquired connection. */
 export interface RecordedStatement {
@@ -13,10 +13,9 @@ export interface RecordedScript {
   script: string
 }
 
-/** Release of an acquired connection, with the failure of its transaction if there was one. */
+/** Release of an acquired connection. */
 export interface RecordedRelease {
   connection: number
-  failure?: TransactionFailure
 }
 
 /** Options of `createRecordingDriver`. */
@@ -26,7 +25,7 @@ export interface RecordingDriverOptions {
   /** Called on every acquire before the connection is returned; it can wait to delay the connection or throw to fail the acquire. */
   acquire?: () => void | Promise<void>
   /** Called on every release after it is recorded; it can throw to fail the release. */
-  release?: (failure: TransactionFailure | undefined) => void | Promise<void>
+  release?: () => void | Promise<void>
 }
 
 /** In-memory driver that records statements, scripts, and releases of connections. */
@@ -94,10 +93,10 @@ export function createRecordingDriver(options: RecordingDriverOptions = {}) {
           queue = result.catch(() => {})
           return result
         },
-        async release(failure) {
-          releases.push(failure ? { connection: id, failure } : { connection: id })
+        async release() {
+          releases.push({ connection: id })
           try {
-            await release(failure)
+            await release()
           } finally {
             if (--held === 0) {
               closing?.resolve()

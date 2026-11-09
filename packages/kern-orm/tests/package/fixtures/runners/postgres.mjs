@@ -33,9 +33,9 @@ export const database = createDatabase({
       const id = ++acquired
       return {
         execute: statement => executeRecorded(id, connection.execute, statement),
-        release(failure) {
-          record(failure ? `${id}: release after a failure` : `${id}: release`)
-          return connection.release(failure)
+        release() {
+          record(`${id}: release`)
+          return connection.release()
         },
       }
     },

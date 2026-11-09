@@ -127,7 +127,7 @@ it("keeps both errors when a fixture whose seed rejects fails to roll back", asy
     .catch((error: unknown) => error)
 
   expect(rejection).toMatchObject({ error: rollbackError, suppressed: failure })
-  expect(releases).toEqual([{ connection: 1, failure: { error: rollbackError } }])
+  expect(releases).toEqual([{ connection: 1 }])
 })
 
 it("rejects closing a fixture inside the seed of another one instead of waiting forever", async () => {
@@ -209,7 +209,7 @@ describe("closing before the fixture opens", () => {
 
     await expect(pending.close()).rejects.toBe(rollbackError)
     await expect(pending.close()).resolves.toBeUndefined()
-    expect(releases).toEqual([{ connection: 1, failure: { error: rollbackError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 
   it("rejects closing with a failed BEGIN of the fixture", async () => {
@@ -232,7 +232,7 @@ describe("closing before the fixture opens", () => {
 
     await expect(closing).rejects.toBe(beginError)
     await expect(pending.fixture).rejects.toThrow("Test fixture was closed before it opened")
-    expect(releases).toEqual([{ connection: 1, failure: { error: beginError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 
   it("rejects closing with the seed rejection and the failed rollback of a fixture whose seed rejected before closing", async () => {
@@ -560,17 +560,17 @@ it("reports a failure to roll back a level nested in a preempted one and keeps t
   ])
 })
 
-it("rejects with a failed BEGIN of the first fixture and releases its connection with the failure", async () => {
+it("rejects with a failed BEGIN of the first fixture and releases its connection", async () => {
   const beginError = new Error("begin")
   const { coordinator, releases } = createTestCoordinator({
     respond: failOn("BEGIN", beginError),
   })
 
   await expect(coordinator.createTestFixture(seedNothing)).rejects.toBe(beginError)
-  expect(releases).toEqual([{ connection: 1, failure: { error: beginError } }])
+  expect(releases).toEqual([{ connection: 1 }])
 })
 
-it("rejects with a failed ROLLBACK of the first fixture and releases its connection with the failure", async () => {
+it("rejects with a failed ROLLBACK of the first fixture and releases its connection", async () => {
   const rollbackError = new Error("rollback")
   const { coordinator, releases } = createTestCoordinator({
     respond: failOn("ROLLBACK", rollbackError),
@@ -578,7 +578,7 @@ it("rejects with a failed ROLLBACK of the first fixture and releases its connect
 
   const fixture = await coordinator.createTestFixture(seedNothing)
   await expect(fixture.close()).rejects.toBe(rollbackError)
-  expect(releases).toEqual([{ connection: 1, failure: { error: rollbackError } }])
+  expect(releases).toEqual([{ connection: 1 }])
 })
 
 it("closes the first fixture whose release fails, and reports the failure", async () => {
@@ -722,7 +722,7 @@ it("keeps closing after a failure in the cascade and reports every failure", asy
   const rejection = await root.close().catch((error: unknown) => error)
 
   expect(rejection).toMatchObject({ error: rootError, suppressed: nestedError })
-  expect(releases).toEqual([{ connection: 1, failure: { error: rootError } }])
+  expect(releases).toEqual([{ connection: 1 }])
   await root.close()
 })
 

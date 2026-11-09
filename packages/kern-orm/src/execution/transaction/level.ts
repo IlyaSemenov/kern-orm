@@ -2,7 +2,7 @@
 
 import type { AsyncLocalStorage } from "node:async_hooks"
 
-import type { Connection, SqlStatement, TransactionFailure } from "../driver"
+import type { Connection, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 
 import { settleUnlessAborted } from "./abort"
@@ -43,8 +43,6 @@ export interface Rejection {
 /** Result of ending a level. */
 export interface Cleanup {
   readonly rejection?: Rejection
-  /** Failure of the `COMMIT` or `ROLLBACK` of a transaction, which may leave it open on its connection. */
-  readonly failure?: TransactionFailure
 }
 
 /** Result of running the callback of a level and ending the level. */
@@ -184,7 +182,7 @@ export async function runLevel<T>(
     }
   }
   const cleanup = await endLevel(level, commits && !rejection)
-  return { result, rejection: combineRejections(rejection, cleanup), failure: cleanup.failure }
+  return { result, rejection: combineRejections(rejection, cleanup) }
 }
 
 /**
@@ -226,10 +224,7 @@ async function cleanUpLevel(
     // Only a failure of its own statements leaves the parent in an unknown state; a nested failure was rolled back with the level.
     parent.rollbackOnly ??= cleanup.rejection
   }
-  return {
-    rejection: combineRejections(nestedCleanup?.rejection, cleanup),
-    failure: cleanup.failure,
-  }
+  return { rejection: combineRejections(nestedCleanup?.rejection, cleanup) }
 }
 
 /** Ends a transaction with `COMMIT` or `ROLLBACK`. */
@@ -244,7 +239,7 @@ async function endTransaction(connection: Connection, commit: boolean): Promise<
     }
     return {}
   } catch (error) {
-    return { rejection: { error }, failure: { error } }
+    return { rejection: { error } }
   }
 }
 
@@ -318,8 +313,7 @@ function createClosedError(level: TransactionLevel, rejection: Rejection | undef
 
 /** Outcome of a level that something other than its callback ended: a rejection with `error`, which a failed cleanup suppresses. */
 export async function getEndedOutcome(cleanup: Promise<Cleanup>, error: unknown): Promise<Cleanup> {
-  const ended = await cleanup
-  return { rejection: combineRejections({ error }, ended), failure: ended.failure }
+  return { rejection: combineRejections({ error }, await cleanup) }
 }
 
 /** Error of a failure to start a test transaction, which suppresses the reason of `signal` when the signal aborted before the failure. */

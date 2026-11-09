@@ -105,7 +105,7 @@ function recordStatements(driver: Driver, record: (text: string) => void): Drive
           record(text)
           return connection.executeScript(text)
         },
-        release: failure => connection.release(failure),
+        release: () => connection.release(),
       }
       return recorded
     },

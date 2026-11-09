@@ -1,1 +1,1 @@
-{ "pooled": [["1"]], "reserved": [["2"]] }
+{ "pooled": [["1"]], "reserved": [["2"]], "afterFailedRollback": [["3"]] }

@@ -98,7 +98,8 @@ export function postgresJsDriver(sql: Sql): Driver {
       return {
         execute: statement => execute(connection, statement),
         executeScript: text => executeScript(connection, text),
-        // postgres.js returns a released connection to the pool once its statements complete and only when it is idle; it closes one in a transaction, and a lost one is already closed.
+        // postgres.js returns a released connection to the pool once its statements complete and only when ReadyForQuery reports it idle, and closes one in a transaction.
+        // A `ConnectionError` leaves the connection open only for a statement that postgres.js refused without breaking the exchange of messages, such as one with too many parameters, whose status it still reads; a lost connection is already closed.
         release: () => connection.release(),
       }
     },

@@ -32,14 +32,14 @@ afterEach(() => {
 it("passes a failed release to onReleaseError", async () => {
   const reported: unknown[] = []
 
-  await releaseConnection(failingConnection, undefined, error => reported.push(error))
+  await releaseConnection(failingConnection, error => reported.push(error))
 
   expect(reported).toEqual([releaseError])
   expect(logged).toEqual([])
 })
 
 it("passes a failed release to console.error without onReleaseError", async () => {
-  await releaseConnection(failingConnection, undefined, undefined)
+  await releaseConnection(failingConnection, undefined)
 
   expect(logged).toEqual([["kern-orm: releasing a connection failed", releaseError]])
 })
@@ -47,7 +47,7 @@ it("passes a failed release to console.error without onReleaseError", async () =
 it("passes the error of a throwing onReleaseError and the failed release to console.error", async () => {
   const handlerError = new Error("handler")
 
-  await releaseConnection(failingConnection, undefined, () => {
+  await releaseConnection(failingConnection, () => {
     throw handlerError
   })
 
@@ -60,7 +60,7 @@ it("passes the error of a throwing onReleaseError and the failed release to cons
 it("passes the rejection of an async onReleaseError and the failed release to console.error", async () => {
   const handlerError = new Error("handler")
 
-  await releaseConnection(failingConnection, undefined, async () => {
+  await releaseConnection(failingConnection, async () => {
     throw handlerError
   })
   await settleCallbacks()
@@ -78,7 +78,7 @@ it("passes the rejection of an async onReleaseError of another realm and the fai
     handlerError,
   }) as () => void
 
-  await releaseConnection(failingConnection, undefined, handler)
+  await releaseConnection(failingConnection, handler)
   await settleCallbacks()
 
   expect(logged).toEqual([
@@ -92,5 +92,5 @@ it("resolves when console.error throws", async () => {
     throw new Error("console")
   }
 
-  await expect(releaseConnection(failingConnection, undefined, undefined)).resolves.toBeUndefined()
+  await expect(releaseConnection(failingConnection, undefined)).resolves.toBeUndefined()
 })

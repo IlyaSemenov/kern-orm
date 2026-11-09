@@ -32,10 +32,10 @@
 - A fixture runs one nested level at a time, a test transaction or the next fixture; a new one preempts the active one.
   The preempted level closes at once, so its later statements fail, its statements already sent complete, and its savepoint rolls back and is released before the new level starts.
   All changes of the fixture stack, such as choosing the parent of a new level, creating, and closing a fixture, run one after another in one queue of the database.
-  A failed rollback poisons the fixture, which then rejects new levels; closing it still rolls back, and closing the first fixture returns a recovered connection to the pool.
+  A failed rollback poisons the fixture, which then rejects new levels; closing it still rolls back.
   Preemption cannot tell a timed-out test from a concurrent one, so a concurrent test of the same fixture fails instead of sharing it.
 - Closing a test fixture rolls back all levels nested in it, innermost first, and then the fixture itself, as one change of the fixture stack; the closed fixtures leave the stack even if their cleanup fails.
-  The closing call reports every cleanup failure of the cascade, and the first fixture releases its connection once, with a failure only if its own `ROLLBACK` failed.
+  The closing call reports every cleanup failure of the cascade, and the first fixture releases its connection once.
   A failed release of that connection rejects neither the closing nor an opening, and goes to the handler of [failed releases](transactions.md#levels), as for a transaction.
 - Closing an already closed fixture, including one closed with an enclosing fixture, does nothing; `close` and async disposal behave the same.
 - `useTestFixture` opens its fixture in a `before` hook and closes it in an `after` hook, since the body of a `describe` block runs synchronously while the runner collects tests.

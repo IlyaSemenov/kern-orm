@@ -5,7 +5,7 @@ To run kern-orm on a PostgreSQL client that has no [driver package](./drivers), 
 ```ts [src/acme-driver.ts]
 import type { AcmeClient, AcmeConnection, AcmeError } from "acme-postgres"
 import type { Driver, DriverResult, SqlStatement } from "kern-orm"
-import { toDriverError } from "kern-orm"
+import { ConnectionError, toDriverError } from "kern-orm"
 
 /** Rejects with the error of `promise` as `QueryError` or `ConnectionError`. */
 async function classifyError<T>(promise: Promise<T>): Promise<T> {
@@ -43,10 +43,27 @@ export function acmeDriver(client: AcmeClient): Driver {
       const connection = await client.reserve().catch((error: unknown) => {
         throw toDriverError(error)
       })
+      // The last statement sent, and whether a statement failed with ConnectionError, after which it may still run, or the connection may be lost.
+      let last: Promise<void> = Promise.resolve()
+      let broken = false
+      function track<T>(promise: Promise<T>): Promise<T> {
+        // Keeping only the end of the statement does not hold its rows.
+        last = promise.then(
+          () => {},
+          (error: unknown) => {
+            broken ||= error instanceof ConnectionError
+          },
+        )
+        return promise
+      }
       return {
-        execute: statement => execute(connection, statement),
-        executeScript: text => classifyError(connection.simpleQuery(text)),
-        release: failure => connection.release({ destroy: failure !== undefined }),
+        execute: statement => track(execute(connection, statement)),
+        executeScript: text => track(classifyError(connection.simpleQuery(text))),
+        async release() {
+          // The status of the transaction is read after the statements sent before the release.
+          await last
+          await connection.release({ destroy: broken || connection.transactionStatus !== "idle" })
+        },
       }
     },
     close: () => client.end(),
@@ -66,7 +83,10 @@ Follow these rules in the driver:
 - Reject a failure to get a connection with `ConnectionError`, by passing the error to `toDriverError` without the fields.
 - Reject every statement on a reserved connection after the connection is lost, rather than send it on a new connection.
 - Replace an idle connection whose backend exited, such as after a restart of the server, for the next statement once your client has read that the connection closed.
-- When `release` gets a failure, the last statement on the connection failed: return the connection to the pool only once it is idle, and never return a lost one.
+- Reject a statement or script on the pool that leaves its connection in a transaction, such as `BEGIN`, with `ConnectionError`, and close the connection or roll the transaction back.
+  A script whose statement PostgreSQL rejected in that transaction may reject with that `QueryError` instead.
+- In `release`, wait for the statements sent on the connection, and return it to the pool only when it is outside a transaction and no statement on it failed with `ConnectionError`; otherwise close it.
+  Read the status of the transaction that PostgreSQL reported in `ReadyForQuery` after the last statement, also when PostgreSQL rejected that statement.
 - In `close`, reject new statements and scripts on the pool and new connections at once with `ConnectionError`, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
 
 ## Test the driver

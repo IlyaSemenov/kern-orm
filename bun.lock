@@ -31,8 +31,10 @@
       "devDependencies": {
         "@ark/attest": "^0.58.0",
         "@kern-orm/postgres-js": "workspace:*",
+        "@types/pg": "catalog:",
         "kern-orm": "workspace:*",
         "mitata": "^1.0.34",
+        "pg": "catalog:",
         "postgres": "catalog:",
         "typescript-6": "catalog:",
       },
@@ -74,9 +76,9 @@
       "name": "@kern-orm/node-postgres",
       "version": "0.2.0",
       "devDependencies": {
-        "@types/pg": "^8.23.1",
+        "@types/pg": "catalog:",
         "kern-orm": "workspace:*",
-        "pg": "^8.23.1",
+        "pg": "catalog:",
       },
       "peerDependencies": {
         "@types/pg": "^8.0.0",
@@ -104,6 +106,8 @@
     "typescript@6.0.3": "patches/typescript@6.0.3.patch",
   },
   "catalog": {
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
     "postgres": "^4.0.0",
     "typescript-6": "npm:typescript@6.0.3",
   },

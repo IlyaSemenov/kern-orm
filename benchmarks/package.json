@@ -13,8 +13,10 @@
   "devDependencies": {
     "@ark/attest": "^0.58.0",
     "@kern-orm/postgres-js": "workspace:*",
+    "@types/pg": "catalog:",
     "kern-orm": "workspace:*",
     "mitata": "^1.0.34",
+    "pg": "catalog:",
     "postgres": "catalog:",
     "typescript-6": "catalog:"
   }

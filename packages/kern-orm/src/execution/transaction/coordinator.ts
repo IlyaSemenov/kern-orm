@@ -238,7 +238,7 @@ export class TransactionCoordinator {
       : this.driver.acquire())
     // An abort that comes while the connection is handed over starts nothing either.
     if (signal?.aborted) {
-      await releaseConnection(connection, undefined, this.#onReleaseError)
+      await releaseConnection(connection, this.#onReleaseError)
       throw signal.reason
     }
     // A level that commits is a transaction of `transaction`; test transactions roll back.
@@ -248,7 +248,7 @@ export class TransactionCoordinator {
       await connection.execute(beginStatement)
     } catch (error) {
       level.state = "closed"
-      outcome = { rejection: { error: suppressAbortReason(error, signal) }, failure: { error } }
+      outcome = { rejection: { error: suppressAbortReason(error, signal) } }
     }
     if (!outcome && settings) {
       try {
@@ -258,7 +258,7 @@ export class TransactionCoordinator {
       }
     }
     outcome ??= await runLevel(this.#storage, level, callback, commits, signal)
-    await releaseConnection(connection, outcome.failure, this.#onReleaseError)
+    await releaseConnection(connection, this.#onReleaseError)
     if (outcome.rejection) {
       throw outcome.rejection.error
     }

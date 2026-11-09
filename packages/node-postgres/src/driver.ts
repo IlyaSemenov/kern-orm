@@ -30,8 +30,29 @@ function getUnsupportedClientReason(client: PoolClient & { native?: unknown; bin
 /** Listener of the `error` event of a pool or a client, for a connection whose loss needs no handling at the event; an `EventEmitter` throws an `error` event without a listener, which terminates the process. */
 function ignoreConnectionError(): void {}
 
-/** Handler of the outcome of a statement that the queue of a connection waits for without reading it. */
-function ignoreOutcome(): void {}
+/** Transaction status that `getTransactionStatus` of `pg` gives for a connection outside a transaction block. */
+const idleStatus = "I"
+
+/** Query that runs no statement, also in a failed transaction, and completes after the statements sent before it. */
+const emptyQuery = { text: "" }
+
+/**
+ * Tells whether a client is outside a transaction block after its last statement.
+ *
+ * `pg` rejects a statement at the ErrorResponse of PostgreSQL, before the ReadyForQuery that reports the status of the transaction, so after a statement that PostgreSQL rejected, which `rejected` tells, an empty query waits for that report.
+ * It returns `false` when the empty query fails, since the status cannot be trusted then.
+ */
+async function isIdle(client: PoolClient, rejected: boolean): Promise<boolean> {
+  if (rejected) {
+    try {
+      // Waiting costs a round trip, while closing the connection makes the next statement reconnect, which takes about 20 times longer.
+      await client.query(emptyQuery)
+    } catch {
+      return false
+    }
+  }
+  return client.getTransactionStatus() === idleStatus
+}
 
 /**
  * Classifies an error of a statement of `pg`, which gives the severity only in the language of the server.
@@ -133,22 +154,36 @@ export function nodePostgresDriver(pool: Pool): Driver {
     endCheckout()
   }
 
-  /** Runs a statement or a script on a client of its own, unlike `pool.query`, which closes the connection of any failed statement. */
+  /**
+   * Runs a statement or a `script` on a client of its own, unlike `pool.query`, which closes the connection of any failed statement.
+   *
+   * `pg` returns a client to the pool whatever its transaction, so the driver closes a connection that is not idle after it, and rejects a statement or script that leaves a transaction open.
+   */
   async function runOnPool<T>(
     operation: string,
+    script: boolean,
     run: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
     const client = await checkOut(operation)
-    let destroy = false
+    let result: T
     try {
-      return await run(client)
+      result = await run(client)
     } catch (error) {
       // After another failure, such as `query_timeout`, the statement may still run, or the connection is closing.
-      destroy = !(error instanceof QueryError)
+      // A statement that PostgreSQL rejected ends the implicit transaction of the extended protocol, so its connection stays idle, while a script may have started a transaction block that its failed statement aborted.
+      checkIn(client, !(error instanceof QueryError && (!script || (await isIdle(client, true)))))
       throw error
-    } finally {
-      checkIn(client, destroy)
     }
+    // `pg` resolves a statement at its ReadyForQuery, so the status of the transaction is current.
+    if (client.getTransactionStatus() !== idleStatus) {
+      // Closing the connection rolls the transaction back.
+      checkIn(client, true)
+      throw new ConnectionError(
+        `Cannot ${operation} that leaves a transaction open on a pooled connection: the driver closed the connection to roll the transaction back; use $transaction of a Db or transaction of the database instead`,
+      )
+    }
+    checkIn(client, false)
+    return result
   }
 
   async function endPool(): Promise<void> {
@@ -160,25 +195,44 @@ export function nodePostgresDriver(pool: Pool): Driver {
   }
 
   return {
-    execute: statement => runOnPool("execute a statement", client => execute(client, statement)),
-    executeScript: text => runOnPool("execute a script", client => executeScript(client, text)),
+    execute: statement =>
+      runOnPool("execute a statement", false, client => execute(client, statement)),
+    executeScript: text =>
+      runOnPool("execute a script", true, client => executeScript(client, text)),
     async acquire(): Promise<Connection> {
       const client = await checkOut("acquire a connection")
       let last: Promise<void> = Promise.resolve()
+      // Whether a statement failed other than by PostgreSQL rejecting it, after which it may still run, such as after `query_timeout`, or the connection may be lost.
+      let broken = false
+      // Whether PostgreSQL rejected the last statement, so that the status of the transaction may not be read yet.
+      let rejected = false
+      const onCompleted = () => {
+        rejected = false
+      }
+      const onFailed = (error: unknown) => {
+        if (error instanceof QueryError) {
+          rejected = true
+        } else {
+          broken = true
+        }
+      }
 
       // `pg` deprecates calling `client.query` while a query runs, and removes it in its next major version, so a connection runs its statements one at a time by itself.
       function enqueue<T>(run: () => Promise<T>): Promise<T> {
         const result = last.then(run)
-        // The queue keeps only the end of a statement, so that it does not hold the rows of the last one while a transaction goes on.
-        last = result.then(ignoreOutcome, ignoreOutcome)
+        // The queue keeps only how a statement ended, so that it does not hold the rows of the last one while a transaction goes on.
+        last = result.then(onCompleted, onFailed)
         return result
       }
 
       return {
         execute: statement => enqueue(() => execute(client, statement)),
         executeScript: text => enqueue(() => executeScript(client, text)),
-        // A failed `BEGIN`, `COMMIT`, or `ROLLBACK` may leave a transaction open, so its connection closes instead of returning to the pool.
-        release: failure => checkIn(client, failure !== undefined),
+        async release() {
+          // The statements sent before the release complete first.
+          await last
+          checkIn(client, broken || !(await isIdle(client, rejected)))
+        },
       }
     },
     close() {

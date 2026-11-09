@@ -545,7 +545,7 @@ describe("nested transactions", () => {
       error: { error: rootError, suppressed: nestedError },
       suppressed: { message: expect.stringContaining("a nested transaction was still running") },
     })
-    expect(releases).toEqual([{ connection: 1, failure: { error: rootError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 })
 
@@ -1285,7 +1285,7 @@ describe("abort signal of a test transaction", () => {
     await fixture.close()
   })
 
-  it("keeps the reason suppressed by a failed BEGIN that completes after the abort, and releases the connection with the failure", async () => {
+  it("keeps the reason suppressed by a failed BEGIN that completes after the abort, and releases the connection", async () => {
     const beginError = new Error("begin")
     const begin = holdOn("BEGIN", 1, beginError)
     const { coordinator, releases } = createTestCoordinator({ respond: begin.respond })
@@ -1300,10 +1300,10 @@ describe("abort signal of a test transaction", () => {
       error: beginError,
       suppressed: reason,
     })
-    expect(releases).toEqual([{ connection: 1, failure: { error: beginError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 
-  it("keeps the reason suppressed by a failed ROLLBACK and releases the connection with the failure", async () => {
+  it("keeps the reason suppressed by a failed ROLLBACK and releases the connection", async () => {
     const rollbackError = new Error("rollback")
     const { coordinator, releases } = createTestCoordinator({
       respond: failOn("ROLLBACK", rollbackError),
@@ -1318,7 +1318,7 @@ describe("abort signal of a test transaction", () => {
       error: rollbackError,
       suppressed: reason,
     })
-    expect(releases).toEqual([{ connection: 1, failure: { error: rollbackError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 
   it("resolves when the signal aborts right after its callback settles", async () => {
@@ -1353,18 +1353,18 @@ describe("failures of cleanup", () => {
     await expect(transaction).rejects.toBe(beginError)
     expect(called).toBe(false)
     expect(statements.map(({ text }) => text)).toEqual(["BEGIN"])
-    expect(releases).toEqual([{ connection: 1, failure: { error: beginError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 
-  it("passes a failure with an undefined error to release", async () => {
+  it("rejects with a failed BEGIN whose error is undefined", async () => {
     const { driver, releases } = createRecordingDriver({ respond: failOn("BEGIN", undefined) })
     const coordinator = new TransactionCoordinator(driver)
 
     await expect(coordinator.transaction(() => Promise.resolve())).rejects.toBeUndefined()
-    expect(releases).toEqual([{ connection: 1, failure: { error: undefined } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 
-  it("rejects with a failed COMMIT and passes it to release", async () => {
+  it("rejects with a failed COMMIT and releases the connection", async () => {
     const commitError = new Error("commit")
     const { driver, statements, releases } = createRecordingDriver({
       respond: failOn("COMMIT", commitError),
@@ -1373,7 +1373,7 @@ describe("failures of cleanup", () => {
 
     await expect(coordinator.transaction(() => Promise.resolve("done"))).rejects.toBe(commitError)
     expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT"])
-    expect(releases).toEqual([{ connection: 1, failure: { error: commitError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 
   it("keeps the callback error suppressed by a failed ROLLBACK", async () => {
@@ -1390,7 +1390,7 @@ describe("failures of cleanup", () => {
 
     expect(rejection).toBeInstanceOf(SuppressedError)
     expect(rejection).toMatchObject({ error: rollbackError, suppressed: callbackError })
-    expect(releases).toEqual([{ connection: 1, failure: { error: rollbackError } }])
+    expect(releases).toEqual([{ connection: 1 }])
   })
 })
 

@@ -38,9 +38,9 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
-    "@types/pg": "^8.23.1",
+    "@types/pg": "catalog:",
     "kern-orm": "workspace:*",
-    "pg": "^8.23.1"
+    "pg": "catalog:"
   },
   "peerDependencies": {
     "@types/pg": "^8.0.0",
