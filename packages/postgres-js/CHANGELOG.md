@@ -1,5 +1,11 @@
 # @kern-orm/postgres-js
 
+## 0.3.0
+
+### Minor Changes
+
+- d5abb00: Require `kern-orm` 0.9.0 or later, whose `Driver` has no `closesReservedConnections`.
+
 ## 0.2.0
 
 ### Minor Changes

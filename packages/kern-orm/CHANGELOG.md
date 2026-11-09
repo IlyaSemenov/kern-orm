@@ -1,5 +1,16 @@
 # kern-orm
 
+## 0.9.0
+
+### Minor Changes
+
+- d5abb00: Remove `closesReservedConnections` from `Driver`: `describeDriverContract` runs the tests of a connection left in a transaction or lost for every driver.
+- efa431e: Add `isQueryError`, which checks a `QueryError` by its PostgreSQL condition, such as `unique_violation`.
+- 6d8d33f: Remove `TransactionFailure` and the argument of `release` of a `Connection`: a driver decides by itself whether a released connection returns to the pool. `describeDriverContract` checks that a driver closes a released connection left in a transaction and rejects a statement on the pool that leaves a transaction open.
+- 05f7a9d: Fix a committed transaction rejecting when releasing its connection failed; such failures go to `onReleaseError` of `createDatabase`, or to `console.error` without it.
+- 97f3214: Reject a transaction whose connection fails with `TransactionConnectionError`, whose `phase` tells whether it may have been committed. Such a transaction no longer commits when its callback catches the failure.
+- a2e90c6: Add `isolation` to the options of transactions, test transactions, and test fixtures.
+
 ## 0.8.0
 
 ### Minor Changes

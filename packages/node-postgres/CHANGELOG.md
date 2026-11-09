@@ -1,5 +1,16 @@
 # @kern-orm/node-postgres
 
+## 0.3.0
+
+### Minor Changes
+
+- d5abb00: Require `kern-orm` 0.9.0 or later, whose `Driver` has no `closesReservedConnections`.
+- 6d8d33f: Fix a statement or script on the pool, such as `BEGIN`, leaving a transaction open for later statements of the pool: it rejects, and the transaction rolls back.
+
+### Patch Changes
+
+- 6d8d33f: Reuse a connection left idle after PostgreSQL rejects `COMMIT`, such as for a deferred constraint, instead of reconnecting for the next statement.
+
 ## 0.2.0
 
 ### Minor Changes
