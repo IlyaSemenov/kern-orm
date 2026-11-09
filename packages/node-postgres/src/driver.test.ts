@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test"
 import { EventEmitter } from "node:events"
 
 import type { Driver } from "kern-orm"
-import { createStatement } from "kern-orm"
+import { ConnectionError, createStatement, QueryError } from "kern-orm"
 import { Pool } from "pg"
 
 import { nodePostgresDriver } from "./driver"
@@ -126,6 +126,26 @@ it("reports that it closes a reserved connection", () => {
 })
 
 describe("connection", () => {
+  it("rejects a failure to get one with ConnectionError whatever its fields, such as a translated FATAL of a missing database", async () => {
+    const failure = Object.assign(new Error('database "app" does not exist'), {
+      severity: "ВАЖНО",
+      code: "3D000",
+    })
+    const { pool } = createFakePool(undefined, () => Promise.reject(failure))
+    const driver = nodePostgresDriver(pool)
+
+    const errors = await Promise.all(
+      [driver.acquire(), driver.execute(createStatement("SELECT 1"))].map(operation =>
+        operation.catch((error: unknown) => error),
+      ),
+    )
+
+    for (const error of errors) {
+      expect(error).toBeInstanceOf(ConnectionError)
+      expect(error).toMatchObject({ cause: failure })
+    }
+  })
+
   it("runs its statements and scripts one at a time in the order of calls", async () => {
     const answers: PromiseWithResolvers<unknown>[] = []
     const { driver, queries } = createFakeDriver(() => {
@@ -170,7 +190,7 @@ describe("connection", () => {
     const failed = connection.execute(createStatement("SELECT 1"))
     const next = connection.execute(createStatement("SELECT 2"))
 
-    await expect(failed).rejects.toBe(failure)
+    await expect(failed).rejects.toMatchObject({ cause: failure })
     expect((await next).command).toBe("SELECT 2")
   })
 
@@ -205,24 +225,55 @@ describe("statement on the pool", () => {
     expect(releases).toEqual([false])
   })
 
-  it("keeps the connection of a statement that PostgreSQL rejected", async () => {
-    const failure = Object.assign(new Error("division by zero"), { severity: "ERROR" })
-    const { driver, releases } = createFakeDriver(() => Promise.reject(failure))
+  it.each([
+    ["in English", "ERROR"],
+    ["translated", "ОШИБКА"],
+  ])(
+    "rejects a statement that PostgreSQL rejected, with a severity %s, with QueryError and keeps its connection",
+    async (_name, severity) => {
+      const failure = Object.assign(new Error("duplicate key"), {
+        severity,
+        code: "23505",
+        constraint: "form_pkey",
+      })
+      const { driver, releases } = createFakeDriver(() => Promise.reject(failure))
 
-    await expect(driver.execute(createStatement("SELECT 1/0"))).rejects.toBe(failure)
+      const error = await driver.execute(createStatement("INSERT")).catch((error: unknown) => error)
 
-    expect(releases).toEqual([false])
-  })
+      expect(error).toBeInstanceOf(QueryError)
+      expect(error).toMatchObject({ code: "23505", constraint: "form_pkey", cause: failure })
+      expect(releases).toEqual([false])
+    },
+  )
 
   it.each([
-    ["a fatal error", Object.assign(new Error("terminating connection"), { severity: "FATAL" })],
+    [
+      "a fatal error",
+      Object.assign(new Error("terminating connection"), { severity: "FATAL", code: "57P01" }),
+    ],
+    [
+      "an error that ends the session with a translated severity",
+      Object.assign(new Error("terminating connection"), { severity: "ВАЖНО", code: "57P01" }),
+    ],
     ["a failure of the client", new Error("Query read timeout")],
-  ])("closes the connection after %s", async (_name, failure) => {
+  ])("rejects with ConnectionError and closes the connection after %s", async (_name, failure) => {
     const { driver, releases } = createFakeDriver(() => Promise.reject(failure))
 
-    await expect(driver.execute(createStatement("SELECT 1"))).rejects.toBe(failure)
+    const error = await driver.execute(createStatement("SELECT 1")).catch((error: unknown) => error)
 
+    expect(error).toBeInstanceOf(ConnectionError)
+    expect(error).toMatchObject({ cause: failure })
     expect(releases).toEqual([true])
+  })
+
+  it("rejects a script that PostgreSQL rejected with QueryError", async () => {
+    const failure = Object.assign(new Error("division by zero"), {
+      severity: "ERROR",
+      code: "22012",
+    })
+    const { driver } = createFakeDriver(() => Promise.reject(failure))
+
+    await expect(driver.executeScript("SELECT 1/0")).rejects.toBeInstanceOf(QueryError)
   })
 })
 
@@ -237,12 +288,18 @@ describe.each([
     return { ...fake, getEndCount, driver: nodePostgresDriver(pool) }
   }
 
-  it("rejects acquiring a connection and statements on the pool, without sending them", async () => {
+  it("rejects acquiring a connection and statements on the pool with ConnectionError, without sending them", async () => {
     const { driver, queries } = createUnsupportedDriver()
 
-    await expect(driver.acquire()).rejects.toThrow(message)
-    await expect(driver.execute(createStatement("SELECT 1"))).rejects.toThrow(message)
-    await expect(driver.executeScript("SELECT 1")).rejects.toThrow(message)
+    for (const operation of [
+      driver.acquire(),
+      driver.execute(createStatement("SELECT 1")),
+      driver.executeScript("SELECT 1"),
+    ]) {
+      const error = await operation.catch((error: unknown) => error)
+      expect(error).toBeInstanceOf(ConnectionError)
+      expect(error).toMatchObject({ message: expect.stringContaining(message) })
+    }
 
     expect(queries).toEqual([])
   })
@@ -338,20 +395,26 @@ it("ignores an error of the pool, which removes an idle connection that breaks b
 })
 
 describe("closing", () => {
-  it("rejects acquiring a connection and statements on the pool after it starts", async () => {
+  it("rejects acquiring a connection and statements on the pool with ConnectionError after it starts", async () => {
     const { driver } = createFakeDriver()
 
     const closing = driver.close()
 
-    await expect(driver.acquire()).rejects.toThrow(
+    const errors = await Promise.all(
+      [
+        driver.acquire(),
+        driver.execute(createStatement("SELECT 1")),
+        driver.executeScript("SELECT 1"),
+      ].map(operation => operation.catch((error: unknown) => error)),
+    )
+    for (const error of errors) {
+      expect(error).toBeInstanceOf(ConnectionError)
+    }
+    expect(errors.map(error => (error as Error).message)).toEqual([
       "Cannot acquire a connection: the driver is closed",
-    )
-    await expect(driver.execute(createStatement("SELECT 1"))).rejects.toThrow(
       "Cannot execute a statement: the driver is closed",
-    )
-    await expect(driver.executeScript("SELECT 1")).rejects.toThrow(
       "Cannot execute a script: the driver is closed",
-    )
+    ])
     await closing
   })
 
@@ -394,7 +457,7 @@ describe("closing", () => {
     const acquiring = driver.acquire()
     const closing = driver.close()
 
-    await expect(acquiring).rejects.toBe(failure)
+    await expect(acquiring).rejects.toMatchObject({ cause: failure })
     await closing
     expect(getEndCount()).toBe(1)
   })

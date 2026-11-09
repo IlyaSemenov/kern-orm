@@ -1,8 +1,19 @@
 import type { Driver, DriverResult, SqlStatement } from "kern-orm"
+import { ConnectionError, toDriverError } from "kern-orm"
 import type { ISql, Sql } from "postgres"
 
 /** OID of the PostgreSQL `unknown` pseudo-type; postgres.js sends such parameters as they are, and PostgreSQL infers their types. */
 const unknownType = 705
+
+/** Classifies an error of a statement of postgres.js, which gives the severity in English as `severity`, and the constraint as `constraint_name`. */
+function toPostgresJsError(error: unknown) {
+  const fields = (error ?? {}) as { severity?: unknown; code?: unknown; constraint_name?: unknown }
+  return toDriverError(error, {
+    severity: fields.severity,
+    code: fields.code,
+    constraint: fields.constraint_name,
+  })
+}
 
 /**
  * Creates a kern-orm driver over a postgres.js client; the client keeps managing its pool.
@@ -16,8 +27,13 @@ export function postgresJsDriver(sql: Sql): Driver {
     // postgres.js would otherwise serialize parameters and parse results by their types, such as timestamps through Date.
     // A parameter of a known type, including `null`, also lets postgres.js prepare and run a statement in one round trip.
     const parameters = statement.parameters.map(value => sql.typed(value as never, unknownType))
-    // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
-    const rows = await client.unsafe(statement.text, parameters as never[], { simple: false }).raw()
+    let rows
+    try {
+      // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
+      rows = await client.unsafe(statement.text, parameters as never[], { simple: false }).raw()
+    } catch (error) {
+      throw toPostgresJsError(error)
+    }
     const { columns } = rows
     const names: string[] = []
     for (let index = 0; index < columns.length; index++) {
@@ -33,8 +49,12 @@ export function postgresJsDriver(sql: Sql): Driver {
   }
 
   async function executeScript(client: ISql, text: string): Promise<void> {
-    // The simple protocol of PostgreSQL takes several statements in one query, without parameters; `raw` keeps the parsers of the client from reading the ignored results.
-    await client.unsafe(text).simple().raw()
+    try {
+      // The simple protocol of PostgreSQL takes several statements in one query, without parameters; `raw` keeps the parsers of the client from reading the ignored results.
+      await client.unsafe(text).simple().raw()
+    } catch (error) {
+      throw toPostgresJsError(error)
+    }
   }
 
   /**
@@ -44,7 +64,7 @@ export function postgresJsDriver(sql: Sql): Driver {
    */
   function assertOpen(operation: string): void {
     if (closing) {
-      throw new Error(`Cannot ${operation}: the driver is closed`)
+      throw new ConnectionError(`Cannot ${operation}: the driver is closed`)
     }
   }
 
@@ -60,7 +80,13 @@ export function postgresJsDriver(sql: Sql): Driver {
     },
     async acquire() {
       assertOpen("acquire a connection")
-      const connection = await sql.reserve()
+      let connection
+      try {
+        connection = await sql.reserve()
+      } catch (error) {
+        // A failure to get a connection leaves no connection to use, whatever its fields, such as of a server that rejects connecting.
+        throw toDriverError(error)
+      }
       return {
         execute: statement => execute(connection, statement),
         executeScript: text => executeScript(connection, text),

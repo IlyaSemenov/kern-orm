@@ -1,4 +1,5 @@
 import type { Driver, DriverResult, SqlStatement } from "kern-orm"
+import { ConnectionError, QueryError, toDriverError } from "kern-orm"
 import type { ReservedSql, Sql, UnsafeQueryOptions } from "postgres"
 
 /** OID of the PostgreSQL `unknown` pseudo-type; postgres.js sends such parameters as they are, and PostgreSQL infers their types. */
@@ -15,6 +16,16 @@ const extendedProtocol: UnsafeQueryOptions & { simple: boolean } = { simple: fal
 const errorCodes = {
   in_failed_sql_transaction: "25P02",
 } as const
+
+/** Classifies an error of a statement of postgres.js, which gives the severity in English as `severity`, and the constraint as `constraint_name`. */
+function toPostgresJsError(error: unknown) {
+  const fields = (error ?? {}) as { severity?: unknown; code?: unknown; constraint_name?: unknown }
+  return toDriverError(error, {
+    severity: fields.severity,
+    code: fields.code,
+    constraint: fields.constraint_name,
+  })
+}
 
 /** Options of `postgresJsDriver`. */
 export interface PostgresJsDriverOptions {
@@ -86,8 +97,13 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
   async function execute(client: Sql, statement: SqlStatement): Promise<DriverResult> {
     // postgres.js would otherwise serialize parameters and parse results by their types, such as timestamps through Date.
     const parameters = statement.parameters.map(value => sql.typed(value as never, unknownType))
-    // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
-    const rows = await client.unsafe(statement.text, parameters as never[], extendedProtocol).raw()
+    let rows
+    try {
+      // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
+      rows = await client.unsafe(statement.text, parameters as never[], extendedProtocol).raw()
+    } catch (error) {
+      throw toPostgresJsError(error)
+    }
     const { columns } = rows
     const names: string[] = []
     for (let index = 0; index < columns.length; index++) {
@@ -103,33 +119,39 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
   }
 
   async function executeScript(client: Sql, text: string): Promise<void> {
-    // The simple protocol of PostgreSQL takes several statements in one query, without parameters; `raw` keeps the parsers of the client from reading the ignored results.
-    await client.unsafe(text).simple().raw()
+    try {
+      // The simple protocol of PostgreSQL takes several statements in one query, without parameters; `raw` keeps the parsers of the client from reading the ignored results.
+      await client.unsafe(text).simple().raw()
+    } catch (error) {
+      throw toPostgresJsError(error)
+    }
   }
 
   /**
-   * Makes a connection idle after its `BEGIN`, `COMMIT`, or `ROLLBACK` failed with a server error, rolling back the failed transaction if one is open.
+   * Makes a connection idle after its last statement failed with `QueryError`, rolling back the failed transaction if one is open.
    *
    * It rejects with the error of a statement that leaves the connection in an unknown state.
    */
   async function endFailedTransaction(reserved: ReservedSql): Promise<void> {
-    // A server error aborts a transaction block, so the connection is idle or in a failed transaction.
+    // A rejected statement aborts a transaction block, so the connection is idle or in a failed transaction.
     // ROLLBACK is not sent first: outside of a transaction it raises a notice, which postgres.js logs.
     try {
       await reserved.unsafe("SELECT 1")
       return
     } catch (error) {
-      if (!isNonFatalServerError(error) || error.code !== errorCodes.in_failed_sql_transaction) {
-        throw error
+      const driverError = toPostgresJsError(error)
+      if (
+        !(driverError instanceof QueryError) ||
+        driverError.code !== errorCodes.in_failed_sql_transaction
+      ) {
+        throw driverError
       }
     }
-    await reserved.unsafe("ROLLBACK")
-  }
-
-  function isNonFatalServerError(error: unknown): error is InstanceType<Sql["PostgresError"]> {
-    return (
-      error instanceof sql.PostgresError && error.severity !== "FATAL" && error.severity !== "PANIC"
-    )
+    try {
+      await reserved.unsafe("ROLLBACK")
+    } catch (error) {
+      throw toPostgresJsError(error)
+    }
   }
 
   /**
@@ -139,7 +161,7 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
    */
   function assertOpen(operation: string): void {
     if (closing) {
-      throw new Error(`Cannot ${operation}: the driver is closed`)
+      throw new ConnectionError(`Cannot ${operation}: the driver is closed`)
     }
   }
 
@@ -162,13 +184,14 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
       } catch (error) {
         acquiring--
         checkClosing()
-        throw error
+        // A failure to get a connection leaves no connection to use, whatever its fields, such as of a server that rejects connecting.
+        throw toDriverError(error)
       }
       acquiring--
       // postgres.js can still hand a connection to a pending `sql.reserve()` after it ends, such as a lost one it reconnected; no transaction starts on it.
       if (ended) {
         connection.release()
-        throw new Error("Cannot acquire a connection: the driver is closed")
+        throw new ConnectionError("Cannot acquire a connection: the driver is closed")
       }
       reserved++
       checkClosing()
@@ -180,8 +203,8 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
           try {
             if (failure) {
               // Any statement or release on a lost reserved connection breaks the pool of postgres.js 3.4.9, so a connection that may be lost stays reserved.
-              // A server error other than FATAL and PANIC means the connection is alive.
-              if (!isNonFatalServerError(failure.error)) {
+              // A statement that PostgreSQL rejected leaves the connection alive.
+              if (!(failure.error instanceof QueryError)) {
                 return
               }
               // A failure to make the connection idle leaves it reserved.

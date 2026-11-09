@@ -82,6 +82,12 @@ The SQL that loads nested queries and relations.
 - [Column naming conventions of the table factory](schemas/column-naming-conventions.md).
 - [Singleton tables](schemas/singleton-tables.md): an option of a table whose queries start as queries of its row.
 
+## Drivers
+
+- [Errors of drivers recognized by `instanceof`](drivers/error-recognition.md): the classes recognize the errors of another copy of `kern-orm` by a brand, rather than by predicates.
+- [Error classes of `kern-orm` in drivers](drivers/error-classes-of-kern-orm.md): the drivers import them at runtime and require `kern-orm` 0.8.0, rather than define classes of their own.
+- [Release with the failure after `QueryError` of `COMMIT`](drivers/release-after-query-error.md): `QueryError` does not tell that the connection is idle.
+
 ## Migrations
 
 - [Capabilities the migrator does not add](migrations/migrator-scope.md).

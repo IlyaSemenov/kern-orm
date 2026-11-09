@@ -132,7 +132,7 @@ await db.$transaction(async () => {
 A nested query with its own row lock runs before the query locks the row of its parent, so with `skipLocked` it also locks the related records of the rows that the query leaves out.
 To lock only those of the rows it takes, lock them in a later statement.
 
-To fail instead of waiting for a locked row, pass `noWait`: the query rejects with a PostgreSQL error of code `55P03`.
+To fail instead of waiting for a locked row, pass `noWait`: the query rejects with [`QueryError`](./errors) of code `55P03`.
 Like any failed statement, it aborts the transaction, so to continue after it, run the query in a [nested transaction](#nested-transactions).
 
 Run a query that locks rows in `$transaction` or `$ensureTransaction`, also in code under test: outside a transaction, the locks would end with its statement, so the query rejects, and a [test transaction](./testing) alone does not count as one.

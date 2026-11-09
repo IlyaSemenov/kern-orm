@@ -55,8 +55,8 @@ Do not catalog files or restate information evident from their names and locatio
   - Do not use the `workspace:` protocol in `peerDependencies` or `dependencies`: `changeset publish` publishes with npm, which does not rewrite it.
   - Changesets keeps a peer range that contains the new version, by `onlyUpdatePeerDependentsWhenOutOfRange` in `.changeset/config.json`.
     When a companion package needs a fix from a new patch version of `kern-orm`, raise the minimum of its range by hand and add a changeset of the package in the same change: changesets warns that the range does not fit the local version until the release, and does not release the package by itself.
-  - In companion packages, import only types from `kern-orm`, so that a duplicate copy of `kern-orm` cannot change runtime behavior.
-    When a companion package needs runtime identity of `kern-orm`, such as its error classes, symbols, or transaction context, stop and reconsider how it depends on `kern-orm`.
+  - In companion packages, import from `kern-orm` only types and values that behave the same with any copy of `kern-orm`, such as its error classes, which recognize the errors of another copy by a symbol of `Symbol.for`, so that a duplicate copy of `kern-orm` cannot change runtime behavior.
+    When a companion package needs runtime identity of `kern-orm`, such as its transaction context, stop and reconsider how it depends on `kern-orm`.
 - Declare a workspace package used only by the tests of a published package in its `devDependencies` as `workspace:*`, such as `@kern-orm/postgres-js` in `kern-orm`: package managers do not install the dev dependencies of an installed package, and changesets neither rewrites the protocol nor releases the package for it.
 - Declare a registry package that several workspaces use in development, such as `postgres`, in their `devDependencies` as `"catalog:"`, with its version in `workspaces.catalog` of the root `package.json`.
   A driver for an older major version of its client, such as `@kern-orm/postgres-js-v3`, declares that client by its own range instead; Bun installs it for that workspace alone, and typecheck resolves its types from there.

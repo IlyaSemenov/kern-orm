@@ -41,7 +41,7 @@
     "postgres": "^3.4.9"
   },
   "peerDependencies": {
-    "kern-orm": ">=0.2.0 <1",
+    "kern-orm": ">=0.8.0 <1",
     "postgres": "^3.4.9"
   },
   "engines": {

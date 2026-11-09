@@ -3,17 +3,30 @@
 To run kern-orm on a PostgreSQL client that has no [driver package](./drivers), write a function that returns a `Driver` for your client, and pass the driver to `createDatabase`:
 
 ```ts [src/acme-driver.ts]
-import type { AcmeClient, AcmeConnection } from "acme-postgres"
+import type { AcmeClient, AcmeConnection, AcmeError } from "acme-postgres"
 import type { Driver, DriverResult, SqlStatement } from "kern-orm"
+import { toDriverError } from "kern-orm"
+
+/** Rejects with the error of `promise` as `QueryError` or `ConnectionError`. */
+async function classifyError<T>(promise: Promise<T>): Promise<T> {
+  try {
+    return await promise
+  } catch (error) {
+    const { severity, code, constraint } = error as AcmeError
+    throw toDriverError(error, { severity, code, constraint })
+  }
+}
 
 async function execute(
   client: AcmeClient | AcmeConnection,
   statement: SqlStatement,
 ): Promise<DriverResult> {
-  const result = await client.query(statement.text, statement.parameters, {
-    protocol: "extended",
-    parse: false,
-  })
+  const result = await classifyError(
+    client.query(statement.text, statement.parameters, {
+      protocol: "extended",
+      parse: false,
+    }),
+  )
   return {
     command: result.command,
     count: result.rowCount ?? 0,
@@ -26,12 +39,14 @@ export function acmeDriver(client: AcmeClient): Driver {
   return {
     closesReservedConnections: true,
     execute: statement => execute(client, statement),
-    executeScript: text => client.simpleQuery(text),
+    executeScript: text => classifyError(client.simpleQuery(text)),
     async acquire() {
-      const connection = await client.reserve()
+      const connection = await client.reserve().catch((error: unknown) => {
+        throw toDriverError(error)
+      })
       return {
         execute: statement => execute(connection, statement),
-        executeScript: text => connection.simpleQuery(text),
+        executeScript: text => classifyError(connection.simpleQuery(text)),
         release: failure => connection.release({ destroy: failure !== undefined }),
       }
     },
@@ -47,10 +62,14 @@ Follow these rules in the driver:
 - Return `null` as the `command` of a statement that PostgreSQL completes without a command tag, such as an empty text.
 - Send a statement with the extended protocol also without parameters, so that PostgreSQL rejects a text of several statements, and a script with the simple protocol.
 - Run the statements and scripts of a reserved connection one at a time in the order of calls.
+- Reject a statement or script with `QueryError` when PostgreSQL rejected it, and with `ConnectionError` after any other failure, by passing the error of your client and the fields of its PostgreSQL error to `toDriverError`.
+  Pass the severity in English when your client gives it beside the translated one.
+- Reject a failure to get a connection with `ConnectionError`, by passing the error to `toDriverError` without the fields.
+- Reject every statement on a reserved connection after the connection is lost, rather than send it on a new connection.
 - Replace an idle connection whose backend exited, such as after a restart of the server, for the next statement once your client has read that the connection closed.
-- When `release` gets a failure, return the connection to the pool only once it is idle, and never return a lost one.
+- When `release` gets a failure, the last statement on the connection failed: return the connection to the pool only once it is idle, and never return a lost one.
 - Set `closesReservedConnections` to `false` only if your client cannot close a reserved connection, such as postgres.js 3: such a driver keeps the connection reserved when it cannot tell that the connection is idle.
-- In `close`, reject new statements and scripts on the pool and new connections at once, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
+- In `close`, reject new statements and scripts on the pool and new connections at once with `ConnectionError`, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
 
 ## Test the driver
 

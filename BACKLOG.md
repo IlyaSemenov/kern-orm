@@ -148,6 +148,14 @@ A hook belongs to the level that registers it: rolling the level back discards i
 - The outermost transaction of code under test is a nested level of the test level, which never commits: decide whether its hooks run when it is released, as in production, and whether the rollback of the test level waits for them, as in Orchid ORM ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/transactions.md#after-commit-hooks-in-tests), [orchid-orm#822](https://github.com/romeerez/orchid-orm/pull/822)), so that their queries roll back with the test.
   A test level does not count as a transaction for [joining](architecture/transactions.md#joining).
 
+## Connection loss in transactions
+
+A transaction whose connection is lost rejects with the errors of its statements: a `ConnectionError` of `BEGIN` or `COMMIT`, or a `SuppressedError` of "Transaction rollback failed" whose `error` is the `ConnectionError` of the rollback after a statement of the callback lost the connection.
+The message suggests that the rollback left the transaction open, while the server rolls back a transaction whose connection goes away, and telling whether the transaction may have been committed takes knowing which statement failed.
+
+- Decide on an error that tells the phase of the loss: `begin`, where nothing was applied; `transaction`, where the server rolls back the transaction; and `commit`, where the outcome is unknown, since the server may have applied `COMMIT` before the connection broke.
+- kern-jobs could then run its transactions with `transaction` of a `Database` instead of its own `transaction.ts`, which tells these phases by the classes of the errors of the driver.
+
 ## Type of the fields of a helper
 
 A type of the fields that a helper selects, such as of the records that a function returns from a query of the helper: `ResultOf` takes a query, while the fields are `E["fields"]` of `Helper<T, E, A>`, which `infer` reads from `typeof helper`.

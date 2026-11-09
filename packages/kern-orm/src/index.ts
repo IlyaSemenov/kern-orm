@@ -106,6 +106,8 @@ export { createDatabase } from "./execution/database"
 export type { Connection, Driver, DriverResult, TransactionFailure } from "./execution/driver"
 export type { TransactionCoordinator } from "./execution/transaction/coordinator"
 export { createStatement } from "./execution/driver"
+export type { DriverErrorFields } from "./execution/driver-error"
+export { ConnectionError, QueryError, toDriverError } from "./execution/driver-error"
 export type { OperandUses, ScalarQuery, TypedScalarQuery, ValuesQuery } from "./query/operand"
 export type {
   AnySelectQuery,

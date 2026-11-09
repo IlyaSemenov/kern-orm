@@ -11,6 +11,7 @@ import * as t from "../types"
 import { createDatabase } from "./database"
 import type { Connection, Driver, TransactionFailure } from "./driver"
 import { createStatement } from "./driver"
+import { ConnectionError, QueryError } from "./driver-error"
 import type { TestHooks } from "./testing"
 import { createTestHelpers } from "./testing"
 
@@ -148,7 +149,7 @@ export function describeDriverContract(
       try {
         await assert.rejects(
           database.script("CREATE TABLE pg_script_pool_test (id integer); SELECT 1/0"),
-          /division by zero/,
+          (error: unknown) => error instanceof QueryError && error.code === "22012",
         )
 
         assert.equal(await selectValue("SELECT to_regclass('pg_script_pool_test')::text"), null)
@@ -286,6 +287,41 @@ export function describeDriverContract(
       )
     })
 
+    it("rejects a statement that PostgreSQL rejected with QueryError and keeps its connection, on the pool and on a reserved connection", async () => {
+      // One connection makes every statement run on the same connection while it stays open, and closing the driver drops its temporary table.
+      const own = createDriver({ max: 1 })
+      try {
+        const pool = createStatementRunners(own)
+        await pool.runStatement(
+          "CREATE TEMP TABLE pg_unique_test (id integer CONSTRAINT pg_unique_test_key UNIQUE)",
+        )
+        await pool.runStatement("INSERT INTO pg_unique_test VALUES (1)")
+        const pid = await pool.selectValue("SELECT pg_backend_pid()")
+
+        /** Asserts that inserting a duplicate on `target` rejects with the violated constraint, and that its connection stays the same. */
+        async function assertRejected(target: Pick<Connection, "execute">) {
+          const runners = createStatementRunners(target)
+          const error = await runners
+            .runStatement("INSERT INTO pg_unique_test VALUES (1)")
+            .catch((error: unknown) => error)
+          assert.ok(error instanceof QueryError, `Expected QueryError, got ${String(error)}`)
+          assert.equal(error.code, "23505")
+          assert.equal(error.constraint, "pg_unique_test_key")
+          assert.equal(await runners.selectValue("SELECT pg_backend_pid()"), pid)
+        }
+
+        await assertRejected(own)
+        const connection = await own.acquire()
+        try {
+          await assertRejected(connection)
+        } finally {
+          await connection.release()
+        }
+      } finally {
+        await own.close()
+      }
+    })
+
     it("rejects a transaction whose failed statement the callback caught", async () => {
       const transaction = database.transaction(async () => {
         await runStatement("SELECT 1/0").catch(() => {})
@@ -381,6 +417,42 @@ export function describeDriverContract(
           )
         } finally {
           await single.close()
+        }
+      })
+
+      it("rejects a statement of a transaction whose connection is lost with ConnectionError", async () => {
+        const own = createDriver({ max: 1 })
+        try {
+          const connection = await own.acquire()
+          const { runStatement, selectValue: selectValueOnConnection } =
+            createStatementRunners(connection)
+          let failure: TransactionFailure | undefined
+          try {
+            await runStatement("BEGIN")
+            await runStatement("CREATE TEMP TABLE pg_lost_test (id integer) ON COMMIT DROP")
+            const pid = (await selectValueOnConnection("SELECT pg_backend_pid()"))!
+            // The timeout makes it wait for the backend to exit.
+            assert.equal(await selectValue("SELECT pg_terminate_backend($1, 5000)", [pid]), "t")
+            // The client reads that the connection closed before the next statement, as a client that reconnects would before sending it on a new connection.
+            await new Promise(resolve => setTimeout(resolve, 50))
+
+            // On a new connection, the statement would reject with QueryError, since the table belonged to the lost transaction.
+            const error = await runStatement("INSERT INTO pg_lost_test VALUES (1)").catch(
+              (error: unknown) => error,
+            )
+            failure = { error }
+            assert.ok(
+              error instanceof ConnectionError,
+              `Expected ConnectionError, got ${String(error)}`,
+            )
+          } catch (error) {
+            failure ??= { error }
+            throw error
+          } finally {
+            await connection.release(failure)
+          }
+        } finally {
+          await own.close()
         }
       })
     }
@@ -533,7 +605,7 @@ export function describeDriverContract(
         assert.deepEqual(settled, ["query", "database"])
       })
 
-      it("rejects a statement, a script, and a connection requested right after it starts", async () => {
+      it("rejects a statement, a script, and a connection requested right after it starts with ConnectionError", async () => {
         // The held connection of a client with one connection keeps the closing going, so a statement the driver lets through waits for it.
         const driver = createDriver({ max: 1 })
         const held = await driver.acquire()
@@ -542,9 +614,9 @@ export function describeDriverContract(
         // Requested at once: a client may still run a statement sent before it starts closing its pool.
         const acquiring = driver.acquire()
         const rejections = [
-          assert.rejects(driver.execute(createStatement("SELECT 1"))),
-          assert.rejects(driver.executeScript("SELECT 1")),
-          assert.rejects(acquiring),
+          assert.rejects(driver.execute(createStatement("SELECT 1")), ConnectionError),
+          assert.rejects(driver.executeScript("SELECT 1"), ConnectionError),
+          assert.rejects(acquiring, ConnectionError),
         ]
         // A connection handed out by mistake is released, so that closing ends and the test fails instead of hanging.
         acquiring.then(connection => connection.release()).catch(() => {})

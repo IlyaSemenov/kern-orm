@@ -1,4 +1,5 @@
 import type { Connection, Driver, DriverResult, SqlStatement, TextValue } from "kern-orm"
+import { ConnectionError, QueryError, toDriverError } from "kern-orm"
 import type { CustomTypesConfig, Pool, PoolClient, QueryArrayConfig } from "pg"
 
 /** Config of a query with its protocol; `pg` reads `queryMode`, though its types omit it. */
@@ -33,13 +34,13 @@ function ignoreConnectionError(): void {}
 function ignoreOutcome(): void {}
 
 /**
- * Tells whether PostgreSQL rejected a statement and keeps its connection, such as for a violated constraint.
+ * Classifies an error of a statement of `pg`, which gives the severity only in the language of the server.
  *
- * After other failures, such as `query_timeout`, the statement may still run, or the connection is closing.
- * A server with translated messages reports a translated severity, so its connection closes, which only costs a reconnect.
+ * With translated messages, `toDriverError` tells an error that ends the session by its SQLSTATE.
  */
-function isRejectedStatement(error: unknown): boolean {
-  return (error as { severity?: unknown }).severity === "ERROR"
+function toNodePostgresError(error: unknown) {
+  const fields = (error ?? {}) as { severity?: unknown; code?: unknown; constraint?: unknown }
+  return toDriverError(error, fields)
 }
 
 async function execute(client: PoolClient, statement: SqlStatement): Promise<DriverResult> {
@@ -51,7 +52,12 @@ async function execute(client: PoolClient, statement: SqlStatement): Promise<Dri
     // `pg` sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
     queryMode: "extended",
   }
-  const result = await client.query<TextValue[]>(config)
+  let result
+  try {
+    result = await client.query<TextValue[]>(config)
+  } catch (error) {
+    throw toNodePostgresError(error)
+  }
   const { fields } = result
   const columns: string[] = []
   for (let index = 0; index < fields.length; index++) {
@@ -67,8 +73,12 @@ async function execute(client: PoolClient, statement: SqlStatement): Promise<Dri
 }
 
 async function executeScript(client: PoolClient, text: string): Promise<void> {
-  // `pg` sends a query without parameters with the simple protocol, which takes several statements in one query; `textTypes` keeps the parsers of the client from reading the ignored results.
-  await client.query({ text, rowMode: "array", types: textTypes })
+  try {
+    // `pg` sends a query without parameters with the simple protocol, which takes several statements in one query; `textTypes` keeps the parsers of the client from reading the ignored results.
+    await client.query({ text, rowMode: "array", types: textTypes })
+  } catch (error) {
+    throw toNodePostgresError(error)
+  }
 }
 
 /**
@@ -99,7 +109,7 @@ export function nodePostgresDriver(pool: Pool): Driver {
   /** Gets a client from the pool for `operation`, which names it in the error once closing starts. */
   async function checkOut(operation: string): Promise<PoolClient> {
     if (closing) {
-      throw new Error(`Cannot ${operation}: the driver is closed`)
+      throw new ConnectionError(`Cannot ${operation}: the driver is closed`)
     }
     checkouts++
     try {
@@ -107,12 +117,13 @@ export function nodePostgresDriver(pool: Pool): Driver {
       const unsupported = getUnsupportedClientReason(client)
       if (unsupported) {
         client.release()
-        throw new Error(unsupported)
+        throw new ConnectionError(unsupported)
       }
       return client
     } catch (error) {
       endCheckout()
-      throw error
+      // A failure to get a connection leaves no connection to use, whatever its fields, such as a translated `FATAL` of a server that rejects connecting.
+      throw toDriverError(error)
     }
   }
 
@@ -132,7 +143,8 @@ export function nodePostgresDriver(pool: Pool): Driver {
     try {
       return await run(client)
     } catch (error) {
-      destroy = !isRejectedStatement(error)
+      // After another failure, such as `query_timeout`, the statement may still run, or the connection is closing.
+      destroy = !(error instanceof QueryError)
       throw error
     } finally {
       checkIn(client, destroy)

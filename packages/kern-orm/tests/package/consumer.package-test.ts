@@ -64,6 +64,12 @@ beforeAll(async () => {
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
+  // The node-postgres driver resolves a copy of `kern-orm` of its own, whose errors the copy of the consumer recognizes.
+  await cp(
+    join(consumer, "node_modules/kern-orm"),
+    join(consumer, "node_modules/@kern-orm/node-postgres/node_modules/kern-orm"),
+    { recursive: true },
+  )
   await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
   await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }))
   await writeFile(
@@ -280,9 +286,11 @@ describe.each(["node", "bun"])("%s", runtime => {
     })
   })
 
-  test("runs a consumer of the node-postgres driver", () => {
+  test("runs a consumer of the node-postgres driver, which recognizes the errors of its copy of kern-orm", () => {
     expect(JSON.parse(run([runtime, "node-postgres.ts"], consumer))).toEqual({
       acquireAfterClose: "Cannot acquire a connection: the driver is closed",
+      isConnectionError: true,
+      queryErrorCode: null,
     })
   })
 })
@@ -609,8 +617,14 @@ describe.each(Object.keys(bundlers) as (keyof typeof bundlers)[])("%s", bundler 
   test("drops unused types and execution code of a compile-only consumer", async () => {
     const code = await bundlers[bundler]("compile-only.ts")
 
-    // Markers of the transaction coordinator and of unused built-in types.
-    const markers = ["AsyncLocalStorage", "timestamptz", "jsonb"]
+    // Markers of the transaction coordinator, of the errors of drivers, and of unused built-in types.
+    const markers = [
+      "AsyncLocalStorage",
+      "kern-orm.QueryError",
+      "kern-orm.ConnectionError",
+      "timestamptz",
+      "jsonb",
+    ]
     expect(markers.filter(marker => code.includes(marker))).toEqual([])
     const file = join(consumer, `compile-only.${bundler}.mjs`)
     await writeFile(file, code)

@@ -28,6 +28,7 @@ export interface DriverResult {
  * Physical database access: transport, pooling, and connections.
  *
  * A driver sends parameters as text without a declared type, so that the statement text alone determines their types, and returns values as text without parsing them.
+ * It rejects with `QueryError` a statement or script that PostgreSQL rejected, whose connection stays usable, and with `ConnectionError` any other failure of a statement, a script, or a connection.
  */
 export interface Driver {
   /** Whether the driver closes a reserved connection that it cannot return to the pool, such as one left in a transaction or lost; a driver over a client that cannot close one, such as postgres.js 3, keeps it reserved instead. */
@@ -41,7 +42,7 @@ export interface Driver {
   /**
    * Closes the connections once the statements on the pool and the transactions on reserved connections end.
    *
-   * From the call, it rejects a new statement or script on the pool and a new connection.
+   * From the call, it rejects a new statement or script on the pool and a new connection with `ConnectionError`.
    */
   close(): Promise<void>
 }
@@ -57,15 +58,15 @@ export interface Connection {
   /** Executes a script of statements without parameters on the connection, in the order of calls with its statements. */
   executeScript(text: string): Promise<void>
   /**
-   * Returns the connection to the pool after a transaction on it.
+   * Returns the connection to the pool.
    *
-   * Without `failure`, the transaction ended with a completed `COMMIT` or `ROLLBACK`, and the connection is idle.
-   * With `failure`, its `BEGIN`, `COMMIT`, or `ROLLBACK` failed, so the transaction may still be open: the driver returns the connection to the pool only once it is idle, and never returns a connection it lost.
+   * Without `failure`, the connection is idle: no transaction ran on it, or its `COMMIT` or `ROLLBACK` completed.
+   * With `failure`, the last statement on the connection failed, such as `BEGIN`, `COMMIT`, or `ROLLBACK`, so the connection may be in a transaction or lost: the driver returns it to the pool only once it is idle, and never returns a connection it lost.
    */
   release(failure?: TransactionFailure): void | Promise<void>
 }
 
-/** Failure of the statement that started or ended a transaction on a connection. */
+/** Failure of the last statement on a reserved connection, after which the connection may not be idle. */
 export interface TransactionFailure {
   readonly error: unknown
 }

@@ -43,3 +43,4 @@ Scenarios worth comparing that the topics do not cover yet:
 - Ambient transactions.
 - Tables and queries reused across PostgreSQL schemas.
 - Tests in transactions that roll back.
+- Errors of drivers classified as a statement that PostgreSQL rejected or a lost connection, across clients.

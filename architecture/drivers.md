@@ -6,16 +6,36 @@
   A statement without a command, such as an empty text or only a comment, which PostgreSQL completes with `EmptyQueryResponse` instead of a command tag, gives `command: null`, `count: 0`, and neither columns nor rows; `execute` does not reject it, since telling it apart takes parsing the SQL.
   It also executes a script of several statements without parameters, which a statement with parameters cannot hold, since PostgreSQL takes several statements only in a query of its simple protocol; it ignores the results of a script.
   A connection runs its statements and scripts one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
-  The coordinator releases a transaction connection whatever the outcome, passing the failure of `BEGIN`, `COMMIT`, or `ROLLBACK`; the driver returns such a connection to its pool only once it is idle, and never returns a lost one.
+  It rejects a statement or script with the [errors](#errors) of `execution/driver-error.ts`: with `QueryError` when PostgreSQL rejected it, and the connection stays usable, and with `ConnectionError` after any other failure, after which the connection may be lost or in an unknown state of its transaction.
+  A connection lost in a transaction rejects every later statement on it with `ConnectionError`, so that no statement of the transaction runs outside it on a new connection.
+  A reserved connection is released with the failure of its last statement when that statement failed, such as the coordinator releases a transaction connection with the failure of `BEGIN`, `COMMIT`, or `ROLLBACK`; the driver returns such a connection to its pool only once it is idle, and never returns a lost one.
+  A `QueryError` of `COMMIT` or `ROLLBACK` does not tell that the connection is idle: a statement timeout or a cancel that comes after PostgreSQL reads the statement and before it runs leaves the transaction aborted, so the coordinator passes it as a failure too ([decision](../decisions/drivers/release-after-query-error.md)).
   It replaces an idle connection whose backend exited, such as after a restart of the server, for the next statement once the client has read that the connection closed.
   `closesReservedConnections` of a driver tells whether it closes a reserved connection that it cannot safely return to the pool; a driver over a client that cannot close a reserved connection, such as postgres.js 3, keeps it reserved instead.
-  Closing a driver rejects a new statement or script on the pool and a new connection from its call, waits for the statements already sent and for the transactions on its reserved connections to end, including those still waiting for a connection, and then closes the connections.
+  Closing a driver rejects a new statement or script on the pool and a new connection from its call with `ConnectionError`, waits for the statements already sent and for the transactions on its reserved connections to end, including those still waiting for a connection, and then closes the connections.
 - A driver package supports one major version of its client: a package without a suffix, such as `@kern-orm/postgres-js` or `@kern-orm/node-postgres`, the latest major version, and a package named with the suffix of an older major version, such as `@kern-orm/postgres-js-v3`, that version.
   A new major version of a client moves the package without a suffix to it, and a driver for the previous major version moves to a package with its suffix.
 
+## Errors
+
+`QueryError` and `ConnectionError` tell a statement that PostgreSQL rejected from a failure that leaves the state of its connection unknown, such as for a retry of a violated unique constraint or of a lost connection.
+
+- Each class recognizes an instance of another copy of `kern-orm` by a brand of `Symbol.for`, which its constructor sets as a property that is not enumerable, and which `Symbol.hasInstance` of the class checks; a subclass checks the prototype chain ([decision](../decisions/drivers/error-recognition.md)).
+  The declarations of the classes do not name the brand.
+- A driver rejects with them a statement, a script, and a failure to get a connection, which is a `ConnectionError` whatever its fields, such as a translated `FATAL` of a missing database.
+  The coordinator passes them as they are, directly or as the `error` or `suppressed` of a `SuppressedError`; its own errors are plain errors.
+- `toDriverError` classifies an error of a client by the fields of the PostgreSQL error it carries, for the driver packages and custom drivers:
+  - an error that is already classified, also by another copy of `kern-orm`, returns as it is;
+  - an error without a severity is a `ConnectionError`: every error of the server has one, and an error of a client may have a code of five letters, such as `EPIPE`;
+  - an error without a SQLSTATE of five digits or uppercase letters is a `ConnectionError`;
+  - severity `ERROR` gives `QueryError`, and `FATAL` and `PANIC` give `ConnectionError`;
+  - another severity, which is translated, gives `ConnectionError` for the SQLSTATE classes `08`, `28`, `57P`, and `XX` and the codes `25P03` and `25P04`, which end the session, and `QueryError` for the other codes.
+- The SQLSTATE of a translated severity only approximates it: an error that ends the session with a code that a statement also gets, such as `40001` of a conflict with recovery on a replica, gives `QueryError`, and the next statement on the connection gives `ConnectionError`.
+  Giving `ConnectionError` for every translated severity instead would reject a violated constraint with it, which a retry of `23505` needs as `QueryError`.
+
 ## Compatibility
 
-A driver follows the [contract of package compatibility](compatibility.md), and relies on the contract of `execution/driver.ts`.
+A driver follows the [contract of package compatibility](compatibility.md), and relies on the contract of `execution/driver.ts`, and on `QueryError`, `ConnectionError`, and `toDriverError` of `execution/driver-error.ts`, which it imports from `kern-orm` 0.8.0 or later at runtime ([decision](../decisions/drivers/error-classes-of-kern-orm.md)).
 
 ## Tests of the contract
 
@@ -30,6 +50,7 @@ A driver follows the [contract of package compatibility](compatibility.md), and 
 
 `@kern-orm/postgres-js` requires postgres.js 4 and leaves to it the release contract and waiting for the outstanding work when closing:
 
+- It classifies errors by `severity`, which postgres.js gives in English, rather than `severity_local`, and by `constraint_name`.
 - It releases a connection without inspecting the failure: postgres.js returns a released connection to the pool once its statements complete and only when it is idle, closes one left in a transaction, and has already closed a lost one.
 - Closing it rejects a new statement, script, or connection by itself and calls `sql.end()` at once: `sql.end()` ends the pool only after a few microtasks, and the pool queues and runs a statement sent before then.
   `sql.end()` waits for the reserved connections to be released and for the statements already sent to the pool, and gives the pending `sql.reserve()` calls a connection first.
@@ -39,14 +60,14 @@ A driver follows the [contract of package compatibility](compatibility.md), and 
 
 ## postgres.js 3
 
-`@kern-orm/postgres-js-v3` requires postgres.js 3.4.9 and sends parameters, statements, and scripts as `@kern-orm/postgres-js` does; postgres.js 3.4.9 reads the `simple` option of `unsafe`, though its types omit it.
+`@kern-orm/postgres-js-v3` requires postgres.js 3.4.9, and sends parameters, statements, and scripts and classifies errors as `@kern-orm/postgres-js` does; postgres.js 3.4.9 reads the `simple` option of `unsafe`, though its types omit it.
 postgres.js 3.4.9 has bugs that postgres.js 4 fixes, and the driver works around those it can:
 
 - When a connection breaks inside a transaction, including one of its own `sql.begin`, the next statement on it throws an uncaught exception ([#1199](https://github.com/porsager/postgres/issues/1199), [#1208](https://github.com/porsager/postgres/issues/1208), [#1248](https://github.com/porsager/postgres/issues/1248)).
   Node.js terminates the process; Bun 1.4.4 reports the exception and keeps running with a pool that never settles further queries.
   The driver cannot detect the loss before that statement.
 - Releasing a lost reserved connection breaks the pool the same way, and postgres.js cannot close a reserved connection, so the driver leaves a connection that may be lost reserved; a connection that is alive in an unknown transaction state, such as after a client-side error building `COMMIT`, stays reserved too.
-  After a server error other than `FATAL` and `PANIC`, the driver rolls back a failed transaction and releases the connection.
+  After a `QueryError`, the driver rolls back a failed transaction and releases the connection; a failure of the statements that do it rejects `release`, classified, and leaves the connection reserved.
 - `sql.end()` never resolves when a reserved connection is released after it starts ([#1261](https://github.com/porsager/postgres/issues/1261)), so closing the driver:
   - rejects a statement or script on the pool and acquiring a connection once it starts;
   - waits for the reserved connections the driver will release, and for the transactions waiting for a connection; once no running transaction of the driver holds a connection, those transactions get `closeTimeout` to get one;
@@ -57,8 +78,9 @@ postgres.js 3.4.9 has bugs that postgres.js 4 fixes, and the driver works around
 
 `@kern-orm/node-postgres` requires `pg` 8 and takes its `Pool`.
 It imports only types from `pg`, which `@types/pg`, an optional peer dependency, gives consumers.
+`pg` gives the severity of an error only in the language of the server, so with translated messages, the driver classifies errors by their SQLSTATE, with the [limitation](#errors) of `toDriverError`.
 
-It rejects a client that cannot give values as text whenever it gets one from the pool:
+It rejects a client that cannot give values as text with `ConnectionError` whenever it gets one from the pool:
 
 - a client of `pg.native`, which ignores `types` of a query, so it parses values;
 - a client with `binary`, from the options of the pool or `pg.defaults`: it requests binary results of the statements of the extended protocol, which a query cannot turn off, and `pg` reads them as UTF-8 strings, which corrupts them.
@@ -66,7 +88,7 @@ It rejects a client that cannot give values as text whenever it gets one from th
 `pg` leaves the release and closing contracts to its users, so the driver keeps them:
 
 - It runs a statement or a script on the pool on a client of its own rather than through `pool.query`, which closes the connection of any failed statement, such as a violated constraint.
-  It keeps the connection of a statement rejected with the severity `ERROR`, and closes it after any other failure: after `query_timeout`, the statement still runs on the connection.
+  It keeps the connection of a statement rejected with `QueryError`, and closes it after `ConnectionError`: after `query_timeout`, the statement still runs on the connection.
 - It closes the connection of a transaction released with a failure, without inspecting the failure, so a failed `COMMIT` costs a reconnect; `pg` returns a client released without a failure to the pool unless its connection is lost.
 - It runs the statements and scripts of a reserved connection one at a time by itself: `pg` queues the queries of a client, but deprecates calling `client.query` while a query runs and removes it in `pg` 9.
 - It listens to `error` of the pool, and of each client from the `acquire` event of the pool to its `release` event: a connection that breaks emits `error`, also without a running query, and an `EventEmitter` throws an `error` event without a listener, which terminates the process.
