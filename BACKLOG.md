@@ -156,6 +156,14 @@ The message suggests that the rollback left the transaction open, while the serv
 - Decide on an error that tells the phase of the loss: `begin`, where nothing was applied; `transaction`, where the server rolls back the transaction; and `commit`, where the outcome is unknown, since the server may have applied `COMMIT` before the connection broke.
 - kern-jobs could then run its transactions with `transaction` of a `Database` instead of its own `transaction.ts`, which tells these phases by the classes of the errors of the driver.
 
+## Columns of a violated unique constraint
+
+The keys of the columns of a violated unique constraint, such as to tell users which field is taken without naming the constraint.
+Orchid ORM 1.78.47 gives them as `columns` of its `QueryError`, which it reads from `detail` of the error and maps to the keys of the table ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/error-handling.md#database-error)).
+
+- A driver creates `QueryError` without the query, so the keys need the query that PostgreSQL rejected, such as at its `await`.
+- Decide whether to read the columns from `detail`, which PostgreSQL translates by `lc_messages`, or from the catalog by `constraint`.
+
 ## Type of the fields of a helper
 
 A type of the fields that a helper selects, such as of the records that a function returns from a query of the helper: `ResultOf` takes a query, while the fields are `E["fields"]` of `Helper<T, E, A>`, which `infer` reads from `typeof helper`.

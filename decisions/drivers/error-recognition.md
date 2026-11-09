@@ -13,7 +13,7 @@ try {
 }
 
 // Alternative: predicates that check the brand
-if (isQueryError(error) && error.code === "23505") {
+if (hasQueryErrorBrand(error) && error.code === "23505") {
   // ...
 }
 ```
@@ -23,7 +23,7 @@ Its type is a predicate of the type of the class that it is called on, so `insta
 
 The alternatives:
 
-- Predicates, such as `isQueryError(error)`, say what they check, and `instanceof` stays the ordinary check of the prototype chain.
+- Predicates, such as `hasQueryErrorBrand(error)`, say what they check, and `instanceof` stays the ordinary check of the prototype chain.
   An application then has two checks of one class, and only the predicate is correct across copies, while `instanceof`, which tests, `assert.rejects(promise, QueryError)`, and `expect(promise).rejects.toThrow(QueryError)` use, passes with one copy and fails with two.
 - Classes without a brand fail `instanceof` whenever the application and a driver resolve different copies of `kern-orm`, such as when the range of the driver does not accept the version of the application.
 

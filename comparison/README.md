@@ -32,6 +32,7 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [Queries of SQL text](sql-queries.md)
 - [Tables and schemas](schemas.md)
 - [Transactions](transactions.md)
+- [Errors](errors.md)
 - [Testing](testing.md)
 - [Migrations](migrations.md)
 

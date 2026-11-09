@@ -87,6 +87,7 @@ The SQL that loads nested queries and relations.
 - [Errors of drivers recognized by `instanceof`](drivers/error-recognition.md): the classes recognize the errors of another copy of `kern-orm` by a brand, rather than by predicates.
 - [Error classes of `kern-orm` in drivers](drivers/error-classes-of-kern-orm.md): the drivers import them at runtime and require `kern-orm` 0.8.0, rather than define classes of their own.
 - [Release with the failure after `QueryError` of `COMMIT`](drivers/release-after-query-error.md): `QueryError` does not tell that the connection is idle.
+- [`QueryError` told by the conditions of PostgreSQL](drivers/error-conditions.md): one predicate of every condition by its name, without a constraint argument, rather than a predicate of each condition, constants of the codes, or a member of `QueryError`.
 
 ## Migrations
 

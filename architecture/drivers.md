@@ -33,6 +33,15 @@
 - The SQLSTATE of a translated severity only approximates it: an error that ends the session with a code that a statement also gets, such as `40001` of a conflict with recovery on a replica, gives `QueryError`, and the next statement on the connection gives `ConnectionError`.
   Giving `ConnectionError` for every translated severity instead would reject a violated constraint with it, which a retry of `23505` needs as `QueryError`.
 
+`isQueryError` of `execution/error-condition.ts` tells a `QueryError` by the name of its condition, such as `unique_violation`, rather than by its SQLSTATE, and takes no constraint: a check of the constraint compares `constraint` of the error ([decision](../decisions/drivers/error-conditions.md)):
+
+- It recognizes the error by `instanceof QueryError`, so also a `QueryError` of another copy of `kern-orm`, and reads only `code`, which a `QueryError` of every version has; an error of a client with a `code` does not match.
+- Its conditions are the names of the SQLSTATE codes of PostgreSQL 18 that PL/pgSQL takes in `EXCEPTION WHEN`, in `execution/error-condition-codes.ts`, which is generated as a whole from `errcodes.txt` of PostgreSQL, and they match as in PL/pgSQL:
+  - a name matches each of its codes, and a few names have two, such as `null_value_not_allowed`;
+  - the condition of a class, whose code ends in `000`, matches every code of the class, also one that the table lacks, such as of a later version of PostgreSQL.
+- It narrows `code` of the error to the codes of the condition rather than only the error to `QueryError`, so that a `QueryError` where the check fails stays one rather than `never`.
+- An error that ends the session, such as of `admin_shutdown`, is a `ConnectionError`, which matches no condition.
+
 ## Compatibility
 
 A driver follows the [contract of package compatibility](compatibility.md), and relies on the contract of `execution/driver.ts`, and on `QueryError`, `ConnectionError`, and `toDriverError` of `execution/driver-error.ts`, which it imports from `kern-orm` 0.8.0 or later at runtime ([decision](../decisions/drivers/error-classes-of-kern-orm.md)).

@@ -42,6 +42,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Prefer DX over older runtimes: when a newer runtime version enables a simpler or safer API, raise the minimum version instead of working around older ones.
 - Declare the minimum versions in `engines` of every published package and in the install section of `docs/getting-started.md`.
 - Pin the PostgreSQL major version of the CI service and state it in the install section of `docs/getting-started.md`.
+  When raising it, regenerate `packages/kern-orm/src/execution/error-condition-codes.ts` from `src/backend/utils/errcodes.txt` of that version, as its header describes.
 - Support TypeScript 6.0 or newer with `strictNullChecks` in consumer projects, and state it in the install section of `docs/getting-started.md`.
   The package test type-checks its consumer with both the pinned `typescript` and the minimum version, `typescript-6` in `devDependencies` of `kern-orm`.
 - Test both runtimes in CI, at the versions pinned in `mise.toml`, against its PostgreSQL service: the `test` script on Bun, the `test:node` script on Node.js, the `test:package` script, which also runs the scenarios of `node:test` and Vitest, and the `test:compat` script, which installs the companion packages with versions of `kern-orm` from npm.

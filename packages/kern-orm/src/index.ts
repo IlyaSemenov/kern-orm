@@ -108,6 +108,8 @@ export type { TransactionCoordinator } from "./execution/transaction/coordinator
 export { createStatement } from "./execution/driver"
 export type { DriverErrorFields } from "./execution/driver-error"
 export { ConnectionError, QueryError, toDriverError } from "./execution/driver-error"
+export { isQueryError } from "./execution/error-condition"
+export type { QueryErrorCode, QueryErrorCondition } from "./execution/error-condition"
 export type { OperandUses, ScalarQuery, TypedScalarQuery, ValuesQuery } from "./query/operand"
 export type {
   AnySelectQuery,

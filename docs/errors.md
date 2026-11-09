@@ -1,21 +1,24 @@
 # Database Errors
 
-To handle a statement that PostgreSQL rejects, such as an insert of a form whose name is taken, catch `QueryError` and check its `code`, the [SQLSTATE](https://www.postgresql.org/docs/current/errcodes-appendix.html) of the error:
+To handle a statement that PostgreSQL rejects, such as an insert of a form whose name is taken, check its [condition](https://www.postgresql.org/docs/current/errcodes-appendix.html) with `isQueryError` and compare the name of the violated constraint:
 
 ```ts
-import { QueryError } from "kern-orm"
+import { isQueryError } from "kern-orm"
 
 try {
   await db.form.insert({ name, published: false })
 } catch (error) {
-  if (error instanceof QueryError && error.code === "23505") {
+  if (isQueryError(error, "unique_violation") && error.constraint === "form_name_key") {
     throw new Error(`A form named ${name} already exists`)
   }
   throw error
 }
 ```
 
-To tell apart the unique constraints of a table, check `constraint`, the name of the constraint that the statement violated, such as `form_name_key`.
+The condition of a class, such as `integrity_constraint_violation`, matches every condition of the class, as in `EXCEPTION WHEN` of PL/pgSQL.
+
+Such an error is a `QueryError`.
+To check a [SQLSTATE](https://www.postgresql.org/docs/current/errcodes-appendix.html) of your own, such as of `RAISE ... USING ERRCODE` in a function, compare `code` of `QueryError`: `error instanceof QueryError && error.code === "U0001"`.
 The error of your PostgreSQL client is the `cause` of `QueryError`, with the other fields of the error, such as `detail`.
 
 To insert a record only when it does not exist yet, or to update the existing one, use [`onConflict`](./queries/mutations#records-that-already-exist) instead.

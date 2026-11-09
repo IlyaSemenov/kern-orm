@@ -6,6 +6,7 @@ import {
   startWaiting,
   whileHolding,
 } from "../../testing/postgres"
+import { isQueryError } from "../execution/error-condition"
 import { NotFoundError, RequiredRelationError } from "../result/result"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -213,7 +214,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
       await db.$transaction(() => db.$execute(query.forUpdate({ noWait: true })))
       return false
     } catch (error) {
-      if ((error as { code?: unknown }).code === "55P03") {
+      if (isQueryError(error, "lock_not_available")) {
         return true
       }
       throw error
