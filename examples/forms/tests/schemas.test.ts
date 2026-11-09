@@ -34,7 +34,6 @@ import { answer, field, form, user } from "../src/tables"
 import { describePostgres, getSampleId } from "../testing/postgres"
 
 const unusedDriver: Driver = {
-  closesReservedConnections: true,
   execute: () => Promise.reject(new Error("unused")),
   executeScript: () => Promise.reject(new Error("unused")),
   acquire: () => Promise.reject(new Error("unused")),

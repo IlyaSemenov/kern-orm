@@ -31,8 +31,6 @@ export interface DriverResult {
  * It rejects with `QueryError` a statement or script that PostgreSQL rejected, whose connection stays usable, and with `ConnectionError` any other failure of a statement, a script, or a connection.
  */
 export interface Driver {
-  /** Whether the driver closes a reserved connection that it cannot return to the pool, such as one left in a transaction or lost; a driver over a client that cannot close one, such as postgres.js 3, keeps it reserved instead. */
-  readonly closesReservedConnections: boolean
   /** Executes a statement on any pooled connection. */
   execute(statement: SqlStatement): Promise<DriverResult>
   /** Executes a script of statements without parameters, such as DDL separated by semicolons, on any pooled connection, where PostgreSQL runs them in one implicit transaction. */

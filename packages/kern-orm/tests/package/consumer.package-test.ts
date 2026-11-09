@@ -11,13 +11,11 @@ import { run } from "./run"
 
 const root = join(import.meta.dir, "../../../..")
 
-// Each packed package with the consumer project that installs it: the postgres.js 3 driver has a project of its own, whose `postgres` is postgres.js 3.
 const packages = [
-  { dir: "packages/kern-orm", project: "." },
-  { dir: "packages/postgres-js", project: "." },
-  { dir: "packages/postgres-js-v3", project: "postgres-js-v3" },
-  { dir: "packages/node-postgres", project: "." },
-  { dir: "packages/migrations", project: "." },
+  "packages/kern-orm",
+  "packages/postgres-js",
+  "packages/node-postgres",
+  "packages/migrations",
 ]
 
 const compileOnlyOutput = {
@@ -36,9 +34,9 @@ const consumerOutput = {
 
 let consumer: string
 
-/** Links a package installed in a workspace package into the node_modules of a project. */
-async function linkPackage(dir: string, name: string, project: string): Promise<void> {
-  const target = join(project, "node_modules", name)
+/** Links a package installed in a workspace package into the node_modules of the consumer project. */
+async function linkPackage(dir: string, name: string): Promise<void> {
+  const target = join(consumer, "node_modules", name)
   await mkdir(dirname(target), { recursive: true })
   await symlink(join(root, dir, "node_modules", name), target)
 }
@@ -46,21 +44,20 @@ async function linkPackage(dir: string, name: string, project: string): Promise<
 beforeAll(async () => {
   consumer = await mkdtemp(join(tmpdir(), "kern-orm-consumer-"))
   // Assemble node_modules without network: the packed packages, and the dependencies they leave to the consumer.
-  for (const { dir, project } of packages) {
+  for (const dir of packages) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
     // `changeset publish` publishes with npm, which, unlike Bun, leaves protocols such as `catalog:` as they are.
     const [{ filename }] = JSON.parse(
       run(["npm", "pack", "--json", "--pack-destination", consumer], join(root, dir)),
     ) as [{ filename: string }]
-    const target = join(consumer, project, "node_modules", name)
+    const target = join(consumer, "node_modules", name)
     await mkdir(target, { recursive: true })
     run(["tar", "-xzf", filename, "-C", target, "--strip-components=1"], consumer)
   }
   await mkdir(join(consumer, "node_modules/@types"))
-  await linkPackage("packages/postgres-js", "postgres", consumer)
-  await linkPackage("packages/postgres-js-v3", "postgres", join(consumer, "postgres-js-v3"))
-  await linkPackage("packages/node-postgres", "pg", consumer)
-  await linkPackage("packages/node-postgres", "@types/pg", consumer)
+  await linkPackage("packages/postgres-js", "postgres")
+  await linkPackage("packages/node-postgres", "pg")
+  await linkPackage("packages/node-postgres", "@types/pg")
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
@@ -100,24 +97,6 @@ beforeAll(async () => {
       },
       include: ["declarations/*.d.ts"],
       exclude: [],
-    }),
-  )
-  // The project of the postgres.js 3 driver emits its declarations beside its node_modules, so that they resolve `postgres` to postgres.js 3.
-  await writeFile(
-    join(consumer, "postgres-js-v3/tsconfig.json"),
-    JSON.stringify({
-      extends: "../tsconfig.json",
-      compilerOptions: {
-        outDir: "declarations",
-      },
-      include: ["*.ts"],
-    }),
-  )
-  await writeFile(
-    join(consumer, "postgres-js-v3/tsconfig.declarations.json"),
-    JSON.stringify({
-      extends: "../tsconfig.declarations.json",
-      include: ["declarations/*.d.ts"],
     }),
   )
   await writeFile(
@@ -174,11 +153,9 @@ afterAll(async () => {
 
 test("publishes dependencies without the catalog: and workspace: protocols", async () => {
   const protocols: string[] = []
-  for (const { dir, project } of packages) {
+  for (const dir of packages) {
     const { name } = await Bun.file(join(root, dir, "package.json")).json()
-    const manifest = await Bun.file(
-      join(consumer, project, "node_modules", name, "package.json"),
-    ).json()
+    const manifest = await Bun.file(join(consumer, "node_modules", name, "package.json")).json()
     for (const field of ["dependencies", "peerDependencies"]) {
       for (const [dependency, range] of Object.entries<string>(manifest[field] ?? {})) {
         if (/^(catalog|workspace):/.test(range)) {
@@ -199,8 +176,6 @@ describe.each([
     run([...tsc, "-p", consumer], consumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], consumer)
     run([...tsc, "-p", "tsconfig.type-tests.json"], consumer)
-    run([...tsc, "-p", "postgres-js-v3"], consumer)
-    run([...tsc, "-p", "postgres-js-v3/tsconfig.declarations.json"], consumer)
   }, 60_000)
 
   test("rejects a query of another key in upsert, also of a singleton table, of a consumer with strictNullChecks alone", () => {
@@ -279,12 +254,6 @@ describe.each(["node", "bun"])("%s", runtime => {
       })
     },
   )
-
-  test("runs a consumer of the postgres.js 3 driver", () => {
-    expect(JSON.parse(run([runtime, "postgres-js-v3/consumer.ts"], consumer))).toEqual({
-      acquireAfterClose: "Cannot acquire a connection: the driver is closed",
-    })
-  })
 
   test("runs a consumer of the node-postgres driver, which recognizes the errors of its copy of kern-orm", () => {
     expect(JSON.parse(run([runtime, "node-postgres.ts"], consumer))).toEqual({

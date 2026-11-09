@@ -37,7 +37,6 @@ async function execute(
 
 export function acmeDriver(client: AcmeClient): Driver {
   return {
-    closesReservedConnections: true,
     execute: statement => execute(client, statement),
     executeScript: text => classifyError(client.simpleQuery(text)),
     async acquire() {
@@ -68,7 +67,6 @@ Follow these rules in the driver:
 - Reject every statement on a reserved connection after the connection is lost, rather than send it on a new connection.
 - Replace an idle connection whose backend exited, such as after a restart of the server, for the next statement once your client has read that the connection closed.
 - When `release` gets a failure, the last statement on the connection failed: return the connection to the pool only once it is idle, and never return a lost one.
-- Set `closesReservedConnections` to `false` only if your client cannot close a reserved connection, such as postgres.js 3: such a driver keeps the connection reserved when it cannot tell that the connection is idle.
 - In `close`, reject new statements and scripts on the pool and new connections at once with `ConnectionError`, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
 
 ## Test the driver
@@ -102,6 +100,5 @@ With `bun:test` and Vitest, pass `{ describe, it, before: beforeAll, after: afte
 
 Point the clients to an empty database; the tests leave it unchanged.
 Pass `max` of `createDriver` to your client: the tests choose how many connections each of them needs.
-For a driver whose `closesReservedConnections` is `false`, `describeDriverContract` leaves out the tests of a reserved connection left in a transaction or lost.
 
 To skip the tests without a database, call `describeDriverContract` in a block that your test runner skips, such as `describe("driver", { skip: !DATABASE_URL }, () => { ... })` of `node:test`, or `describe.skipIf(!DATABASE_URL)("driver", () => { ... })` of `bun:test` and Vitest.

@@ -11,9 +11,8 @@
   A reserved connection is released with the failure of its last statement when that statement failed, such as the coordinator releases a transaction connection with the failure of `BEGIN`, `COMMIT`, or `ROLLBACK`; the driver returns such a connection to its pool only once it is idle, and never returns a lost one.
   A `QueryError` of `COMMIT` or `ROLLBACK` does not tell that the connection is idle: a statement timeout or a cancel that comes after PostgreSQL reads the statement and before it runs leaves the transaction aborted, so the coordinator passes it as a failure too ([decision](../decisions/drivers/release-after-query-error.md)).
   It replaces an idle connection whose backend exited, such as after a restart of the server, for the next statement once the client has read that the connection closed.
-  `closesReservedConnections` of a driver tells whether it closes a reserved connection that it cannot safely return to the pool; a driver over a client that cannot close a reserved connection, such as postgres.js 3, keeps it reserved instead.
   Closing a driver rejects a new statement or script on the pool and a new connection from its call with `ConnectionError`, waits for the statements already sent and for the transactions on its reserved connections to end, including those still waiting for a connection, and then closes the connections.
-- A driver package supports one major version of its client: a package without a suffix, such as `@kern-orm/postgres-js` or `@kern-orm/node-postgres`, the latest major version, and a package named with the suffix of an older major version, such as `@kern-orm/postgres-js-v3`, that version.
+- A driver package supports one major version of its client: a package without a suffix, such as `@kern-orm/postgres-js` or `@kern-orm/node-postgres`, the latest major version, and a package named with the suffix of an older major version, such as `@kern-orm/node-postgres-v8` once `pg` 9 is released, that version.
   A new major version of a client moves the package without a suffix to it, and a driver for the previous major version moves to a package with its suffix.
 
 ## Errors
@@ -53,7 +52,6 @@ A driver follows the [contract of package compatibility](compatibility.md), and 
 - It takes the functions of a test runner, as `createTestHelpers` takes its hooks, and asserts with `node:assert/strict`, so that it runs with `node:test`, `bun:test`, and Vitest.
   The driver packages run it with `bun:test` and Vitest from the sources, and the package test with `node:test` against the packed packages.
 - It has no check of `DATABASE_URL`: the caller declares it in a block that skips it, in the way of its test runner.
-- It reads `closesReservedConnections` of a driver that it creates, and leaves out the tests of a reserved connection left in a transaction or lost for a driver that cannot close one.
 
 ## postgres.js
 
@@ -68,22 +66,6 @@ A driver follows the [contract of package compatibility](compatibility.md), and 
 - It executes a script with `.simple()` of `unsafe` without parameters, and reads its results through `.raw()`, so that the parsers of the client never run on them.
 - It throws a `TypeError` at creation for a client with `transform.column.from` or `transform.row.from`, such as of `postgres.camel`: postgres.js applies them also to the results of `.raw()`, which would rename the result columns that kern-orm reads values by, or replace the rows.
   It accepts a client with `transform.value.from`, which postgres.js skips for `.raw()`.
-
-## postgres.js 3
-
-`@kern-orm/postgres-js-v3` requires postgres.js 3.4.9, and sends parameters, statements, and scripts, classifies errors, and checks the transforms of its client as `@kern-orm/postgres-js` does; postgres.js 3.4.9 reads the `simple` option of `unsafe`, though its types omit it.
-postgres.js 3.4.9 has bugs that postgres.js 4 fixes, and the driver works around those it can:
-
-- When a connection breaks inside a transaction, including one of its own `sql.begin`, the next statement on it throws an uncaught exception ([#1199](https://github.com/porsager/postgres/issues/1199), [#1208](https://github.com/porsager/postgres/issues/1208), [#1248](https://github.com/porsager/postgres/issues/1248)).
-  Node.js terminates the process; Bun 1.4.4 reports the exception and keeps running with a pool that never settles further queries.
-  The driver cannot detect the loss before that statement.
-- Releasing a lost reserved connection breaks the pool the same way, and postgres.js cannot close a reserved connection, so the driver leaves a connection that may be lost reserved; a connection that is alive in an unknown transaction state, such as after a client-side error building `COMMIT`, stays reserved too.
-  After a `QueryError`, the driver rolls back a failed transaction and releases the connection; a failure of the statements that do it rejects `release`, classified, and leaves the connection reserved.
-- `sql.end()` never resolves when a reserved connection is released after it starts ([#1261](https://github.com/porsager/postgres/issues/1261)), so closing the driver:
-  - rejects a statement or script on the pool and acquiring a connection once it starts;
-  - waits for the reserved connections the driver will release, and for the transactions waiting for a connection; once no running transaction of the driver holds a connection, those transactions get `closeTimeout` to get one;
-  - ends the client with `closeTimeout` when a connection is kept reserved or a transaction still waits, which terminates an alive kept connection and rejects the waiting transaction.
-- With `fetch_types: false`, the first `sql.reserve()` on a pool without an open connection never settles, so the first transaction waits until the driver closes ([#1219](https://github.com/porsager/postgres/issues/1219)); users must not disable `fetch_types`.
 
 ## node-postgres
 

@@ -217,7 +217,6 @@ describe("runCli without a database", () => {
   // A database that rejects every statement, which the commands below never run.
   const db = createDatabase({
     driver: {
-      closesReservedConnections: true,
       execute: rejectStatement,
       executeScript: rejectStatement,
       acquire: rejectStatement,

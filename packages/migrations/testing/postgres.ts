@@ -86,7 +86,6 @@ function connect(test: boolean): PostgresContext {
 /** Wraps `driver` to pass the text of every statement and script it executes, on the pool or on a connection, to `record`. */
 function recordStatements(driver: Driver, record: (text: string) => void): Driver {
   return {
-    closesReservedConnections: driver.closesReservedConnections,
     execute(statement) {
       record(statement.text)
       return driver.execute(statement)

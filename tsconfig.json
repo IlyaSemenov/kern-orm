@@ -13,8 +13,7 @@
       "@kern-orm/migrations/cli": ["./packages/migrations/src/cli.ts"],
       "@kern-orm/migrations/testing": ["./packages/migrations/src/testing.ts"],
       "@kern-orm/node-postgres": ["./packages/node-postgres/src/index.ts"],
-      "@kern-orm/postgres-js": ["./packages/postgres-js/src/index.ts"],
-      "@kern-orm/postgres-js-v3": ["./packages/postgres-js-v3/src/index.ts"]
+      "@kern-orm/postgres-js": ["./packages/postgres-js/src/index.ts"]
     }
   },
   "include": [

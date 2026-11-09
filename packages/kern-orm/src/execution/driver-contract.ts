@@ -374,88 +374,85 @@ export function describeDriverContract(
       }
     })
 
-    // A driver that cannot close a reserved connection keeps such a connection reserved.
-    if (driver.closesReservedConnections) {
-      for (const [state, text] of [
-        ["an open", "SELECT 1"],
-        ["a failed", "SELECT 1/0"],
-      ] as const) {
-        it(`does not return a connection in ${state} transaction to the pool`, async () => {
-          // One pooled connection makes the next statement run on the connection that follows the released one.
-          const driver = createDriver({ max: 1 })
-          try {
-            const connection = await driver.acquire()
-            await connection.execute(createStatement("BEGIN"))
-            await connection.execute(createStatement(text)).catch(() => {})
-            await connection.release({ error: new Error("failure") })
-
-            await assert.rejects(
-              driver.execute(createStatement("SAVEPOINT probe")),
-              /transaction blocks/,
-            )
-          } finally {
-            await driver.close()
-          }
-        })
-      }
-
-      it("rejects a transaction whose connection is lost and keeps the pool usable", async () => {
-        // One pooled connection makes the next transaction run on the connection that replaces the lost one.
-        const single = createDatabase({ driver: createDriver({ max: 1 }) })
-        const { selectValue: selectValueOnSingle } = createStatementRunners(single)
+    for (const [state, text] of [
+      ["an open", "SELECT 1"],
+      ["a failed", "SELECT 1/0"],
+    ] as const) {
+      it(`does not return a connection in ${state} transaction to the pool`, async () => {
+        // One pooled connection makes the next statement run on the connection that follows the released one.
+        const driver = createDriver({ max: 1 })
         try {
-          const transaction = single.transaction(async () => {
-            const pid = await selectValueOnSingle("SELECT pg_backend_pid()")
-            await selectValue("SELECT pg_terminate_backend($1)", [pid!])
-            await selectValueOnSingle("SELECT 1")
-          })
-          await assert.rejects(transaction, /Transaction rollback failed/)
+          const connection = await driver.acquire()
+          await connection.execute(createStatement("BEGIN"))
+          await connection.execute(createStatement(text)).catch(() => {})
+          await connection.release({ error: new Error("failure") })
 
-          assert.equal(
-            await single.transaction(() => selectValueOnSingle("SELECT 'usable'")),
-            "usable",
+          await assert.rejects(
+            driver.execute(createStatement("SAVEPOINT probe")),
+            /transaction blocks/,
           )
         } finally {
-          await single.close()
-        }
-      })
-
-      it("rejects a statement of a transaction whose connection is lost with ConnectionError", async () => {
-        const own = createDriver({ max: 1 })
-        try {
-          const connection = await own.acquire()
-          const { runStatement, selectValue: selectValueOnConnection } =
-            createStatementRunners(connection)
-          let failure: TransactionFailure | undefined
-          try {
-            await runStatement("BEGIN")
-            await runStatement("CREATE TEMP TABLE pg_lost_test (id integer) ON COMMIT DROP")
-            const pid = (await selectValueOnConnection("SELECT pg_backend_pid()"))!
-            // The timeout makes it wait for the backend to exit.
-            assert.equal(await selectValue("SELECT pg_terminate_backend($1, 5000)", [pid]), "t")
-            // The client reads that the connection closed before the next statement, as a client that reconnects would before sending it on a new connection.
-            await new Promise(resolve => setTimeout(resolve, 50))
-
-            // On a new connection, the statement would reject with QueryError, since the table belonged to the lost transaction.
-            const error = await runStatement("INSERT INTO pg_lost_test VALUES (1)").catch(
-              (error: unknown) => error,
-            )
-            failure = { error }
-            assert.ok(
-              error instanceof ConnectionError,
-              `Expected ConnectionError, got ${String(error)}`,
-            )
-          } catch (error) {
-            failure ??= { error }
-            throw error
-          } finally {
-            await connection.release(failure)
-          }
-        } finally {
-          await own.close()
+          await driver.close()
         }
       })
     }
+
+    it("rejects a transaction whose connection is lost and keeps the pool usable", async () => {
+      // One pooled connection makes the next transaction run on the connection that replaces the lost one.
+      const single = createDatabase({ driver: createDriver({ max: 1 }) })
+      const { selectValue: selectValueOnSingle } = createStatementRunners(single)
+      try {
+        const transaction = single.transaction(async () => {
+          const pid = await selectValueOnSingle("SELECT pg_backend_pid()")
+          await selectValue("SELECT pg_terminate_backend($1)", [pid!])
+          await selectValueOnSingle("SELECT 1")
+        })
+        await assert.rejects(transaction, /Transaction rollback failed/)
+
+        assert.equal(
+          await single.transaction(() => selectValueOnSingle("SELECT 'usable'")),
+          "usable",
+        )
+      } finally {
+        await single.close()
+      }
+    })
+
+    it("rejects a statement of a transaction whose connection is lost with ConnectionError", async () => {
+      const own = createDriver({ max: 1 })
+      try {
+        const connection = await own.acquire()
+        const { runStatement, selectValue: selectValueOnConnection } =
+          createStatementRunners(connection)
+        let failure: TransactionFailure | undefined
+        try {
+          await runStatement("BEGIN")
+          await runStatement("CREATE TEMP TABLE pg_lost_test (id integer) ON COMMIT DROP")
+          const pid = (await selectValueOnConnection("SELECT pg_backend_pid()"))!
+          // The timeout makes it wait for the backend to exit.
+          assert.equal(await selectValue("SELECT pg_terminate_backend($1, 5000)", [pid]), "t")
+          // The client reads that the connection closed before the next statement, as a client that reconnects would before sending it on a new connection.
+          await new Promise(resolve => setTimeout(resolve, 50))
+
+          // On a new connection, the statement would reject with QueryError, since the table belonged to the lost transaction.
+          const error = await runStatement("INSERT INTO pg_lost_test VALUES (1)").catch(
+            (error: unknown) => error,
+          )
+          failure = { error }
+          assert.ok(
+            error instanceof ConnectionError,
+            `Expected ConnectionError, got ${String(error)}`,
+          )
+        } catch (error) {
+          failure ??= { error }
+          throw error
+        } finally {
+          await connection.release(failure)
+        }
+      } finally {
+        await own.close()
+      }
+    })
 
     it("replaces an idle connection whose backend exited", async () => {
       const own = createDriver({ max: 2 })

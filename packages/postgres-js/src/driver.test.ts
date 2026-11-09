@@ -74,12 +74,6 @@ it("executes a script with the simple protocol, which takes several statements",
   expect(sent).toEqual([])
 })
 
-it("reports that it closes a reserved connection", () => {
-  const { driver } = createFakeClient()
-
-  expect(driver.closesReservedConnections).toBe(true)
-})
-
 describe("transforms of the client", () => {
   // The driver reads the transforms at creation, so the clients never connect.
   it.each([

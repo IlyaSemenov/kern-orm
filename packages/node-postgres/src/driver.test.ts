@@ -119,12 +119,6 @@ it("executes a script with the simple protocol, which takes several statements",
   expect(queries[0]!.types!.getTypeParser()("1")).toBe("1")
 })
 
-it("reports that it closes a reserved connection", () => {
-  const { driver } = createFakeDriver()
-
-  expect(driver.closesReservedConnections).toBe(true)
-})
-
 describe("connection", () => {
   it("rejects a failure to get one with ConnectionError whatever its fields, such as a translated FATAL of a missing database", async () => {
     const failure = Object.assign(new Error('database "app" does not exist'), {

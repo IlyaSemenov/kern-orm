@@ -41,7 +41,7 @@
     "postgres": "catalog:"
   },
   "peerDependencies": {
-    "kern-orm": ">=0.8.0 <1",
+    "kern-orm": ">=0.9.0 <1",
     "postgres": "^4.0.0"
   },
   "engines": {

@@ -14,7 +14,6 @@ const root = join(import.meta.dir, "../../../..")
 // The companion packages, with the companion packages that the consumer of each also installs.
 const companionPackages: { dir: string; dependencies?: string[] }[] = [
   { dir: "packages/postgres-js" },
-  { dir: "packages/postgres-js-v3" },
   { dir: "packages/node-postgres" },
   { dir: "packages/migrations", dependencies: ["packages/postgres-js"] },
 ]
