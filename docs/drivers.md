@@ -3,15 +3,47 @@
 kern-orm runs queries through a driver for the PostgreSQL client of your application.
 Install the driver for your client, and pass it to `createDatabase`:
 
-- postgres.js 4: `@kern-orm/postgres-js`, as in [Getting Started](./getting-started#connect).
-- postgres.js 3: `@kern-orm/postgres-js-v3`, described below.
-- node-postgres: `@kern-orm/node-postgres`, described below.
+- [postgres.js 4](#postgres-js-4): `@kern-orm/postgres-js`.
+- [postgres.js 3](#postgres-js-3): `@kern-orm/postgres-js-v3`.
+- [node-postgres](#node-postgres): `@kern-orm/node-postgres`.
 
 For another client, [write a driver](./custom-drivers).
 
-## Transforms of postgres.js
+## postgres.js 4
 
-kern-orm reads results as PostgreSQL returns them, so create the postgres.js client of the driver without transforms of the column names or rows of results, such as `postgres.camel`.
+If your application uses [postgres.js](https://github.com/porsager/postgres) 4, install `@kern-orm/postgres-js`:
+
+::: code-group
+
+```sh [npm]
+npm install kern-orm @kern-orm/postgres-js postgres
+```
+
+```sh [pnpm]
+pnpm add kern-orm @kern-orm/postgres-js postgres
+```
+
+```sh [bun]
+bun add kern-orm @kern-orm/postgres-js postgres
+```
+
+:::
+
+Pass your client to `postgresJsDriver`:
+
+```ts
+import { postgresJsDriver } from "@kern-orm/postgres-js"
+import { createDatabase } from "kern-orm"
+import postgres from "postgres"
+
+export const database = createDatabase({
+  driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
+})
+```
+
+`database.close()` ends the client, so do not call `sql.end()` yourself.
+
+kern-orm reads results as PostgreSQL returns them, so create the client without transforms of the column names or rows of results, such as `postgres.camel`.
 To name the columns of your tables in snake case, use the [naming conventions](./schemas#naming-conventions) of kern-orm instead, and give other code that relies on such a transform a client of its own.
 
 ## postgres.js 3
@@ -45,6 +77,8 @@ export const database = createDatabase({
   driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
 })
 ```
+
+Follow the rules of [postgres.js 4](#postgres-js-4): do not call `sql.end()` yourself, since `database.close()` ends the client, and create the client without transforms of the column names or rows of results.
 
 Upgrade to postgres.js 4 when you can: when a connection of postgres.js 3 breaks inside a transaction, Node.js terminates the process, and Bun leaves the client unable to run further queries.
 
