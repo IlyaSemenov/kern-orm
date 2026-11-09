@@ -4,10 +4,10 @@ import type { AsyncLocalStorage } from "node:async_hooks"
 
 import type { IsolationLevel } from "../database"
 import type { Driver } from "../driver"
-import type { OpenedTestFixture, PendingTestFixture } from "../testing"
+import type { OpenedTestFixture, PendingTestFixture, TestFixtureOptions } from "../testing"
 
 import { settleUnlessAborted } from "./abort"
-import type { Outcome, Rejection, TransactionLevel } from "./level"
+import type { LevelOptions, Outcome, Rejection, TransactionLevel } from "./level"
 import {
   combineRejections,
   createLevel,
@@ -57,14 +57,14 @@ export class TestFixtureStack {
   }
 
   /**
-   * Starts opening a test fixture at `isolation`, see `startTestFixture` of the coordinator, or, given `refusal`, returns a fixture that rejects with it.
+   * Starts opening a test fixture with `options`, see `startTestFixture` of the coordinator, or, given `refusal`, returns a fixture that rejects with it.
    *
    * The `close` of a refused fixture resolves once the earlier changes of the stack end.
    */
   start<T>(
     seed: () => Promise<T>,
     refusal: Error | undefined,
-    isolation: IsolationLevel | undefined,
+    options: TestFixtureOptions | undefined,
   ): PendingTestFixture<T> {
     // A fixture goes through these stages, and `close` can be called at any of them:
     // 1. Queued: its opening waits in the queue of the fixture stack. Closing skips the opening.
@@ -136,8 +136,8 @@ export class TestFixtureStack {
       // Stage 2.
       const parent = this.#fixtures.at(-1)
       const started = parent
-        ? await this.#startInFixture(parent, undefined, isolation)
-        : await this.#beginFixture(isolation)
+        ? await this.#startInFixture(parent, options)
+        : await this.#beginFixture(options?.isolation)
       // A fixture has no callback and no context: it stays open until it is closed.
       started.state = "open"
       // Stage 3: `outcome` is `undefined` when closing won the race, while `seed` may still run, and possibly never settle.
@@ -201,10 +201,8 @@ export class TestFixtureStack {
    * Aborted while it waits for its turn, it rejects at once and its change starts nothing, so that a test that has already ended never preempts the active level of the fixture.
    * From its turn on, it settles with its change.
    */
-  startTestLevel(
-    signal: AbortSignal | undefined,
-    isolation: IsolationLevel | undefined,
-  ): Promise<TransactionLevel | undefined> {
+  startTestLevel(options: LevelOptions | undefined): Promise<TransactionLevel | undefined> {
+    const signal = options?.signal
     let waiting = true
     const start = () =>
       this.#enqueue(() => {
@@ -213,7 +211,7 @@ export class TestFixtureStack {
         }
         waiting = false
         const fixture = this.#fixtures.at(-1)
-        return fixture && this.#startInFixture(fixture, signal, isolation)
+        return fixture && this.#startInFixture(fixture, options)
       })
     return signal ? settleUnlessAborted(start, signal, () => waiting) : start()
   }
@@ -318,16 +316,16 @@ export class TestFixtureStack {
   }
 
   /**
-   * Starts a nested level of a test fixture at `isolation`, preempting its active one.
+   * Starts a nested level of a test fixture with `options`, preempting its active one.
    *
    * A fixture runs one nested level at a time, so a new one ends the previous one, such as a test that timed out.
    * A level whose `signal` aborts while it preempts rejects with its reason instead of starting, and a failure to start after the abort suppresses the reason.
    */
   async #startInFixture(
     fixture: TransactionLevel,
-    signal: AbortSignal | undefined,
-    isolation: IsolationLevel | undefined,
+    options: LevelOptions | undefined,
   ): Promise<TransactionLevel> {
+    const signal = options?.signal
     if (fixture.child) {
       const cleanup = await endLevel(fixture.child, false, "preemption")
       // The level that preempts reports a failure to end the preempted one, even when the fixture recovered from it.
@@ -345,6 +343,6 @@ export class TestFixtureStack {
       throw suppressAbortReason(unavailable, signal)
     }
     signal?.throwIfAborted()
-    return startNestedLevel(fixture, false, signal, undefined, isolation)
+    return startNestedLevel(fixture, false, options)
   }
 }

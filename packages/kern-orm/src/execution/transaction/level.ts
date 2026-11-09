@@ -46,6 +46,19 @@ export interface TransactionLevel {
   isolation: string | undefined
 }
 
+/** Options of starting a level; the options of a test transaction and of a test fixture pass as they are, so their fields keep these names. */
+export interface LevelOptions {
+  /** Abort signal of a test level. */
+  readonly signal?: AbortSignal
+  /** Settings that the level sets until it ends. */
+  readonly settings?: readonly LevelSetting[]
+  /** Isolation level of the transaction of the level. */
+  readonly isolation?: IsolationLevel
+}
+
+/** Options of a level started without options, shared so that such a start allocates none. */
+export const noLevelOptions: LevelOptions = {}
+
 /** Error to reject with; a later cleanup error suppresses it instead of replacing it. */
 export interface Rejection {
   readonly error: unknown
@@ -114,7 +127,7 @@ export function createLevel(
 }
 
 /**
- * Starts a nested level of `parent` with `settings`, at the isolation level of its transaction, rejecting when it cannot start.
+ * Starts a nested level of `parent` with the settings of `options`, at the isolation level of its transaction, rejecting when it cannot start.
  *
  * `transaction` tells whether the level is a transaction of `transaction` rather than a level of the test helpers.
  * A level whose `isolation` differs from that of its transaction rejects without `SAVEPOINT`, since PostgreSQL sets the isolation level only for a whole transaction.
@@ -125,9 +138,7 @@ export function createLevel(
 export async function startNestedLevel(
   parent: TransactionLevel,
   transaction: boolean,
-  signal?: AbortSignal,
-  settings?: readonly LevelSetting[],
-  isolation?: IsolationLevel,
+  { signal, settings, isolation }: LevelOptions = noLevelOptions,
 ): Promise<TransactionLevel> {
   // Reserving the level before SAVEPOINT is sent keeps statements of the parent from running inside it.
   const level = createLevel(parent.connection, parent, transaction)
