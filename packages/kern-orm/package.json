@@ -42,13 +42,7 @@
   },
   "devDependencies": {
     "@kern-orm/postgres-js": "workspace:*",
-    "kern-orm-0.2.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.2.0.tgz",
-    "kern-orm-0.3.0": "https://registry.npmjs.org/kern-orm/-/kern-orm-0.3.0.tgz",
-    "migrations-published": "https://registry.npmjs.org/@kern-orm/migrations/-/migrations-0.3.1.tgz",
-    "node-postgres-published": "https://registry.npmjs.org/@kern-orm/node-postgres/-/node-postgres-0.1.0.tgz",
     "postgres": "catalog:",
-    "postgres-js-published": "https://registry.npmjs.org/@kern-orm/postgres-js/-/postgres-js-0.1.2.tgz",
-    "postgres-js-v3-published": "https://registry.npmjs.org/@kern-orm/postgres-js-v3/-/postgres-js-v3-0.1.2.tgz",
     "typescript-6": "catalog:"
   },
   "engines": {

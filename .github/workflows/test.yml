@@ -49,6 +49,9 @@ jobs:
       - name: Build and test packed packages
         run: bun run test:package
 
+      - name: Test companion packages with versions of kern-orm from npm
+        run: bun run test:compat
+
       - name: Typecheck package
         run: bun run types
 

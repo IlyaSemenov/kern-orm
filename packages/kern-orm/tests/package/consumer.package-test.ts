@@ -2,46 +2,23 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { basename, dirname, join } from "node:path"
+import { dirname, join } from "node:path"
 
 import { build } from "esbuild"
 import { rolldown } from "rolldown"
 
+import { run } from "./run"
+
 const root = join(import.meta.dir, "../../../..")
-// The companion packages, with the packages of the client that their consumer installs, and the packed packages that it also installs.
-// `unpublished` marks a package before its first release, which has no published version to run.
-const companionPackages: {
-  dir: string
-  project: string
-  clients: string[]
-  dependencies?: string[]
-  unpublished?: boolean
-}[] = [
-  {
-    dir: "packages/postgres-js",
-    project: ".",
-    clients: ["postgres"],
-  },
-  {
-    dir: "packages/postgres-js-v3",
-    project: "postgres-js-v3",
-    clients: ["postgres"],
-  },
-  {
-    dir: "packages/node-postgres",
-    project: ".",
-    clients: ["pg", "@types/pg"],
-  },
-  {
-    dir: "packages/migrations",
-    project: ".",
-    clients: ["postgres"],
-    dependencies: ["@kern-orm/postgres-js"],
-  },
-]
 
 // Each packed package with the consumer project that installs it: the postgres.js 3 driver has a project of its own, whose `postgres` is postgres.js 3.
-const packages = [{ dir: "packages/kern-orm", project: "." }, ...companionPackages]
+const packages = [
+  { dir: "packages/kern-orm", project: "." },
+  { dir: "packages/postgres-js", project: "." },
+  { dir: "packages/postgres-js-v3", project: "postgres-js-v3" },
+  { dir: "packages/node-postgres", project: "." },
+  { dir: "packages/migrations", project: "." },
+]
 
 const compileOnlyOutput = {
   text: 'SELECT "form"."name" AS "name" FROM "form" AS "form" WHERE "form"."name" = $1',
@@ -59,73 +36,11 @@ const consumerOutput = {
 
 let consumer: string
 
-/** Returns the directory of a package installed under an alias in `kern-orm`. */
-function resolveAlias(alias: string): string {
-  return dirname(Bun.resolveSync(`${alias}/package.json`, import.meta.dir))
-}
-
-/** Returns the directory of the oldest `kern-orm` in the range of a companion package, installed under an alias named after its version. */
-async function resolveMinimumKernOrm(dir: string): Promise<string> {
-  const { peerDependencies } = await Bun.file(join(root, dir, "package.json")).json()
-  const range: string = peerDependencies["kern-orm"]
-  const minimum = /^>=(\S+) <1$/.exec(range)?.[1]
-  if (minimum === undefined) {
-    throw new Error(`${dir} must require kern-orm by a range of the whole 0.x series, not ${range}`)
-  }
-  return resolveAlias(`kern-orm-${minimum}`)
-}
-
-/** Returns the project of a companion package in a compatibility scenario. */
-function getCompanionProject(scenario: string, dir: string): string {
-  return join(consumer, scenario, basename(dir))
-}
-
 /** Links a package installed in a workspace package into the node_modules of a project. */
 async function linkPackage(dir: string, name: string, project: string): Promise<void> {
   const target = join(project, "node_modules", name)
   await mkdir(dirname(target), { recursive: true })
   await symlink(join(root, dir, "node_modules", name), target)
-}
-
-/** Creates the project of a companion package in a compatibility scenario from the given copies of the package and `kern-orm`, with the packages of its client and the packed `dependencies`. */
-async function createCompanionProject(
-  scenario: string,
-  dir: string,
-  packagePath: string,
-  kernOrmPath: string,
-  clients: readonly string[],
-  dependencies: readonly string[] = [],
-): Promise<void> {
-  const { name } = await Bun.file(join(root, dir, "package.json")).json()
-  const project = getCompanionProject(scenario, dir)
-  await cp(packagePath, join(project, "node_modules", name), { recursive: true })
-  await cp(kernOrmPath, join(project, "node_modules/kern-orm"), { recursive: true })
-  for (const dependency of dependencies) {
-    await cp(
-      join(consumer, "node_modules", dependency),
-      join(project, "node_modules", dependency),
-      {
-        recursive: true,
-      },
-    )
-  }
-  for (const client of clients) {
-    await linkPackage(dir, client, project)
-  }
-  await cp(join(import.meta.dir, "fixtures/companion-consumers", basename(dir)), project, {
-    recursive: true,
-  })
-  await writeFile(
-    join(project, "tsconfig.json"),
-    JSON.stringify({
-      extends: "../../tsconfig.json",
-      compilerOptions: {
-        noEmit: true,
-        emitDeclarationOnly: false,
-      },
-      include: ["*.ts"],
-    }),
-  )
 }
 
 beforeAll(async () => {
@@ -149,27 +64,6 @@ beforeAll(async () => {
   await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
   await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
   await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
-  for (const { dir, project, clients, dependencies, unpublished } of companionPackages) {
-    const { name } = await Bun.file(join(root, dir, "package.json")).json()
-    await createCompanionProject(
-      "minimum-kern-orm",
-      dir,
-      join(consumer, project, "node_modules", name),
-      await resolveMinimumKernOrm(dir),
-      clients,
-      dependencies,
-    )
-    if (!unpublished) {
-      await createCompanionProject(
-        "published-package",
-        dir,
-        resolveAlias(`${basename(dir)}-published`),
-        join(consumer, "node_modules/kern-orm"),
-        clients,
-        dependencies,
-      )
-    }
-  }
   await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
   await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }))
   await writeFile(
@@ -389,32 +283,6 @@ describe.each(["node", "bun"])("%s", runtime => {
   test("runs a consumer of the node-postgres driver", () => {
     expect(JSON.parse(run([runtime, "node-postgres.ts"], consumer))).toEqual({
       acquireAfterClose: "Cannot acquire a connection: the driver is closed",
-    })
-  })
-})
-
-describe.each(companionPackages)("$dir", ({ dir, unpublished }) => {
-  test("declares the minimum version of kern-orm as the minimum of its range", async () => {
-    const { version } = await Bun.file(
-      join(await resolveMinimumKernOrm(dir), "package.json"),
-    ).json()
-    const { peerDependencies } = await Bun.file(join(root, dir, "package.json")).json()
-    expect(peerDependencies["kern-orm"]).toBe(`>=${version} <1`)
-  })
-
-  // The current companion package with the oldest `kern-orm` in its range, and its oldest published version that must keep working with the current `kern-orm`.
-  const scenarios = unpublished ? ["minimum-kern-orm"] : ["minimum-kern-orm", "published-package"]
-  describe.each(scenarios)("%s", scenario => {
-    test("type-checks a consumer", () => {
-      run([join(root, "node_modules/.bin/tsc"), "-p", getCompanionProject(scenario, dir)], consumer)
-    }, 60_000)
-
-    describe.each(["node", "bun"])("%s", runtime => {
-      test.skipIf(!process.env.DATABASE_URL)("runs statements in PostgreSQL", async () => {
-        const project = getCompanionProject(scenario, dir)
-        const output = run([runtime, "consumer.ts"], project)
-        expect(JSON.parse(output)).toEqual(await Bun.file(join(project, "expected.json")).json())
-      })
     })
   })
 })
@@ -763,18 +631,4 @@ function getTypeErrorReasons(tsc: string[], config: string): string[] {
     .trim()
     .split(/\n(?=\S)/)
     .map(error => /Property '"([^"]+)"' is missing/.exec(error)?.[1] ?? error.split("\n")[0]!)
-}
-
-/**
- * Runs a command in `cwd` and returns its standard output, throwing with its standard error on failure.
- *
- * `timeout` limits a command that can hang, in milliseconds: `spawnSync` blocks the event loop, so the timeout of the calling test cannot stop it.
- */
-function run(cmd: string[], cwd: string, timeout?: number): string {
-  const result = Bun.spawnSync({ cmd, cwd, timeout })
-  if (result.exitCode !== 0) {
-    const outcome = result.exitedDueToTimeout ? "timed out" : "failed"
-    throw new Error(`${cmd.join(" ")} ${outcome}:\n${result.stdout}${result.stderr}`)
-  }
-  return result.stdout.toString()
 }

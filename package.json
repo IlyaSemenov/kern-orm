@@ -23,8 +23,9 @@
     "lint:check": "oxlint && oxfmt --check",
     "prepare": "lefthook install",
     "release": "changesets-local",
-    "release:check": "bun run types && bun run test && bun run test:node && bun run test:package && bun run docs:build",
+    "release:check": "bun run types && bun run test && bun run test:node && bun run test:package && bun run test:compat && bun run docs:build",
     "test": "bun test",
+    "test:compat": "bun run build && bun test ./packages/kern-orm/tests/package/compatibility.package-test.ts",
     "test:node": "vitest run",
     "test:package": "bun run build && bun test ./packages/kern-orm/tests/package/consumer.package-test.ts",
     "types": "bun check",
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@arethetypeswrong/core": "^0.18.5",
     "@changesets/cli": "^3.0.3",
+    "@changesets/get-release-plan": "^5.0.2",
     "@ilyasemenov/oxc-config": "^0.1.1",
     "@tsconfig/bun": "^1.0.11",
     "@types/bun": "^1.4.4",
