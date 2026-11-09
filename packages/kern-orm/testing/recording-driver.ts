@@ -67,6 +67,7 @@ export function createRecordingDriver(options: RecordingDriverOptions = {}) {
   }
 
   const driver: Driver = {
+    closesReservedConnections: true,
     execute: statement => execute("pool", statement),
     executeScript: text => executeScript("pool", text),
     async acquire() {

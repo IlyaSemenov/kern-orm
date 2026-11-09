@@ -36,7 +36,6 @@ describe.skipIf(!DATABASE_URL)("postgresJsDriver", () => {
             },
           }),
         ),
-      closesReservedConnections: false,
     },
     { describe, it, before: beforeAll, after: afterAll },
   )

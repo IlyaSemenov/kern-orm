@@ -56,6 +56,7 @@ function createDriver(result: DriverResult): Driver {
   const reject = () =>
     Promise.reject(new Error("The driver of the runtime benchmarks only executes statements"))
   return {
+    closesReservedConnections: true,
     execute: () => Promise.resolve(result),
     executeScript: reject,
     acquire: reject,

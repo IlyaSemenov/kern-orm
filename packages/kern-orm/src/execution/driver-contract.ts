@@ -21,8 +21,6 @@ export interface DriverContractOptions {
   createDriver(options: { max: number }): Driver
   /** Creates a driver over a new client of the test database whose parsers of result values throw; for a client without parsers, the same as `createDriver`. */
   createDriverWithFailingParsers(): Driver
-  /** Whether the client can close a reserved connection, so that the driver gets rid of a connection left in a transaction or lost; `false` leaves out the tests of it. */
-  closesReservedConnections: boolean
 }
 
 /**
@@ -57,12 +55,13 @@ export function describeDriverContract(
   options: DriverContractOptions,
   runner: DriverContractRunner,
 ): void {
-  const { createDriver, createDriverWithFailingParsers, closesReservedConnections } = options
+  const { createDriver, createDriverWithFailingParsers } = options
   const { describe, it, before, after } = runner
 
   describe("driver contract", () => {
     // Two connections let a statement on the pool run beside a transaction, and concurrent transactions wait for each other.
-    const database = createDatabase({ driver: createDriver({ max: 2 }) })
+    const driver = createDriver({ max: 2 })
+    const database = createDatabase({ driver })
     after(() => database.close())
     const { runStatement, selectValue } = createStatementRunners(database)
 
@@ -291,7 +290,8 @@ export function describeDriverContract(
       }
     })
 
-    if (closesReservedConnections) {
+    // A driver that cannot close a reserved connection keeps such a connection reserved.
+    if (driver.closesReservedConnections) {
       for (const [state, text] of [
         ["an open", "SELECT 1"],
         ["a failed", "SELECT 1/0"],

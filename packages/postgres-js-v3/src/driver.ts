@@ -144,6 +144,7 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
   }
 
   return {
+    closesReservedConnections: false,
     async execute(statement) {
       assertOpen("execute a statement")
       return execute(sql, statement)

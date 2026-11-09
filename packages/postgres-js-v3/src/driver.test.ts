@@ -105,6 +105,12 @@ function createFakeClient(respond: (text: string) => void, options?: PostgresJsD
   }
 }
 
+it("reports that it cannot close a reserved connection", () => {
+  const { driver } = createFakeClient(() => {})
+
+  expect(driver.closesReservedConnections).toBe(false)
+})
+
 describe("release after a failed end of a transaction", () => {
   it("releases an idle connection after a server error", async () => {
     const { driver, sent, isReleased } = createFakeClient(() => {})

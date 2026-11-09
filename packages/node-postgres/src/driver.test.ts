@@ -119,6 +119,12 @@ it("executes a script with the simple protocol, which takes several statements",
   expect(queries[0]!.types!.getTypeParser()("1")).toBe("1")
 })
 
+it("reports that it closes a reserved connection", () => {
+  const { driver } = createFakeDriver()
+
+  expect(driver.closesReservedConnections).toBe(true)
+})
+
 describe("connection", () => {
   it("runs its statements and scripts one at a time in the order of calls", async () => {
     const answers: PromiseWithResolvers<unknown>[] = []

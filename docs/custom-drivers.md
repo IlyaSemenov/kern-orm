@@ -24,6 +24,7 @@ async function execute(
 
 export function acmeDriver(client: AcmeClient): Driver {
   return {
+    closesReservedConnections: true,
     execute: statement => execute(client, statement),
     executeScript: text => client.simpleQuery(text),
     async acquire() {
@@ -47,6 +48,7 @@ Follow these rules in the driver:
 - Send a statement with the extended protocol also without parameters, so that PostgreSQL rejects a text of several statements, and a script with the simple protocol.
 - Run the statements and scripts of a reserved connection one at a time in the order of calls.
 - When `release` gets a failure, return the connection to the pool only once it is idle, and never return a lost one.
+- Set `closesReservedConnections` to `false` only if your client cannot close a reserved connection, such as postgres.js 3: such a driver keeps the connection reserved when it cannot tell that the connection is idle.
 - In `close`, reject new statements and scripts on the pool and new connections at once, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
 
 ## Test the driver
@@ -71,7 +73,6 @@ describeDriverContract(
           },
         }),
       ),
-    closesReservedConnections: true,
   },
   { describe, it, before, after },
 )
@@ -81,7 +82,6 @@ With `bun:test` and Vitest, pass `{ describe, it, before: beforeAll, after: afte
 
 Point the clients to an empty database; the tests leave it unchanged.
 Pass `max` of `createDriver` to your client: the tests choose how many connections each of them needs.
+For a driver whose `closesReservedConnections` is `false`, `describeDriverContract` leaves out the tests of a connection left in a transaction or lost.
 
 To skip the tests without a database, call `describeDriverContract` in a block that your test runner skips, such as `describe("driver", { skip: !DATABASE_URL }, () => { ... })` of `node:test`, or `describe.skipIf(!DATABASE_URL)("driver", () => { ... })` of `bun:test` and Vitest.
-
-Set `closesReservedConnections` to `false` only if your client cannot close a reserved connection, such as postgres.js 3: such a driver keeps the connection reserved when it cannot tell that the connection is idle, and the tests of a connection left in a transaction or lost do not run.

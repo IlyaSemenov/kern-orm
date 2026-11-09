@@ -81,6 +81,7 @@ describe("emitted declarations of a converted query", () => {
   test("keep its result and the relations it selects", () => {
     const database = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),
@@ -98,6 +99,7 @@ describe("emitted declarations of a converted query", () => {
   test("keep what a helper of map gives on a query of a table and on a mutation, without its marker", () => {
     const db = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),
@@ -120,6 +122,7 @@ describe("emitted schema declarations", () => {
     })
     const database = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),
@@ -138,6 +141,7 @@ describe("emitted declarations of queries of SQL text", () => {
   test("keep the records that they select and their rows mode", async () => {
     const database = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),
@@ -175,6 +179,7 @@ describe("emitted relation declarations", () => {
   test("select the records of relations, which only a Db of the relations executes", () => {
     const database = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),
@@ -229,6 +234,7 @@ describe("emitted declarations of queries that change rows", () => {
   test("return the selected fields of the changed rows, which only a Db of the relations executes", () => {
     const database = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),
@@ -269,6 +275,7 @@ describe("emitted declarations of a singleton table", () => {
   test("start a query of its row, which upsert inserts or updates", () => {
     const database = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),

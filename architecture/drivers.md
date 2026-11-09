@@ -7,6 +7,7 @@
   It also executes a script of several statements without parameters, which a statement with parameters cannot hold, since PostgreSQL takes several statements only in a query of its simple protocol; it ignores the results of a script.
   A connection runs its statements and scripts one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
   The coordinator releases a transaction connection whatever the outcome, passing the failure of `BEGIN`, `COMMIT`, or `ROLLBACK`; the driver returns such a connection to its pool only once it is idle, and never returns a lost one.
+  `closesReservedConnections` of a driver tells whether it closes a reserved connection that it cannot safely return to the pool; a driver over a client that cannot close a reserved connection, such as postgres.js 3, keeps it reserved instead.
   Closing a driver rejects a new statement or script on the pool and a new connection from its call, waits for the statements already sent and for the transactions on its reserved connections to end, including those still waiting for a connection, and then closes the connections.
 - A driver package supports one major version of its client: a package without a suffix, such as `@kern-orm/postgres-js` or `@kern-orm/node-postgres`, the latest major version, and a package named with the suffix of an older major version, such as `@kern-orm/postgres-js-v3`, that version.
   A new major version of a client moves the package without a suffix to it, and a driver for the previous major version moves to a package with its suffix.
@@ -22,7 +23,7 @@ A driver follows the [contract of package compatibility](compatibility.md), and 
 - It takes the functions of a test runner, as `createTestHelpers` takes its hooks, and asserts with `node:assert/strict`, so that it runs with `node:test`, `bun:test`, and Vitest.
   The driver packages run it with `bun:test` and Vitest from the sources, and the package test with `node:test` against the packed packages.
 - It has no check of `DATABASE_URL`: the caller declares it in a block that skips it, in the way of its test runner.
-- `closesReservedConnections` leaves out the tests of a connection left in a transaction or lost for a client that cannot close a reserved connection, such as postgres.js 3.
+- It reads `closesReservedConnections` of a driver that it creates, and leaves out the tests of a connection left in a transaction or lost for a driver that cannot close one.
 
 ## postgres.js
 

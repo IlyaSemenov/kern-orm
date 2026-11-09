@@ -27,7 +27,6 @@ describeDriverContract(
           },
         }),
       ),
-    closesReservedConnections: true,
   },
   { describe, it, before, after },
 )

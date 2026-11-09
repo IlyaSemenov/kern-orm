@@ -7,11 +7,11 @@ import { describeDriverContract } from "./driver-contract"
 /** Returns the names of the tests that `describeDriverContract` declares, which never run. */
 function collectTestNames(closesReservedConnections: boolean): string[] {
   const names: string[] = []
+  const createDriver = () => ({ ...createRecordingDriver().driver, closesReservedConnections })
   describeDriverContract(
     {
-      createDriver: () => createRecordingDriver().driver,
-      createDriverWithFailingParsers: () => createRecordingDriver().driver,
-      closesReservedConnections,
+      createDriver,
+      createDriverWithFailingParsers: createDriver,
     },
     {
       describe: (_name, body) => body(),
@@ -23,7 +23,7 @@ function collectTestNames(closesReservedConnections: boolean): string[] {
   return names
 }
 
-it("declares tests of a connection left in a transaction or lost only for a client that can close it", () => {
+it("declares tests of a connection left in a transaction or lost only for a driver that can close it", () => {
   const names = collectTestNames(true)
 
   expect(names.filter(name => !collectTestNames(false).includes(name))).toEqual([

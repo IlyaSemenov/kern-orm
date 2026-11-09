@@ -30,6 +30,8 @@ export interface DriverResult {
  * A driver sends parameters as text without a declared type, so that the statement text alone determines their types, and returns values as text without parsing them.
  */
 export interface Driver {
+  /** Whether the driver closes a reserved connection that it cannot return to the pool, such as one left in a transaction or lost; a driver over a client that cannot close one, such as postgres.js 3, keeps it reserved instead. */
+  readonly closesReservedConnections: boolean
   /** Executes a statement on any pooled connection. */
   execute(statement: SqlStatement): Promise<DriverResult>
   /** Executes a script of statements without parameters, such as DDL separated by semicolons, on any pooled connection, where PostgreSQL runs them in one implicit transaction. */

@@ -12,6 +12,7 @@ const rejectStatement = async (): Promise<never> => {
 }
 const database = createDatabase({
   driver: {
+    closesReservedConnections: true,
     execute: rejectStatement,
     executeScript: rejectStatement,
     acquire: rejectStatement,

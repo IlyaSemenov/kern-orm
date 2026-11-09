@@ -194,6 +194,7 @@ describe("the result of a function", () => {
   test("is the value of a column of an update", () => {
     const db = createDatabase({
       driver: {
+        closesReservedConnections: true,
         execute: () => Promise.reject(new Error("unused")),
         executeScript: () => Promise.reject(new Error("unused")),
         acquire: () => Promise.reject(new Error("unused")),

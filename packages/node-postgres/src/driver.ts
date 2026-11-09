@@ -148,6 +148,7 @@ export function nodePostgresDriver(pool: Pool): Driver {
   }
 
   return {
+    closesReservedConnections: true,
     execute: statement => runOnPool("execute a statement", client => execute(client, statement)),
     executeScript: text => runOnPool("execute a script", client => executeScript(client, text)),
     async acquire(): Promise<Connection> {

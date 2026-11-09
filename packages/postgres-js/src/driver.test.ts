@@ -63,6 +63,12 @@ it("executes a script with the simple protocol, which takes several statements",
   expect(sent).toEqual([])
 })
 
+it("reports that it closes a reserved connection", () => {
+  const { driver } = createFakeClient()
+
+  expect(driver.closesReservedConnections).toBe(true)
+})
+
 it("rejects acquiring a connection after closing starts", async () => {
   const { driver } = createFakeClient()
 
