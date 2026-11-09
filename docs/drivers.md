@@ -9,6 +9,11 @@ Install the driver for your client, and pass it to `createDatabase`:
 
 For another client, [write a driver](./custom-drivers).
 
+## Transforms of postgres.js
+
+kern-orm reads results as PostgreSQL returns them, so create the postgres.js client of the driver without transforms of the column names or rows of results, such as `postgres.camel`.
+To name the columns of your tables in snake case, use the [naming conventions](./schemas#naming-conventions) of kern-orm instead, and give other code that relies on such a transform a client of its own.
+
 ## postgres.js 3
 
 If your application uses postgres.js 3, install `@kern-orm/postgres-js-v3` instead of `@kern-orm/postgres-js`:

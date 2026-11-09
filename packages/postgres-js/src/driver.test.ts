@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { ConnectionError, createStatement, QueryError } from "kern-orm"
 import type { Sql } from "postgres"
+import postgres from "postgres"
 
 import { postgresJsDriver } from "./driver"
 
@@ -19,6 +20,7 @@ function createFakeClient({
   const scripts: string[] = []
   const answer = <T>(value: T) => (failure ? Promise.reject(failure) : Promise.resolve(value))
   const sql = {
+    options: { transform: { column: {}, value: {}, row: {} } },
     typed: (value: unknown, type: number) => ({ value, type }),
     unsafe(text: string, parameters?: unknown[], queryOptions?: unknown) {
       return {
@@ -76,6 +78,34 @@ it("reports that it closes a reserved connection", () => {
   const { driver } = createFakeClient()
 
   expect(driver.closesReservedConnections).toBe(true)
+})
+
+describe("transforms of the client", () => {
+  // The driver reads the transforms at creation, so the clients never connect.
+  it.each([
+    { name: "postgres.camel", transform: postgres.camel },
+    {
+      name: "a transform of column names",
+      transform: { column: (name: string) => name.toUpperCase() },
+    },
+    { name: "a transform of rows", transform: { row: (row: unknown) => row } },
+  ])("throws TypeError for a client with $name", async ({ transform }) => {
+    const sql = postgres({ transform })
+    try {
+      expect(() => postgresJsDriver(sql)).toThrow(TypeError)
+    } finally {
+      await sql.end()
+    }
+  })
+
+  it("accepts a client with a transform of values", async () => {
+    const sql = postgres({ transform: { value: () => "transformed" } })
+    try {
+      expect(() => postgresJsDriver(sql)).not.toThrow()
+    } finally {
+      await sql.end()
+    }
+  })
 })
 
 describe("errors", () => {

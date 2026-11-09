@@ -45,4 +45,32 @@ describe.skipIf(!DATABASE_URL)("postgresJsDriver", () => {
       await driver.close()
     }
   })
+
+  it("reads values as PostgreSQL returns them from a client that transforms values", async () => {
+    const sql = postgres(DATABASE_URL!, {
+      transform: { value: value => (value === "kern" ? "transformed" : value) },
+    })
+    const driver = postgresJsDriver(sql)
+    try {
+      const [own] = await sql`SELECT 'kern' AS value`
+      const pooled = await driver.execute(createStatement("SELECT 'kern'"))
+      const connection = await driver.acquire()
+      const reserved = await connection.execute(createStatement("SELECT 'kern'")).then(
+        async result => {
+          await connection.release()
+          return result
+        },
+        async (error: unknown) => {
+          await connection.release({ error })
+          throw error
+        },
+      )
+
+      // The client transforms the values of its own queries, but not those that the driver reads raw.
+      expect(own).toEqual({ value: "transformed" })
+      expect([pooled.rows, reserved.rows]).toEqual([[["kern"]], [["kern"]]])
+    } finally {
+      await driver.close()
+    }
+  })
 })

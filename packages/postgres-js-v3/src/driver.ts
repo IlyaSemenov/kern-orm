@@ -42,10 +42,19 @@ export interface PostgresJsDriverOptions {
 /**
  * Creates a kern-orm driver over a postgres.js 3 client; the client keeps managing its pool.
  *
+ * It throws a `TypeError` for a client that transforms the column names or rows of results, such as with `postgres.camel`.
  * postgres.js 3 cannot close a reserved connection: after a transaction fails to end, a lost connection is left to the pool to reconnect, and a connection that stays in an unknown state stays reserved.
  * Closing the driver ends the supplied client.
  */
 export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}): Driver {
+  // postgres.js applies these transforms also to the results of `.raw()`, which would rename the result columns that kern-orm reads values by, or replace the rows; it skips the transform of values there.
+  const { column, row } = sql.options.transform
+  if (column.from !== undefined || row.from !== undefined) {
+    throw new TypeError(
+      "Cannot create a driver of a postgres.js client that transforms the column names or rows of results, such as with postgres.camel: kern-orm reads results as PostgreSQL returns them",
+    )
+  }
+
   const { closeTimeout = 5 } = options
   // `sql.end()` of postgres.js 3.4.9 never resolves when a reserved connection is released after it starts (https://github.com/porsager/postgres/issues/1261), so closing counts the connections it must wait for before calling it.
   // Pending `sql.reserve()` calls.

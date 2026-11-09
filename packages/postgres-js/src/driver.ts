@@ -18,9 +18,18 @@ function toPostgresJsError(error: unknown) {
 /**
  * Creates a kern-orm driver over a postgres.js client; the client keeps managing its pool.
  *
+ * It throws a `TypeError` for a client that transforms the column names or rows of results, such as with `postgres.camel`.
  * Closing the driver ends the supplied client.
  */
 export function postgresJsDriver(sql: Sql): Driver {
+  // postgres.js applies these transforms also to the results of `.raw()`, which would rename the result columns that kern-orm reads values by, or replace the rows; it skips the transform of values there.
+  const { column, row } = sql.options.transform
+  if (column.from !== undefined || row.from !== undefined) {
+    throw new TypeError(
+      "Cannot create a driver of a postgres.js client that transforms the column names or rows of results, such as with postgres.camel: kern-orm reads results as PostgreSQL returns them",
+    )
+  }
+
   let closing: Promise<void> | undefined
 
   async function execute(client: ISql, statement: SqlStatement): Promise<DriverResult> {

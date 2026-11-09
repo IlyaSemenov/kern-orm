@@ -57,10 +57,12 @@ A driver follows the [contract of package compatibility](compatibility.md), and 
 - It sends every parameter, including `null`, with OID 705 (`unknown`), which postgres.js sends as it is instead of serializing it by the type PostgreSQL describes, and reads the bytes of text-format results through `.raw()` instead of parsing them.
 - It sends a statement with the extended protocol also without parameters, `simple: false` of `unsafe`, since postgres.js would send it with the simple protocol, which runs several statements of one text, such as of `$query`; the extended protocol rejects them before running any.
 - It executes a script with `.simple()` of `unsafe` without parameters, and reads its results through `.raw()`, so that the parsers of the client never run on them.
+- It throws a `TypeError` at creation for a client with `transform.column.from` or `transform.row.from`, such as of `postgres.camel`: postgres.js applies them also to the results of `.raw()`, which would rename the result columns that kern-orm reads values by, or replace the rows.
+  It accepts a client with `transform.value.from`, which postgres.js skips for `.raw()`.
 
 ## postgres.js 3
 
-`@kern-orm/postgres-js-v3` requires postgres.js 3.4.9, and sends parameters, statements, and scripts and classifies errors as `@kern-orm/postgres-js` does; postgres.js 3.4.9 reads the `simple` option of `unsafe`, though its types omit it.
+`@kern-orm/postgres-js-v3` requires postgres.js 3.4.9, and sends parameters, statements, and scripts, classifies errors, and checks the transforms of its client as `@kern-orm/postgres-js` does; postgres.js 3.4.9 reads the `simple` option of `unsafe`, though its types omit it.
 postgres.js 3.4.9 has bugs that postgres.js 4 fixes, and the driver works around those it can:
 
 - When a connection breaks inside a transaction, including one of its own `sql.begin`, the next statement on it throws an uncaught exception ([#1199](https://github.com/porsager/postgres/issues/1199), [#1208](https://github.com/porsager/postgres/issues/1208), [#1248](https://github.com/porsager/postgres/issues/1248)).
