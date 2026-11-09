@@ -78,12 +78,36 @@ describe("defineTable", () => {
     defineTable(
       "membership",
       {
+        userId: t.uuid,
+        groupId: t.text.transform({
+          decode: value => value,
+          encode: (value: string | null) => value ?? "",
+        }),
+      },
+      // @ts-expect-error A primary key column is not nullable, as a type whose `encode` takes null is.
+      { primaryKey: ["userId", "groupId"] },
+    )
+    defineTable(
+      "membership",
+      {
         userId: t.uuid.primaryKey(),
         groupId: t.uuid,
       },
       // @ts-expect-error A column is marked with primaryKey().
       { primaryKey: ["userId", "groupId"] },
     )
+  })
+
+  test("takes a primary key of columns that are not nullable, whose values may include null", () => {
+    const event = defineTable(
+      "event",
+      {
+        source: t.text,
+        payload: t.jsonb,
+      },
+      { primaryKey: ["source", "payload"] },
+    )
+    expectTypeOf(event.keys).toEqualTypeOf<TableKeys<readonly ["source", "payload"], never>>()
   })
 
   test("gives the union of the keys of a union of options, which may be undefined", () => {

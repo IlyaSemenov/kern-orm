@@ -42,6 +42,11 @@ test("comparisons are nullable when either side is", () => {
   void result
 })
 
+test("comparisons of JSON values without a shape are nullable, as the values include a JSON null value", () => {
+  expectTypeOf(param(t.jsonb, {}).eq({})).toEqualTypeOf<Expression<boolean | null>>()
+  expectTypeOf(param(t.jsonb.of<{ a?: number }>(), {}).eq({})).toEqualTypeOf<Expression<boolean>>()
+})
+
 test("comparisons take a query of one value, nullable as its value or without its row", () => {
   const account = defineTable("account", {
     rank: t.integer,

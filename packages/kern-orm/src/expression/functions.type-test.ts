@@ -101,14 +101,6 @@ describe("the value of a function", () => {
     }>()
   })
 
-  test("keeps the unknown values of a JSON type", () => {
-    const query = from(form).select(form => ({
-      settings: coalesce(form.settings, {}),
-    }))
-
-    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ settings: unknown }>()
-  })
-
   test("may be NULL when the following operands are an array, which may be empty", () => {
     const fallbacks: number[] = []
     const query = from(form).select(form => ({

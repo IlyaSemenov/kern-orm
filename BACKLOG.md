@@ -48,13 +48,6 @@ Predicates that a table applies to its queries, such as excluding soft-deleted r
 - A table interpolated into `sql` is its name, which no scope filters.
 - Decide whether `upsert` of a table with a scope updates a record that the scope excludes, such as a soft-deleted one, which `ON CONFLICT` finds whatever the filters of the query.
 
-## String unions of text types
-
-Text types whose values are a union of strings, such as the visibility of a comment that a `CHECK` constraint limits rather than a PostgreSQL enum, as `json.of<T>()` declares a shape, such as `t.text.of<"public" | "private">()` and `t.varchar.of<...>()`.
-Orchid ORM 1.78.47 narrows a column with `narrowType` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#narrowtype)).
-
-- Decide whether `of` narrows the values of every type, such as number literals of `integer`, and which operators take the union, such as `eq` and `in`, while `like` keeps a string pattern.
-
 ## Inserting the records of a query
 
 Inserting the records that a query selects, as `INSERT ... SELECT`.
@@ -303,14 +296,15 @@ Research: types reject an aggregate whose argument PostgreSQL cannot aggregate, 
 - The [aggregate functions](architecture/types.md#aggregate-functions) take the same argument, so the design applies to both.
 - Profile the cost of each aggregate call with `bench:types` before choosing a design.
 
-## SQL nullability apart from the values of a type
+## Decoding `NULL` to a value
 
-Research: types tell whether a value can be `NULL` apart from the values of the type, as Orchid ORM does with the type of the database value, so that a type can decode `NULL` to a value, such as `false`, like [`parseNull`](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#parsenull) of Orchid ORM 1.78, or a value to `null`, such as `""` of a `varchar` column that is not nullable or a JSON `null` value, and encode it back.
+A type that decodes `NULL` to a value, such as `false`, or `undefined` that tells it from a JSON `null` value, like [`parseNull`](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#parsenull) of Orchid ORM 1.78, and passes the value as `NULL`, or that decodes a value to `null`, such as `""` of a `varchar` column that is not nullable.
 
-- Every reading of `null` among the values of a type as `NULL` moves to it: `coalesce`, object conditions, keys and `primaryKey`, the results of operators, and the value of an aggregate without rows.
-- Encoding calls the type for `null` where the type maps it to a value.
-- Queries take the values of a type, unlike those of Orchid ORM, which take the database values, so decide what `isNull` and an object condition of `null` mean for a type that decodes a value to `null`, and what `coalesce` and aggregates give for it.
-- It adds a part to types and expressions, which every column reference and operator instantiates, so measure its cost with `bench:types` before choosing a design.
+- Replace the recipe of [JSON `null` values](docs/types.md#json-null-values), a sentinel of a JSON `null` value and `map`, with native support, and remove the recipe: projects need to read `NULL` of a `jsonb` column as `undefined` and a JSON `null` value as `null`.
+- Preliminary decision: the type maps `NULL` and the value both ways: a result decodes `NULL` to the value, a query passes the value as `NULL`, and an object condition of the value is `IS NULL`, while `null` is a value of the type like any other, such as a JSON `null` value of `jsonb`.
+  - An insert omits `undefined` and an update keeps it, so a query cannot pass `undefined` as `NULL`: decide what passes `NULL` for a type that decodes it to `undefined`, such as `null` as in Orchid ORM, which a JSON `null` value then cannot take.
+  - Queries take the values of a type, unlike those of Orchid ORM, which take the database values, so decide what `isNull` means for such a type, and what `coalesce` and aggregates give for it.
+- It needs nullability apart from the values in types and expressions, which a prototype measured, as [the decision of nullability](decisions/types/nullability-of-accepted-values.md) records with its pitfalls; measure again with these conversions before choosing a design.
 
 ## Several records of a relation `one`
 
@@ -388,6 +382,11 @@ Types take a query of one value that is `NULL` without its row as a value of a c
   - The mark changes only the value of the query in an expression, `ScalarValue` of `query/operand.ts`, which already has no `null` for the guaranteed row of a required relation; PostgreSQL still rejects `NULL` for a column that is not nullable.
   - An executed query and a nested query of a selection reject without their row anyway, so the mark means nothing for them.
   - Decide the API of the mark with that in mind.
+
+## Narrowing returned and accepted values apart
+
+`of<T>()` narrows the values that a type returns and accepts to the same `T`, so a type that accepts more values than it returns loses them, such as the `Date` that `timestamptz` accepts beside its strings.
+Orchid ORM 1.78.47 narrows the input, output, and query types of a column apart with `narrowAllTypes` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#narrowalltypes)).
 
 ## Branded types of columns
 

@@ -358,8 +358,8 @@ Queries come in two kinds that share the query methods and differ only by execut
     It has one signature of both, since overloads would not make a call cheaper ([benchmark](../benchmarks/types/queries.bench.ts)).
   - Types take an expression of the values of the value, since its type decodes them, and keep `null` when the expression can be `NULL`.
     They check the values of the expression rather than its SQL type, as for the operands of operators, so PostgreSQL rejects an expression of a type that it cannot coalesce with the value, such as `text` with `numeric`.
-  - Types remove only `null` from the value, which stands for `NULL` among the values of a type, as [types](types.md) state: `undefined` returned by a decoder stays, and so do the `unknown` values of `json` and `jsonb`.
-    A JSON `null` value of a shape of `of` that includes `null` stays `null` too, while types remove it.
+  - Types remove only `null` from the value, which stands for `NULL` among the values of a type, as [types](types.md) state: `undefined` returned by a decoder stays.
+    A JSON `null` value stays `null` too, which types keep in `unknown` of JSON values without a shape, and which a shape of `of` leaves out.
 - An aggregate keeps its fallbacks apart from its call, which lowering builds, and lowering wraps the call in one `coalesce` with them in order; the projection of `get` and `pluck` wraps its expression.
 
 ## Nested queries and relations

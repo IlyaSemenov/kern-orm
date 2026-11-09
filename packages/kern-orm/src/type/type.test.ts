@@ -4,7 +4,7 @@ import { array } from "./builtins/array"
 import { timestamptz } from "./builtins/datetime"
 import { enumOf } from "./builtins/enum"
 import { numeric } from "./builtins/numeric"
-import { char, varchar } from "./builtins/text"
+import { char, text, varchar } from "./builtins/text"
 import { defineType } from "./type"
 
 describe("type parameters", () => {
@@ -74,5 +74,11 @@ describe("transform", () => {
     const decimal = numeric.with(10, 2).transform({ decode: Number })
     expect(decimal.sqlType).toBe("numeric(10,2)")
     expect(Object.keys(decimal.operators)).toEqual(["eq", "ne", "in", "lt", "lte", "gt", "gte"])
+  })
+})
+
+describe("of", () => {
+  it("narrows the values only in types, keeping the type", () => {
+    expect<unknown>(text.of<"a" | "b">()).toBe(text)
   })
 })

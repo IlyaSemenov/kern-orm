@@ -2,9 +2,18 @@
 
 - **Type** (`type/`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
   PostgreSQL type parameters, such as `varchar.with(255)`, change only the SQL type name and not the cast type of parameters, so they apply at any point of a chain of type changes.
-  `null` among the values of a type stands for `NULL`, which `nullable` adds, as `primaryKey`, object conditions, and `coalesce` read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
-  A JSON `null` value decodes to `null`, which kern-orm does not tell from `NULL`.
-  Consumers require `strictNullChecks`, without which `null` belongs to every type; `primaryKey` then rejects every type and column with an error that names the option.
+  `nullable` adds `null` to the values that a type returns and accepts, where it stands for `NULL`, as `coalesce`, object conditions, and the results of operators read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
+  A type is nullable when it accepts `null`, which a query always passes as `NULL`: `primaryKey`, the keys of a table, `of`, and `transform` read nullability from the values that a type accepts rather than from those that it returns ([decision](../decisions/types/nullability-of-accepted-values.md)), so an `encode` of `transform` that takes `null`, also as `unknown`, makes the type nullable.
+  At runtime, only `nullable` sets `isNullable`, which `defineTable` and `$relations` check, since a function does not tell the values it takes.
+  - The values of `json` and `jsonb` are `unknown`, which includes a JSON `null` value: it decodes to `null`, which kern-orm does not tell from `NULL`.
+    They accept `{}`, the values other than `null`, so that only `nullable` makes them nullable.
+  - For such values, `coalesce` keeps `unknown`, and the result of an operator includes `null`, such as of `eq` of a `jsonb` column that is not nullable, until `of` declares a shape, which has no `null`.
+    Consumers require `strictNullChecks`, without which `null` belongs to every type; `primaryKey` then rejects every type and column with an error that names the option.
+    `of<T>()` of every type narrows the values that it returns and accepts to `T` only in types, and returns the type itself at runtime, since values are not validated ([decision](../decisions/types/narrowed-values.md)).
+  - `T` must be among the values that the type both returns and accepts, since a narrowed value reaches its encoder; a type that accepts none of the values it returns, such as one whose `transform` decodes text into numbers without `encode`, rejects every `T` with an error that names the reason.
+  - `nullable` adds `null` before or after `of`, which keeps it beside `T`.
+  - Generic operators, such as `eq`, `in`, and `lt`, read `T` from the expression, while an operator defined as a function keeps the values of the type it was added to, and a pattern of `like` stays a string.
+  - `enum` narrows its values with `of` rather than with an identity `transform`, which would call a decoder for each value.
 - **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, `sql`/`param` fragments, and functions such as `coalesce` and `caseWhen`.
   Every expression has `isNull`; the operators of its type are added to it and replace `isNull` if one has its name, in types and at runtime alike.
   SQL `=` is a capability of a type given only by the operators of `equalityOperators`, which `orderingOperators` include; these operators are marked, so that another operator named `eq` does not give it, and an array type has them only when its element type has the capability.

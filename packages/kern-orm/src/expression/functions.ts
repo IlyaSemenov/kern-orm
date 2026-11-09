@@ -53,7 +53,7 @@ type NullOfEveryOperand<F, R extends readonly unknown[]> =
         : never
     : never
 
-// `null` among the values of a type stands for `NULL`, so only `null` is removed: `undefined` that a decoder returns stays, and so does `unknown` of a JSON type.
+// `null` among the values of a type stands for `NULL`, so only `null` is removed: `undefined` that a decoder returns stays.
 /** Result of a function of the first operand `F` and the following operands `R` that is `NULL` only when every operand is, whose operands all have the values of `F`. */
 export type NullSkippingResult<F, R extends readonly unknown[]> = Expression<
   Exclude<OperandValue<F>, null> | NullOfEveryOperand<F, R>,

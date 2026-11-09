@@ -805,7 +805,7 @@ describe("coalesce", () => {
     from(stat).max("page").coalesce(from(stat).pluck("page"))
   })
 
-  test("keeps undefined that a decoder returns and null among the values of JSON", () => {
+  test("removes only null, keeping undefined that a decoder returns and JSON values", () => {
     const item = defineTable("item", {
       label: t.text.transform({ decode: text => (text === "" ? undefined : text) }).nullable(),
       data: t.jsonb.nullable(),
@@ -813,8 +813,9 @@ describe("coalesce", () => {
 
     const label = from(item).get("label").coalesce("none")
     expectTypeOf<Executed<typeof label>>().toEqualTypeOf<string | undefined>()
+    // A JSON `null` value stays `null`.
     const data = from(item).get("data").coalesce({})
-    expectTypeOf<Executed<typeof data>>().toBeUnknown()
+    expectTypeOf<Executed<typeof data>>().toEqualTypeOf<unknown>()
   })
 
   test("rejects a query of records, null, and values of another type", () => {

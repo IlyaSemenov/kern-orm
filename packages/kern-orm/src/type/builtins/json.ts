@@ -1,32 +1,20 @@
-import type { NoOperators, OperatorDefinitions } from "../../expression/operators/definitions"
 import { equalityOperators } from "../../expression/operators/equality"
 import { stringifyJson } from "../codecs/json"
 import type { Type } from "../type"
 import { defineType } from "../type"
 
-/** JSON type of `unknown` values with operators `O` and `of`, which declares their shape. */
-export type JsonType<O extends OperatorDefinitions = NoOperators> = Type<unknown, unknown, O> & {
-  /** Declares the shape of the values, which is not validated at runtime. */
-  of<T>(): Type<T, T, O>
-}
-
-function createJsonType(sqlType: string): Type<unknown> {
-  return defineType({ sqlType }).transform({
-    // `JSON.parse` returns `any`, which passes the check of `transform` against `null`: a JSON `null` value decodes to `null`, which kern-orm does not tell from `NULL`.
+// The values are `unknown`, which includes a JSON `null` value, decoded to `null`, which kern-orm does not tell from `NULL`.
+// The accepted values are `{}`, since a `null` that a query passes is `NULL`, so that only `nullable` makes the type nullable.
+function createJsonType(sqlType: string): Type<unknown, {}> {
+  // `transform` rejects a decoder that may return `null`, which a JSON `null` value is here.
+  return defineType({ sqlType }).transform<{}, {}>({
     decode: text => JSON.parse(text),
     encode: stringifyJson,
-  })
-}
-
-function addShape<O extends OperatorDefinitions>(type: Type<unknown, unknown, O>): JsonType<O> {
-  // The shape exists only in TypeScript, so `of` returns the same type.
-  return Object.freeze({ ...type, of: () => type }) as JsonType<O>
+  }) as Type<unknown, {}>
 }
 
 /** `json` values; `json.of<T>()` declares their shape. PostgreSQL has no `=` for `json`, so its expressions have no `eq`, `ne`, or `in`. */
-export const json = /* @__PURE__ */ addShape(/* @__PURE__ */ createJsonType("json"))
+export const json = /* @__PURE__ */ createJsonType("json")
 
 /** `jsonb` values; `jsonb.of<T>()` declares their shape. */
-export const jsonb = /* @__PURE__ */ addShape(
-  /* @__PURE__ */ createJsonType("jsonb").withOperators(equalityOperators),
-)
+export const jsonb = /* @__PURE__ */ createJsonType("jsonb").withOperators(equalityOperators)

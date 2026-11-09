@@ -236,7 +236,7 @@ describe("object conditions", () => {
 
   describe("of columns without eq", () => {
     const event = defineTable("event", {
-      payload: t.json,
+      payload: t.json.nullable(),
       tags: t.array(t.json),
     })
 

@@ -11,7 +11,7 @@ import { from } from "./select"
 
 const form = defineTable("form", {
   id: t.integer.primaryKey(),
-  status: t.jsonb.of<"draft" | "published">(),
+  status: t.text.of<"draft" | "published">(),
 })
 
 const field = defineTable("field", {

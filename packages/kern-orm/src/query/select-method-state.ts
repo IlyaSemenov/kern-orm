@@ -164,7 +164,7 @@ export type OperandValueAggregateState<
   E extends TypedOperand,
 > = OperandAggregateState<S, OperandValue<E> | null, OperandValueType<E>, E>
 
-// `null` among the values of a type stands for `NULL`, so `coalesce` removes only `null`: `undefined` that a decoder returns stays, and so does `unknown` of a JSON type.
+// `null` among the values of a type stands for `NULL`, so `coalesce` removes only `null`: `undefined` that a decoder returns stays.
 // A fallback expression or query whose value can be `NULL` keeps `null`, while its other values are decoded by the type of the value.
 /** Value `V` of a query of values whose `NULL` `coalesce` replaces with fallback `F`. */
 export type CoalescedValue<V, F> = Exclude<V, null> | Extract<OperandValue<F>, null>

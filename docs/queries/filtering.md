@@ -9,7 +9,7 @@ await db.form.where({ published: true, name: "Survey" }).select("id")
 Each `where` adds a condition combined with `AND` with the previous ones.
 
 To find records where a column is `NULL`, pass `null` as its value.
-A `json` column can only be compared with `null` this way.
+A nullable `json` column can only be compared with `null` this way.
 
 ## Operators
 

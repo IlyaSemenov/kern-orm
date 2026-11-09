@@ -1,10 +1,10 @@
-import type { AnyType, TypeOutput } from "../type/type"
+import type { AnyType, TypeInput } from "../type/type"
 
 /** Kind of a key of a table: its primary key, or a unique key. */
 export type KeyKind = "primaryKey" | "unique"
 
 /**
- * Type that `primaryKey()` of a type or a column whose values may be `null` is checked against, naming the reason.
+ * Type that `primaryKey()` of a type or a column that accepts `null` is checked against, naming the reason.
  *
  * Without `strictNullChecks`, `null` belongs to every type, so every column looks nullable; the type then names the option instead.
  */
@@ -61,7 +61,7 @@ export class Column<
 
   /** Marks the column as the primary key; the type must not be nullable. */
   primaryKey(
-    this: null extends TypeOutput<T> ? NullablePrimaryKey : Column<T, undefined, Default>,
+    this: null extends TypeInput<T> ? NullablePrimaryKey : Column<T, undefined, Default>,
   ): Column<T, "primaryKey", Default> {
     // `NullablePrimaryKey` only names why the types reject the call; `this` is always a column.
     return markKey(this as Column<T, undefined, Default>, "primaryKey")

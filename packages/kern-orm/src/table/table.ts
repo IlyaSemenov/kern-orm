@@ -161,9 +161,9 @@ type IncludedKey<Key, Columns> = Key extends KeyColumns
 /** Column key of columns `C` as a string, as object keys are at runtime. */
 type ColumnKey<C extends ColumnShape> = `${keyof C & (string | number)}`
 
-/** Column key of columns `C` whose type is not nullable, as a string like `ColumnKey`. */
+/** Column key of columns `C` whose type does not accept `null`, as a string like `ColumnKey`. */
 type NonNullableColumnKey<C extends ColumnShape> = {
-  [K in keyof C]: null extends TypeOutput<C[K]["type"]> ? never : `${K & (string | number)}`
+  [K in keyof C]: null extends TypeInput<C[K]["type"]> ? never : `${K & (string | number)}`
 }[keyof C]
 
 /** Column key of columns `C`, as a string like `ColumnKey`, whose column forms a key of kind `Kind` alone, as `KnownKeyKind` tells. */

@@ -72,6 +72,11 @@ The SQL that loads nested queries and relations.
 - [`OFFSET 0` only on sources of scalar expressions](nested-rows/offset-barrier.md).
 - [Sort keys of packed rows](nested-rows/sort-keys-of-packed-rows.md): rather than `row_number()`.
 
+## Types
+
+- [Values narrowed in types by `of`](types/narrowed-values.md): rather than by a list of values at runtime.
+- [Nullability read from the accepted values](types/nullability-of-accepted-values.md): rather than kept apart from the values in types and expressions.
+
 ## Tables and schemas
 
 - [Column naming conventions of the table factory](schemas/column-naming-conventions.md).

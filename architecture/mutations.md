@@ -26,7 +26,7 @@
 ## Values
 
 - A value is what the type of its column encodes, `null` for `NULL`, or an expression of the values of the column, whose node it keeps; a parameter is encoded by the type of its column without a cast, since the column types it, as for a compared value.
-  Types take an expression of the output values of the column, so a column that is not nullable rejects an expression that may be `NULL`.
+  Types take an expression of the output values of the column, so a column that is not nullable rejects an expression that may be `NULL`, unless its output values include `null`, such as the `unknown` values of `json` and `jsonb` without a shape, which take any expression of them.
 - A key of `undefined` is omitted, as a key that an object lacks, so that an optional property of TypeScript, which may hold `undefined` without `exactOptionalPropertyTypes`, omits its column.
 - Mutations read the keys and values of their objects when they are called, and reject a key that is not a column.
 - A value may be a query of one value, such as of `get`, of an aggregate, or of `exists`, which is a scalar subquery or `EXISTS` in `VALUES` or `SET`, as an operand of an expression is ([queries](queries.md#queries-in-expressions)), and other queries are rejected, in types and at runtime.

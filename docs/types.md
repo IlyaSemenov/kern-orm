@@ -59,9 +59,10 @@ Pass PostgreSQL type parameters with `with`, such as `varchar.with(255)` for `va
 - `date`: `string`, such as `"2026-01-15"`.
 - `time`, `time.with(precision)`: `string`, such as `"10:00:00.000000"`.
 - `interval`: `string` in the PostgreSQL output format, such as `"1 day 02:00:00"`.
-- `json`, `jsonb`: `unknown`; `json.of<T>()` and `jsonb.of<T>()` declare the shape `T`, which is not validated at runtime.
+- `json`, `jsonb`: `unknown`; declare the shape of the values with [`of`](#narrowing-values), such as `jsonb.of<{ choices: string[] }>()`.
   PostgreSQL has no `=` for `json`, so its expressions have no `eq`, `ne`, or `in`.
-  Leave `null` out of a shape and store a missing value as `NULL` in a [`nullable`](#nullable-values) column: a JSON `null` value reads as `null` too, but `coalesce`, `isNull`, and `where` with `null` match only `NULL`.
+  Store a missing value as `NULL` in a [`nullable`](#nullable-values) column rather than as a JSON `null` value.
+  Queries pass `null` as `NULL`, and a JSON `null` value reads as `null` too, while `coalesce`, `isNull`, and `where` with `null` match only `NULL`; to tell them apart, see [JSON `null` values](#json-null-values).
 - `inet`, `cidr`: `string`.
 - `array(element)`: one-dimensional array of the element values, such as `array(text)`; the elements of a custom type must be separated by commas in PostgreSQL, as those of all built-in types are.
   An array has `eq`, `ne`, and `in` when its element type has SQL `=` from [`equalityOperators`](./custom-types#operators).
@@ -80,11 +81,31 @@ Such strings do not sort chronologically.
 For values that can be `NULL`, use `.nullable()`, which adds `null` to the values of the type, in a column and in a query alike.
 In an array, it applies to the level it is called on: `array(text.nullable())` allows `NULL` elements, and `array(text).nullable()` allows a `NULL` array.
 
+## Narrowing values
+
+To type a column whose values are a union, such as the type of a form field that a `CHECK` constraint limits, narrow its type with `of`:
+
+```ts
+type FieldType = "text" | "email" | "choice"
+
+export const field = defineTable("form_field", {
+  id: t.uuid.primaryKey().hasDefault(),
+  type: t.text.of<FieldType>(),
+})
+```
+
+Queries return these values and accept only them, such as in `where`, `eq`, `in`, and `insert`.
+`of` also declares the shape of JSON values, such as `t.jsonb.of<{ choices: string[] }>()`.
+
+The values are not validated at runtime, so constrain them in the database, such as with `CHECK (type IN ('text', 'email', 'choice'))`.
+For a PostgreSQL enum, use `enum(name, values)` instead.
+
 ## Deriving types
 
 To work with values in another representation, such as `Date` or `Decimal`, derive a type with `transform`; it keeps the SQL type, operators, and nullability.
 `decode` receives the values of the type, and `encode` returns values that the type accepts; without `encode`, the new type accepts the same values as the type, such as a `Date` for `timestamptz`.
 `decode` cannot return `null`: it stands for `NULL`, which [`nullable`](#nullable-values) adds.
+An `encode` that takes `null`, also as `unknown`, makes the type nullable, since queries pass `null` as `NULL`.
 
 Every method of a type creates a new type that keeps the changes made before it, so a derived type can be shared and refined further where it is used, such as `decimal` below, or derived for a single column:
 
@@ -111,6 +132,44 @@ export const product = defineTable("product", {
   }),
   createdAt: timestamptzDate,
 })
+```
+
+## JSON `null` values
+
+To tell a JSON `null` value from `NULL` in a `json` or `jsonb` column, where both read as `null`, derive a type that gives a JSON `null` value a value of your own, such as a symbol:
+
+```ts
+import * as t from "kern-orm/types"
+
+export const jsonNull = Symbol("JSON null")
+
+type Payload = { url?: string }
+
+// jsonb values in which a JSON null value is jsonNull, while NULL stays null
+const payloadType = t.jsonb.of<Payload>().transform({
+  // decode never receives NULL, so null here is a JSON null value
+  decode: (value): Payload | typeof jsonNull => (value === null ? jsonNull : value),
+  // jsonb takes no null, which queries pass as NULL, so a JSON null value needs a cast
+  encode: (value: Payload | typeof jsonNull) => (value === jsonNull ? (null as never) : value),
+})
+
+export const job = defineTable("job", {
+  id: t.uuid.primaryKey().hasDefault(),
+  payload: payloadType.nullable(),
+})
+```
+
+Queries return `jsonNull` for a JSON `null` value and `null` for `NULL`, and take them the same way: `insert({ payload: jsonNull })` writes a JSON `null` value, `where({ payload: jsonNull })` finds it, and `where({ payload: null })` finds `NULL`.
+Declare the shape of the values with `of`: without it, their type is `unknown`, which takes in the symbol, so it does not show `jsonNull`.
+`json` has no `=`, so `where` cannot find its JSON `null` value.
+
+To read `NULL` as `undefined` and a JSON `null` value as `null`, convert them in [`map`](./queries/selecting#results-converted-in-code):
+
+```ts
+const jobs = await db.job.select("id", "payload").map(job => ({
+  ...job,
+  payload: job.payload === jsonNull ? null : (job.payload ?? undefined),
+}))
 ```
 
 ## Custom types

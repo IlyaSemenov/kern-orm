@@ -98,12 +98,6 @@ describe("map", () => {
         return max ?? 0
       }),
     ).toEqualTypeOf<number>()
-    expectTypeOf(
-      await db.field.pluck("details").map(details => {
-        expectTypeOf(details).toBeUnknown()
-        return details === null
-      }),
-    ).toEqualTypeOf<boolean[]>()
   })
 
   test("takes the callback with one parameter", () => {

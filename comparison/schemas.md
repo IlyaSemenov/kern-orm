@@ -1,5 +1,12 @@
 # Tables and schemas
 
+## Unions of column values
+
+`of<T>()` of any type narrows the values that a column returns and accepts to `T`, such as a union of strings that a `CHECK` constraint allows, and types reject a `T` outside the values of the type.
+
+- Orchid ORM, same: `narrowType` narrows the input, output, and query types of a column together ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#narrowtype)).
+- Drizzle ORM, lacks: `$type<T>()` takes any type, also one outside the values of the column ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/column-builder.ts)); `text({ enum })` infers a union from a list of the values ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/columns/text.ts)).
+
 ## Column naming conventions
 
 `createTableFactory` takes any conversion of column keys to physical names, such as `toSnakeCase` or one of a legacy database.

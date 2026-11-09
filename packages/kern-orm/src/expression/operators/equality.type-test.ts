@@ -47,8 +47,8 @@ test("equality operators come from equalityOperators or orderingOperators", () =
 })
 
 test("object conditions accept only null for columns without eq", () => {
-  from(doc).where({ meta: {}, tags: [], body: null, note: null })
-  from(defineTable("log", { body: t.json })).where({ body: null })
+  from(doc).where({ meta: {}, tags: [], note: null })
+  from(defineTable("log", { body: t.json.nullable() })).where({ body: null })
 
   // @ts-expect-error A column without eq matches only null.
   from(doc).where({ body: {} })
@@ -75,7 +75,7 @@ test("equality operators are kept after eq is replaced", () => {
 
 test("equality operators are not given by another operator named eq", () => {
   const jsonWithEq = t.json.withOperators({
-    eq: (self, value: unknown) => sql<boolean>`${self}::jsonb = ${param(t.jsonb, value)}`,
+    eq: (self, value: object) => sql<boolean>`${self}::jsonb = ${param(t.jsonb, value)}`,
   })
   const log = defineTable("log", {
     parts: t.array(jsonWithEq),

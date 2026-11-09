@@ -78,25 +78,43 @@ export interface BaseType<
   withParameters<P extends unknown[]>(
     format: (...parameters: P) => string,
   ): Type<Output, Input, Operators, P>
-  // `null` among the values of a type stands for `NULL`, as `coalesce` and object conditions read it, so `decode` cannot return it.
+  // `null` among the values that a type returns stands for `NULL`, as `coalesce` and operators read it, so `decode` cannot return it.
+  // Nullability is read from the values that it accepts, where `null` is always `NULL`: those that it returns may be `unknown`, which includes `null`, as for JSON values.
   /**
    * Creates a type with another representation of the values of this type, keeping its SQL type, operators, and nullability.
+   * An `encode` that takes `null` also makes the result nullable.
    *
    * `decode` receives the values that this type decodes from values other than `NULL`, including `undefined` that an earlier decoder returns, and returns a value other than `null`; `encode` returns values that this type encodes; `NULL` stays `null` without them.
    */
   transform<NewOutput extends {} | undefined, NewInput>(
     options: TypeTransform<Exclude<Output, null>, NonNullable<Input>, NewOutput, NewInput>,
-  ): Type<NewOutput | Extract<Output, null>, NewInput | Extract<Input, null>, Operators, Parameters>
+  ): Type<
+    NewOutput | AcceptedNull<NewInput | Input>,
+    NewInput | AcceptedNull<Input>,
+    Operators,
+    Parameters
+  >
   /** Creates a type that decodes the values of this type into another representation, other than `null`, and accepts the values that this type accepts. */
   transform<NewOutput extends {} | undefined>(options: {
     decode: (value: Exclude<Output, null>) => NewOutput
-  }): Type<NewOutput | Extract<Output, null>, Input, Operators, Parameters>
+  }): Type<NewOutput | AcceptedNull<Input>, Input, Operators, Parameters>
   nullable(): Type<Output | null, Input | null, Operators, Parameters>
+  /**
+   * Narrows the values of this type to `T` in TypeScript, such as to a union of strings that a `CHECK` constraint allows, or to the shape of JSON values.
+   *
+   * The values are not validated at runtime. `T` must be among the values that this type both returns and accepts, and `nullable` keeps `null` apart from it.
+   */
+  of<T extends AcceptedValues<Exclude<Output, null>, Exclude<Input, null>>>(): Type<
+    T | AcceptedNull<Input>,
+    T | AcceptedNull<Input>,
+    Operators,
+    Parameters
+  >
   /** Creates a column of this type with a physical name different from the column key. */
   columnName(name: string): Column<Type<Output, Input, Operators, Parameters>, undefined, false>
   /** Creates a primary key column of this type; the type must not be nullable. */
   primaryKey(
-    this: null extends Output ? NullablePrimaryKey : Type<Output, Input, Operators, Parameters>,
+    this: null extends Input ? NullablePrimaryKey : Type<Output, Input, Operators, Parameters>,
   ): Column<Type<Output, Input, Operators, Parameters>, "primaryKey", false>
   /** Creates a column of this type that is a unique key. */
   unique(): Column<Type<Output, Input, Operators, Parameters>, "unique", false>
@@ -113,6 +131,28 @@ export interface TypeWithParameters<
 > {
   /** Creates this type with PostgreSQL type parameters, such as `varchar.with(255)` for `varchar(255)`; other changes of the type are kept. */
   with(...parameters: Parameters): Type<Output, Input, Operators, Parameters>
+}
+
+/**
+ * Values that `of` can narrow a type to: those both among the values `O` that it returns and among the values `I` that it accepts, or `UnacceptedValues` when there are none.
+ *
+ * A narrowed value is also accepted, so its encoder must take it.
+ */
+// When one of the types contains the other, as the values of every built-in type do, it stands for the intersection, which an error would show as `string | (string & Date)` for `timestamptz`.
+type AcceptedValues<O, I> = [O] extends [I]
+  ? O
+  : [I] extends [O]
+    ? I
+    : [O & I] extends [never]
+      ? UnacceptedValues
+      : O & I
+
+/** `null` when the accepted values `I` include it, also as `unknown`; `never` otherwise. */
+type AcceptedNull<I> = null extends I ? null : never
+
+/** Type that `AcceptedValues` names for a type that accepts none of the values it returns. */
+interface UnacceptedValues {
+  readonly "of narrows only a type that accepts the values it returns": never
 }
 
 /** Conversion between the values of a type and their new representation. */
@@ -223,6 +263,8 @@ function createType(state: TypeState): AnyType {
       with: (...parameters: never[]) => derive({ sqlType: formatSqlType(...parameters) }),
     }),
     nullable: () => derive({ isNullable: true }),
+    // The narrowed values exist only in TypeScript.
+    of: () => type,
     columnName: (name: string) => new Column(type, { name, keyKind: undefined, hasDefault: false }),
     primaryKey: () =>
       new Column(type, { name: undefined, keyKind: "primaryKey", hasDefault: false }),
