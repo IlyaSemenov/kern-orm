@@ -47,3 +47,17 @@ try {
 
 When `$transaction` rejects with `ConnectionError`, the transaction may have been committed, such as when its connection fails during `COMMIT`.
 When the connection fails while the callback runs, the rollback fails too, so `$transaction` rejects with a `SuppressedError` whose `error` is the `ConnectionError` of the rollback; such a transaction was not committed.
+
+## Failures to release a connection
+
+To log a failure to release the connection of a transaction, pass `onReleaseError` to `createDatabase`:
+
+```ts
+export const database = createDatabase({
+  driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
+  onReleaseError: error => logger.error(error),
+})
+```
+
+Such a failure does not change the result or error of the transaction.
+Without `onReleaseError`, the failure goes to `console.error`.

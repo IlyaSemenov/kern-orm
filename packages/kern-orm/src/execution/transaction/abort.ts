@@ -2,6 +2,9 @@
 
 import type { Connection, Driver } from "../driver"
 
+import type { ReleaseErrorHandler } from "./release"
+import { releaseConnection } from "./release"
+
 /**
  * Runs `start` and settles as its promise, or rejects with the reason of `signal` when it aborts first and `abort`, called on the abort, returns `true`.
  *
@@ -52,9 +55,13 @@ export function settleUnlessAborted<T>(
 /**
  * Acquires a connection for a test transaction, rejecting with the reason of `signal` when it aborts first.
  *
- * A connection acquired after the abort returns to the pool as best-effort cleanup: the test transaction has already rejected, so nothing awaits the release, and its failure is ignored.
+ * A connection acquired after the abort returns to the pool as best-effort cleanup: the test transaction has already rejected, so nothing awaits the release, and its failure goes to `onReleaseError`.
  */
-export function acquireUnlessAborted(driver: Driver, signal: AbortSignal): Promise<Connection> {
+export function acquireUnlessAborted(
+  driver: Driver,
+  signal: AbortSignal,
+  onReleaseError: ReleaseErrorHandler | undefined,
+): Promise<Connection> {
   if (signal.aborted) {
     return Promise.reject(signal.reason)
   }
@@ -62,10 +69,6 @@ export function acquireUnlessAborted(driver: Driver, signal: AbortSignal): Promi
     () => driver.acquire(),
     signal,
     () => true,
-    connection => {
-      Promise.resolve()
-        .then(() => connection.release())
-        .catch(() => {})
-    },
+    connection => void releaseConnection(connection, undefined, onReleaseError),
   )
 }

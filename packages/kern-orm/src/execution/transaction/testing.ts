@@ -4,6 +4,7 @@ import { createStatement } from "kern-orm"
 import { createRecordingDriver } from "../../../testing/recording-driver"
 
 import { TransactionCoordinator } from "./coordinator"
+import type { ReleaseErrorHandler } from "./release"
 
 /** Marks the rejection of `promise` as handled, so that a test can inspect it after it settles. */
 export function markHandled<T>(promise: Promise<T>): Promise<T> {
@@ -52,10 +53,16 @@ export function holdOn(text: string, occurrence = 1, error?: unknown) {
   }
 }
 
-/** Coordinator created for tests over a recording driver. */
-export function createTestCoordinator(options?: Parameters<typeof createRecordingDriver>[0]) {
+/** Coordinator created for tests over a recording driver, which passes a failed release of a connection to `onReleaseError`. */
+export function createTestCoordinator(
+  options?: Parameters<typeof createRecordingDriver>[0],
+  onReleaseError?: ReleaseErrorHandler,
+) {
   const recording = createRecordingDriver(options)
-  return { ...recording, coordinator: new TransactionCoordinator(recording.driver, true) }
+  return {
+    ...recording,
+    coordinator: new TransactionCoordinator(recording.driver, { test: true, onReleaseError }),
+  }
 }
 
 /** Callback that executes the statement `text`. */

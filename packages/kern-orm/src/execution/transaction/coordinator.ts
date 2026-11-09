@@ -2,7 +2,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks"
 
-import type { TransactionOptions } from "../database"
+import type { DatabaseOptions, TransactionOptions } from "../database"
 import type { Connection, Driver, DriverResult, SqlStatement } from "../driver"
 import type { OpenedTestFixture, PendingTestFixture, TestTransactionOptions } from "../testing"
 
@@ -15,12 +15,13 @@ import {
   createUnavailableError,
   endLevel,
   getEndedOutcome,
-  releaseConnection,
   runLevel,
   startNestedLevel,
   suppress,
   suppressAbortReason,
 } from "./level"
+import type { ReleaseErrorHandler } from "./release"
+import { releaseConnection } from "./release"
 import type { LevelSetting } from "./settings"
 import { applySettings, getLevelSettings } from "./settings"
 
@@ -32,15 +33,19 @@ import { applySettings, getLevelSettings } from "./settings"
 export class TransactionCoordinator {
   readonly #storage = new AsyncLocalStorage<TransactionLevel>()
   readonly #fixtures: TestFixtureStack
+  readonly #onReleaseError: ReleaseErrorHandler | undefined
   /** Closing of the database, set by the first `close`; from then on, operations outside a transaction reject. */
   #closed: Promise<void> | undefined
+  /** Rejects statements and transactions outside a test transaction or the seed of a test fixture instead of running them on the pool. */
+  readonly test: boolean
 
   constructor(
     readonly driver: Driver,
-    /** Rejects statements and transactions outside a test transaction or the seed of a test fixture instead of running them on the pool. */
-    readonly test = false,
+    { test = false, onReleaseError }: Omit<DatabaseOptions, "driver"> = {},
   ) {
-    this.#fixtures = new TestFixtureStack(driver, this.#storage)
+    this.test = test
+    this.#onReleaseError = onReleaseError
+    this.#fixtures = new TestFixtureStack(driver, this.#storage, onReleaseError)
   }
 
   execute(statement: SqlStatement): Promise<DriverResult> {
@@ -229,11 +234,12 @@ export class TransactionCoordinator {
     settings?: readonly LevelSetting[],
   ): Promise<T> {
     const connection = await (signal
-      ? acquireUnlessAborted(this.driver, signal)
+      ? acquireUnlessAborted(this.driver, signal, this.#onReleaseError)
       : this.driver.acquire())
     // An abort that comes while the connection is handed over starts nothing either.
     if (signal?.aborted) {
-      throw (await releaseConnection(connection, undefined, { error: signal.reason }))!.error
+      await releaseConnection(connection, undefined, this.#onReleaseError)
+      throw signal.reason
     }
     // A level that commits is a transaction of `transaction`; test transactions roll back.
     const level = createLevel(connection, undefined, commits)
@@ -252,9 +258,9 @@ export class TransactionCoordinator {
       }
     }
     outcome ??= await runLevel(this.#storage, level, callback, commits, signal)
-    const rejection = await releaseConnection(connection, outcome.failure, outcome.rejection)
-    if (rejection) {
-      throw rejection.error
+    await releaseConnection(connection, outcome.failure, this.#onReleaseError)
+    if (outcome.rejection) {
+      throw outcome.rejection.error
     }
     return outcome.result as T
   }

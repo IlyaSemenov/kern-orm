@@ -36,6 +36,7 @@
   Preemption cannot tell a timed-out test from a concurrent one, so a concurrent test of the same fixture fails instead of sharing it.
 - Closing a test fixture rolls back all levels nested in it, innermost first, and then the fixture itself, as one change of the fixture stack; the closed fixtures leave the stack even if their cleanup fails.
   The closing call reports every cleanup failure of the cascade, and the first fixture releases its connection once, with a failure only if its own `ROLLBACK` failed.
+  A failed release of that connection rejects neither the closing nor an opening, and goes to the handler of [failed releases](transactions.md#levels), as for a transaction.
 - Closing an already closed fixture, including one closed with an enclosing fixture, does nothing; `close` and async disposal behave the same.
 - `useTestFixture` opens its fixture in a `before` hook and closes it in an `after` hook, since the body of a `describe` block runs synchronously while the runner collects tests.
 - Closing a fixture that is still opening does not wait for its seed, which may never settle: the opening rejects, the fixture and the level of its seed roll back as when a fixture closes, and a later scope opens its own fixture once the rollback completes.

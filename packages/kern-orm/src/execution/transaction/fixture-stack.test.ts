@@ -581,6 +581,23 @@ it("rejects with a failed ROLLBACK of the first fixture and releases its connect
   expect(releases).toEqual([{ connection: 1, failure: { error: rollbackError } }])
 })
 
+it("closes the first fixture whose release fails, and reports the failure", async () => {
+  const releaseError = new Error("release")
+  const reported: unknown[] = []
+  const { coordinator, releases } = createTestCoordinator(
+    {
+      release: () => Promise.reject(releaseError),
+    },
+    error => reported.push(error),
+  )
+
+  const fixture = await coordinator.createTestFixture(seedNothing)
+  await fixture.close()
+
+  expect(releases).toEqual([{ connection: 1 }])
+  expect(reported).toEqual([releaseError])
+})
+
 it("poisons the enclosing fixture when a nested one fails to close, and recovers by closing it", async () => {
   const rollbackError = new Error("rollback")
   const { coordinator, statements, releases } = createTestCoordinator({

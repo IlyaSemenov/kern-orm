@@ -13,16 +13,18 @@ import {
   createLevel,
   createUnavailableError,
   endLevel,
-  releaseConnection,
   runLevel,
   startNestedLevel,
   suppress,
   suppressAbortReason,
 } from "./level"
+import type { ReleaseErrorHandler } from "./release"
+import { releaseConnection } from "./release"
 
 /** Open test fixtures of a transaction coordinator and the queue of the changes of their stack. */
 export class TestFixtureStack {
   readonly #driver: Driver
+  readonly #onReleaseError: ReleaseErrorHandler | undefined
   /** Async context of the levels of the coordinator, which tells whether a call runs inside a level. */
   readonly #storage: AsyncLocalStorage<TransactionLevel>
   /** Open test fixtures, the innermost last. */
@@ -43,9 +45,14 @@ export class TestFixtureStack {
    */
   #closing: TransactionLevel | undefined
 
-  constructor(driver: Driver, storage: AsyncLocalStorage<TransactionLevel>) {
+  constructor(
+    driver: Driver,
+    storage: AsyncLocalStorage<TransactionLevel>,
+    onReleaseError: ReleaseErrorHandler | undefined,
+  ) {
     this.#driver = driver
     this.#storage = storage
+    this.#onReleaseError = onReleaseError
   }
 
   /**
@@ -275,9 +282,10 @@ export class TestFixtureStack {
   /** Rolls back a fixture and releases the connection of the first one, returning the error to reject with. */
   async #endFixture(fixture: TransactionLevel): Promise<Rejection | undefined> {
     const cleanup = await endLevel(fixture, false)
-    return fixture.parent
-      ? cleanup.rejection
-      : releaseConnection(fixture.connection, cleanup.failure, cleanup.rejection)
+    if (!fixture.parent) {
+      await releaseConnection(fixture.connection, cleanup.failure, this.#onReleaseError)
+    }
+    return cleanup.rejection
   }
 
   /** Runs a change of the fixture stack after the earlier ones. */
@@ -293,8 +301,8 @@ export class TestFixtureStack {
     try {
       await connection.execute(beginStatement)
     } catch (error) {
-      const rejection = await releaseConnection(connection, { error }, { error })
-      throw rejection!.error
+      await releaseConnection(connection, { error }, this.#onReleaseError)
+      throw error
     }
     return createLevel(connection, undefined, false)
   }

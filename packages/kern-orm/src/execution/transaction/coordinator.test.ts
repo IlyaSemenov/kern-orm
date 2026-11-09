@@ -988,14 +988,19 @@ describe("abort signal of a test transaction", () => {
     expect(releases).toEqual([{ connection: 1 }])
   })
 
-  it("ignores a failure to release the connection acquired after the abort", async () => {
+  it("reports a failure to release the connection acquired after the abort", async () => {
     const { promise: connectionFreed, resolve: freeConnection } = Promise.withResolvers<void>()
-    const { coordinator, releases } = createTestCoordinator({
-      acquire: () => connectionFreed,
-      release() {
-        throw new Error("release")
+    const releaseError = new Error("release")
+    const reported: unknown[] = []
+    const { coordinator, releases } = createTestCoordinator(
+      {
+        acquire: () => connectionFreed,
+        release() {
+          throw releaseError
+        },
       },
-    })
+      error => reported.push(error),
+    )
     const { signal, reason, abort } = createTestAbort()
     const unhandled: unknown[] = []
     const recordUnhandled = (error: unknown) => unhandled.push(error)
@@ -1010,6 +1015,7 @@ describe("abort signal of a test transaction", () => {
       freeConnection()
       await settleCallbacks()
       expect(releases).toEqual([{ connection: 1 }])
+      expect(reported).toEqual([releaseError])
       expect(unhandled).toEqual([])
     } finally {
       process.off("unhandledRejection", recordUnhandled)
@@ -1386,36 +1392,43 @@ describe("failures of cleanup", () => {
     expect(rejection).toMatchObject({ error: rollbackError, suppressed: callbackError })
     expect(releases).toEqual([{ connection: 1, failure: { error: rollbackError } }])
   })
+})
 
-  it("keeps the earlier errors suppressed by a failed release", async () => {
+describe("failures of release", () => {
+  it("resolves with the result of a committed transaction whose release fails, and reports the failure", async () => {
+    const releaseError = new Error("release")
+    const reported: unknown[] = []
+    const { driver } = createRecordingDriver({
+      release: () => Promise.reject(releaseError),
+    })
+    const coordinator = new TransactionCoordinator(driver, {
+      onReleaseError: error => reported.push(error),
+    })
+
+    await expect(coordinator.transaction(() => Promise.resolve("done"))).resolves.toBe("done")
+    expect(reported).toEqual([releaseError])
+  })
+
+  it("rejects with the errors of a transaction whose release fails, and reports the failure", async () => {
     const callbackError = new Error("callback")
     const rollbackError = new Error("rollback")
     const releaseError = new Error("release")
+    const reported: unknown[] = []
     const { driver } = createRecordingDriver({
       respond: failOn("ROLLBACK", rollbackError),
       release() {
         throw releaseError
       },
     })
-    const coordinator = new TransactionCoordinator(driver)
+    const coordinator = new TransactionCoordinator(driver, {
+      onReleaseError: error => reported.push(error),
+    })
 
     const rejection = await coordinator
       .transaction(() => Promise.reject(callbackError))
       .catch((error: unknown) => error)
 
-    expect(rejection).toMatchObject({
-      error: releaseError,
-      suppressed: { error: rollbackError, suppressed: callbackError },
-    })
-  })
-
-  it("rejects with a failed release after a commit", async () => {
-    const releaseError = new Error("release")
-    const { driver } = createRecordingDriver({
-      release: () => Promise.reject(releaseError),
-    })
-    const coordinator = new TransactionCoordinator(driver)
-
-    await expect(coordinator.transaction(() => Promise.resolve("done"))).rejects.toBe(releaseError)
+    expect(rejection).toMatchObject({ error: rollbackError, suppressed: callbackError })
+    expect(reported).toEqual([releaseError])
   })
 })

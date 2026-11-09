@@ -42,6 +42,18 @@ it("rejects queries, scripts, and transactions of a database created for tests o
   expect(scripts).toEqual([])
 })
 
+it("passes a failed release of the connection of a transaction to onReleaseError", async () => {
+  const releaseError = new Error("release")
+  const reported: unknown[] = []
+  const { driver } = createRecordingDriver({
+    release: () => Promise.reject(releaseError),
+  })
+  const database = createDatabase({ driver, onReleaseError: error => reported.push(error) })
+
+  await expect(database.transaction(() => Promise.resolve("done"))).resolves.toBe("done")
+  expect(reported).toEqual([releaseError])
+})
+
 it("executes a script without a Db, rejecting tables of a Db", async () => {
   const { driver, scripts } = createRecordingDriver()
   const database = createDatabase({ driver })

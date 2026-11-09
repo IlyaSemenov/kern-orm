@@ -17,7 +17,7 @@ The transaction belongs to the database, so it also covers [other schemas](./mul
 
 A query started from the callback after the transaction has finished fails instead of running outside of it.
 
-When cleaning up after an error fails too, such as a rollback after an error of the callback, `$transaction` rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
+When the rollback after an error fails too, such as after an error of the callback, `$transaction` rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
 
 ## Nested transactions
 

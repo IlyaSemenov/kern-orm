@@ -322,21 +322,6 @@ export async function getEndedOutcome(cleanup: Promise<Cleanup>, error: unknown)
   return { rejection: combineRejections({ error }, ended), failure: ended.failure }
 }
 
-/** Returns the connection of a transaction to the driver, keeping a failed release as a rejection that suppresses `rejection`. */
-export async function releaseConnection(
-  connection: Connection,
-  failure: TransactionFailure | undefined,
-  rejection: Rejection | undefined,
-): Promise<Rejection | undefined> {
-  try {
-    // A failed BEGIN, COMMIT, or ROLLBACK may leave the transaction open; the driver decides whether the connection can return to the pool.
-    await connection.release(failure)
-    return rejection
-  } catch (error) {
-    return suppress(error, rejection, "Releasing the transaction connection failed")
-  }
-}
-
 /** Error of a failure to start a test transaction, which suppresses the reason of `signal` when the signal aborted before the failure. */
 export function suppressAbortReason(error: unknown, signal: AbortSignal | undefined): unknown {
   return signal?.aborted

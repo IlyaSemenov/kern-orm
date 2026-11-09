@@ -84,11 +84,17 @@ export interface DatabaseOptions {
   driver: Driver
   /** Rejects queries and transactions outside the test transactions and the seeds of test fixtures of `kern-orm/testing`, so that every statement of the tests runs in a transaction that rolls back. */
   test?: boolean
+  /**
+   * Receives a failure to release the connection of a transaction, such as to log it; the failure does not change the result or error of the transaction.
+   *
+   * Without it, the failure goes to `console.error`.
+   */
+  onReleaseError?: (error: unknown) => void
 }
 
 /** Creates a database over a driver; its transactions are shared by every schema bound to it. */
-export function createDatabase({ driver, test }: DatabaseOptions): Database {
-  const coordinator = new TransactionCoordinator(driver, test)
+export function createDatabase({ driver, ...options }: DatabaseOptions): Database {
+  const coordinator = new TransactionCoordinator(driver, options)
   // A Db of no tables runs the statements of the database, so that they name no tables of a schema.
   let tablelessDb: AnyDb | undefined
   const getTablelessDb = () => (tablelessDb ??= bindSchema(defineSchema(), database))
