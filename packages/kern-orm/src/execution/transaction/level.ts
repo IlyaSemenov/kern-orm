@@ -6,12 +6,16 @@ import type { Connection, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 
 import { settleUnlessAborted } from "./abort"
+import { ConnectionWatch } from "./connection-loss"
 import type { LevelSetting } from "./settings"
 import { applySettings } from "./settings"
 
 /** Transaction or savepoint nested in it, run by one callback in its own async context, or a test fixture without a context. */
 export interface TransactionLevel {
+  /** Connection of the level, which the watch of a transaction of `transaction` wraps for the levels nested in it too. */
   readonly connection: Connection
+  /** Watch of the connection of a transaction of `transaction` without a parent; `undefined` for every other level. */
+  readonly watch: ConnectionWatch | undefined
   readonly parent: TransactionLevel | undefined
   /** Number of enclosing levels, which names the savepoint of a nested level. */
   readonly depth: number
@@ -60,14 +64,17 @@ const rollbackStatement = /* @__PURE__ */ createStatement("ROLLBACK")
  *
  * It sends no SQL and does not reserve the level as the `child` of `parent`; the caller does both.
  * `transaction` tells whether the level is a transaction of `transaction` rather than a level of the test helpers.
+ * A transaction of `transaction` without a parent watches its connection for a `ConnectionError`.
  */
 export function createLevel(
   connection: Connection,
   parent: TransactionLevel | undefined,
   transaction: boolean,
 ): TransactionLevel {
+  const watch = transaction && !parent ? new ConnectionWatch(connection) : undefined
   return {
-    connection,
+    connection: watch ?? connection,
+    watch,
     parent,
     depth: parent ? parent.depth + 1 : 0,
     inTransaction: transaction || (parent?.inTransaction ?? false),
@@ -215,7 +222,7 @@ async function cleanUpLevel(
   const { parent } = level
   const cleanup = parent
     ? await endSavepoint(level, commit && !level.rollbackOnly)
-    : await endTransaction(level.connection, commit)
+    : await endTransaction(level, commit)
   level.state = "closed"
   if (parent) {
     if (parent.child === level) {
@@ -227,19 +234,35 @@ async function cleanUpLevel(
   return { rejection: combineRejections(nestedCleanup?.rejection, cleanup) }
 }
 
-/** Ends a transaction with `COMMIT` or `ROLLBACK`. */
-async function endTransaction(connection: Connection, commit: boolean): Promise<Cleanup> {
+/**
+ * Ends a transaction with `COMMIT` or `ROLLBACK`.
+ *
+ * A transaction whose watch recorded a `ConnectionError` rolls back instead of `COMMIT` and rejects with that error, as if its callback had rejected with it.
+ */
+async function endTransaction(level: TransactionLevel, commit: boolean): Promise<Cleanup> {
+  const { connection, watch } = level
+  // The statement may not have run, also when the callback caught its error, so COMMIT could commit the transaction without it.
+  // Checking next to sending COMMIT, rather than when the callback settles, also covers the rejection of a statement that the callback did not await, which can come in between.
+  const lost: Rejection | undefined =
+    commit && watch?.failure ? { error: watch.failure.error } : undefined
   try {
-    const { command } = await connection.execute(commit ? commitStatement : rollbackStatement)
-    // PostgreSQL rolls back a transaction with a failed statement on COMMIT, even when the callback caught the error.
-    if (commit && command !== "COMMIT") {
-      return {
-        rejection: { error: new Error("Transaction was rolled back: a statement in it failed") },
+    if (commit && !lost) {
+      if (watch) {
+        watch.phase = "commit"
       }
+      const { command } = await connection.execute(commitStatement)
+      // PostgreSQL rolls back a transaction with a failed statement on COMMIT, even when the callback caught the error.
+      if (command !== "COMMIT") {
+        return {
+          rejection: { error: new Error("Transaction was rolled back: a statement in it failed") },
+        }
+      }
+      return {}
     }
-    return {}
+    await connection.execute(rollbackStatement)
+    return lost ? { rejection: lost } : {}
   } catch (error) {
-    return { rejection: { error } }
+    return { rejection: suppress(error, lost, "Transaction rollback failed") }
   }
 }
 

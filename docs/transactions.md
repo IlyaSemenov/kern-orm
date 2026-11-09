@@ -19,6 +19,9 @@ A query started from the callback after the transaction has finished fails inste
 
 When the rollback after an error fails too, such as after an error of the callback, `$transaction` rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
 
+When the connection of the transaction fails, `$transaction` rejects with a [`TransactionConnectionError`](./errors#lost-connections) instead, whose `cause` is the error it would reject with otherwise, such as that `SuppressedError`.
+A transaction whose connection fails before `COMMIT`, such as in a query of the callback, rolls back even if the callback catches the error and resolves; one whose connection fails during `COMMIT` may have been committed.
+
 ## Nested transactions
 
 To roll back only the failed part of a transaction, call `$transaction` inside it: the callback runs in a nested transaction, a PostgreSQL savepoint.

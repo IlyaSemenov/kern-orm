@@ -45,8 +45,37 @@ try {
 }
 ```
 
-When `$transaction` rejects with `ConnectionError`, the transaction may have been committed, such as when its connection fails during `COMMIT`.
-When the connection fails while the callback runs, the rollback fails too, so `$transaction` rejects with a `SuppressedError` whose `error` is the `ConnectionError` of the rollback; such a transaction was not committed.
+When the connection of a transaction fails, `$transaction` rejects with `TransactionConnectionError`, a `ConnectionError` whose `phase` tells whether the transaction may have been committed:
+
+- `begin`: the transaction did not start, and its callback did not run;
+- `transaction`: the transaction was rolled back, also when the callback caught the error of its query;
+- `commit`: the connection failed during `COMMIT`, so the transaction may have been committed.
+
+To retry such a transaction, run it again unless the phase is `commit`, where only a transaction that can run twice may run again:
+
+```ts
+import { TransactionConnectionError } from "kern-orm"
+
+const createSurvey = () =>
+  db.$transaction(async () => {
+    const formId = await db.form.insert({ name: "Survey", published: false }).get("id")
+    await db.field.insert({ formId, position: 1, label: "Name" })
+  })
+
+try {
+  await createSurvey()
+} catch (error) {
+  // After a failure during COMMIT, the survey may exist already.
+  if (error instanceof TransactionConnectionError && error.phase !== "commit") {
+    await createSurvey()
+  } else {
+    throw error
+  }
+}
+```
+
+Retry the outermost transaction: a nested transaction rejects with the errors of its queries, while its enclosing transaction rolls back and rejects with `TransactionConnectionError`.
+The error that the transaction rejects with otherwise, such as the error of its callback, is the `cause` of `TransactionConnectionError`.
 
 ## Failures to release a connection
 

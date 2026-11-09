@@ -19,6 +19,19 @@
 - A failed release of the connection of a transaction, a test transaction, or a test fixture never changes the result or error of the call, which is decided before the release: a committed transaction that rejected would be retried.
   `execution/transaction/release.ts` passes the failure to `onReleaseError` of the database, or to `console.error` without one or when the handler throws or rejects.
 
+## Connection failures
+
+- A transaction of `transaction`, also of `ensureTransaction` outside a transaction, watches every statement and script on its connection, including those of its nested levels ([decision](../decisions/transactions/connection-failure-phase.md)); a `ConnectionError` of another connection, such as of the pool of another database, does not count.
+- After a `ConnectionError` on it before `COMMIT` is sent, also of a statement that the callback did not await, the transaction rolls back instead of `COMMIT`, also when the callback caught the error and resolved, since the statement may not have run; a statement that succeeds later changes nothing.
+- Such a transaction rejects with `TransactionConnectionError`, a `ConnectionError` of the phase of the transaction when the rejection of the first `ConnectionError` came:
+  - `begin` before the callback, at getting the connection, `BEGIN`, the settings, or their rollback, so the transaction applied nothing;
+  - `transaction` from the callback until `COMMIT` is sent, including the rollback, so the transaction was not committed;
+  - `commit` once `COMMIT` is sent, so whether the transaction was committed is unknown: a client that pipelines statements may have sent `COMMIT` before the connection broke, and then rejects every statement it queued, also one sent before `COMMIT`.
+- Its `cause` is the error that the transaction rejects with otherwise, by the rules of [levels](#levels): the error of the callback, a `SuppressedError` of a failed cleanup, or the `ConnectionError` itself.
+- It recognizes an instance of another copy of `kern-orm` by a brand of its own, as the [errors of drivers](drivers.md#errors) do, since `instanceof ConnectionError` would recognize the error but not the subclass.
+- A transaction that resolves stays resolved: a statement that the callback did not await, refused by the client with `ConnectionError` without breaking the connection after `COMMIT` was sent, does not stop a `COMMIT` that succeeds.
+- A test transaction, a test fixture, and a nested level do not wrap their errors, so a transaction of code under test, which runs as a savepoint of a test level, rejects with the errors of its statements.
+
 ## Joining
 
 - `ensureTransaction` of a `Database` and `$ensureTransaction` of a `Db` run their callback in the context of the current level without a savepoint when the code runs in a transaction, and start a transaction otherwise.

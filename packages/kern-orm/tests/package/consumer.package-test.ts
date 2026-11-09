@@ -591,6 +591,7 @@ describe.each(Object.keys(bundlers) as (keyof typeof bundlers)[])("%s", bundler 
       "AsyncLocalStorage",
       "kern-orm.QueryError",
       "kern-orm.ConnectionError",
+      "kern-orm.TransactionConnectionError",
       "timestamptz",
       "jsonb",
     ]

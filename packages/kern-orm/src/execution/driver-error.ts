@@ -10,7 +10,7 @@ const connectionErrorBrand = /* @__PURE__ */ Symbol.for("kern-orm.ConnectionErro
  *
  * An application can load several copies of kern-orm, such as one of a driver, and an error of one copy is then an instance of the class of another.
  */
-function isInstance(errorClass: unknown, root: unknown, brand: symbol, value: unknown) {
+export function isInstance(errorClass: unknown, root: unknown, brand: symbol, value: unknown) {
   if (errorClass !== root) {
     return Function.prototype[Symbol.hasInstance].call(errorClass, value)
   }
@@ -22,7 +22,7 @@ function isInstance(errorClass: unknown, root: unknown, brand: symbol, value: un
 }
 
 /** Sets the brand of `error`, which is not enumerable, so that it does not show among the fields of the error. */
-function setBrand(error: Error, brand: symbol): void {
+export function setBrand(error: Error, brand: symbol): void {
   Object.defineProperty(error, brand, { value: true })
 }
 
@@ -65,7 +65,8 @@ export class QueryError extends Error {
  * The statement may have run or not, and its connection may be lost or in an unknown state of its transaction.
  */
 export class ConnectionError extends Error {
-  override readonly name = "ConnectionError"
+  // A string rather than its literal, so that a subclass, such as `TransactionConnectionError`, names itself.
+  override readonly name: string = "ConnectionError"
 
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options)

@@ -14,6 +14,7 @@ import { createStatement } from "./driver"
 import { ConnectionError, QueryError } from "./driver-error"
 import type { TestHooks } from "./testing"
 import { createTestHelpers } from "./testing"
+import { TransactionConnectionError } from "./transaction/connection-loss"
 
 /** Options of `describeDriverContract`: how to create the driver under test. */
 export interface DriverContractOptions {
@@ -446,7 +447,11 @@ export function describeDriverContract(
           await selectValue("SELECT pg_terminate_backend($1)", [pid!])
           await selectValueOnSingle("SELECT 1")
         })
-        await assert.rejects(transaction, /Transaction rollback failed/)
+        await assert.rejects(
+          transaction,
+          (error: unknown) =>
+            error instanceof TransactionConnectionError && error.phase === "transaction",
+        )
 
         assert.equal(
           await single.transaction(() => selectValueOnSingle("SELECT 'usable'")),

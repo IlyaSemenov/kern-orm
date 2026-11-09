@@ -1,6 +1,6 @@
 # Errors of drivers recognized by `instanceof`
 
-`QueryError` and `ConnectionError` recognize the errors of another copy of `kern-orm` in `instanceof`: the constructor sets a brand of `Symbol.for`, a property that is not enumerable, and `Symbol.hasInstance` of the class checks it, so that an error that a driver throws with its own copy of `kern-orm` is an instance of the class of the copy of the application.
+`QueryError`, `ConnectionError`, and `TransactionConnectionError` recognize the errors of another copy of `kern-orm` in `instanceof`: the constructor sets a brand of `Symbol.for`, a property that is not enumerable, and `Symbol.hasInstance` of the class checks it, so that an error that a driver throws with its own copy of `kern-orm` is an instance of the class of the copy of the application.
 
 ```ts
 // Chosen: the classes recognize the errors of every copy

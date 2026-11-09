@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
-import type { SqlStatement } from "kern-orm"
-import { createStatement } from "kern-orm"
+import type { DriverResult, SqlStatement } from "kern-orm"
+import { ConnectionError, createStatement, QueryError, TransactionConnectionError } from "kern-orm"
 
 import { createRecordingDriver } from "../../../testing/recording-driver"
 
@@ -1391,6 +1391,341 @@ describe("failures of cleanup", () => {
     expect(rejection).toBeInstanceOf(SuppressedError)
     expect(rejection).toMatchObject({ error: rollbackError, suppressed: callbackError })
     expect(releases).toEqual([{ connection: 1 }])
+  })
+})
+
+describe("connection failures", () => {
+  const setSetting = "SELECT set_config($1, $2, true)"
+
+  /** Rejection of `promise`, which must reject. */
+  function getRejection(promise: Promise<unknown>): Promise<unknown> {
+    return promise.then(
+      () => {
+        throw new Error("Expected a rejection")
+      },
+      (error: unknown) => error,
+    )
+  }
+
+  it("rejects with phase begin when getting the connection fails", async () => {
+    const lost = new ConnectionError("lost")
+    const { driver, statements } = createRecordingDriver({
+      acquire() {
+        throw lost
+      },
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    let called = false
+    const rejection = await getRejection(
+      coordinator.transaction(async () => {
+        called = true
+      }),
+    )
+
+    expect(rejection).toBeInstanceOf(TransactionConnectionError)
+    expect(rejection).toMatchObject({ phase: "begin", cause: lost })
+    expect(called).toBe(false)
+    expect(statements).toEqual([])
+  })
+
+  it("rejects with phase begin when BEGIN fails, without running the callback", async () => {
+    const lost = new ConnectionError("lost")
+    const { driver, statements, releases } = createRecordingDriver({
+      respond: failOn("BEGIN", lost),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    let called = false
+    const rejection = await getRejection(
+      coordinator.transaction(async () => {
+        called = true
+      }),
+    )
+
+    expect(rejection).toMatchObject({ phase: "begin", cause: lost })
+    expect(called).toBe(false)
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN"])
+    expect(releases).toEqual([{ connection: 1 }])
+  })
+
+  it("rejects with phase begin when the settings fail, keeping a failed ROLLBACK in the cause", async () => {
+    const lost = new ConnectionError("lost")
+    const rollbackError = new ConnectionError("rollback")
+    const { driver, statements } = createRecordingDriver({
+      respond: ({ text }) => {
+        if (text === setSetting) {
+          throw lost
+        }
+        if (text === "ROLLBACK") {
+          throw rollbackError
+        }
+        return {}
+      },
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    const rejection = await getRejection(
+      coordinator.transaction(() => Promise.resolve(), { searchPath: ["tenant_1"] }),
+    )
+
+    expect(rejection).toMatchObject({ phase: "begin" })
+    expect((rejection as Error).cause).toBeInstanceOf(SuppressedError)
+    expect((rejection as Error).cause).toMatchObject({ error: rollbackError, suppressed: lost })
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", setSetting, "ROLLBACK"])
+  })
+
+  it.each(["statement", "script"] as const)(
+    "rolls back and rejects with phase transaction when a %s of the callback fails",
+    async kind => {
+      const lost = new ConnectionError("lost")
+      const { driver, statements, scripts, releases } = createRecordingDriver({
+        respond: failOn("lost", lost),
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      const rejection = await getRejection(
+        coordinator.transaction(async () => {
+          await (kind === "statement"
+            ? coordinator.execute(createStatement("lost"))
+            : coordinator.executeScript("lost"))
+        }),
+      )
+
+      expect(rejection).toBeInstanceOf(TransactionConnectionError)
+      expect(rejection).toMatchObject({
+        message: "Transaction was rolled back: its connection failed",
+        phase: "transaction",
+        cause: lost,
+      })
+      expect(statements.map(({ text }) => text)).toEqual(
+        kind === "statement" ? ["BEGIN", "lost", "ROLLBACK"] : ["BEGIN", "ROLLBACK"],
+      )
+      expect(scripts.map(({ script }) => script)).toEqual(kind === "script" ? ["lost"] : [])
+      expect(releases).toEqual([{ connection: 1 }])
+    },
+  )
+
+  it.each([
+    { callback: "rejects", catches: false },
+    { callback: "catches the ConnectionError and resolves", catches: true },
+  ])(
+    "keeps the SuppressedError of a failed ROLLBACK as the cause when the callback $callback",
+    async ({ catches }) => {
+      const lost = new ConnectionError("lost")
+      const rollbackError = new ConnectionError("rollback")
+      const { driver } = createRecordingDriver({
+        respond: ({ text }) => {
+          if (text === "lost") {
+            throw lost
+          }
+          if (text === "ROLLBACK") {
+            throw rollbackError
+          }
+          return {}
+        },
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      const rejection = await getRejection(
+        coordinator.transaction(async () => {
+          const statement = coordinator.execute(createStatement("lost"))
+          await (catches ? statement.catch(() => {}) : statement)
+        }),
+      )
+
+      expect(rejection).toMatchObject({ phase: "transaction" })
+      expect((rejection as Error).cause).toBeInstanceOf(SuppressedError)
+      expect((rejection as Error).cause).toMatchObject({ error: rollbackError, suppressed: lost })
+    },
+  )
+
+  it("rolls back instead of COMMIT when the callback caught the ConnectionError and resolved, also after a later statement succeeded", async () => {
+    const lost = new ConnectionError("lost")
+    const { driver, statements } = createRecordingDriver({ respond: failOn("lost", lost) })
+    const coordinator = new TransactionCoordinator(driver)
+
+    const rejection = await getRejection(
+      coordinator.transaction(async () => {
+        await coordinator.execute(createStatement("lost")).catch(() => {})
+        await coordinator.execute(createStatement("after"))
+        return "done"
+      }),
+    )
+
+    expect(rejection).toMatchObject({ phase: "transaction", cause: lost })
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "lost", "after", "ROLLBACK"])
+  })
+
+  it.each([
+    {
+      failing: "SAVEPOINT kern_1",
+      nested: (coordinator: TransactionCoordinator) =>
+        coordinator.transaction(() => Promise.resolve()),
+    },
+    {
+      failing: "RELEASE SAVEPOINT kern_1",
+      nested: (coordinator: TransactionCoordinator) =>
+        coordinator.transaction(() => Promise.resolve()),
+    },
+    {
+      failing: "ROLLBACK TO SAVEPOINT kern_1",
+      nested: (coordinator: TransactionCoordinator) =>
+        coordinator.transaction(() => Promise.reject(new Error("nested"))),
+    },
+    {
+      failing: setSetting,
+      nested: (coordinator: TransactionCoordinator) =>
+        coordinator.transaction(() => Promise.resolve(), { searchPath: ["tenant_1"] }),
+    },
+  ])(
+    "rolls back and rejects with phase transaction when $failing of a nested transaction fails",
+    async ({ failing, nested }) => {
+      const lost = new ConnectionError("lost")
+      const { driver, statements } = createRecordingDriver({
+        respond: ({ text }) => {
+          if (text === failing) {
+            throw lost
+          }
+          return text === "SELECT current_setting($1)" ? { rows: [["public"]] } : {}
+        },
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      const rejection = await getRejection(
+        coordinator.transaction(async () => {
+          await nested(coordinator).catch(() => {})
+        }),
+      )
+
+      expect(rejection).toBeInstanceOf(TransactionConnectionError)
+      expect(rejection).toMatchObject({ phase: "transaction" })
+      expect(statements.map(({ text }) => text)).not.toContain("COMMIT")
+      expect(statements.at(-1)?.text).toBe("ROLLBACK")
+    },
+  )
+
+  it("rolls back instead of COMMIT when a statement that the callback did not await fails after the callback resolves", async () => {
+    const lost = new ConnectionError("lost")
+    const { driver, statements } = createRecordingDriver()
+    const unawaited = Promise.withResolvers<DriverResult>()
+    const acquire = driver.acquire.bind(driver)
+    driver.acquire = async () => {
+      const connection = await acquire()
+      return {
+        ...connection,
+        execute: statement =>
+          statement.text === "unawaited" ? unawaited.promise : connection.execute(statement),
+      }
+    }
+    const coordinator = new TransactionCoordinator(driver)
+
+    const rejection = await getRejection(
+      coordinator.transaction(() => {
+        markHandled(coordinator.execute(createStatement("unawaited")))
+        const result = Promise.resolve("done")
+        // Rejecting the statement in a reaction to the result, registered before the transaction awaits it, makes its failure come after the transaction decides to commit and before COMMIT is sent.
+        void result.then(() => unawaited.reject(lost))
+        return result
+      }),
+    )
+
+    expect(rejection).toMatchObject({ phase: "transaction", cause: lost })
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "ROLLBACK"])
+  })
+
+  it("rejects with phase commit when COMMIT fails", async () => {
+    const lost = new ConnectionError("lost")
+    const { driver, statements, releases } = createRecordingDriver({
+      respond: failOn("COMMIT", lost),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    const rejection = await getRejection(coordinator.transaction(() => Promise.resolve("done")))
+
+    expect(rejection).toBeInstanceOf(TransactionConnectionError)
+    expect(rejection).toMatchObject({
+      message: "Transaction may have been committed: its connection failed during COMMIT",
+      phase: "commit",
+      cause: lost,
+    })
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT"])
+    expect(releases).toEqual([{ connection: 1 }])
+  })
+
+  it("takes phase commit for the failure of a statement that the callback did not await and that comes after COMMIT was sent", async () => {
+    const unawaitedError = new ConnectionError("unawaited")
+    const commitError = new ConnectionError("commit")
+    const unawaited = holdOn("unawaited", 1, unawaitedError)
+    const { driver, statements } = createRecordingDriver({
+      async respond(statement) {
+        await unawaited.respond(statement)
+        if (statement.text === "COMMIT") {
+          throw commitError
+        }
+        return {}
+      },
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    const transaction = markHandled(
+      coordinator.transaction(async () => {
+        markHandled(coordinator.execute(createStatement("unawaited")))
+      }),
+    )
+    await unawaited.reached
+    await settleCallbacks()
+    unawaited.resume()
+
+    expect(await getRejection(transaction)).toMatchObject({ phase: "commit", cause: commitError })
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "unawaited", "COMMIT"])
+  })
+
+  it("counts no ConnectionError of the pool of another database", async () => {
+    const lost = new ConnectionError("lost")
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+    const other = new TransactionCoordinator(
+      createRecordingDriver({ respond: failOn("lost", lost) }).driver,
+    )
+
+    await coordinator.transaction(async () => {
+      await other.execute(createStatement("lost")).catch(() => {})
+    })
+    await expect(
+      coordinator.transaction(() => other.execute(createStatement("lost"))),
+    ).rejects.toBe(lost)
+
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT", "BEGIN", "ROLLBACK"])
+  })
+
+  it("rejects with the QueryError of a statement as it is", async () => {
+    const rejected = new QueryError("rejected", { code: "22012" })
+    const { driver } = createRecordingDriver({ respond: failOn("rejected", rejected) })
+    const coordinator = new TransactionCoordinator(driver)
+
+    await expect(coordinator.transaction(run(coordinator, "rejected"))).rejects.toBe(rejected)
+  })
+
+  it("rejects with the phase from ensureTransaction outside a transaction", async () => {
+    const lost = new ConnectionError("lost")
+    const { driver } = createRecordingDriver({ respond: failOn("lost", lost) })
+    const coordinator = new TransactionCoordinator(driver)
+
+    const rejection = await getRejection(coordinator.ensureTransaction(run(coordinator, "lost")))
+
+    expect(rejection).toMatchObject({ phase: "transaction", cause: lost })
+  })
+
+  it("rejects with the ConnectionError as it is in a test transaction, in a transaction nested in it, and in the seed of a test fixture", async () => {
+    const lost = new ConnectionError("lost")
+    const { coordinator } = createTestCoordinator({ respond: failOn("lost", lost) })
+
+    await expect(coordinator.testTransaction(run(coordinator, "lost"))).rejects.toBe(lost)
+    await coordinator.testTransaction(async () => {
+      await expect(coordinator.transaction(run(coordinator, "lost"))).rejects.toBe(lost)
+    })
+    await expect(coordinator.createTestFixture(run(coordinator, "lost"))).rejects.toBe(lost)
   })
 })
 

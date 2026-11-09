@@ -26,7 +26,7 @@
 - Each class recognizes an instance of another copy of `kern-orm` by a brand of `Symbol.for`, which its constructor sets as a property that is not enumerable, and which `Symbol.hasInstance` of the class checks; a subclass checks the prototype chain ([decision](../decisions/drivers/error-recognition.md)).
   The declarations of the classes do not name the brand.
 - A driver rejects with them a statement, a script, and a failure to get a connection, which is a `ConnectionError` whatever its fields, such as a translated `FATAL` of a missing database.
-  The coordinator passes them as they are, directly or as the `error` or `suppressed` of a `SuppressedError`; its own errors are plain errors.
+  The coordinator passes them as they are, directly, as the `error` or `suppressed` of a `SuppressedError`, or as the `cause` of the [`TransactionConnectionError`](transactions.md#connection-failures) of a transaction whose connection failed; its other errors are plain errors.
 - `toDriverError` classifies an error of a client by the fields of the PostgreSQL error it carries, for the driver packages and custom drivers:
   - an error that is already classified, also by another copy of `kern-orm`, returns as it is;
   - an error without a severity is a `ConnectionError`: every error of the server has one, and an error of a client may have a code of five letters, such as `EPIPE`;

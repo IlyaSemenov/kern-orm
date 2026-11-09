@@ -4,9 +4,11 @@ import { AsyncLocalStorage } from "node:async_hooks"
 
 import type { DatabaseOptions, TransactionOptions } from "../database"
 import type { Connection, Driver, DriverResult, SqlStatement } from "../driver"
+import { ConnectionError } from "../driver-error"
 import type { OpenedTestFixture, PendingTestFixture, TestTransactionOptions } from "../testing"
 
 import { acquireUnlessAborted } from "./abort"
+import { TransactionConnectionError } from "./connection-loss"
 import { TestFixtureStack } from "./fixture-stack"
 import type { Outcome, Rejection, TransactionLevel } from "./level"
 import {
@@ -77,6 +79,7 @@ export class TransactionCoordinator {
    *
    * Inside a transaction, it runs `callback` in a savepoint nested in it, which restores the settings it changed when it ends.
    * A failed cleanup after an error rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
+   * A transaction that it starts rolls back instead of `COMMIT` after a `ConnectionError` on its connection, and when it rejects after such an error, also of `COMMIT`, it rejects with `TransactionConnectionError` of the phase of the failure, whose `cause` is the error it would reject with otherwise.
    */
   transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T> {
     const settings = getLevelSettings(options)
@@ -227,15 +230,27 @@ export class TransactionCoordinator {
     }
   }
 
+  /**
+   * Runs `callback` in a level without a parent on a connection of its own: a transaction of `transaction` when it `commits`, and a test transaction otherwise.
+   *
+   * A transaction of `transaction` whose connection fails rejects with `TransactionConnectionError`.
+   */
   async #runRoot<T>(
     callback: () => Promise<T>,
     commits: boolean,
     signal?: AbortSignal,
     settings?: readonly LevelSetting[],
   ): Promise<T> {
-    const connection = await (signal
-      ? acquireUnlessAborted(this.driver, signal, this.#onReleaseError)
-      : this.driver.acquire())
+    let connection: Connection
+    try {
+      connection = await (signal
+        ? acquireUnlessAborted(this.driver, signal, this.#onReleaseError)
+        : this.driver.acquire())
+    } catch (error) {
+      throw commits && error instanceof ConnectionError
+        ? new TransactionConnectionError("begin", { cause: error })
+        : error
+    }
     // An abort that comes while the connection is handed over starts nothing either.
     if (signal?.aborted) {
       await releaseConnection(connection, this.#onReleaseError)
@@ -243,9 +258,10 @@ export class TransactionCoordinator {
     }
     // A level that commits is a transaction of `transaction`; test transactions roll back.
     const level = createLevel(connection, undefined, commits)
+    const { watch } = level
     let outcome: Outcome<T> | undefined
     try {
-      await connection.execute(beginStatement)
+      await level.connection.execute(beginStatement)
     } catch (error) {
       level.state = "closed"
       outcome = { rejection: { error: suppressAbortReason(error, signal) } }
@@ -257,10 +273,18 @@ export class TransactionCoordinator {
         outcome = await getEndedOutcome(endLevel(level, false), error)
       }
     }
-    outcome ??= await runLevel(this.#storage, level, callback, commits, signal)
+    if (!outcome) {
+      if (watch) {
+        watch.phase = "transaction"
+      }
+      outcome = await runLevel(this.#storage, level, callback, commits, signal)
+    }
     await releaseConnection(connection, this.#onReleaseError)
     if (outcome.rejection) {
-      throw outcome.rejection.error
+      // A failure of the connection decides whether the transaction may have been committed, whatever error the rejection has.
+      throw watch?.failure
+        ? new TransactionConnectionError(watch.failure.phase, { cause: outcome.rejection.error })
+        : outcome.rejection.error
     }
     return outcome.result as T
   }

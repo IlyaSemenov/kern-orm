@@ -46,3 +46,4 @@ Scenarios worth comparing that the topics do not cover yet:
 - Tests in transactions that roll back.
 - Errors of drivers classified as a statement that PostgreSQL rejected or a lost connection, across clients.
 - A connection returned to the pool in a transaction, such as after a failed `COMMIT` or a `BEGIN` sent outside a transaction.
+- A transaction whose connection fails: whether it may have been committed, and whether it commits after its callback caught the error.

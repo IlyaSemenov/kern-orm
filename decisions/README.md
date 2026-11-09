@@ -82,6 +82,10 @@ The SQL that loads nested queries and relations.
 - [Column naming conventions of the table factory](schemas/column-naming-conventions.md).
 - [Singleton tables](schemas/singleton-tables.md): an option of a table whose queries start as queries of its row.
 
+## Transactions
+
+- [Phase of a connection failure watched on every statement](transactions/connection-failure-phase.md): through a wrapper of the connection of a transaction, rather than a flag of the driver or the rejection of the callback.
+
 ## Drivers
 
 - [Errors of drivers recognized by `instanceof`](drivers/error-recognition.md): the classes recognize the errors of another copy of `kern-orm` by a brand, rather than by predicates.

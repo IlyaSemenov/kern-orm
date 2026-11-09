@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test"
 
-import { describePostgres } from "../../testing/postgres"
+import { postgresJsDriver } from "@kern-orm/postgres-js"
+import postgres from "postgres"
+
+import { describePooledPostgres, describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -8,6 +11,8 @@ import * as t from "../types"
 
 import { createDatabase } from "./database"
 import { createStatement } from "./driver"
+import { ConnectionError } from "./driver-error"
+import { TransactionConnectionError } from "./transaction/connection-loss"
 
 it("closes the driver when disposed", async () => {
   const { driver } = createRecordingDriver()
@@ -169,5 +174,100 @@ describePostgres("search path in PostgreSQL", ({ database, testTransaction }) =>
     })
 
     expect(paths.after).toBe(paths.initial)
+  })
+})
+
+describePooledPostgres("connection failures of transactions in PostgreSQL", ({ database }) => {
+  /** Terminates the backend of the connection of the current transaction, which rejects the statement with ConnectionError. */
+  const terminateBackend = async () => {
+    await database.query`SELECT pg_terminate_backend(pg_backend_pid())`
+  }
+
+  const selectUsable = async () => await database.query`SELECT 'usable'`.get(t.text)
+
+  it("rejects with phase begin when getting the connection fails", async () => {
+    const url = new URL(process.env.DATABASE_URL!)
+    url.pathname = "/kern_orm_missing_database"
+    await using missing = createDatabase({ driver: postgresJsDriver(postgres(url.href)) })
+
+    let called = false
+    const rejection = await missing
+      .transaction(async () => {
+        called = true
+      })
+      .catch((error: unknown) => error)
+
+    expect(rejection).toBeInstanceOf(TransactionConnectionError)
+    expect(rejection).toMatchObject({ phase: "begin" })
+    expect((rejection as Error).cause).toBeInstanceOf(ConnectionError)
+    expect(called).toBe(false)
+  })
+
+  it("rejects with phase begin when BEGIN fails, and keeps the pool usable", async () => {
+    const driver = postgresJsDriver(postgres(process.env.DATABASE_URL!, { max: 1 }))
+    // Each connection of the transactions loses its backend before BEGIN.
+    await using terminating = createDatabase({
+      driver: {
+        execute: statement => driver.execute(statement),
+        executeScript: text => driver.executeScript(text),
+        async acquire() {
+          const connection = await driver.acquire()
+          await connection
+            .execute(createStatement("SELECT pg_terminate_backend(pg_backend_pid())"))
+            .catch(() => {})
+          return connection
+        },
+        close: () => driver.close(),
+      },
+    })
+
+    let called = false
+    const rejection = await terminating
+      .transaction(async () => {
+        called = true
+      })
+      .catch((error: unknown) => error)
+
+    expect(rejection).toBeInstanceOf(TransactionConnectionError)
+    expect(rejection).toMatchObject({ phase: "begin" })
+    expect(called).toBe(false)
+    expect(await terminating.query`SELECT 'usable'`.get(t.text)).toBe("usable")
+  })
+
+  it("rejects with phase transaction when the connection fails in the callback, also when the callback catches the failure, and keeps the pool usable", async () => {
+    const rejected = await database.transaction(terminateBackend).catch((error: unknown) => error)
+    const resolved = await database
+      .transaction(async () => {
+        await terminateBackend().catch(() => {})
+        return "resolved"
+      })
+      .catch((error: unknown) => error)
+
+    for (const rejection of [rejected, resolved]) {
+      expect(rejection).toBeInstanceOf(TransactionConnectionError)
+      expect(rejection).toMatchObject({ phase: "transaction" })
+    }
+    expect(await database.transaction(selectUsable)).toBe("usable")
+  })
+
+  it("rejects with phase commit when the connection fails during COMMIT, and keeps the pool usable", async () => {
+    // The trigger runs at COMMIT and terminates its own backend, which drops the temporary objects with the session.
+    const rejection = await database
+      .transaction(() =>
+        database.script(`
+          CREATE TEMP TABLE kern_commit_test (id integer);
+          CREATE FUNCTION pg_temp.kern_terminate_backend() RETURNS trigger LANGUAGE plpgsql
+            AS $$ BEGIN PERFORM pg_terminate_backend(pg_backend_pid()); RETURN NULL; END $$;
+          CREATE CONSTRAINT TRIGGER kern_terminate_backend AFTER INSERT ON kern_commit_test
+            DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION pg_temp.kern_terminate_backend();
+          INSERT INTO kern_commit_test VALUES (1);
+        `),
+      )
+      .catch((error: unknown) => error)
+
+    expect(rejection).toBeInstanceOf(TransactionConnectionError)
+    expect(rejection).toMatchObject({ phase: "commit" })
+    expect((rejection as Error).cause).toBeInstanceOf(ConnectionError)
+    expect(await database.transaction(selectUsable)).toBe("usable")
   })
 })

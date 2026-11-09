@@ -105,6 +105,7 @@ export type { Database, DatabaseOptions, TransactionOptions } from "./execution/
 export { createDatabase } from "./execution/database"
 export type { Connection, Driver, DriverResult } from "./execution/driver"
 export type { TransactionCoordinator } from "./execution/transaction/coordinator"
+export { TransactionConnectionError } from "./execution/transaction/connection-loss"
 export { createStatement } from "./execution/driver"
 export type { DriverErrorFields } from "./execution/driver-error"
 export { ConnectionError, QueryError, toDriverError } from "./execution/driver-error"
