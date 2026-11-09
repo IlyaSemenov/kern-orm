@@ -79,24 +79,6 @@ describe.skipIf(!DATABASE_URL)("nodePostgresDriver", () => {
     }
   })
 
-  it("replaces an idle connection that breaks", async () => {
-    // One pooled connection makes the next statement run on the connection that replaces the lost one.
-    const pool = createPool({ max: 1 })
-    const { promise: removed, resolve: onRemoved } = Promise.withResolvers<void>()
-    pool.once("remove", () => onRemoved())
-    const driver = nodePostgresDriver(pool)
-    try {
-      const pid = await selectValue(driver, "SELECT pg_backend_pid()")
-      await selectValue(admin, "SELECT pg_terminate_backend($1)", [pid!])
-      // The pool emits `error`, which would terminate the process without a listener.
-      await removed
-
-      expect(await selectValue(driver, "SELECT 'usable'")).toBe("usable")
-    } finally {
-      await driver.close()
-    }
-  })
-
   it("keeps the connection of a statement on the pool that PostgreSQL rejected", async () => {
     // One pooled connection makes every statement run on the same connection while it stays open.
     const driver = nodePostgresDriver(createPool({ max: 1 }))

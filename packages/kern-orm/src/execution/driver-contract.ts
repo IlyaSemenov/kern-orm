@@ -8,9 +8,8 @@ import { defineTable } from "../table/table"
 import type { TextValue } from "../type/type"
 import * as t from "../types"
 
-import type { Database } from "./database"
 import { createDatabase } from "./database"
-import type { Driver } from "./driver"
+import type { Connection, Driver, TransactionFailure } from "./driver"
 import { createStatement } from "./driver"
 import type { TestHooks } from "./testing"
 import { createTestHelpers } from "./testing"
@@ -33,14 +32,14 @@ export interface DriverContractRunner extends TestHooks {
   it(name: string, test: () => Promise<void>): unknown
 }
 
-/** Creates helpers that run raw statements on `database`. */
-function createStatementRunners(database: Database) {
+/** Creates helpers that run raw statements on `target`: a database, a driver, or a reserved connection. */
+function createStatementRunners(target: Pick<Connection, "execute">) {
   return {
     async runStatement(text: string) {
-      await database.execute(createStatement(text))
+      await target.execute(createStatement(text))
     },
     async selectValue(text: string, parameters: readonly TextValue[] = []) {
-      const { rows } = await database.execute(createStatement(text, parameters))
+      const { rows } = await target.execute(createStatement(text, parameters))
       return rows[0]![0]
     },
   }
@@ -64,6 +63,7 @@ export function describeDriverContract(
     const database = createDatabase({ driver })
     after(() => database.close())
     const { runStatement, selectValue } = createStatementRunners(database)
+    const { selectValue: selectValueOnDriver } = createStatementRunners(driver)
 
     it("executes a query in a transaction", async () => {
       const tag = defineTable("pg_tag_test", {
@@ -108,6 +108,18 @@ export function describeDriverContract(
           "SET LOCAL client_min_messages = warning; DROP TABLE IF EXISTS pg_statement_test",
         )
       }
+    })
+
+    it("returns every value as text", async () => {
+      const { rows } = await driver.execute(
+        createStatement(
+          `SELECT 42::integer, 12345678901234::bigint, true, '{"a":1}'::jsonb, NULL::text, ARRAY['a', 'b'], '2030-01-01 12:00'::timestamp`,
+        ),
+      )
+
+      assert.deepEqual(rows, [
+        ["42", "12345678901234", "t", '{"a": 1}', null, "{a,b}", "2030-01-01 12:00:00"],
+      ])
     })
 
     it("keeps the values of a statement as text without the parsers of the client", async () => {
@@ -196,6 +208,12 @@ export function describeDriverContract(
       assert.equal(await selectValue("SELECT $1::text IS NULL", [null]), "t")
     })
 
+    it("sends a parameter as it is, whatever type PostgreSQL describes for it", async () => {
+      // A client that serializes a parameter by the type that PostgreSQL describes, such as postgres.js, would turn "true" into false and encode a JSON text again.
+      assert.equal(await selectValueOnDriver("SELECT $1::boolean", ["true"]), "t")
+      assert.equal(await selectValueOnDriver("SELECT $1::jsonb ->> 'a'", ['{"a":"x"}']), "x")
+    })
+
     it("runs concurrent statements of a transaction in the order of calls", async () => {
       const values = await database.transaction(() =>
         Promise.all([
@@ -207,6 +225,36 @@ export function describeDriverContract(
       )
 
       assert.deepEqual(values, ["1", "1", "2", "2"])
+    })
+
+    it("runs the statements sent on a reserved connection before ROLLBACK inside its transaction", async () => {
+      // The temporary table outlives the rollback, and closing a driver of its own drops it with the connection.
+      const own = createDriver({ max: 1 })
+      try {
+        const connection = await own.acquire()
+        const { runStatement, selectValue } = createStatementRunners(connection)
+        let failure: TransactionFailure | undefined
+        try {
+          await runStatement("CREATE TEMP TABLE pg_order_test (id integer)")
+          await runStatement("BEGIN")
+          await Promise.all([
+            runStatement("INSERT INTO pg_order_test VALUES (1)"),
+            runStatement("SELECT pg_sleep(0.05)"),
+            runStatement("INSERT INTO pg_order_test VALUES (2)"),
+            runStatement("ROLLBACK"),
+          ])
+
+          assert.equal(await selectValue("SELECT count(*) FROM pg_order_test"), "0")
+        } catch (error) {
+          // A failed statement may leave the connection in the transaction or lost.
+          failure = { error }
+          throw error
+        } finally {
+          await connection.release(failure)
+        }
+      } finally {
+        await own.close()
+      }
     })
 
     it("decodes selected expressions with their types", async () => {
@@ -336,6 +384,39 @@ export function describeDriverContract(
         }
       })
     }
+
+    it("replaces an idle connection whose backend exited", async () => {
+      const own = createDriver({ max: 2 })
+      const held: Connection[] = []
+      try {
+        // Reserving every connection opens the whole pool, so terminating their backends leaves no existing connection usable.
+        for (let count = 0; count < 2; count++) {
+          held.push(await own.acquire())
+        }
+        const pids: TextValue[] = []
+        for (const connection of held) {
+          pids.push(
+            (await createStatementRunners(connection).selectValue("SELECT pg_backend_pid()"))!,
+          )
+        }
+        // Each connection leaves `held` before its release, so that a failed release leaves the others to `finally`.
+        while (held.length > 0) {
+          await held.shift()!.release()
+        }
+        for (const pid of pids) {
+          // The timeout makes it wait for the backend to exit.
+          assert.equal(await selectValue("SELECT pg_terminate_backend($1, 5000)", [pid]), "t")
+        }
+        // The client learns that a connection closed only once it reads its socket, which may come after the result of the termination.
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        assert.equal(await createStatementRunners(own).selectValue("SELECT 'usable'"), "usable")
+      } finally {
+        // Closing waits for the reserved connections, so a failure before their release would hang it; the test already fails with that failure.
+        await Promise.allSettled(held.map(async connection => connection.release()))
+        await own.close()
+      }
+    })
 
     // Transaction-local settings and backend PIDs observe routing without committed tables.
     it("isolates concurrent transactions on their own connections", async () => {
