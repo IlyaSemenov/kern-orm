@@ -110,10 +110,18 @@ Leave transactions to kern-orm: do not write `BEGIN`, `COMMIT`, or `ROLLBACK` in
 
 ## Without a Db
 
-In code that has the database but no `Db`, such as a runner of migrations, run statements with `database.query` and scripts with `database.script`, which take the same arguments:
+In code that has the database but no `Db`, such as a runner of migrations, run statements with `database.query` and scripts with `database.script`:
 
 ```ts
 await database.script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
 They cannot name tables of a `Db`: interpolate them with `$query` or `$script` of that `Db`.
+
+To name an object known only at runtime there, interpolate `identifier` from `kern-orm/db`, which takes the names as [`identifier`](#names-known-at-runtime) of `kern-orm` does:
+
+```ts
+import { identifier } from "kern-orm/db"
+
+await database.script`ANALYZE ${identifier(schemaName, tableName)}`
+```

@@ -9,9 +9,11 @@ import type { Database } from "../execution/database"
 import { createDatabase } from "../execution/database"
 import * as t from "../types"
 
+import { text } from "./codecs/text"
 import type { IsolationLevel } from "./database"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
+import { identifier, param, sql } from "./sql/fragment"
 import { TransactionConnectionError } from "./transaction/connection-loss"
 
 it("closes the driver when disposed", async () => {
@@ -28,6 +30,33 @@ it("closes the driver when disposed", async () => {
   }
 
   expect(closed).toBe(true)
+})
+
+it("executes a script of its text or of a template, which interpolates fragments without parameters, in the ambient transaction", async () => {
+  const { driver, scripts } = createRecordingDriver()
+  const database = createDatabase({ driver })
+
+  await database.script("SET lock_timeout = '1s'; SELECT 1")
+  await database.transaction(
+    () => database.script`CREATE INDEX ON ${identifier("app", "form")} (${sql`lower(name)`})`,
+  )
+
+  expect(scripts).toEqual([
+    { connection: "pool", script: "SET lock_timeout = '1s'; SELECT 1" },
+    { connection: 1, script: 'CREATE INDEX ON "app"."form" (lower(name))' },
+  ])
+})
+
+it("rejects a value in the template of a script, also in a fragment that it interpolates, before the script runs", async () => {
+  const { driver, scripts } = createRecordingDriver()
+  const database = createDatabase({ driver })
+  const message =
+    "A script has no parameters, so its template takes no values, also in the fragments that it interpolates"
+
+  await expect(database.script`SELECT ${1}`).rejects.toThrow(message)
+  await expect(database.script`SELECT ${sql`upper(${"x"})`}`).rejects.toThrow(message)
+  await expect(database.script`SELECT ${param(text, "x")}`).rejects.toThrow(message)
+  expect(scripts).toEqual([])
 })
 
 it("rejects queries, scripts, and transactions of a database created for tests outside a test transaction", async () => {

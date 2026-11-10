@@ -30,6 +30,7 @@ const consumerOutput = {
   pageText:
     'SELECT (SELECT coalesce(json_agg(json_build_array(CASE WHEN "subquery"."name" IS NOT DISTINCT FROM NULL THEN NULL ELSE format(\'%s\', "subquery"."name") END)), \'[]\'::json) AS "rows" FROM (SELECT "form"."name" AS "name" FROM "app"."form" AS "form") AS "subquery") AS "names"',
   conditionText: 'SELECT "form"."id" AS "id" FROM "app"."form" AS "form" WHERE "form"."name" = $1',
+  statementText: 'DELETE FROM "app"."form" WHERE id = ($1::uuid)',
 }
 
 let consumer: string

@@ -21,7 +21,9 @@
 ## Scripts
 
 - `$script` of a `Db` and `script` of a `Database` execute a script of several statements at once, through the driver, without a query object or a result: PostgreSQL takes several statements only without parameters.
-- A template of a script compiles as the statement of a query of SQL text and rejects a value that becomes a parameter, also in a query or a `sql` fragment that it interpolates, before it runs; it names the tables of the `Db` as `$query` does.
+- A template of `$script` compiles as the statement of a query of SQL text and rejects a value that becomes a parameter, also in a query or a `sql` fragment that it interpolates, before it runs; it names the tables of the `Db` as `$query` does.
+- A template of `script` of a `Database` is a template of `sql` of the [database layer](types.md#sql-fragments-of-the-database-layer), which takes its fragments, such as a name of `identifier`, and no expression, query, or table of the ORM.
+  It rejects a parameter at any depth of its fragments before the driver gets the script, and a value that it does not take by rejecting its promise.
 - PostgreSQL runs a script outside a transaction in one implicit transaction, and a script in a transaction in that transaction.
   A script must not start or end a transaction, such as with `COMMIT`: that would end the transaction that the coordinator tracks.
   Outside a transaction, the driver rejects a script that leaves a transaction open, under the [driver contract](drivers.md).

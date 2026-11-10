@@ -11,7 +11,7 @@ import {
   or,
   orderingOperators,
 } from "kern-orm"
-import { defineCodec } from "kern-orm/db"
+import { defineCodec, identifier, param } from "kern-orm/db"
 import * as codecs from "kern-orm/db/types"
 import type { TestFixture } from "kern-orm/testing"
 import { createTestHelpers } from "kern-orm/testing"
@@ -34,6 +34,10 @@ const page = db.$select({
   names: db.form.pluck("name"),
 })
 
+// The fragments of `kern-orm/db`, which a template of `kern-orm` interpolates.
+const formId = param(codecs.uuid, "form-id")
+const statement = db.$query`DELETE FROM ${identifier("app", "form")} WHERE id = ${formId}`
+
 // The hooks never run, so the fixture never opens.
 const { useTestFixture } = createTestHelpers(createDatabase({ driver, test: true }), {
   before: () => {},
@@ -53,6 +57,7 @@ console.log(
       .where(or({ name: "Survey" }, FALSE))
       .select("id")
       .toSQL().text,
+    statementText: statement.toSQL().text,
   }),
 )
 await database.close()

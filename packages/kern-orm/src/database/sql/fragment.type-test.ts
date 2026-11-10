@@ -15,6 +15,16 @@ describe("sql", () => {
     sql`SELECT ${identifier("name")} FROM ${sql`form`} WHERE id = ${param(integer, 1)}` satisfies SqlFragment
   })
 
+  test("rejects an object of the members of a fragment and a copy of a fragment, which only the functions of fragments create", () => {
+    const shaped = { strings: ["SELECT 1"], values: [] }
+    const copy = { ...sql`SELECT 1` }
+
+    // @ts-expect-error A fragment is created by sql, identifier, or param.
+    void sql`SELECT ${shaped}`
+    // @ts-expect-error A copy of a fragment is not a fragment.
+    void sql`SELECT ${copy}`
+  })
+
   test("rejects an object, an array, and undefined", () => {
     // @ts-expect-error An object takes param with a codec, such as of jsonb.
     void sql`SELECT ${{ name: "Survey" }}`

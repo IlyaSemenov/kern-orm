@@ -105,6 +105,7 @@ export type {
   SessionOptions,
   TransactionOptions,
 } from "./database/database"
+export type { SqlFragment, SqlValue } from "./database/sql/fragment"
 export type { Database } from "./execution/database"
 export { createDatabase } from "./execution/database"
 export type { Connection, Driver, DriverResult, SqlStatement, TextValue } from "./database/driver"

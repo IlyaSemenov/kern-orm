@@ -103,7 +103,7 @@ import { migrate } from "@kern-orm/migrations"
 useTestFixture(() => migrate(db, migrations))
 ```
 
-Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./queries/sql#scripts), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.
+Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./queries/sql#without-a-db), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.
 
 Each test runner loads the setup module in its own way:
 

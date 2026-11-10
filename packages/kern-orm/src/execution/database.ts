@@ -1,4 +1,4 @@
-// Database of the ORM: adds the binding of schemas and SQL templates without a `Db` to the `Database` of the database layer.
+// Database of the ORM: adds the binding of schemas and queries of SQL text without a `Db` to the `Database` of the database layer.
 
 import type { Database as BaseDatabase, DatabaseOptions } from "../database/database"
 import { createDatabase as createBaseDatabase } from "../database/database"
@@ -32,30 +32,18 @@ export interface Database extends BaseDatabase {
    * It names no tables of a `Db`: run a statement that interpolates them with `$query` of that `Db`.
    */
   query(strings: TemplateStringsArray, ...values: unknown[]): SqlQuery<InitialSqlQueryState>
-  /** Executes a script of statements without parameters, as `$script` of a `Db` does, for code without a `Db`. */
-  script(text: string): Promise<void>
-  /**
-   * Executes the script of the template, as `$script` of a `Db` does, for code without a `Db`.
-   *
-   * It names no tables of a `Db`: run a script that interpolates them with `$script` of that `Db`.
-   */
-  script(strings: TemplateStringsArray, ...values: unknown[]): Promise<void>
 }
 
 /** Creates a database over a driver; its transactions are shared by every schema bound to it. */
 export function createDatabase(options: DatabaseOptions): Database {
   const base = createBaseDatabase(options)
-  // A Db of no tables runs the statements of the database, so that they name no tables of a schema.
+  // A Db of no tables runs the queries of the database, so that they name no tables of a schema.
   let tablelessDb: AnyDb | undefined
   const getTablelessDb = () => (tablelessDb ??= bindSchema(defineSchema(), database))
   const database: Database = {
     ...base,
     bind: (schema, options) => bindSchema(schema, database, options),
     query: (strings, ...values) => getTablelessDb().$query(strings, ...values),
-    script: (script: string | TemplateStringsArray, ...values: unknown[]) =>
-      typeof script === "string"
-        ? base.script(script)
-        : getTablelessDb().$script(script, ...values),
   }
   return database
 }

@@ -33,7 +33,7 @@ export type SqlTemplate<T, O extends OperatorDefinitions, I = T> = (
 /**
  * Builds a SQL fragment.
  *
- * Interpolated expressions such as column references stay structured, a query of a table without clauses, such as `db.form`, becomes the name of the table, and other values become query parameters.
+ * Interpolated expressions such as column references stay structured, a query of a table without clauses, such as `db.form`, becomes the name of the table, a SQL fragment of `kern-orm/db` stays SQL, and other values become query parameters.
  * Another query of a table becomes a subquery in parentheses, and a query of one value, such as of an aggregate or of `exists`, its value, as in a condition.
  * A parameter takes a string, a number, a bigint, a Boolean, `null` for `NULL`, a `Date`, or a `Uint8Array`: pass any other value, such as JSON or an array, with `param` and its type.
  * The type argument declares the TypeScript type of the fragment and does not convert values at runtime, so the fragment cannot be selected; the fragment has `isNull` and the operators of `equalityOperators` only.
@@ -63,10 +63,10 @@ export function sql(first: TemplateStringsArray | AnyType, ...values: unknown[])
 }
 
 /**
- * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime, for the templates of `sql`, of `$query` and `$script` of a `Db`, and of `query` and `script` of a `Database`.
+ * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime, for the templates of `sql`, of `$query` and `$script` of a `Db`, and of `query` of a `Database`; `script` of a `Database` takes `identifier` of `kern-orm/db`.
  *
  * Several names make a qualified name, such as `identifier(schema, table)` for `"schema"."table"`.
- * The fragment has no parameters, so a script takes it.
+ * The fragment has no parameters, so `$script` takes it.
  * The name is not qualified by the PostgreSQL schema of the statement.
  */
 export function identifier(...names: [string, ...string[]]): UntypedExpression {

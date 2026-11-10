@@ -285,7 +285,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
   it("names a table by identifier whose name has a dot and a quote", () =>
     testTransaction(async () => {
       const table = identifier('form.v2 "draft"')
-      await database.script`CREATE TABLE ${table} (name text)`
+      await database.script`CREATE TABLE ${identifierFragment('form.v2 "draft"')} (name text)`
 
       expect(await database.query`INSERT INTO ${table} (name) VALUES (${"Survey"})`).toBe(1)
       expect(await database.query`SELECT name FROM ${table}`.pluck(t.text)).toEqual(["Survey"])

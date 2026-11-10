@@ -153,7 +153,7 @@
 ## SQL fragments of the database layer
 
 - `sql`, `identifier`, and `param` of the database layer (`database/sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
-  The entry points do not export them yet ([backlog](../backlog/database-layer-as-a-package.md)).
+  `kern-orm/db` exports them; it and the root export the types `SqlFragment` and `SqlValue`, which the template of `script` of a `Database` names.
 - The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a codec: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
   - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a codec tells how PostgreSQL reads an object or an array.
   - JSON and arrays take `param` with a codec.
@@ -162,7 +162,7 @@
 - A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`database/sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a codec, so a fragment created without these functions cannot pass one.
 - `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
   - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.
-  - `compileFragment` compiles a fragment as a statement of its own, which binds every parameter at each place.
+  - `compileFragment` compiles a fragment as a statement of its own, which binds every parameter at each place, and `compileScript` as the text of a script, which rejects every parameter.
 - The ORM interpolates a fragment of the layer into `sql`, and so into `$query` and `$script`, as a `fragment` node, which the compiler renders with its compile context as the binder.
   - Its parameters are numbered with those of the statement, and a query of groups binds the parameter of its `param` once, as that of a cast node ([SQL generation](sql.md#statements)).
   - Only these templates take a fragment: an operand of an operator or a function takes an expression.

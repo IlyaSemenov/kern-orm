@@ -176,7 +176,7 @@ export default defineMigration([
 ])
 ```
 
-To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](./queries/sql#names-known-at-runtime) from `kern-orm`.
+To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](./queries/sql#without-a-db) from `kern-orm/db`.
 
 ## Migrations outside a transaction
 

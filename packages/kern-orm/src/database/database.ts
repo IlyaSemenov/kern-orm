@@ -1,4 +1,6 @@
 import type { Driver, DriverResult, SqlStatement } from "./driver"
+import type { SqlValue } from "./sql/fragment"
+import { compileScript, sql } from "./sql/fragment"
 import { TransactionCoordinator } from "./transaction/coordinator"
 
 /**
@@ -15,6 +17,12 @@ export interface Database extends AsyncDisposable {
    * The script must not start or end transactions, which the database tracks.
    */
   script(text: string): Promise<void>
+  /**
+   * Executes the script of the template as `script` of its text does.
+   *
+   * It interpolates SQL fragments without parameters, such as a name of `identifier`; it rejects values, since a script has no parameters.
+   */
+  script(strings: TemplateStringsArray, ...values: SqlValue[]): Promise<void>
   /** Executes a compiled statement, such as of `$compile` of a `Db`, in the ambient transaction or session, or on the pool outside of one unless the database was created with `test: true`. */
   execute(statement: SqlStatement): Promise<DriverResult>
   /**
@@ -124,7 +132,12 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
   const coordinator = new TransactionCoordinator(driver, options)
   return {
     coordinator,
-    script: text => coordinator.executeScript(text),
+    // An async function, so that a template that it rejects rejects the promise.
+    async script(script: string | TemplateStringsArray, ...values: SqlValue[]) {
+      return coordinator.executeScript(
+        typeof script === "string" ? script : compileScript(sql(script, ...values)),
+      )
+    },
     execute: statement => coordinator.execute(statement),
     transaction: (callback, options) => coordinator.transaction(callback, options),
     ensureTransaction: callback => coordinator.ensureTransaction(callback),

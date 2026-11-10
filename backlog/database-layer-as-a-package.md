@@ -16,6 +16,7 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 - Until the package exists, `kern-orm/db` also exports the rest of the layer, such as `Database`, the driver contract, and its errors, as `kern-db` will: the root of `kern-orm` exports the functions of the ORM of the same names.
 - A query of SQL text of the layer holds the source of its statement apart from the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.
   `$query` of a `Db` creates it with the compilation of that `Db`, which resolves a dynamic PostgreSQL schema when the query compiles.
+- `$execute` and `$compile` of a `Db` take no query of SQL text: it is always bound, so it executes when awaited and compiles with `toSQL`, and it holds no node of the ORM that would tell its `Db`.
 - The layer decodes flat results; the ORM keeps nested rows, required relations, literals, `map`, and `transform`.
 - The errors of drivers keep their brands of `Symbol.for`, so that a driver and the coordinator of different packages recognize each other's errors.
 - Drivers and the migrator depend on `kern-db`; renaming their packages is a separate decision.
@@ -23,8 +24,8 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 ## Steps
 
 1. Done: the contract of codecs and the codecs of the built-in types, exported from `kern-orm/db` and `kern-orm/db/types`, and `Type` built on them.
-2. Queries of SQL text in the layer: the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer, `kern-orm/db` exports its fragments, and the documentation of migrations uses its fragments and codecs.
-   Done: its fragments and the renderer of templates, which the ORM interpolates, and the untyped parameters of the ORM by the rule of the layer.
+2. Queries of SQL text in the layer: the decoding of flat results; `query` moves from `execution/database.ts` to the layer, and the documentation of migrations uses its fragments and codecs.
+   Done: the SQL fragments that `kern-orm/db` exports and the ORM interpolates, their renderer, the untyped parameters of the ORM by the rule of the layer, and the template of `script`.
 3. The driver contract and the tests of the layer on its own API, without tables and the expressions of the ORM.
 4. The package: its entry points, the dependencies of drivers and the migrator, the compatibility test, and a consumer that installs `kern-db`, a driver, and the migrator without `kern-orm`.
 
@@ -34,4 +35,3 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 - Whether `coordinator` stays a member of `Database`: its class has private fields, which make the types of two copies of `kern-db` incompatible, while the test helpers need only a few of its methods.
 - Which range of `kern-db` `kern-orm` and the companion packages require, and which compatibility contract the new package keeps.
   A codec of one copy of `kern-db` is not a codec for another: at runtime by the brand of its module, and in types by the `unique symbol` key of its value types.
-- How `$execute` and `$compile` of a `Db` reject a query of SQL text of another `Db` once such a query holds no node of the ORM.

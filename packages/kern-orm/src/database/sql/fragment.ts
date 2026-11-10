@@ -15,6 +15,10 @@ import { bindParameter, encodeParameter, isUntypedValue, rejectUntypedValue } fr
  * It is immutable, and its parameters are numbered only when a statement is compiled, so a fragment can be interpolated into several statements.
  */
 export class SqlFragment {
+  // A fragment is told at runtime by its class, so types take no other object of its members, also a copy of a fragment, which a private member keeps out.
+  /** Mark of fragments for types; absent at runtime. */
+  declare private readonly fragmentBrand: true
+
   constructor(
     /** Text around the values; always one element longer than `values`. */
     readonly strings: readonly string[],
@@ -58,6 +62,7 @@ export function sql(strings: TemplateStringsArray, ...values: SqlValue[]): SqlFr
  * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime.
  *
  * Several names make a qualified name, such as `identifier(schema, table)` for `"schema"."table"`.
+ * The fragment has no parameters, so the template of a script takes it.
  */
 export function identifier(...names: [string, ...string[]]): SqlFragment {
   let text = ""
@@ -129,4 +134,21 @@ export function compileFragment(fragment: SqlFragment): SqlStatement {
   const bind = (value: TextValue) => bindParameter(parameters, value)
   const text = renderFragment(fragment, { bind, bindParam: (_key, value) => bind(value) })
   return createStatement(text, parameters)
+}
+
+/** Compiles `fragment` into the text of a script, rejecting a parameter at any depth of the fragment, since PostgreSQL takes several statements only without parameters. */
+export function compileScript(fragment: SqlFragment): string {
+  return renderFragment(fragment, scriptBinder)
+}
+
+/** Binder of a script, which takes no parameters. */
+const scriptBinder: ParameterBinder = {
+  bind: rejectScriptParameter,
+  bindParam: rejectScriptParameter,
+}
+
+function rejectScriptParameter(): never {
+  throw new Error(
+    "A script has no parameters, so its template takes no values, also in the fragments that it interpolates",
+  )
 }
