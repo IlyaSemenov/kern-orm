@@ -75,7 +75,7 @@
   - At runtime, it rejects a query whose node keeps no values of the key, such as with `where` before or after `find`, `optional`, a relation, selected fields, an order, or a row lock, also on a singleton table, such as after `take` or `where`.
 - Its values are those of an insert without the columns of the key, `UpsertValues`, a mapped type of its own ([decision](../decisions/mutations/upsert-types.md)).
   - A column that they omit or give as `undefined` gets its default in an inserted record and keeps its value in an updated one.
-  - At runtime, it rejects values that are no object, a value of a column of the key, and values without a value other than `undefined`, as `update` does ([backlog](../BACKLOG.md#empty-changes-and-none)).
+  - At runtime, it rejects values that are no object, a value of a column of the key, and values without a value other than `undefined`, as `update` does ([backlog](../backlog/empty-changes-and-none.md)).
 - It changes rows `one`, since the statement inserts or updates the record, so it resolves to `1`, and the fields selected after it are those of the record, inserted or updated.
 
 ## Results

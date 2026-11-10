@@ -139,7 +139,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - In types, its state is `FoundState`, which has the part `foundKey` of the columns of the key outside of `SelectQueryState`, so that every change of the state by `ChangeState` drops it; the methods that keep the state, such as `where`, `orderBy`, the row locks, and `use`, keep the part too.
   - The part is the columns themselves, so that `upsert` takes the values by the key of the query.
     A member of an object of the columns beside them keeps a query of one key from standing for a query of another, even of a key of more columns, such as a query of `id` for one of `tenantId` and `id`; it does so also where TypeScript compares the members of a state and without `strictFunctionTypes`.
-    So a union of queries of `find` and `findBy` by different keys is a union of different states, which rejects the methods that change the state, such as `select` and `get` ([decision](../decisions/queries/state-changing-methods-on-unions.md), [backlog](../BACKLOG.md#unions-of-queries-of-find-and-findby-by-different-keys)).
+    So a union of queries of `find` and `findBy` by different keys is a union of different states, which rejects the methods that change the state, such as `select` and `get` ([decision](../decisions/queries/state-changing-methods-on-unions.md), [backlog](../backlog/unions-of-queries-of-find-and-findby-by-different-keys.md)).
   - `FoundState` is an interface of every part of the state rather than `ChangeState` with the part, so that `find` and `findBy` cost fewer instantiations ([decision](../decisions/mutations/upsert-types.md)).
   - At runtime, its node keeps the values of the key as `foundKey` only after a query of a table without clauses; every method that derives a node from it drops them, whereas `use` returns the query of its callback, such as the query itself.
 
@@ -205,7 +205,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   Without an order, each group gives any of its rows, and an order of only keys may omit some, which PostgreSQL adds.
   - A sort key is a key when it is the same column, or the same expression node that a projection of the query has, as [SQL generation](sql.md#statements) tells them, so that both compile to the same column or position.
     Another expression may compile at each place with parameters and aliases of its own, so PostgreSQL may find the two unequal; lowering checks the order before packing, which would add the expression to the projections of its derived source and make both positions, so that the contract is the same wherever the query is: a key of an expression that the query sorts by requires the query to select it, and a field that `clearSelect` or a later selection removes is no longer selected.
-  - Lowering does not add the keys to the start of the order, which would hide that the rows are sorted by the keys first; rows in another order, such as the latest submission of each user, newest first, need a derived source of the first rows ([backlog](../BACKLOG.md#first-rows-in-another-order)).
+  - Lowering does not add the keys to the start of the order, which would hide that the rows are sorted by the keys first; rows in another order, such as the latest submission of each user, newest first, need a derived source of the first rows ([backlog](../backlog/first-rows-in-another-order.md)).
 - The fields are not compared, so the query selects nested rows and literals; a query without a field that SQL selects rejects at lowering, since PostgreSQL requires a select list with `DISTINCT ON`.
 - A query of `distinctOn` that selects nested queries reads its first rows from a derived source where [SQL generation](sql.md#nested-rows) tells, so that its nested queries run only for the first rows.
 - With [`groupBy`](#groups), it keeps the first group of each key, such as the most common value of each key.
@@ -213,7 +213,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - They replace the fields, as of another query, and read the fields that the keys, the order, and the argument of an aggregate read through their projections, so that the node of the query keeps them in `distinctFields`; the source selects no other field.
     The source selects the keys, so an aggregate or `exists` needs no field that SQL selects, which the rows of the query need.
   - Lowering checks the order as it checks the order of the query that selects those fields; `count()` and `exists` do not depend on it.
-  - The source evaluates the argument for every row that `DISTINCT ON` reads, also a query in it ([backlog](../BACKLOG.md#queries-in-aggregates-of-first-rows)).
+  - The source evaluates the argument for every row that `DISTINCT ON` reads, also a query in it ([backlog](../backlog/queries-in-aggregates-of-first-rows.md)).
 - `distinct` and `distinctOn` reject each other, and so do a [row lock](#row-locks) and `distinctOn`, since PostgreSQL rejects a lock with `DISTINCT ON`.
   Types accept these calls, since they keep no part of the state for `distinctOn`.
 - [`update` and `delete`](mutations.md#rows-to-change) reject a query of `distinctOn`, and `isTableQuery` is false for it.
@@ -323,7 +323,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   A selected field of an aggregate or of `exists` without `map` or `transform` is a scalar, whose reference is a key as it is; with them, it is nested rows too.
 - The compiler binds the parameter of a cast once in a query of groups ([SQL generation](sql.md#statements)), so the copies of a key built from one `param(type, value)` compile to equal text, which PostgreSQL takes for the key in `HAVING` and `ORDER BY`.
   Another parameter, such as of a value interpolated into `sql`, of an operator, or of `param` of an expression, is a parameter of its own at each place.
-- Only the position of its projection refers to a key with such other parameters or with a query, since each other place has parameters and aliases of its own ([backlog](../BACKLOG.md#queries-repeated-in-a-statement)).
+- Only the position of its projection refers to a key with such other parameters or with a query, since each other place has parameters and aliases of its own ([backlog](../backlog/queries-repeated-in-a-statement.md)).
   - A condition of `having` cannot read such a key, also through its field: `HAVING` cannot refer to a projection, so a field is a copy of its expression there.
     Lowering `having` through the projections of the fields, as the keys are, would change no SQL, since the compiler gives each occurrence of a source an alias of its own.
   - Moving the condition to `where` is valid only when it keeps the meaning of the whole predicate, and building the parameters of the key from `param` must change it at every place, also in grouping, not only in the condition; a key that holds a query has aliases of its own at each place anyway.
@@ -400,7 +400,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   Conversions run in their order, and the earlier ones feed the later ones; every `map` runs before every `transform`, since `map` does not apply after `transform`.
   - `map` does not call its callback for a missing row, which it tells from the absence of the row rather than from the value, since a row may decode to `null` or `undefined`.
   - `map` calls its callback with `null` for a `NULL` value, such as of an aggregate without rows, since it is a value of its row rather than a missing row ([result modes](#result-modes)), and types tell the callback to handle it.
-  - The callback of `map` takes one argument, and `transform` of the array gives the index ([backlog](../BACKLOG.md#index-in-the-callback-of-map)).
+  - The callback of `map` takes one argument, and `transform` of the array gives the index ([backlog](../backlog/index-in-the-callback-of-map.md)).
   - A callback must return its result synchronously, since decoding is synchronous.
     Nothing would wait for a Promise in a field of nested rows, and `then` and `$execute` would need to type each result by what `await` makes of it, on every query.
     Types reject a result that may be a Promise, including a bound query, through `SynchronousResult`, which `any` and `unknown` pass, and at runtime such a result fails decoding, whichever the type tells, without calling its `then`, which would execute a bound query.

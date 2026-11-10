@@ -10,9 +10,11 @@ Before changing a module, read [architecture/README.md](architecture/README.md) 
 Keep [architecture/](architecture/README.md) to the code as it is: record a contract in the file of its topic and unresolved design of the code in its Open questions; list a new file in the map.
 Record a trade-off between designs in [decisions/](decisions/README.md), as [Decisions](#decisions) describes, and how other projects handle the scenarios of kern-orm in [comparison/](comparison/README.md), as [Comparison with other projects](#comparison-with-other-projects) describes.
 
-Track work not done yet in [BACKLOG.md](BACKLOG.md), with its preliminary decisions and open questions, roughly from the most important.
-Add each item as a section without a number where its importance roughly fits, and delete it once it is done, moving its lasting contracts to [architecture/](architecture/README.md), or once it is decided against, moving the decision to [decisions/](decisions/README.md).
-The order is a loose hint: do not reorder other items to place a new one exactly.
+Track work not done yet in [backlog/](backlog/README.md), each item with its preliminary decisions and open questions in a file of its own.
+List each item in the index under the bucket of its importance with a short summary.
+In Next and Later, add a new item where its importance roughly fits: the order is a loose hint, so do not reorder other items to place it exactly.
+In Without a use case, add it at the end.
+Delete an item, its file and its line in the index, once it is done, moving its lasting contracts to [architecture/](architecture/README.md), or once it is decided against, moving the decision to [decisions/](decisions/README.md).
 
 Extend this guide only with stable, non-obvious conventions, architecture, contracts, workflows, and gotchas.
 Do not catalog files or restate information evident from their names and locations.
@@ -223,7 +225,7 @@ Describe the user-visible change.
 - Name another project, in comparison/ and in decisions/, as "Projects" of [comparison/README.md](comparison/README.md) lists it, without a link to the project and without a version unless it differs from the listed one; write a record of an issue or a pull request in the past tense.
   List a new project there with its link and the version you checked.
 - Also record a scenario that another project fails while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>`.
-- Keep a capability that another project has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of BACKLOG.md that would add it, and move it to comparison/ when the item is deleted.
+- Keep a capability that another project has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of [backlog/](backlog/README.md) that would add it, and move it to comparison/ when the item is deleted.
 - Mention another project in a decision only when its design is an alternative that the decision weighs.
 - Add a scenario worth comparing that comparison/ does not cover yet to "Scenarios to compare" in [comparison/README.md](comparison/README.md).
 
