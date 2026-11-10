@@ -1,6 +1,7 @@
 import type { ExpressionNode, RawSqlNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import { identifier as createIdentifier, SqlFragment } from "../database/sql/fragment"
+import { isUntypedValue, rejectUntypedValue } from "../database/sql/parameter"
 import { TransformedQuery } from "../query/conversion"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"
@@ -12,7 +13,14 @@ import type { AnyType, Type } from "../type/type"
 import { describeRejectedCodec, isType } from "../type/type"
 
 import type { AnyExpression, Expression, UntypedExpression } from "./expression"
-import { getType, isExpression, toCastValueNode, toExpression, toValueNode } from "./expression"
+import {
+  getType,
+  isExpression,
+  isOperandSource,
+  toCastValueNode,
+  toExpression,
+  toValueNode,
+} from "./expression"
 import type { Operand } from "./operators/comparison"
 import type { OperatorDefinitions } from "./operators/definitions"
 
@@ -27,6 +35,7 @@ export type SqlTemplate<T, O extends OperatorDefinitions, I = T> = (
  *
  * Interpolated expressions such as column references stay structured, a query of a table without clauses, such as `db.form`, becomes the name of the table, and other values become query parameters.
  * Another query of a table becomes a subquery in parentheses, and a query of one value, such as of an aggregate or of `exists`, its value, as in a condition.
+ * A parameter takes a string, a number, a bigint, a Boolean, `null` for `NULL`, a `Date`, or a `Uint8Array`: pass any other value, such as JSON or an array, with `param` and its type.
  * The type argument declares the TypeScript type of the fragment and does not convert values at runtime, so the fragment cannot be selected; the fragment has `isNull` and the operators of `equalityOperators` only.
  */
 export function sql<T = unknown>(
@@ -123,7 +132,7 @@ function createFragment(
  * Another query of a table becomes a query in an expression, which lowering replaces with its SQL.
  * A SQL fragment of the database layer becomes a node that the layer renders.
  * Other values become query parameters.
- * It rejects the other queries, which a parameter would encode as text.
+ * It rejects the other queries, and a value that a parameter does not take without a type, such as an object or an array.
  */
 export function toRawSqlNode(
   strings: TemplateStringsArray,
@@ -163,6 +172,10 @@ function toInterpolatedNode(value: unknown): ExpressionNode {
   }
   if (value instanceof SqlFragment) {
     return createNode({ kind: "fragment", fragment: value })
+  }
+  // A value of a parameter is checked here rather than when the statement compiles, so that the error points at the template.
+  if (!isOperandSource(value) && !isUntypedValue(value)) {
+    rejectUntypedValue(value)
   }
   return toValueNode(value)
 }

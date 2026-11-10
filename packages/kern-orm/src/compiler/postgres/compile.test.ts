@@ -332,12 +332,19 @@ describe("compileStatement", () => {
     )
   })
 
-  it("rejects a parameter without a JSON representation", () => {
-    const values = [() => 1, Symbol("value"), { toJSON: () => undefined }]
-    for (const value of values) {
-      expect(() =>
-        compileStatement(lower(from(post).where(() => sql`${value} IS NOT NULL`))),
-      ).toThrow(TypeError)
+  it("rejects a parameter without a type of a value that only a type encodes, such as an object or an array", () => {
+    for (const value of [{ a: 1 }, [1, 2], () => 1]) {
+      const node: SelectNode = {
+        ...createSelectNode(from(post).node.from),
+        limit: createParameter(value),
+      }
+
+      expect(() => compileStatement(node)).toThrow("A parameter without a codec takes a string")
+    }
+  })
+
+  it("rejects a parameter of JSON without a JSON representation", () => {
+    for (const value of [() => 1, Symbol("value"), { toJSON: () => undefined }]) {
       expect(() =>
         compileStatement(lower(from(post).where(() => sql`${param(t.jsonb, value)} IS NOT NULL`))),
       ).toThrow(TypeError)

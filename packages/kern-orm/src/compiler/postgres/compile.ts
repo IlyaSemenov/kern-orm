@@ -6,7 +6,6 @@ import type {
   InsertNode,
   MutationStatementNode,
   OrderNode,
-  ParamNode,
   ProjectionNode,
   QueryFilters,
   SelectNode,
@@ -15,14 +14,14 @@ import type {
   TableSourceNode,
 } from "../../ast/nodes"
 import { findValueProjection } from "../../ast/projections"
-import type { SqlStatement, TextValue } from "../../database/driver"
+import type { SqlStatement } from "../../database/driver"
 import { quoteIdentifier } from "../../database/identifier"
 import { renderFragment } from "../../database/sql/fragment"
+import { encodeParameter } from "../../database/sql/parameter"
 import type { AnyDb } from "../../execution/db"
 import type { StatementPlan } from "../../result/result"
 import type { AnyTable } from "../../table/table"
 import { requireColumn } from "../../table/table"
-import { encodeUntyped } from "../../type/untyped"
 
 import { CompileContext } from "./context"
 import { nameProjection } from "./identifier"
@@ -419,12 +418,12 @@ function compileExpression(
     case "column":
       return compileColumn(scope, node)
     case "param":
-      return context.bind(encodeParameter(node))
+      return context.bind(encodeParameter(node.value, node.type))
     case "cast": {
       const { operand } = node
       const value =
         operand.kind === "param"
-          ? context.bindParam(node, encodeParameter(operand))
+          ? context.bindParam(node, encodeParameter(operand.value, operand.type))
           : compileOperand(context, scope, operand, "value")
       return `${value}::${node.type.castType}`
     }
@@ -510,18 +509,6 @@ function compileSubquery(
     throw new Error(`${subject} must select one field, not ${length}`)
   }
   return `(${compileQuery(context, scope, query)})`
-}
-
-/** Encodes the value of a parameter node with its type, or by its JavaScript type without one. */
-function encodeParameter(node: ParamNode): TextValue {
-  if (node.value === undefined) {
-    // An omitted value must not turn into a condition silently, such as `flag = FALSE` for `{ flag: undefined }`.
-    throw new TypeError("Query parameter is undefined; use null for NULL")
-  }
-  if (node.value === null) {
-    return null
-  }
-  return node.type ? node.type.encode(node.value as never) : encodeUntyped(node.value)
 }
 
 /** Compiles an operand at `position` of its parent, parenthesizing it where its own operators could regroup with the parent. */

@@ -230,6 +230,8 @@ await db.field
 await db.form.where(form => sql`${form.id} = ANY(${param(t.array(t.uuid), ids)})`).select("id")
 ```
 
+Pass a JSON value or an array to `sql` through `param`: a plain value becomes a parameter by itself only when it is a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
+
 `param` casts the value to the type, so PostgreSQL applies the operators of the type even to a value on its own: `param(t.integer, 2).lt(10)` compares numbers rather than strings.
 The cast omits type parameters, such as `$1::numeric` for `numeric.with(10, 2)`, so their precision, scale, or length do not constrain the value.
 

@@ -129,7 +129,9 @@
   It returns a value that is already an expression, such as an operand of a generic operator, as it is, keeping its type, if it has one, and the nullability of its TypeScript type.
   A query of one value, such as an operand of a generic operator, becomes an expression with the runtime type of the first argument; types give it as an `AnyExpression` of the value of the query, which is `NULL` without its row whatever that type ([queries](queries.md#queries-in-expressions)).
   A compared value stays without a cast, since the expression it is compared with types it, and so does a value interpolated into `sql`.
-- A parameter without a type is encoded by its JavaScript type.
+- A parameter without a type is encoded by its JavaScript type, by the rule of the [database layer](#sql-fragments-of-the-database-layer): it takes a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`, and JSON and arrays take `param` with a type.
+  - `sql`, and so `$query` and `$script`, reject any other value when the template is created, so that the error points at the template.
+  - The compiler rejects it in a parameter node of any origin when the statement compiles.
 - A string pattern of `like` and `ilike` is PostgreSQL text and is never encoded with the type of the expression, which `transform` can give another representation; a pattern expression keeps its own encoding.
 - Raw SQL fragments keep interpolations as nodes; parameters are numbered only when the complete statement is compiled, in the order of the text across nested queries.
 - `sql` interpolates a query of a table without clauses, such as `db.form`, as the name of its table, which the compiler qualifies with the PostgreSQL schema of the statement and checks against the tables of a `Db`, as an occurrence of the table.
@@ -138,7 +140,7 @@
   - The text must name the columns of a subquery in `FROM` after its alias, in the order of the fields of the query other than literals, such as `AS form (field_count)`, rather than by the SQL names of its projections, which differ from the keys of long fields.
   - PostgreSQL 18 parses a subquery in further parentheses as a subquery, such as in `EXISTS ((SELECT 1))`, `1 IN ((SELECT 1 UNION SELECT 2))`, `1 = ANY ((SELECT 1 UNION SELECT 2))`, and `FROM ((SELECT 1))`, so the text may put the query in parentheses of its own.
   - A query of `exists` is `EXISTS` of its rows rather than its statement, `(SELECT EXISTS (...))`, which PostgreSQL evaluates as a subquery for each row of a condition instead of joining the rows as a semi-join.
-  - It rejects a query of `$select`, a [query of `map` or `transform`](queries.md#converting-results), a mutation, and a query of SQL text, which a parameter would encode as text.
+  - It rejects a query of `$select`, a [query of `map` or `transform`](queries.md#converting-results), a mutation, and a query of SQL text.
 - `identifier` creates a fragment of a quoted name without parameters, so that the template of a script takes it.
   - It is an expression of the fragment of `identifier` of the [database layer](#sql-fragments-of-the-database-layer), which quotes the names.
   - Several names make a qualified name, such as of a schema and a table, each quoted and joined by dots.
@@ -157,7 +159,7 @@
   - JSON and arrays take `param` with a codec.
 - `param` takes a codec, also a type, and the values that the codec accepts, and casts its parameter to the cast type of the codec, as `param` of the ORM does with a type.
   - The cast is in parentheses, since text after it could continue its type name, such as a subscript `[1]` after `integer[]`.
-- A fragment is immutable and holds its values by reference: rendering encodes them (`database/sql/parameter.ts`), and rejects `undefined` and a value that a parameter does not take without a codec, so a fragment created without these functions cannot pass one.
+- A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`database/sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a codec, so a fragment created without these functions cannot pass one.
 - `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
   - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.
   - `compileFragment` compiles a fragment as a statement of its own, which binds every parameter at each place.

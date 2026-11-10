@@ -43,17 +43,20 @@ export function rejectUntypedValue(value: unknown): never {
   )
 }
 
+// The values without a codec are encoded by a function of their own, which keeps this one small for the parameters with a codec, such as the values of an insert.
 /** Encodes the value of a parameter with `codec`, or by its JavaScript type without one; it rejects `undefined`, and a value that a parameter does not take without a codec. */
 export function encodeParameter(value: unknown, codec: AnyCodec | undefined): TextValue {
-  if (value === null) {
-    return null
-  }
   if (value === undefined) {
     rejectUntypedValue(value)
   }
-  if (codec !== undefined) {
-    return codec.encode(value)
+  if (value === null) {
+    return null
   }
+  return codec !== undefined ? codec.encode(value) : encodeUntypedValue(value)
+}
+
+/** Encodes a value other than `null` of a parameter without a codec by its JavaScript type. */
+function encodeUntypedValue(value: unknown): string {
   if (typeof value === "string") {
     return value
   }

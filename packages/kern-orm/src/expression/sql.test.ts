@@ -82,7 +82,7 @@ it("interpolates a query of distinct as a query in an expression rather than the
   })
 })
 
-it("rejects a query of $select, a mutation, a query of SQL text, and a query of map or transform, which a parameter would encode as text", () => {
+it("rejects a query of $select, a mutation, a query of SQL text, and a query of map or transform", () => {
   const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
 
   for (const query of [
@@ -96,6 +96,35 @@ it("rejects a query of $select, a mutation, a query of SQL text, and a query of 
       /^sql takes a query of a table, such as db\.form or a query of its records, not a query of (\$select, a mutation, a query of SQL text, or a query of )?map or transform$/,
     )
   }
+})
+
+it("rejects a value that a parameter does not take without a type when the template is created, naming param", () => {
+  const takes =
+    "A parameter without a codec takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array"
+
+  for (const [value, kind] of [
+    [{ name: "Survey" }, "an object"],
+    [t.integer, "an object"],
+    [form.columns.id, "an object"],
+    [[1, 2], "an array"],
+    [() => 1, "a function"],
+  ] as const) {
+    expect(() => sql`SELECT ${value}`).toThrow(
+      new TypeError(`${takes}, not ${kind}; pass JSON or an array with param()`),
+    )
+  }
+  expect(() => sql`SELECT ${undefined}`).toThrow("Query parameter is undefined; use null for NULL")
+})
+
+it("interpolates JSON and an array through param with a type", () => {
+  const query = from(form).where(
+    () => sql<boolean>`${param(t.jsonb, { a: 1 })} @> ${param(t.array(t.integer), [1, 2])}`,
+  )
+
+  expect(query.toSQL()).toEqual({
+    text: 'SELECT FROM "form" AS "form" WHERE ($1::jsonb) @> ($2::integer[])',
+    parameters: ['{"a":1}', '{"1","2"}'],
+  })
 })
 
 it("interpolates a fragment of the database layer as SQL, numbering its parameters with those of the statement", () => {

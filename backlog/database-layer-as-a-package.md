@@ -23,8 +23,8 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 ## Steps
 
 1. Done: the contract of codecs and the codecs of the built-in types, exported from `kern-orm/db` and `kern-orm/db/types`, and `Type` built on them.
-2. Queries of SQL text in the layer: the untyped parameters of the ORM by the rule of the layer, and the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer, `kern-orm/db` exports its fragments, and the documentation of migrations uses its fragments and codecs.
-   Done: its fragments and the renderer of templates, which the ORM interpolates.
+2. Queries of SQL text in the layer: the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer, `kern-orm/db` exports its fragments, and the documentation of migrations uses its fragments and codecs.
+   Done: its fragments and the renderer of templates, which the ORM interpolates, and the untyped parameters of the ORM by the rule of the layer.
 3. The driver contract and the tests of the layer on its own API, without tables and the expressions of the ORM.
 4. The package: its entry points, the dependencies of drivers and the migrator, the compatibility test, and a consumer that installs `kern-db`, a driver, and the migrator without `kern-orm`.
 
