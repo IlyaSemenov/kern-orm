@@ -8,6 +8,7 @@ import type {
   OrderNode,
   ProjectionNode,
   QueryFilters,
+  RawSqlNode,
   SelectNode,
   StatementNode,
   TableNameNode,
@@ -15,6 +16,7 @@ import type {
 } from "../../ast/nodes"
 import { findValueProjection } from "../../ast/projections"
 import type { SqlStatement } from "../../database/driver"
+import { createStatement } from "../../database/driver"
 import { quoteIdentifier } from "../../database/identifier"
 import { renderFragment } from "../../database/sql/fragment"
 import { encodeParameter } from "../../database/sql/parameter"
@@ -45,7 +47,7 @@ export interface CompiledQuery extends SqlStatement, StatementPlan {
 const noFields: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
 
 /**
- * Compiles a statement for PostgreSQL: a select statement, a mutation, or a statement of SQL text.
+ * Compiles a statement for PostgreSQL with the result plan that decodes its result: a select statement or a mutation.
  *
  * With `tables`, such as the tables of the schema of a `Db`, an occurrence or an interpolated name of any other table at any depth of the statement is rejected.
  * `db` is the `Db` that runs the statement: a table interpolated from a query bound to another `Db`, or to any `Db` without it, is rejected.
@@ -69,24 +71,9 @@ export function compileStatement(
         rows: node.rows,
         value: node.value,
         counted: undefined,
-        named: false,
         // The fields above compile the statement first, which finds its locks.
         locksRows: context.locksRows,
       }
-    case "text": {
-      const { fields } = node
-      return {
-        text: compileExpression(context, undefined, node.sql),
-        parameters: context.parameters,
-        fields: fields ?? noFields,
-        rows: node.rows,
-        value: node.value,
-        counted: fields === undefined ? "number" : undefined,
-        named: true,
-        // kern-orm does not read the text, which may change rows under its locks.
-        locksRows: false,
-      }
-    }
     default: {
       const { returning } = node
       return {
@@ -100,12 +87,27 @@ export function compileStatement(
         // PostgreSQL rejects `RETURNING` without fields, so a mutation that returns records without fields counts them.
         counted:
           returning === undefined ? "number" : returning.length === 0 ? "records" : undefined,
-        named: false,
         // A lock in a query of its values or filters holds the row for the change of the statement.
         locksRows: false,
       }
     }
   }
+}
+
+/**
+ * Compiles the SQL text of a statement, such as of `$query`, with the checks of `compileStatement` of the tables that it names.
+ *
+ * It has no result plan: the query of SQL text that runs it holds its own.
+ */
+export function compileTextStatement(
+  node: RawSqlNode,
+  options: CompileOptions = {},
+  tables?: ReadonlySet<AnyTable>,
+  db?: AnyDb,
+): SqlStatement {
+  const context = new CompileContext(options.schemaName, tables, db)
+  const text = compileExpression(context, undefined, node)
+  return createStatement(text, context.parameters)
 }
 
 /** Compiles a mutation, whose expressions see the occurrence of its table, apart from the values of an insert, which see no source, and the values of `DO UPDATE SET`, which also see the row proposed for insertion as `excluded`. */

@@ -177,11 +177,12 @@ export type {
 export type {
   AnySqlQuery,
   DecodedFields,
-  FieldTypes,
+  FieldCodecs,
   InitialSqlQueryState,
   SqlQuery,
+  SqlQueryResult,
   SqlQueryState,
-} from "./query/sql-query"
+} from "./database/sql/query"
 export type { AnyRecordQuery, RecordQuery, RecordQueryState, SelectionState } from "./query/record"
 export type {
   AnyTransformedQuery,

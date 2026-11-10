@@ -1,10 +1,13 @@
+import type { RawSqlNode } from "../ast/nodes"
 import type { CompiledQuery } from "../compiler/postgres/compile"
-import { compileStatement } from "../compiler/postgres/compile"
+import { compileStatement, compileTextStatement } from "../compiler/postgres/compile"
 import type { PollLockOptions, SessionOptions, TransactionOptions } from "../database/database"
 import type { SqlStatement } from "../database/driver"
 import { createStatement } from "../database/driver"
+import type { InitialSqlQueryState } from "../database/sql/query"
+import { SqlQuery, startSqlQuery } from "../database/sql/query"
 import { toRawSqlNode } from "../expression/sql"
-import { lowerStatement } from "../lowering/lower"
+import { lowerStatement, lowerTextStatement } from "../lowering/lower"
 import type { TransformedQuery, TransformedQueryState } from "../query/conversion"
 import type { SelectQueryKind } from "../query/kind"
 import type { MutationQuery, MutationQueryState } from "../query/mutation"
@@ -15,8 +18,6 @@ import type { QueryResult } from "../query/rows"
 import type { BoundSelectQuery, QueryOf } from "../query/select"
 import { bindQuery, startQuery } from "../query/select"
 import type { Selection } from "../query/selection"
-import type { InitialSqlQueryState, SqlQuery, SqlQueryState } from "../query/sql-query"
-import { startSqlQuery } from "../query/sql-query"
 import type { EmptyRecord, QueryStateOf, TableQueryState } from "../query/state"
 import { decodeStatement } from "../result/result"
 import type {
@@ -51,13 +52,12 @@ type DbEntries<T extends Tables, R extends SchemaRelations> = {
   readonly [K in keyof T]: BoundSelectQuery<TableQueryState<T[K], TableContext<R, K>>>
 }
 
-/** Bound or unbound query over a table of `T`, also converted by `transform`, of `$select`, or that changes the rows of a table of `T`, that selects records only of relations of `R`, or a query of SQL text. */
+/** Bound or unbound query over a table of `T`, also converted by `transform`, of `$select`, or that changes the rows of a table of `T`, that selects records only of relations of `R`. */
 type DbQuery<T extends Tables, R extends SchemaRelations> =
   | QueryOf<DbQueryState<T[keyof T], UsableRelation<R>>>
   | TransformedQuery<TransformedQueryState<T[keyof T], unknown, UsableRelation<R>>, SelectQueryKind>
   | RecordQuery<RecordQueryState<unknown, UsableRelation<R>>, SelectQueryKind>
   | MutationQuery<DbMutationState<T[keyof T], UsableRelation<R>>, SelectQueryKind>
-  | SqlQuery<SqlQueryState>
 
 /** State of a query that a `Db` can execute: over table `T`, selecting records only of relations `U`. */
 export interface DbQueryState<T extends AnyTable, U extends UsedRelation> extends QueryStateOf<T> {
@@ -202,11 +202,27 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
   const resolveSchemaName = () => (typeof schemaName === "function" ? schemaName() : schemaName)
 
   function compile(query: DbQuery<T, R>): CompiledQuery {
+    // A query of SQL text has no node: it compiles its statement from its own source.
+    if (query instanceof SqlQuery) {
+      throw new TypeError(
+        "A query of SQL text executes when it is awaited and compiles with its toSQL, not with $execute or $compile",
+      )
+    }
     if (query.db !== undefined && query.db !== db) {
       throw new Error("Cannot run a query bound to another Db")
     }
     return compileStatement(
       lowerStatement(query.node, definitions, db),
+      { schemaName: resolveSchemaName() },
+      tables,
+      db,
+    )
+  }
+
+  /** Compiles the statement of SQL text of `node` as this `Db` runs it: in the PostgreSQL schema that it resolves at this compilation, naming only its tables. */
+  function compileText(node: RawSqlNode): SqlStatement {
+    return compileTextStatement(
+      lowerTextStatement(node, definitions, db),
       { schemaName: resolveSchemaName() },
       tables,
       db,
@@ -233,12 +249,15 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
       return decodeStatement(compiled, await database.execute(compiled)) as QueryResult<Q["types"]>
     },
     $select: selection => startRecordQuery(selection, db),
-    $query: (strings, ...values) => startSqlQuery(toRawSqlNode(strings, values), db),
+    $query(strings, ...values) {
+      const node = toRawSqlNode(strings, values)
+      return startSqlQuery(() => compileText(node), database)
+    },
     async $script(script: string | TemplateStringsArray, ...values: unknown[]) {
       if (typeof script === "string") {
         return database.script(script)
       }
-      const { text, parameters } = compile(startSqlQuery(toRawSqlNode(script, values), db))
+      const { text, parameters } = compileText(toRawSqlNode(script, values))
       if (parameters.length > 0) {
         throw new Error(
           "A script has no parameters, so it takes no values, also in the queries and sql fragments that it interpolates",

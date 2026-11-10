@@ -3,8 +3,13 @@ import { describe, expect, it } from "bun:test"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createSubquery } from "../ast/testing"
 import { text } from "../database/codecs/text"
+import type { DriverResult } from "../database/driver"
 import { NotFoundError } from "../database/result"
-import { identifier as identifierFragment, param as paramFragment } from "../database/sql/fragment"
+import {
+  identifier as identifierFragment,
+  param as paramFragment,
+  sql as sqlFragment,
+} from "../database/sql/fragment"
 import { identifier, sql } from "../expression/sql"
 import { lower } from "../lowering/testing"
 import type { AnySelectQuery } from "../query/select"
@@ -114,6 +119,106 @@ it("executes a query of $select of its schema in its PostgreSQL schema", async (
 
   expect(await db.$execute(query)).toEqual({ post: { id: "post-id" } })
   expect(statements[0]!.text).toContain('FROM "app"."post"')
+})
+
+describe("$query", () => {
+  /** Db of the schema in the PostgreSQL schema of `tenant.name`, read when a query compiles, over a recording driver that answers every statement with `result`. */
+  function connectTenant(result: Partial<DriverResult> = {}) {
+    const tenant = { name: "app" }
+    const { driver, statements } = createRecordingDriver({ respond: () => result })
+    const database = createDatabase({ driver })
+    const db = database.bind(schema, { schemaName: () => tenant.name })
+    return { database, db, statements, tenant }
+  }
+
+  it("executes a statement when awaited, naming the tables of the Db in the PostgreSQL schema that it resolves at each compilation", async () => {
+    const { db, statements, tenant } = connectTenant({ count: 3 })
+    const query = db.$query`UPDATE ${db.post} SET title = ${"Draft"} WHERE ${sql`id = ${"post-id"}`}`
+
+    expect(await query).toBe(3)
+    tenant.name = "tenant"
+    expect(query.toSQL().text).toBe('UPDATE "tenant"."post" SET title = $1 WHERE id = $2')
+    await query
+    expect(statements).toEqual([
+      {
+        connection: "pool",
+        text: 'UPDATE "app"."post" SET title = $1 WHERE id = $2',
+        parameters: ["Draft", "post-id"],
+      },
+      {
+        connection: "pool",
+        text: 'UPDATE "tenant"."post" SET title = $1 WHERE id = $2',
+        parameters: ["Draft", "post-id"],
+      },
+    ])
+  })
+
+  it("decodes the fields of the rows of its statement by the types of select", async () => {
+    const { db } = connectTenant({ columns: ["title", "id"], rows: [["Draft", "post-id"]] })
+
+    expect(
+      await db.$query`SELECT * FROM ${db.post}`.select({
+        id: t.uuid,
+        title: t.text,
+      }),
+    ).toEqual([{ id: "post-id", title: "Draft" }])
+  })
+
+  it("interpolates a fragment of the database layer as SQL, numbering its parameters with those of the statement", () => {
+    const { db } = connectTenant()
+    const condition = sqlFragment`${identifierFragment("id")} = ANY(${paramFragment(text, "post-id")}, ${"other-id"})`
+
+    expect(
+      db.$query`DELETE FROM ${db.post} WHERE title = ${"Draft"} AND ${condition}`.toSQL(),
+    ).toEqual({
+      text: 'DELETE FROM "app"."post" WHERE title = $1 AND "id" = ANY(($2::text), $3)',
+      parameters: ["Draft", "post-id", "other-id"],
+    })
+  })
+
+  it("names a table by identifier as it is, keeping values as parameters", () => {
+    const { db } = connectTenant()
+
+    expect(
+      db.$query`UPDATE ${identifier("tenant", "post")} SET title = ${"Draft"}`.toSQL(),
+    ).toEqual({
+      text: 'UPDATE "tenant"."post" SET title = $1',
+      parameters: ["Draft"],
+    })
+  })
+
+  it("rejects a table of another Db and a table outside the schema of its Db, when it compiles and when it executes", async () => {
+    const { database, db, statements } = connectTenant()
+    const query = database.bind(schema).$query`SELECT FROM ${db.post}`
+
+    expect(() => query.toSQL()).toThrow('Table "post" interpolated into SQL is bound to another Db')
+    await expect(Promise.resolve(query)).rejects.toThrow(
+      'Table "post" interpolated into SQL is bound to another Db',
+    )
+    expect(() => db.$query`SELECT FROM ${defineSchema({ comment }).comment}`.toSQL()).toThrow(
+      'Table "comment" is not part of the schema',
+    )
+    expect(statements).toEqual([])
+  })
+
+  it("is not executed by $execute or compiled by $compile, and cannot be a field, a value of a column, an operand, or a condition", async () => {
+    const { db, statements } = connectTenant()
+    const query = db.$query`SELECT 1`.get(t.text)
+    const message =
+      "A query of SQL text executes when it is awaited and compiles with its toSQL, not with $execute or $compile"
+    const operand =
+      "An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of SQL text"
+
+    await expect(db.$execute(query as never)).rejects.toThrow(message)
+    expect(() => db.$compile(query as never)).toThrow(message)
+    expect(() => db.$select({ one: query as never })).toThrow(
+      'Selected field "one" is a query of SQL text, which cannot be nested',
+    )
+    expect(() => db.post.insert({ id: "post-id", title: query as never })).toThrow(operand)
+    expect(() => db.post.where(post => post.title.eq(query as never))).toThrow(operand)
+    expect(() => db.post.where(query as never)).toThrow(operand)
+    expect(statements).toEqual([])
+  })
 })
 
 it("executes a script of its text or of a template that names its tables, in the ambient transaction", async () => {

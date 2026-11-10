@@ -155,7 +155,7 @@ It receives the database of the migration, whose `query`, `script`, and `execute
 
 ```ts
 import { addColumn, changeColumn, defineMigration } from "@kern-orm/migrations"
-import * as t from "kern-orm/types"
+import * as t from "kern-orm/db/types"
 
 const toSlug = (name: string) => name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")
 
@@ -176,6 +176,7 @@ export default defineMigration([
 ])
 ```
 
+To decode the rows of `query`, pass the types of `kern-orm/db/types` to `select`, `get`, and `pluck`.
 To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](./queries/sql#without-a-db) from `kern-orm/db`.
 
 ## Migrations outside a transaction
@@ -221,7 +222,7 @@ The step has no `outsideTransaction.down`, since PostgreSQL cannot drop the inde
 ```ts
 import type { MigrationDatabase } from "@kern-orm/migrations"
 import { defineMigration, quoteIdentifier } from "@kern-orm/migrations"
-import * as t from "kern-orm/types"
+import * as t from "kern-orm/db/types"
 
 const indexJob = (concurrently: boolean) => async (database: MigrationDatabase) => {
   const mode = concurrently ? "CONCURRENTLY " : ""
@@ -555,7 +556,7 @@ To check how a migration changes existing rows, write a migration test beside it
 import { expect } from "bun:test"
 
 import { defineMigrationTest } from "@kern-orm/migrations/testing"
-import * as t from "kern-orm/types"
+import * as t from "kern-orm/db/types"
 
 export default defineMigrationTest("fills slugs from names", {
   setup: async database => {

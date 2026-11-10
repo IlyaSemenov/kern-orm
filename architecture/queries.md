@@ -9,7 +9,7 @@
   - The methods that keep the state in types, `orderBy`, `limit`, `offset`, `distinct`, `distinctOn`, `where` and `having` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` and `having` of a guaranteed query change its state.
   - A method that changes the state takes the state and the kind of the query, which TypeScript cannot infer from a union of queries of different states, so such a union rejects it ([decision](../decisions/queries/state-changing-methods-on-unions.md)).
   - A parameter that takes queries of other states, such as of `$execute`, `$compile`, and `defineHelper`, and a nested query of a selection are typed by `SelectQuery` of either kind, those of `$execute` and `$compile` also by the `RecordQuery` of `$select`, and those of `$execute` and `$compile` and a nested query also by a [query of `transform`](#converting-results); a copy of a query made by spread or rest lacks its methods, so it is not a query.
-- The classes of queries, `SelectQuery`, `TransformedQuery`, `RecordQuery`, `MutationQuery`, and `SqlQuery`, share no base class, so each declares `types`, `db`, `then`, and `toSQL`; only these declarations repeat, since `executeOnAwait` and `compileToSQL` of `query/kind.ts` hold the logic ([decision](../decisions/queries/query-classes-without-base-class.md)).
+- The classes of queries, `SelectQuery`, `TransformedQuery`, `RecordQuery`, and `MutationQuery`, share no base class, so each declares `types`, `db`, `then`, and `toSQL`; only these declarations repeat, since `executeOnAwait` and `compileToSQL` of `query/kind.ts` hold the logic ([decision](../decisions/queries/query-classes-without-base-class.md)).
 
 Queries come in two kinds that share the query methods and differ only by execution context:
 
@@ -390,8 +390,9 @@ Queries come in two kinds that share the query methods and differ only by execut
 - The query is a `RecordQuery`, a class apart from `SelectQuery`, with the members that differ by kind and `toSQL`, since the methods of a query of a table have no source to apply to.
   It is covariant in its state and its kind, like `SelectQuery`.
   A selection rejects it as a field, in types and at runtime.
-- `$execute` and `$compile` of a `Db` take a query of `$select`, a [query of `transform`](#converting-results), a [mutation](mutations.md), and a [query of SQL text](sql-queries.md) beside a query of a table, and check them in the same way: in types the relations that they select, and at runtime their `Db`, the relations, the bound queries, and the tables at any depth.
-  Their parameter is constrained by a union of the five classes rather than overloaded, since a call that matches no overload reports the errors of the last overload, which would name another class ([decision](../decisions/queries/execute-parameter.md)).
+- `$execute` and `$compile` of a `Db` take a query of `$select`, a [query of `transform`](#converting-results), and a [mutation](mutations.md) beside a query of a table, and check them in the same way: in types the relations that they select, and at runtime their `Db`, the relations, the bound queries, and the tables at any depth.
+  A [query of SQL text](sql-queries.md) executes when awaited instead.
+  Their parameter is constrained by a union of the four classes rather than overloaded, since a call that matches no overload reports the errors of the last overload, which would name another class ([decision](../decisions/queries/execute-parameter.md)).
 
 ## Converting results
 

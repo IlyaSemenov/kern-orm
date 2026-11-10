@@ -554,69 +554,17 @@ describe("conversion", () => {
 })
 
 describe("statements", () => {
-  /** Result of a statement of `rows` with `columns` whose command tag reports `count` rows. */
-  function createDriverResult(
-    count: number,
-    rows: DriverResult["rows"] = [],
-    columns: readonly string[] = [],
-  ): DriverResult {
-    return { command: "UPDATE", count, columns, rows }
+  /** Result of a statement of `rows` whose command tag reports `count` rows. */
+  function createDriverResult(count: number, rows: DriverResult["rows"] = []): DriverResult {
+    return { command: "UPDATE", count, columns: [], rows }
   }
 
   it("decodes the rows of a statement whose rows are its result", () => {
-    const plan: StatementPlan = {
-      ...createRecordsPlan(fields),
-      counted: undefined,
-      named: false,
-    }
+    const plan: StatementPlan = { ...createRecordsPlan(fields), counted: undefined }
 
     expect(decodeStatement(plan, createDriverResult(1, [["1", "Draft"]]))).toEqual([
       { id: 1, title: "Draft" },
     ])
-  })
-
-  it("reads the fields of a statement of SQL text from the result columns of their keys, ignoring other columns", () => {
-    const plan: StatementPlan = { ...createRecordsPlan(fields), counted: undefined, named: true }
-    const rows = [
-      ["Draft", "x", "1"],
-      ["Final", "y", "2"],
-    ]
-
-    expect(decodeStatement(plan, createDriverResult(2, rows, ["title", "note", "id"]))).toEqual([
-      { id: 1, title: "Draft" },
-      { id: 2, title: "Final" },
-    ])
-    expect(decodeStatement(plan, createDriverResult(1, [["1", "Draft"]], ["id", "title"]))).toEqual(
-      [{ id: 1, title: "Draft" }],
-    )
-  })
-
-  it("rejects a statement of SQL text without a column of a field or with it twice", () => {
-    const plan: StatementPlan = { ...createRecordsPlan(fields), counted: undefined, named: true }
-
-    const missing = captureError(() =>
-      decodeStatement(plan, createDriverResult(0, [], ["id", "name"])),
-    )
-    expect(missing).toBeInstanceOf(ResultDecodeError)
-    expect(missing).toHaveProperty("message", 'Statement returned no column "title"')
-    expect(() => decodeStatement(plan, createDriverResult(0, [], ["id", "title", "id"]))).toThrow(
-      'Statement returned column "id" more than once',
-    )
-  })
-
-  it("reads the value of a statement of SQL text from its only column, whatever its name", () => {
-    const plan: StatementPlan = {
-      fields: [{ key: "value", type: t.integer }],
-      rows: "many",
-      value: true,
-      counted: undefined,
-      named: true,
-    }
-
-    expect(decodeStatement(plan, createDriverResult(2, [["1"], ["2"]], ["count"]))).toEqual([1, 2])
-    expect(() =>
-      decodeStatement(plan, createDriverResult(1, [["1", "2"]], ["id", "count"])),
-    ).toThrow("Statement returned 2 columns for one value")
   })
 
   it("resolves to the number of the rows that a mutation changes", () => {
@@ -625,7 +573,6 @@ describe("statements", () => {
       rows: "many",
       value: false,
       counted: "number",
-      named: false,
     }
 
     expect(decodeStatement(plan, createDriverResult(3))).toBe(3)
@@ -638,7 +585,6 @@ describe("statements", () => {
       rows: "one",
       value: false,
       counted: "number",
-      named: false,
     }
 
     expect(decodeStatement(plan, createDriverResult(1))).toBe(1)
@@ -657,30 +603,12 @@ describe("statements", () => {
     }
   })
 
-  it("rejects a statement of SQL text of one row by the rows of its command tag, whichever its command is", () => {
-    const plan: StatementPlan = {
-      fields: [],
-      rows: "one",
-      value: false,
-      counted: "number",
-      named: true,
-    }
-
-    expect(() => decodeStatement(plan, createDriverResult(0))).toThrow(
-      new NotFoundError("Query reported no rows"),
-    )
-    expect(() => decodeStatement(plan, createDriverResult(2))).toThrow(
-      "Query of one row reported 2 rows",
-    )
-  })
-
   it("resolves to as many records without fields as a mutation changes rows, in its rows mode", () => {
     const plan: StatementPlan = {
       fields: [],
       rows: "many",
       value: false,
       counted: "records",
-      named: false,
     }
 
     expect(decodeStatement(plan, createDriverResult(2))).toEqual([{}, {}])

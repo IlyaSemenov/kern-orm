@@ -1,12 +1,6 @@
 // Lowering of a query, a mutation, or a statement of SQL text to the SQL statement that executes it.
 
-import type {
-  RawSqlNode,
-  SelectNode,
-  StatementNode,
-  TableSourceNode,
-  TextStatementNode,
-} from "../ast/nodes"
+import type { RawSqlNode, SelectNode, StatementNode, TableSourceNode } from "../ast/nodes"
 import { noFilters, noJoins, noOrder } from "../ast/nodes"
 import type { AnyDb } from "../execution/db"
 import { isAggregateQuery } from "../query/aggregate"
@@ -28,7 +22,7 @@ import { lowerPage } from "./page"
 import { createRecordTemplate, dropLiterals, lowerProjections, projectExists } from "./projection"
 
 /**
- * Lowers a query to the SQL statement that executes it: the select statement of `lowerQuery` that sorts by the positions of the projections that have the values of its sort expressions, the statement without a source of a query of `$select`, the statement of a mutation, or a statement of SQL text.
+ * Lowers a query to the SQL statement that executes it: the select statement of `lowerQuery` that sorts by the positions of the projections that have the values of its sort expressions, the statement without a source of a query of `$select`, or the statement of a mutation.
  *
  * A selected expression repeated in `ORDER BY` would get parameters of its own, and PostgreSQL may evaluate it again.
  * It replaces and checks the queries nested in every statement as `lowerQuery` does.
@@ -39,12 +33,12 @@ export function lowerStatement(
   db?: AnyDb,
 ): SelectNode
 export function lowerStatement(
-  node: QueryNode | RecordQueryNode | MutationNode | TextStatementNode,
+  node: QueryNode | RecordQueryNode | MutationNode,
   definitions?: ReadonlySet<RelationDefinition>,
   db?: AnyDb,
 ): StatementNode
 export function lowerStatement(
-  node: QueryNode | RecordQueryNode | MutationNode | TextStatementNode,
+  node: QueryNode | RecordQueryNode | MutationNode,
   definitions?: ReadonlySet<RelationDefinition>,
   db?: AnyDb,
 ): StatementNode {
@@ -54,8 +48,6 @@ export function lowerStatement(
       return lowerSelect(node, context, true)
     case "record":
       return lowerRecord(node, context)
-    case "text":
-      return lowerText(node, context)
     default:
       return lowerMutation(node, context)
   }
@@ -77,6 +69,16 @@ export function lowerQuery(
   return lowerSelect(node, createContext(definitions, db), false)
 }
 
+/** Lowers the SQL text of a statement, such as of `$query`, replacing the queries in the expressions interpolated into it, and checking them as `lowerStatement` does. */
+export function lowerTextStatement(
+  node: RawSqlNode,
+  definitions?: ReadonlySet<RelationDefinition>,
+  db?: AnyDb,
+): RawSqlNode {
+  // Lowering keeps the kind of a node of SQL text.
+  return lowerExpression(node, createContext(definitions, db)) as RawSqlNode
+}
+
 /** Creates the context of lowering a statement with `definitions` and `db`, whose nested queries `lowerSelect` lowers. */
 function createContext(
   definitions: ReadonlySet<RelationDefinition> | undefined,
@@ -89,22 +91,6 @@ function createContext(
     lowerExists: node => lowerExists(node, context),
   }
   return context
-}
-
-/** Lowers a statement of SQL text, replacing the queries in the expressions interpolated into it. */
-function lowerText(node: TextStatementNode, context: LoweringContext): TextStatementNode {
-  // Lowering keeps the kind of a node of SQL text.
-  const sql = lowerExpression(node.sql, context) as RawSqlNode
-  if (sql === node.sql) {
-    return node
-  }
-  return Object.freeze({
-    kind: "text",
-    sql,
-    fields: node.fields,
-    rows: node.rows,
-    value: node.value,
-  })
 }
 
 /** Lowers a query as `lowerQuery` does, or as `lowerStatement` does when `positions` is set, with the conversion of its result. */

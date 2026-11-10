@@ -355,20 +355,8 @@ export type MutationStatementNode<Field = ProjectionNode> =
   | UpdateNode<Field>
   | DeleteNode<Field>
 
-/**
- * Statement of SQL text written by a user, such as of `$query`.
- *
- * Its result mode is the rows mode of the rows that the statement returns and whether a row is the value of its only column.
- */
-export interface TextStatementNode extends ResultMode {
-  readonly kind: "text"
-  readonly sql: RawSqlNode
-  /** Fields decoded from the result columns of their keys, or from the only column for a value; `undefined` for a statement that resolves to the number of the rows of its command tag. */
-  readonly fields: readonly ScalarField[] | undefined
-}
-
-/** Statement that the compiler compiles: a select statement, a mutation, or a statement of SQL text. */
-export type StatementNode = SelectNode | MutationStatementNode | TextStatementNode
+/** Statement that the compiler compiles with its result plan: a select statement or a mutation. */
+export type StatementNode = SelectNode | MutationStatementNode
 
 /** Freezes an expression node; nodes are shared between queries and never change. */
 export function createNode<N extends ExpressionNode>(node: N): N {

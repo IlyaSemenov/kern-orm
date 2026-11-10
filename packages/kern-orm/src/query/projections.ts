@@ -1,6 +1,7 @@
 import type { ScalarProjection, TableSourceNode } from "../ast/nodes"
 import { createList, createNode } from "../ast/nodes"
 import { isRecordKey } from "../database/result"
+import { SqlQuery } from "../database/sql/query"
 import type { AnyExpression } from "../expression/expression"
 import { getType, isExpression, toFunctionOperandNode, toNode } from "../expression/expression"
 import { requireColumn } from "../table/table"
@@ -16,7 +17,6 @@ import { MutationQuery } from "./mutation"
 import type { SelectedNode } from "./node"
 import { RecordQuery } from "./record"
 import { SelectQuery } from "./select"
-import { SqlQuery } from "./sql-query"
 
 /**
  * Creates the fields of `select` over `source`, appending new keys and replacing existing ones in place.
@@ -137,7 +137,7 @@ function selectValue(key: string, value: unknown): SelectedNode {
     )
   }
   if (value instanceof SqlQuery) {
-    throw new TypeError(`Selected field "${key}" is a query of $query, which cannot be nested`)
+    throw new TypeError(`Selected field "${key}" is a query of SQL text, which cannot be nested`)
   }
   if (!isExpression(value)) {
     throw new TypeError(`Selected field "${key}" must be an expression, a query, or a literal`)

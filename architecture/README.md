@@ -33,11 +33,11 @@ kern-orm exists to solve problems of production projects on Orchid ORM:
 Module paths are relative to `packages/kern-orm/src/`.
 
 - The database layer (`database/`) runs statements on the connections of a driver.
-  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, the rows modes of results with the errors of a result that breaks its contract, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
+  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
   Its production modules import only each other and Node.js built-ins, also for types, so that it works without the ORM ([backlog](../backlog/database-layer-as-a-package.md)).
-  `kern-orm/db` exports its contract of codecs and its SQL fragments, and `kern-orm/db/types` the codecs of the built-in types, and importing `kern-orm/db/types` loads only the modules of codecs of the layer, without the ORM and the transaction coordinator.
+  `kern-orm/db` exports its contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results, and `kern-orm/db/types` the codecs of the built-in types, and importing `kern-orm/db/types` loads only the modules of codecs of the layer, without the ORM and the transaction coordinator.
 - The ORM, the other modules, builds on it.
-  `execution/database.ts` adds `bind` and `query` to its `Database`; `query` runs on a `Db` of no tables.
+  `execution/database.ts` adds `bind` to its `Database`, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
 
 ## Map
 
@@ -45,7 +45,7 @@ Module paths are relative to `packages/kern-orm/src/`.
 - [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, `execution/db.ts`, and `bind` of `execution/database.ts`.
 - [Queries](queries.md): `query/` and `execution/db.ts`.
 - [Mutations](mutations.md): `query/mutation.ts` and `query/values.ts`.
-- [Queries of SQL text](sql-queries.md): `query/sql-query.ts`, the scripts of `execution/db.ts`, `query` of `execution/database.ts`, and `script` of `database/database.ts`.
+- [Queries of SQL text](sql-queries.md): `database/sql/query.ts`, `query` and `script` of `database/database.ts`, and `$query` and the scripts of `execution/db.ts`.
 - [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, `result/`, `database/result.ts`, and `database/identifier.ts`.
 - [Transactions](transactions.md): `database/database.ts` and `database/transaction/`.
 - [Testing](testing.md): `database/testing.ts` and `database/transaction/fixture-stack.ts`.

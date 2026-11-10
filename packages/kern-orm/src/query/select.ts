@@ -4,6 +4,7 @@ import type { CompileOptions } from "../compiler/postgres/compile"
 import type { SqlStatement } from "../database/driver"
 import type { OneRow, OneValueRows, ResultRows, ValueRows } from "../database/result"
 import { toValueRows } from "../database/result"
+import type { AnySqlQuery } from "../database/sql/query"
 import type { AnyDb } from "../execution/db"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { operandNode, toExpression } from "../expression/expression"
@@ -1363,8 +1364,8 @@ export function requireDerived<R>(
 // oxlint-disable-next-line typescript/no-explicit-any -- any select query regardless of its result
 export type AnySelectQuery = SelectQuery<any, SelectQueryKind>
 
-/** Type of a record of a query result, or of its value for a query made by `get`, `pluck`, or an aggregate method. */
-export type ResultOf<Q extends AnyQuery> = Q["types"]["result"]
+/** Type of a record of a query result, also of a query of SQL text, or of its value for a query made by `get`, `pluck`, or an aggregate method. */
+export type ResultOf<Q extends AnyQuery | AnySqlQuery> = Q["types"]["result"]
 
 /** Binds a query to `db`, so that awaiting it executes it there. */
 export function bindQuery<S extends SelectQueryState>(

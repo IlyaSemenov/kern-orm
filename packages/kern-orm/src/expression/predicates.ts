@@ -1,10 +1,16 @@
 import { combineNodes, negateNode } from "../ast/boolean"
 import type { ExpressionNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
+import { SqlQuery } from "../database/sql/query"
 import type { ScalarQuery } from "../query/operand"
 
 import type { AnyExpression, Expression } from "./expression"
-import { isOperandSource, operandNode, toBooleanExpression } from "./expression"
+import {
+  isOperandSource,
+  operandNode,
+  rejectSqlQueryOperand,
+  toBooleanExpression,
+} from "./expression"
 import type { BooleanResult } from "./operators/comparison"
 
 declare const conditionValues: unique symbol
@@ -36,6 +42,10 @@ export type ConditionOperand<V, T extends boolean | null = boolean | null> =
 export function toConditionNode(operand: unknown): ExpressionNode {
   if (isOperandSource(operand)) {
     return operand[operandNode]()
+  }
+  // A query of SQL text has keys, which would read as the keys of column values.
+  if (operand instanceof SqlQuery) {
+    rejectSqlQueryOperand()
   }
   if (!isColumnValues(operand)) {
     throw new TypeError(

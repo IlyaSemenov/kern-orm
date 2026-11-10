@@ -2,11 +2,13 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
-import { compileStatement } from "../compiler/postgres/compile"
+import type { RawSqlNode } from "../ast/nodes"
+import { compileStatement, compileTextStatement } from "../compiler/postgres/compile"
 import { NotFoundError } from "../database/result"
 import { createDatabase } from "../execution/database"
 import { count, sum } from "../expression/aggregates"
 import type { AnyExpression } from "../expression/expression"
+import { toNode } from "../expression/expression"
 import { not, or } from "../expression/predicates"
 import { param, sql } from "../expression/sql"
 import { literal } from "../query/literal"
@@ -17,7 +19,7 @@ import { defineSchema, schemaRelations } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { lowerQuery, lowerStatement } from "./lower"
+import { lowerQuery, lowerStatement, lowerTextStatement } from "./lower"
 
 const form = defineTable("form", {
   id: t.integer.primaryKey(),
@@ -204,17 +206,20 @@ describe("lowerStatement", () => {
       lowerStatement(node, collectDefinitions(schema[schemaRelations]), db),
     ).not.toThrow()
   })
+})
 
-  it("replaces the queries in the expressions interpolated into a statement of SQL text", () => {
+describe("lowerTextStatement", () => {
+  it("replaces the queries in the expressions interpolated into a statement of SQL text, and rejects a query bound to another Db", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
     const db = database.bind(schema)
-    const query = db.$query`SELECT ${not(db.form.exists())} AS "empty"`
-    const plain = db.$query`SELECT ${1}`
+    const node = toNode(sql`SELECT ${not(db.form.exists())} AS "empty"`) as RawSqlNode
 
-    expect(compileStatement(lowerStatement(query.node, undefined, db)).text).toBe(
+    expect(compileTextStatement(lowerTextStatement(node, undefined, db)).text).toBe(
       'SELECT (NOT EXISTS (SELECT FROM "form" AS "form")) AS "empty"',
     )
-    expect<unknown>(lowerStatement(plain.node, undefined, db)).toBe(plain.node)
+    expect(() => lowerTextStatement(node, undefined, database.bind(schema))).toThrow(
+      "bound to another Db",
+    )
   })
 })
 

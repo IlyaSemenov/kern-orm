@@ -1,6 +1,8 @@
 import type { Driver, DriverResult, SqlStatement } from "./driver"
 import type { SqlValue } from "./sql/fragment"
-import { compileScript, sql } from "./sql/fragment"
+import { compileFragment, compileScript, sql } from "./sql/fragment"
+import type { InitialSqlQueryState, SqlQuery } from "./sql/query"
+import { startSqlQuery } from "./sql/query"
 import { TransactionCoordinator } from "./transaction/coordinator"
 
 /**
@@ -23,6 +25,12 @@ export interface Database extends AsyncDisposable {
    * It interpolates SQL fragments without parameters, such as a name of `identifier`; it rejects values, since a script has no parameters.
    */
   script(strings: TemplateStringsArray, ...values: SqlValue[]): Promise<void>
+  /**
+   * Starts a query of the SQL statement of the template, which resolves to the number of the rows of its command tag when awaited, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of its rows instead.
+   *
+   * It interpolates SQL fragments, such as a name of `identifier`, as SQL, and other values as parameters, as `sql` does.
+   */
+  query(strings: TemplateStringsArray, ...values: SqlValue[]): SqlQuery<InitialSqlQueryState>
   /** Executes a compiled statement, such as of `$compile` of a `Db`, in the ambient transaction or session, or on the pool outside of one unless the database was created with `test: true`. */
   execute(statement: SqlStatement): Promise<DriverResult>
   /**
@@ -130,13 +138,18 @@ export interface DatabaseOptions {
 /** Creates a database over a driver. */
 export function createDatabase({ driver, ...options }: DatabaseOptions): Database {
   const coordinator = new TransactionCoordinator(driver, options)
-  return {
+  const database: Database = {
     coordinator,
     // An async function, so that a template that it rejects rejects the promise.
     async script(script: string | TemplateStringsArray, ...values: SqlValue[]) {
       return coordinator.executeScript(
         typeof script === "string" ? script : compileScript(sql(script, ...values)),
       )
+    },
+    query(strings, ...values) {
+      // The template rejects a value that it does not take when the query is created, so that the error points at the template.
+      const fragment = sql(strings, ...values)
+      return startSqlQuery(() => compileFragment(fragment), database)
     },
     execute: statement => coordinator.execute(statement),
     transaction: (callback, options) => coordinator.transaction(callback, options),
@@ -150,4 +163,5 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }
+  return database
 }

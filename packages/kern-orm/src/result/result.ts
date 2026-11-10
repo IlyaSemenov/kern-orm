@@ -1,6 +1,13 @@
-import type { DriverResult, TextValue } from "../database/driver"
+import type { DriverResult } from "../database/driver"
 import type { ResultMode } from "../database/result"
-import { NotFoundError, ResultDecodeError, takeOnlyRow, toMissingResult } from "../database/result"
+import {
+  createFieldDecodeError,
+  describeCause,
+  NotFoundError,
+  ResultDecodeError,
+  takeOnlyRow,
+  toMissingResult,
+} from "../database/result"
 import type { AnyType } from "../type/type"
 
 /** Field of a compiled result: the key of a record and how its value is decoded. */
@@ -61,8 +68,6 @@ export interface StatementPlan extends ResultPlan {
    * `undefined` for a statement whose rows are its result.
    */
   readonly counted: "number" | "records" | undefined
-  /** Whether the fields are read from the result columns of their keys, or a value from the only column, as for a statement of SQL text, rather than from the columns in their order. */
-  readonly named: boolean
 }
 
 /**
@@ -91,7 +96,7 @@ export class RequiredRelationError extends Error {
 export function decodeStatement(plan: StatementPlan, result: DriverResult): unknown {
   const { counted, conversion } = plan
   if (counted === undefined) {
-    return decodeResult(plan, plan.named ? selectColumns(plan, result) : result.rows)
+    return decodeResult(plan, result.rows)
   }
   const decoded = decodeCount(plan, counted, result.count)
   // A mutation of a missing row that resolves to the number of the rows has that number as its result, so only records can be missing.
@@ -108,19 +113,12 @@ export function decodeStatement(plan: StatementPlan, result: DriverResult): unkn
 /** Returns what a statement resolves to by `count`, the number of the rows of its command tag, as `counted` tells: the number, or as many records without fields. */
 function decodeCount(plan: StatementPlan, counted: "number" | "records", count: number): unknown {
   if (plan.rows !== "many") {
-    // The command tag of a statement of SQL text counts the rows that it changes or returns, whichever its command is.
     if (count > 1) {
-      throw new Error(
-        plan.named
-          ? `Query of one row reported ${count} rows`
-          : `Query of one row changed ${count} rows`,
-      )
+      throw new Error(`Query of one row changed ${count} rows`)
     }
     if (count === 0) {
       if (plan.rows === "one") {
-        throw new NotFoundError(
-          plan.named ? "Query reported no rows" : "Query found no row to change",
-        )
+        throw new NotFoundError("Query found no row to change")
       }
       if (counted === "records") {
         return toMissingResult(plan)
@@ -139,52 +137,6 @@ function decodeCount(plan: StatementPlan, counted: "number" | "records", count: 
     records.push(createRecord(plan))
   }
   return records
-}
-
-/**
- * Returns the rows of `result` with the values of the fields of `plan` in their order, read from the result columns of their keys: a value from the only column.
- *
- * It rejects a missing column or one that the result has twice, and other columns than one for a value; it ignores the other columns of records.
- */
-function selectColumns(plan: ResultPlan, result: DriverResult): DriverResult["rows"] {
-  const { columns, rows } = result
-  if (plan.value) {
-    if (columns.length !== 1) {
-      throw new ResultDecodeError(
-        `Statement returned ${columns.length} columns for one value`,
-        undefined,
-      )
-    }
-    return rows
-  }
-  const { fields } = plan
-  const indexes: number[] = []
-  // The rows are read as they are when the fields are exactly the columns in their order.
-  let ordered = fields.length === columns.length
-  for (let index = 0; index < fields.length; index++) {
-    const { key } = fields[index]!
-    const column = columns.indexOf(key)
-    if (column === -1) {
-      throw new ResultDecodeError(`Statement returned no column "${key}"`, undefined)
-    }
-    if (columns.indexOf(key, column + 1) !== -1) {
-      throw new ResultDecodeError(`Statement returned column "${key}" more than once`, undefined)
-    }
-    indexes.push(column)
-    ordered &&= column === index
-  }
-  if (ordered) {
-    return rows
-  }
-  const selected: (readonly TextValue[])[] = []
-  for (let row = 0; row < rows.length; row++) {
-    const values: TextValue[] = []
-    for (let index = 0; index < indexes.length; index++) {
-      values.push(rows[row]![indexes[index]!]!)
-    }
-    selected.push(values)
-  }
-  return selected
 }
 
 /**
@@ -324,19 +276,7 @@ function createRowError(prefix: string, error: unknown): unknown {
       ? new NotFoundError(`Nested query of result field "${path}" returned no rows`, path)
       : new RequiredRelationError(cause.guaranteedBy, path)
   }
-  return new ResultDecodeError(
-    `Cannot decode result field "${path}"${describeCause(cause)}`,
-    path,
-    {
-      cause,
-    },
-  )
-}
-
-/** Describes the failure `cause` at the end of the message of an error. */
-function describeCause(cause: unknown): string {
-  // Only an Error contributes its message: converting another thrown value to a string can throw itself.
-  return cause instanceof Error ? `: ${cause.message}` : ""
+  return createFieldDecodeError(path, cause)
 }
 
 /**

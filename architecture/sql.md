@@ -2,7 +2,7 @@
 
 - **AST** (`ast/`): the SQL AST, structural expression and statement nodes, and their pure transformations, such as Boolean simplification.
   A select statement nests queries in scalar subqueries, `EXISTS`, and derived sources of `FROM`, plain or `LATERAL`; nodes store no lexical scopes, which the compiler derives from the position of a query in the tree.
-- **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps a statement of SQL text as it is, except that it lowers the queries in its interpolated expressions; the compiler knows no relation definitions or semantic query nodes.
+- **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps the SQL text of a statement of `$query` as it is, except that it lowers the queries in its interpolated expressions; the compiler knows no relation definitions or semantic query nodes.
   Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query without a [conversion](queries.md#converting-results), of its statement, or `EXISTS` of its rows for such a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries or literals in its fields keeps its fields as its projections.
   A statement keeps the [conversion of its query](queries.md#converting-results), which SQL does not see, for the result plan.
   A query of `$select` has no source and becomes a statement without `FROM` of rows `one`, which PostgreSQL returns as exactly one row.
@@ -35,7 +35,7 @@
   Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.
 - **Result** (`result/`): decodes driver rows and packed nested rows by the result plan of a compiled query, or the number of the rows of the command tag of a mutation without `RETURNING`, and converts the result as the plan tells.
   The database layer (`database/result.ts`) holds the rows modes, how a query of one row takes its row, the keys that a record can have, and `NotFoundError` and `ResultDecodeError`, which the ORM throws too; `RequiredRelationError` is of the ORM.
-  The ORM result decoder reads the fields of a statement of SQL text from the result columns of their keys, as [queries of SQL text](sql-queries.md#results) describe.
+  The layer also decodes the flat results of [queries of SQL text](sql-queries.md#results), from the result columns of the keys of their fields.
   The result plan is internal: `toSQL` and `$compile` return only the text and parameters of a statement.
 - **Nested rows** (`lowering/nested.ts`): builds a query that packs the rows of a nested query as JSON, with the result plan that decodes them.
 

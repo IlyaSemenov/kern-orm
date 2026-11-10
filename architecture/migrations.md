@@ -24,6 +24,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
 - The database of a migration is `Pick<Database, "query" | "script" | "execute">` of the target: its statements run in the transaction of the migration, or, for a change outside a transaction, each in a transaction of its own on the connection of the session, and its unqualified names resolve in the target schema through the search path.
   It lacks the other members of `Database`, such as `close` and `bind`, which a migration must not use.
+  Its `query` and `script` are of the [database layer](README.md#layers): their templates take the SQL fragments of `kern-orm/db`, and `query` decodes rows by codecs, such as of `kern-orm/db/types`.
 
 ### Changes outside a transaction
 

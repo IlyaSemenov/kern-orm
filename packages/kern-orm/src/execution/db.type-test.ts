@@ -47,6 +47,15 @@ describe("$execute and $compile", () => {
     db.$compile(from(other))
   })
 
+  test("reject a query of SQL text, which executes when awaited", () => {
+    const query = db.$query`SELECT 1`.get(t.integer)
+
+    // @ts-expect-error A query of SQL text executes when awaited.
+    void db.$execute(query)
+    // @ts-expect-error A query of SQL text compiles with its toSQL.
+    db.$compile(query)
+  })
+
   test("reject an object that is not a query, such as a copy of a query", () => {
     const imitation = { types: schema.post.types }
     const { node, ...withoutNode } = schema.post
@@ -63,6 +72,18 @@ describe("$execute and $compile", () => {
     db.$compile(withoutDb)
     // @ts-expect-error A copy of a query is not a query.
     void db.$execute({ ...schema.post })
+  })
+})
+
+describe("$query", () => {
+  test("decodes the fields of its rows by the types of kern-orm", async () => {
+    expectTypeOf(await db.$query`DELETE FROM ${db.post}`).toEqualTypeOf<number>()
+    expectTypeOf(
+      await db.$query`SELECT * FROM ${db.post}`.select({
+        id: t.uuid,
+        title: t.text.nullable(),
+      }),
+    ).toEqualTypeOf<{ id: string; title: string | null }[]>()
   })
 })
 

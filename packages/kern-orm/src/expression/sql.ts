@@ -2,13 +2,13 @@ import type { ExpressionNode, RawSqlNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import { identifier as createIdentifier, SqlFragment } from "../database/sql/fragment"
 import { isUntypedValue, rejectUntypedValue } from "../database/sql/parameter"
+import { SqlQuery } from "../database/sql/query"
 import { TransformedQuery } from "../query/conversion"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"
 import type { ScalarQuery, ScalarQueryValue } from "../query/operand"
 import { RecordQuery } from "../query/record"
 import { SelectQuery } from "../query/select"
-import { SqlQuery } from "../query/sql-query"
 import type { AnyType, Type } from "../type/type"
 import { describeRejectedCodec, isType } from "../type/type"
 
@@ -63,7 +63,7 @@ export function sql(first: TemplateStringsArray | AnyType, ...values: unknown[])
 }
 
 /**
- * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime, for the templates of `sql`, of `$query` and `$script` of a `Db`, and of `query` of a `Database`; `script` of a `Database` takes `identifier` of `kern-orm/db`.
+ * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime, for the templates of `sql`, and of `$query` and `$script` of a `Db`; `query` and `script` of a `Database` take `identifier` of `kern-orm/db`.
  *
  * Several names make a qualified name, such as `identifier(schema, table)` for `"schema"."table"`.
  * The fragment has no parameters, so `$script` takes it.

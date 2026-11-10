@@ -9,7 +9,6 @@ import type {
   RawSqlNode,
   SelectNode,
   TableSourceNode,
-  TextStatementNode,
   UpdateNode,
 } from "../../ast/nodes"
 import { createNode, createSelectNode, noFilters } from "../../ast/nodes"
@@ -41,7 +40,7 @@ import type { AnyTable } from "../../table/table"
 import { defineTable } from "../../table/table"
 import * as t from "../../types"
 
-import { compileStatement } from "./compile"
+import { compileStatement, compileTextStatement } from "./compile"
 
 const post = defineTable("post", {
   id: t.uuid,
@@ -657,7 +656,6 @@ describe("derived sources", () => {
       rows: "many",
       value: false,
       counted: undefined,
-      named: false,
       locksRows: false,
     })
   })
@@ -1109,7 +1107,6 @@ describe("mutations", () => {
       fields: node.returning,
       rows: "many",
       counted: undefined,
-      named: false,
     })
   })
 
@@ -1312,13 +1309,11 @@ describe("mutations", () => {
       fields: [],
       rows: "one",
       counted: "number",
-      named: false,
     })
     expect(compileStatement({ ...node, returning: [] })).toMatchObject({
       text: 'DELETE FROM "form" AS "form"',
       fields: [],
       counted: "records",
-      named: false,
     })
   })
 
@@ -1343,37 +1338,19 @@ describe("mutations", () => {
 })
 
 describe("statements of SQL text", () => {
-  /** Statement of the SQL of `fragment` that resolves to the number of the rows of its command tag. */
-  function createTextStatement(fragment: AnyExpression): TextStatementNode {
-    return {
-      kind: "text",
-      sql: toNode(fragment) as RawSqlNode,
-      fields: undefined,
-      rows: "many",
-      value: false,
-    }
+  /** SQL text of `fragment`. */
+  function toRawSql(fragment: AnyExpression): RawSqlNode {
+    return toNode(fragment) as RawSqlNode
   }
 
-  it("compiles the text with the parameters of its values and the names of its tables, and reads its fields by the names of the result columns", () => {
-    const node = createTextStatement(sql`DELETE FROM ${from(form)} WHERE name = ${"Survey"}`)
-    const fields = [{ key: "id", type: t.integer }]
+  it("compiles the text with the parameters of its values and the names of its tables", () => {
+    const node = toRawSql(sql`DELETE FROM ${from(form)} WHERE name = ${"Survey"}`)
 
-    expect(compileStatement(node, { schemaName: "app" })).toEqual({
+    expect(compileTextStatement(node, { schemaName: "app" })).toEqual({
       text: 'DELETE FROM "app"."form" WHERE name = $1',
       parameters: ["Survey"],
-      fields: [],
-      rows: "many",
-      value: false,
-      counted: "number",
-      named: true,
-      locksRows: false,
     })
-    expect(compileStatement({ ...node, fields })).toMatchObject({
-      text: 'DELETE FROM "form" WHERE name = $1',
-      fields,
-      counted: undefined,
-      named: true,
-    })
+    expect(compileTextStatement(node).text).toBe('DELETE FROM "form" WHERE name = $1')
   })
 
   it("rejects a table outside the tables of the statement, and a table bound to a Db other than the one that runs it", () => {
@@ -1381,18 +1358,18 @@ describe("statements of SQL text", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
     const db = database.bind(schema)
     const otherDb = database.bind(schema)
-    const node = createTextStatement(sql`SELECT FROM ${db.form}`)
+    const node = toRawSql(sql`SELECT FROM ${db.form}`)
 
-    expect(compileStatement(node, {}, new Set<AnyTable>([form]), db).text).toBe(
+    expect(compileTextStatement(node, {}, new Set<AnyTable>([form]), db).text).toBe(
       'SELECT FROM "form"',
     )
     expect(() =>
-      compileStatement(createTextStatement(sql`SELECT FROM ${from(post)}`), {}, new Set([form])),
+      compileTextStatement(toRawSql(sql`SELECT FROM ${from(post)}`), {}, new Set([form])),
     ).toThrow('Table "post" is not part of the schema')
-    expect(() => compileStatement(node, {}, new Set<AnyTable>([form]), otherDb)).toThrow(
+    expect(() => compileTextStatement(node, {}, new Set<AnyTable>([form]), otherDb)).toThrow(
       'Table "form" interpolated into SQL is bound to another Db',
     )
-    expect(() => compileStatement(node)).toThrow(
+    expect(() => compileTextStatement(node)).toThrow(
       'Table "form" interpolated into SQL is bound to a Db, so only that Db can compile the query',
     )
   })

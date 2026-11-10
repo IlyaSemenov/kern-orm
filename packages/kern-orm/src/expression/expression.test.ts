@@ -257,7 +257,7 @@ describe("toValueNode", () => {
     for (const [query, subject] of [
       [db.$select({}), "$select"],
       [db.user.insert({ id: "user-id", name: "Ann" }), "insert, update, or delete"],
-      [db.$query`SELECT TRUE`, "$query"],
+      [db.$query`SELECT TRUE`, "SQL text"],
     ] as const) {
       expect(() => toValueNode(query)).toThrow(
         `An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of ${subject}`,

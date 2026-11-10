@@ -1,5 +1,6 @@
 import type { ExpressionNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
+import { SqlQuery } from "../database/sql/query"
 import { getBooleanType } from "../type/boolean"
 import type { AnyType } from "../type/type"
 
@@ -166,14 +167,27 @@ export function isOperandSource(value: unknown): value is OperandSource {
 /**
  * Converts an operand into a node: an expression or a query by the method of `operandNode`, or a plain value, bound as a parameter encoded with `type`.
  *
- * The method of a query takes a query of one value of a table, which lowering replaces with a scalar subquery, or with `EXISTS` for a query of `exists`, and rejects another query, such as of records or of `$query`.
+ * The method of a query takes a query of one value of a table, which lowering replaces with a scalar subquery, or with `EXISTS` for a query of `exists`, and rejects another query, such as of records; it rejects a query of SQL text too.
  */
 export function toValueNode(value: unknown, type?: AnyType): ExpressionNode {
   // One lookup of the symbol recognizes an expression or a query, with the check of `isOperandSource` written out, since most values are neither and calling it takes longer.
-  if (typeof value === "object" && value !== null && operandNode in value) {
-    return (value as OperandSource)[operandNode]()
+  if (typeof value === "object" && value !== null) {
+    if (operandNode in value) {
+      return (value as OperandSource)[operandNode]()
+    }
+    if (value instanceof SqlQuery) {
+      rejectSqlQueryOperand()
+    }
   }
   return createNode({ kind: "param", value, type })
+}
+
+// A query of SQL text is a class of the database layer, which has no method of `operandNode`, so it would otherwise become the value of a parameter.
+/** Rejects a query of SQL text as an operand of an expression. */
+export function rejectSqlQueryOperand(): never {
+  throw new TypeError(
+    "An expression takes a query of one value of a table, such as of get, an aggregate, or exists, not a query of SQL text",
+  )
 }
 
 /** Converts an operand into a node as `toValueNode` does, casting a plain value to `type`, so that its parameter has the type even where nothing else in the statement determines it. */
