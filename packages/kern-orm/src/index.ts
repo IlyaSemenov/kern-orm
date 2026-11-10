@@ -105,6 +105,7 @@ export type {
   Database,
   DatabaseOptions,
   IsolationLevel,
+  PollLockOptions,
   SessionOptions,
   TransactionOptions,
 } from "./execution/database"

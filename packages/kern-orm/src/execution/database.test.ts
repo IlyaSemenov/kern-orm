@@ -185,6 +185,56 @@ describe("advisory locks", () => {
       expect(await countHolders(key)).toBe(0)
     })
 
+    it("polls in a session for a lock that another session holds until that session ends", async () => {
+      const key = createKey()
+      const refused = Promise.withResolvers<void>()
+      const driver = postgresJsDriver(postgres(process.env.DATABASE_URL!, { max: 1 }))
+      // Each attempt of the poll that finds the lock held resolves `refused`.
+      await using polling = createDatabase({
+        driver: {
+          execute: statement => driver.execute(statement),
+          executeScript: text => driver.executeScript(text),
+          async acquire() {
+            const connection = await driver.acquire()
+            return {
+              async execute(statement) {
+                const result = await connection.execute(statement)
+                if (statement.text.includes("pg_try_advisory_lock") && result.rows[0]![0] === "f") {
+                  refused.resolve()
+                }
+                return result
+              },
+              executeScript: text => connection.executeScript(text),
+              release: () => connection.release(),
+            }
+          },
+          close: () => driver.close(),
+        },
+      })
+
+      let polled: Promise<number> | undefined
+      await whileHeld(
+        callback => database.session(callback),
+        () => database.tryLock(key),
+        async () => {
+          polled = polling.session(async () => {
+            await polling.pollLock(key)
+            return await countHolders(key)
+          })
+          // It rejects the test if the poll ends before an attempt finds the lock held.
+          await Promise.race([
+            refused.promise,
+            polled.then(() => {
+              throw new Error("The poll took a lock that another session held")
+            }),
+          ])
+        },
+      )
+
+      expect(await polled!).toBe(1)
+      expect(await countHolders(key)).toBe(0)
+    })
+
     it("releases more locks of a session than a result has columns, and returns its connection to the pool without them", async () => {
       const reported: unknown[] = []
       await using single = createDatabase({

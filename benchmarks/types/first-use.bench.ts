@@ -9,12 +9,12 @@ import { catalogSchema, formsDb, formsSchema, storeDb, tenantDb } from "./fixtur
 bench("DbOf assignment of 2 tables", () => {
   const sharedDb: DbOf<typeof formsSchema> = tenantDb
   return sharedDb
-}).types([2014, "instantiations"])
+}).types([2020, "instantiations"])
 
 bench("DbOf assignment of 12 tables", () => {
   const sharedDb: DbOf<typeof catalogSchema> = storeDb
   return sharedDb
-}).types([2949, "instantiations"])
+}).types([2955, "instantiations"])
 
 bench("first unbound query", async () => {
   await formsDb.$execute(

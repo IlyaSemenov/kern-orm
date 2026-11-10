@@ -79,6 +79,10 @@
     It releases them in one statement, in a row of each key of an array parameter, since PostgreSQL limits the columns of a result to 1664.
   - After a failed statement of `tryLock`, the session leaves its connection in a transaction instead, as after a failed release: PostgreSQL keeps a lock of a session that it took before the statement failed, so the connection may hold a lock that the session does not know of.
 - `lock` rejects in a session outside its transactions too, since a statement that waits for a lock keeps a snapshot, which `CREATE INDEX CONCURRENTLY` in the session that holds the lock waits for.
+- `pollLock` of a `Database` and `$pollLock` of a `Db` wait for the lock of a session instead: they call `tryLock` until it takes the lock, after a pause of 50 ms that doubles after each attempt up to 1 s, without a limit of time.
+  - They reject without a statement outside a session, and in a transaction, which would keep a snapshot between the attempts, and where `lock` waits.
+  - The waiters form no queue, so one of them can miss the lock while others take it.
+  - Once their signal aborts, they make no more attempts and reject with its reason, at once during a pause; an attempt that runs when the signal aborts is awaited, and if it takes the lock, they resolve, since the session holds the lock until it ends.
 - The [migrator](migrations.md#applying-and-rolling-back) locks its target with `lock`.
 - A query that locks rows rejects under the same condition, as its [row locks](queries.md#row-locks) describe.
 

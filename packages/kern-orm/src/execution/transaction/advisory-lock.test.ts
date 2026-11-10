@@ -5,6 +5,7 @@ import { QueryError } from "kern-orm"
 
 import { createRecordingDriver } from "../../../testing/recording-driver"
 
+import { pause, pollLock } from "./advisory-lock"
 import { TransactionCoordinator } from "./coordinator"
 import { createTestCoordinator, holdOn, markHandled } from "./testing"
 
@@ -61,6 +62,33 @@ describe("where a lock cannot be taken", () => {
     })
 
     expect(statements).toEqual([])
+  })
+
+  it("rejects pollLock outside a session and in a transaction, also of a session or a test transaction, without a statement", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+    const { coordinator: testCoordinator } = createTestCoordinator()
+    const inTransaction =
+      "Cannot poll for an advisory lock in a transaction, which would keep a snapshot between the attempts; take it with lock, which waits for it"
+
+    await expect(coordinator.pollLock("import")).rejects.toThrow(
+      "Cannot poll for an advisory lock outside a session, where it would end with its statement",
+    )
+    await coordinator.transaction(async () => {
+      await expect(coordinator.pollLock("import")).rejects.toThrow(inTransaction)
+    })
+    await coordinator.session(() =>
+      coordinator.transaction(async () => {
+        await expect(coordinator.pollLock("import")).rejects.toThrow(inTransaction)
+      }),
+    )
+    await testCoordinator.testTransaction(async () => {
+      await expect(testCoordinator.pollLock("import")).rejects.toThrow(
+        "Cannot poll for an advisory lock in a test transaction, which would keep a snapshot between the attempts; take it with lock inside transaction or ensureTransaction",
+      )
+    })
+
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT", "BEGIN", "COMMIT"])
   })
 })
 
@@ -274,5 +302,104 @@ describe("locks of a session", () => {
       message: "Releasing the advisory locks of a session failed",
       cause: rejected,
     })
+  })
+})
+
+describe("polling in a session", () => {
+  /** Polls with `tryLock` and a wait that records its pauses and ends each at once, or rejects as `pause` once the signal it is given has aborted. */
+  function poll(tryLock: () => Promise<boolean>, signal?: AbortSignal) {
+    const delays: number[] = []
+    const polled = pollLock(tryLock, signal, (delay, waitSignal) => {
+      delays.push(delay)
+      return waitSignal?.aborted ? Promise.reject(waitSignal.reason) : Promise.resolve()
+    })
+    return { polled, delays }
+  }
+
+  it("pauses for 50 ms after the first attempt that does not take the lock, doubling the pause after each attempt up to a second", async () => {
+    let attempts = 0
+
+    const { polled, delays } = poll(() => Promise.resolve(++attempts === 8))
+    await polled
+
+    expect(delays).toEqual([50, 100, 200, 400, 800, 1000, 1000])
+  })
+
+  it("rejects with the reason of an aborted signal without an attempt", async () => {
+    const reason = new Error("timeout")
+    let attempts = 0
+
+    const { polled } = poll(() => Promise.resolve(++attempts > 0), AbortSignal.abort(reason))
+
+    await expect(polled).rejects.toBe(reason)
+    expect(attempts).toBe(0)
+  })
+
+  it("rejects without a pause when the signal aborts during an attempt that does not take the lock", async () => {
+    const reason = new Error("timeout")
+    const controller = new AbortController()
+
+    const { polled, delays } = poll(() => {
+      controller.abort(reason)
+      return Promise.resolve(false)
+    }, controller.signal)
+
+    await expect(polled).rejects.toBe(reason)
+    expect(delays).toEqual([])
+  })
+
+  it("resolves when the signal aborts during an attempt that takes the lock", async () => {
+    const controller = new AbortController()
+
+    const { polled } = poll(() => {
+      controller.abort(new Error("timeout"))
+      return Promise.resolve(true)
+    }, controller.signal)
+
+    await expect(polled).resolves.toBeUndefined()
+  })
+
+  it("rejects at once without another attempt when the signal aborts during a pause", async () => {
+    const reason = new Error("timeout")
+    const controller = new AbortController()
+    const paused = Promise.withResolvers<void>()
+    let attempts = 0
+
+    const polled = pollLock(
+      () => Promise.resolve(++attempts > 1),
+      controller.signal,
+      (_delay, signal) => {
+        paused.resolve()
+        // A pause that did not get the signal, or ignored it, would outlast the timeout of the test.
+        return pause(60_000, signal)
+      },
+    ).catch((error: unknown) => error)
+    await paused.promise
+    controller.abort(reason)
+
+    expect(await polled).toBe(reason)
+    expect(attempts).toBe(1)
+  })
+
+  it("tries the lock in a session again after a pause until it takes it, and releases it once when the session ends", async () => {
+    const busy = new Set(["import"])
+    let attempts = 0
+    const { driver, statements } = createRecordingDriver({
+      respond: respondWithLocks(statement => {
+        if (statement.text === trySessionLockStatement && ++attempts === 3) {
+          busy.clear()
+        }
+      }, busy),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.session(() => coordinator.pollLock("import"))
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      trySessionLockStatement,
+      trySessionLockStatement,
+      trySessionLockStatement,
+      unlockStatement,
+    ])
   })
 })

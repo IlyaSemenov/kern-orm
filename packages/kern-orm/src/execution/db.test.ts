@@ -235,6 +235,22 @@ it("takes advisory locks in a transaction of the database with $lock and $tryLoc
   ])
 })
 
+it("polls for an advisory lock in a session of the database with $pollLock, passing its signal", async () => {
+  const { driver, statements } = createRecordingDriver({ respond: () => ({ rows: [["t"]] }) })
+  const db = createDatabase({ driver }).bind(schema)
+  const reason = new Error("timeout")
+
+  await db.$session(async () => {
+    await expect(db.$pollLock("import", { signal: AbortSignal.abort(reason) })).rejects.toBe(reason)
+    await db.$pollLock("import")
+  })
+
+  expect(statements).toMatchObject([
+    { text: "SELECT pg_try_advisory_lock(hashtextextended($1, 0))", parameters: ["import"] },
+    { text: "SELECT pg_advisory_unlock(hashtextextended(key, 0)) FROM unnest($1::text[]) AS key" },
+  ])
+})
+
 describe("row locks", () => {
   const message =
     "Cannot lock the rows of a query outside a transaction, where the locks would end with its statement; a test transaction alone does not count"

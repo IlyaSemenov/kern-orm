@@ -1,4 +1,4 @@
-// Advisory locks of string keys: the statements that take them in a transaction and in a session, and the locks that a session holds until it ends.
+// Advisory locks of string keys: the statements that take them in a transaction and in a session, the locks that a session holds until it ends, and polling for one in a session.
 
 import { array } from "../../type/builtins/array"
 import { boolean } from "../../type/builtins/boolean"
@@ -8,6 +8,11 @@ import { createStatement } from "../driver"
 
 /** Type of the keys of a session that one statement releases. */
 const keysType = /* @__PURE__ */ array(text)
+
+/** Pause of `pollLock` in milliseconds after its first attempt, which doubles after each attempt up to `maxPollDelay`. */
+const firstPollDelay = 50
+/** Longest pause of `pollLock` in milliseconds. */
+const maxPollDelay = 1000
 
 /** Creates the statement that takes the transaction-level advisory lock of `key`, waiting while another transaction or session holds it. */
 export function createLockStatement(key: string): SqlStatement {
@@ -22,6 +27,42 @@ export function createTryLockStatement(key: string): SqlStatement {
 /** Tells whether the statement that tried to take a lock took it. */
 export function isTaken(result: DriverResult): boolean {
   return boolean.decode(result.rows[0]![0]!)
+}
+
+/**
+ * Calls `tryLock` until it takes the lock, with `wait` pausing between the attempts, and rejects with the reason of `signal` once it aborts.
+ *
+ * An attempt that runs when `signal` aborts is awaited, and if it takes the lock, the call resolves, since the session holds the lock until it ends.
+ * `wait` is `pause`, which a test replaces to observe the pauses without a clock.
+ */
+export async function pollLock(
+  tryLock: () => Promise<boolean>,
+  signal: AbortSignal | undefined,
+  wait: (delay: number, signal: AbortSignal | undefined) => Promise<void> = pause,
+): Promise<void> {
+  signal?.throwIfAborted()
+  let delay = firstPollDelay
+  while (!(await tryLock())) {
+    // A listener added to a signal that has aborted is never called.
+    signal?.throwIfAborted()
+    await wait(delay, signal)
+    delay = Math.min(delay * 2, maxPollDelay)
+  }
+}
+
+/** Waits `delay` milliseconds, or rejects with the reason of `signal` once it aborts, clearing the timer so that it keeps no process alive. */
+export function pause(delay: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer)
+      reject(signal!.reason)
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort)
+      resolve()
+    }, delay)
+    signal?.addEventListener("abort", onAbort, { once: true })
+  })
 }
 
 /**

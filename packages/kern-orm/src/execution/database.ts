@@ -85,6 +85,13 @@ export interface Database extends AsyncDisposable {
    * It rejects outside both, since the lock would end with its statement; a test transaction alone does not count.
    */
   tryLock(key: string): Promise<boolean>
+  /**
+   * Takes the advisory lock of `key` in a session until the session ends, calling `tryLock` again after a pause until it takes the lock, such as to let one process at a time run statements outside a transaction.
+   *
+   * It rejects outside a session, and in a transaction, where `lock` waits for the lock.
+   * Once `signal` of `options` aborts, such as `AbortSignal.timeout(60_000)`, it makes no more attempts and rejects with the reason of the signal, unless the attempt that is running takes the lock.
+   */
+  pollLock(key: string, options?: PollLockOptions): Promise<void>
   /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions and sessions end. */
   close(): Promise<void>
 }
@@ -116,6 +123,12 @@ export interface SessionOptions {
    * It applies to the statements of the callback, including those of its transactions, until the session ends, which restores the search path that its connection had.
    */
   searchPath?: readonly string[]
+}
+
+/** Options of `pollLock` of a `Database` and `$pollLock` of a `Db`. */
+export interface PollLockOptions {
+  /** Signal that stops waiting for the lock, such as `AbortSignal.timeout(60_000)`: once it aborts, `pollLock` makes no more attempts. */
+  signal?: AbortSignal
 }
 
 /** Options of `createDatabase`. */
@@ -153,6 +166,7 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     session: (callback, options) => coordinator.session(callback, options),
     lock: key => coordinator.lock(key),
     tryLock: key => coordinator.tryLock(key),
+    pollLock: (key, options) => coordinator.pollLock(key, options),
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }

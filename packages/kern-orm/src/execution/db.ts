@@ -27,7 +27,7 @@ import type { AnySchema, Schema, Tables } from "../schema/schema"
 import { defineEntries, schemaRelations } from "../schema/schema"
 import type { AnyTable } from "../table/table"
 
-import type { Database, SessionOptions, TransactionOptions } from "./database"
+import type { Database, PollLockOptions, SessionOptions, TransactionOptions } from "./database"
 import type { SqlStatement } from "./driver"
 import { createStatement } from "./driver"
 
@@ -167,6 +167,13 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    * It rejects outside both, since the lock would end with its statement; a test transaction alone does not count.
    */
   $tryLock(key: string): Promise<boolean>
+  /**
+   * Takes the advisory lock of `key` in a session of the database until the session ends, calling `$tryLock` again after a pause until it takes the lock, such as to let one process at a time run statements outside a transaction.
+   *
+   * It rejects outside a session, and in a transaction, where `$lock` waits for the lock.
+   * Once `signal` of `options` aborts, such as `AbortSignal.timeout(60_000)`, it makes no more attempts and rejects with the reason of the signal, unless the attempt that is running takes the lock.
+   */
+  $pollLock(key: string, options?: PollLockOptions): Promise<void>
 }
 
 /**
@@ -245,6 +252,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     $session: (callback, options) => database.session(callback, options),
     $lock: key => database.lock(key),
     $tryLock: key => database.tryLock(key),
+    $pollLock: (key, options) => database.pollLock(key, options),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
   const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>

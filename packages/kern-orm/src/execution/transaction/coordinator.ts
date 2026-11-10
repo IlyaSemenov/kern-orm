@@ -2,7 +2,12 @@
 
 import { AsyncLocalStorage } from "node:async_hooks"
 
-import type { DatabaseOptions, SessionOptions, TransactionOptions } from "../database"
+import type {
+  DatabaseOptions,
+  PollLockOptions,
+  SessionOptions,
+  TransactionOptions,
+} from "../database"
 import type { Connection, Driver, DriverResult, SqlStatement } from "../driver"
 import { ConnectionError } from "../driver-error"
 import type {
@@ -13,7 +18,13 @@ import type {
 } from "../testing"
 
 import { acquireUnlessAborted } from "./abort"
-import { createLockStatement, createTryLockStatement, isTaken, SessionLocks } from "./advisory-lock"
+import {
+  createLockStatement,
+  createTryLockStatement,
+  isTaken,
+  pollLock,
+  SessionLocks,
+} from "./advisory-lock"
 import { TransactionConnectionError } from "./connection-loss"
 import { TestFixtureStack } from "./fixture-stack"
 import type { LevelOptions, Outcome, Rejection, TransactionLevel } from "./level"
@@ -218,6 +229,26 @@ export class TransactionCoordinator {
       throw unavailable
     }
     return (level.locks ??= new SessionLocks()).take(level.connection, key)
+  }
+
+  /**
+   * Takes the advisory lock of `key` in a session outside its transactions until the session ends, calling `tryLock` again after a pause until it takes the lock.
+   *
+   * It rejects without a statement outside a session, and in a transaction, also of a session or of the test helpers, which would keep a snapshot between the attempts; in a transaction of `transaction`, `lock` waits for the lock instead.
+   * Once `signal` of `options` aborts, it makes no more attempts and rejects with its reason, unless the attempt that is running takes the lock.
+   */
+  async pollLock(key: string, options?: PollLockOptions): Promise<void> {
+    const level = this.#storage.getStore()
+    if (!level?.session) {
+      throw new Error(
+        !level
+          ? "Cannot poll for an advisory lock outside a session, where it would end with its statement"
+          : level.inTransaction
+            ? "Cannot poll for an advisory lock in a transaction, which would keep a snapshot between the attempts; take it with lock, which waits for it"
+            : "Cannot poll for an advisory lock in a test transaction, which would keep a snapshot between the attempts; take it with lock inside transaction or ensureTransaction",
+      )
+    }
+    await pollLock(() => this.tryLock(key), options?.signal)
   }
 
   /**

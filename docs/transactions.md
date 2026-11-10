@@ -198,8 +198,22 @@ await db.$session(async () => {
 })
 ```
 
+To wait for the lock in a session, call `$pollLock`: it calls `$tryLock` again after a pause, which grows up to a second, until it takes the lock.
+
+```ts
+await db.$session(async () => {
+  await db.$pollLock("form-maintenance")
+  // ...
+})
+```
+
 A session cannot wait for a lock with `$lock`, since a statement such as `CREATE INDEX CONCURRENTLY` in the session that holds the lock would wait for the statement that waits for the lock.
-To wait in a session, call `$tryLock` again after a pause until it takes the lock.
+
+To stop waiting, such as after a timeout, pass a `signal`: once it aborts, `$pollLock` makes no more attempts and rejects with its reason, unless the attempt that is running takes the lock.
+
+```ts
+await db.$pollLock("form-maintenance", { signal: AbortSignal.timeout(60_000) })
+```
 
 ## Isolation level
 
