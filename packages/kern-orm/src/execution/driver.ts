@@ -61,6 +61,7 @@ export interface Connection {
    * Executes a statement on the connection.
    *
    * Statements and scripts run one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
+   * A connection that is lost rejects every later statement and script with `ConnectionError`, in a transaction and outside one, rather than running it on a new connection.
    */
   execute(statement: SqlStatement): Promise<DriverResult>
   /** Executes a script of statements without parameters on the connection, in the order of calls with its statements. */

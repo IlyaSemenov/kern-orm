@@ -493,6 +493,41 @@ export function describeDriverContract(
       }
     })
 
+    it("rejects a statement of a reserved connection that is lost outside a transaction with ConnectionError", async () => {
+      const own = createDriver({ max: 1 })
+      try {
+        const connection = await own.acquire()
+        const { runStatement, selectValue: selectValueOnConnection } =
+          createStatementRunners(connection)
+        try {
+          await runStatement("SELECT set_config('application_name', 'kern_lost_test', false)")
+          const pid = (await selectValueOnConnection("SELECT pg_backend_pid()"))!
+          // The timeout makes it wait for the backend to exit.
+          assert.equal(await selectValue("SELECT pg_terminate_backend($1, 5000)", [pid]), "t")
+          // The client reads that the connection closed before the next statement, as a client that reconnects would before sending it on a new connection.
+          await new Promise(resolve => setTimeout(resolve, 50))
+
+          // On a new connection, a statement would resolve without the setting of the lost session; a driver must reject every later one, not only the first, which tells it that the connection closed.
+          const readSetting = "SELECT current_setting('application_name')"
+          const errors = [
+            await runStatement(readSetting).catch((error: unknown) => error),
+            await runStatement(readSetting).catch((error: unknown) => error),
+            await connection.executeScript(readSetting).catch((error: unknown) => error),
+          ]
+          for (const error of errors) {
+            assert.ok(
+              error instanceof ConnectionError,
+              `Expected ConnectionError, got ${String(error)}`,
+            )
+          }
+        } finally {
+          await connection.release()
+        }
+      } finally {
+        await own.close()
+      }
+    })
+
     it("replaces an idle connection whose backend exited", async () => {
       const own = createDriver({ max: 2 })
       const held: Connection[] = []

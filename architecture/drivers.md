@@ -7,7 +7,7 @@
   It also executes a script of several statements without parameters, which a statement with parameters cannot hold, since PostgreSQL takes several statements only in a query of its simple protocol; it ignores the results of a script.
   A connection runs its statements and scripts one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
   It rejects a statement or script with the [errors](#errors) of `execution/driver-error.ts`: with `QueryError` when PostgreSQL rejected it, and the connection stays usable, and with `ConnectionError` after any other failure, after which the connection may be lost or in an unknown state of its transaction.
-  A connection lost in a transaction rejects every later statement on it with `ConnectionError`, so that no statement of the transaction runs outside it on a new connection.
+  A reserved connection that is lost rejects every later statement on it with `ConnectionError`, also outside a transaction, so that no statement of a transaction runs outside it on a new connection.
   It rejects a statement or script on the pool that leaves its connection in a transaction, such as `BEGIN`, with `ConnectionError`.
   A script whose statement PostgreSQL rejected in that transaction may reject with that `QueryError` instead.
   Either way, the driver closes the connection or rolls the transaction back, so that no later statement on the pool runs in it.
