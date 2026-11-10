@@ -1,15 +1,27 @@
 // Uses every entry point of `kern-orm` and `@kern-orm/postgres-js` without connecting to a database.
 import { postgresJsDriver } from "@kern-orm/postgres-js"
 import type { ResultOf } from "kern-orm"
-import { createDatabase, defineSchema, defineTable, FALSE, or } from "kern-orm"
+import {
+  createDatabase,
+  defineSchema,
+  defineTable,
+  defineType,
+  equalityOperators,
+  FALSE,
+  or,
+  orderingOperators,
+} from "kern-orm"
+import { defineCodec } from "kern-orm/db"
+import * as codecs from "kern-orm/db/types"
 import type { TestFixture } from "kern-orm/testing"
 import { createTestHelpers } from "kern-orm/testing"
 import * as t from "kern-orm/types"
 import postgres from "postgres"
 
 const form = defineTable("form", {
-  id: t.uuid,
+  id: defineType(codecs.uuid).withOperators(orderingOperators),
   name: t.text,
+  path: defineType(defineCodec({ sqlType: "ltree" })).withOperators(equalityOperators),
 })
 
 const driver = postgresJsDriver(postgres())

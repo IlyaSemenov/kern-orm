@@ -6,7 +6,7 @@ import type { ScalarQuery, TypedScalarQuery } from "../query/operand"
 import { SelectQuery } from "../query/select"
 import type { ExpressionInput } from "../query/selection"
 import type { AnyType, Type } from "../type/type"
-import { isType } from "../type/type"
+import { describeRejectedCodec, isType } from "../type/type"
 
 import type { AnyExpression, Expression, ExpressionOperators, TypedExpression } from "./expression"
 import {
@@ -147,7 +147,9 @@ export function caseWhen(
   otherwise?: unknown,
 ): unknown {
   if (!isType(type)) {
-    throw new TypeError("caseWhen() accepts a type, not a column")
+    throw new TypeError(
+      `caseWhen() accepts a type, not ${describeRejectedCodec(type) ?? "a column"}`,
+    )
   }
   // PostgreSQL rejects `CASE` without a branch, while a list built in code may be empty, as those of `and` and `or` may.
   if (branches.length === 0) {

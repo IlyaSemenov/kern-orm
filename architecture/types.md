@@ -30,7 +30,7 @@
   - A type copies the members of its codec with the brand, so the database layer takes a type wherever it takes a codec, and `encode` and `decode` of a type are the functions of the codec, without a call of the type for each value.
   - `nullable`, `transform`, `withParameters`, and `with` of a type derive its codec and give the result the operators of the type as they are, so an operator defined as a function is wrapped once, by the `withOperators` that added it.
   - `Type` declares the members of `Codec` and these methods itself rather than inheriting them, which would cost instantiations for each type derived in user code ([decision](../decisions/types/codec-members-of-a-type.md)); type tests check that a type is assignable to `Codec`.
-  - A codec without operators is not a type, which `isType` tells by a brand of its own: `sql`, `param`, `caseWhen`, and `defineTable` reject it in types and at runtime.
+  - A codec without operators is not a type, which `isType` tells by a brand of its own: `sql`, `param`, `caseWhen`, and `defineTable` reject it in types and at runtime, with an error that names `defineType`.
 - **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, `sql`/`param` fragments, and functions such as `coalesce` and `caseWhen`.
   Every expression has `isNull`; the operators of its type are added to it and replace `isNull` if one has its name, in types and at runtime alike.
   SQL `=` is a capability of a type given only by the operators of `equalityOperators`, which `orderingOperators` include; these operators are marked, so that another operator named `eq` does not give it, and an array type has them only when its element type has the capability.

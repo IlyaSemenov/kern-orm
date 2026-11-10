@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { defineCodec } from "../database/codec/codec"
 import * as t from "../types"
 
 import type { Column } from "./column"
@@ -40,6 +41,17 @@ describe("defineTable", () => {
         id: "uuid",
       }),
     ).toThrow('Column "id" of table "form" must be a type or a column')
+  })
+
+  it("rejects a codec without operators as a column definition, naming defineType", () => {
+    expect(() =>
+      defineTable("form", {
+        // @ts-expect-error A codec without operators is not a type.
+        path: defineCodec({ sqlType: "ltree" }),
+      }),
+    ).toThrow(
+      'Column "path" of table "form" must be a type or a column, not a codec without operators; create a type from it with defineType(codec)',
+    )
   })
 
   it("freezes column attributes, so that tables sharing a column cannot change it", () => {

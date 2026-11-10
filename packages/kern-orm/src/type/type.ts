@@ -196,6 +196,17 @@ export function isType(value: unknown): value is AnyType {
   return typeof value === "object" && value !== null && typeBrand in value
 }
 
+/**
+ * Describes `value`, which a function that takes a type rejected as not a type, for its error: a codec without operators, with the hint of `defineType`.
+ *
+ * It returns `undefined` for a value that is not a codec; a type is a codec too, so the caller rejects only values other than types.
+ */
+export function describeRejectedCodec(value: unknown): string | undefined {
+  return isCodec(value)
+    ? "a codec without operators; create a type from it with defineType(codec)"
+    : undefined
+}
+
 /** Derivable codec that has `with`, of any values and parameters. */
 // oxlint-disable-next-line typescript/no-explicit-any -- any codec regardless of its value types
 type CodecWithAnyParameters = DerivableCodecWithParameters<any, any, never[]>

@@ -9,7 +9,7 @@ import { RecordQuery } from "../query/record"
 import { SelectQuery } from "../query/select"
 import { SqlQuery } from "../query/sql-query"
 import type { AnyType, Type } from "../type/type"
-import { isType } from "../type/type"
+import { describeRejectedCodec, isType } from "../type/type"
 
 import type { AnyExpression, Expression, UntypedExpression } from "./expression"
 import { getType, isExpression, toCastValueNode, toExpression, toValueNode } from "./expression"
@@ -47,7 +47,7 @@ export function sql(first: TemplateStringsArray | AnyType, ...values: unknown[])
     return createFragment(first, values, undefined)
   }
   if (!isType(first)) {
-    throw new TypeError("sql() accepts a type, not a column")
+    throw new TypeError(`sql() accepts a type, not ${describeRejectedCodec(first) ?? "a column"}`)
   }
   return (strings: TemplateStringsArray, ...values: unknown[]) =>
     createFragment(strings, values, first)
@@ -101,7 +101,9 @@ export function param<
 ): V extends AnyExpression ? V : V extends ScalarQuery ? AnyExpression<ScalarQueryValue<V>> : E
 export function param(type: AnyType | AnyExpression, value: unknown): AnyExpression {
   if (!isType(type) && !isExpression(type)) {
-    throw new TypeError("param() accepts a type or an expression, not a column")
+    throw new TypeError(
+      `param() accepts a type or an expression, not ${describeRejectedCodec(type) ?? "a column"}`,
+    )
   }
   if (isExpression(type)) {
     if (isExpression(value)) {

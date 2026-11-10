@@ -9,6 +9,8 @@
       "kern-orm": ["./packages/kern-orm/src/index.ts"],
       "kern-orm/testing": ["./packages/kern-orm/src/testing.ts"],
       "kern-orm/types": ["./packages/kern-orm/src/types.ts"],
+      "kern-orm/db": ["./packages/kern-orm/src/db.ts"],
+      "kern-orm/db/types": ["./packages/kern-orm/src/db/types.ts"],
       "@kern-orm/migrations": ["./packages/migrations/src/index.ts"],
       "@kern-orm/migrations/cli": ["./packages/migrations/src/cli.ts"],
       "@kern-orm/migrations/testing": ["./packages/migrations/src/testing.ts"],

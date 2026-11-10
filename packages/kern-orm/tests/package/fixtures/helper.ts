@@ -17,10 +17,13 @@ import {
   many,
   matches,
   one,
+  orderingOperators,
   param,
   sum,
   toSnakeCase,
 } from "kern-orm"
+import { defineCodec } from "kern-orm/db"
+import * as codecs from "kern-orm/db/types"
 import * as t from "kern-orm/types"
 
 const form = defineTable("form", {
@@ -79,6 +82,12 @@ export const trimmedName = param(t.text, "name").trim()
 
 /** Type of the values and the type parameters of a built-in type, without its operators; see the file header. */
 export const plainNumeric = defineType(t.numeric)
+
+/** Codec defined without the ORM; see the file header. */
+export const pathCodec = defineCodec({ sqlType: "ltree" }).nullable()
+
+/** Type created from a built-in codec with ordering operators; see the file header. */
+export const orderedUuid = defineType(codecs.uuid).withOperators(orderingOperators)
 
 /** Table with columns of the shared `integer` and `text` types; see the file header. */
 export const counter = defineTable("counter", {

@@ -1,6 +1,6 @@
 import { isRecordKey } from "../result/result"
 import type { AnyType, TypeInput, TypeOperators, TypeOutput } from "../type/type"
-import { isType } from "../type/type"
+import { describeRejectedCodec, isType } from "../type/type"
 import type { IsUnion } from "../utils/type-helpers"
 
 import type { AnyColumn, ToColumn } from "./column"
@@ -348,7 +348,10 @@ function createTable(
     }
     const column = toColumn(definition)
     if (!column) {
-      throw new TypeError(`Column "${key}" of table "${name}" must be a type or a column`)
+      const codec = describeRejectedCodec(definition)
+      throw new TypeError(
+        `Column "${key}" of table "${name}" must be a type or a column${codec ? `, not ${codec}` : ""}`,
+      )
     }
     columns[key] = column
   }

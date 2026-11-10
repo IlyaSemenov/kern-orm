@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
+import { defineCodec } from "../database/codec/codec"
 import { createDatabase } from "../execution/database"
 import { desc } from "../query/order"
 import { from } from "../query/select"
@@ -264,6 +265,12 @@ describe("caseWhen", () => {
 
     expect(() => caseWhen(t.integer.primaryKey() as never, [])).toThrow(message)
     expect(() => caseWhen(sql(t.integer)`1` as never, [])).toThrow(message)
+  })
+
+  it("rejects a codec without operators, naming defineType", () => {
+    expect(() => caseWhen(defineCodec({ sqlType: "ltree" }) as never, [])).toThrow(
+      "caseWhen() accepts a type, not a codec without operators; create a type from it with defineType(codec)",
+    )
   })
 
   it("rejects a condition other than an expression or a query", () => {

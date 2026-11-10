@@ -12,9 +12,8 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
   JSON and arrays take `param` with a codec.
   The ORM encodes its untyped parameters by the same rule.
 - `script` of the layer compiles its template with the same renderer and rejects a parameter at any depth before the driver gets the script.
-- A [codec](../architecture/types.md) is the contract of the layer: its SQL type and cast type, encoding, decoding, and nullability.
-  A `Type` of the ORM is a codec with operators and the factories of columns, and the layer takes it wherever it takes a codec, such as in `get(t.uuid)`.
-- Until the package exists, `kern-orm/db` exports the layer and `kern-orm/db/types` its built-in codecs, as `kern-db` and `kern-db/types` will: the root of `kern-orm` exports the functions of the ORM of the same names.
+- The layer takes a [type](../architecture/types.md) of the ORM wherever it takes a codec, such as in `get(t.uuid)`.
+- Until the package exists, `kern-orm/db` also exports the rest of the layer, such as `Database`, the driver contract, and its errors, as `kern-db` will: the root of `kern-orm` exports the functions of the ORM of the same names.
 - A query of SQL text of the layer holds the source of its statement apart from the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.
   `$query` of a `Db` creates it with the compilation of that `Db`, which resolves a dynamic PostgreSQL schema when the query compiles.
 - The layer decodes flat results; the ORM keeps nested rows, required relations, literals, `map`, and `transform`.
@@ -23,7 +22,7 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 
 ## Steps
 
-1. The contract of codecs, and `Type` built on it.
+1. Done: the contract of codecs and the codecs of the built-in types, exported from `kern-orm/db` and `kern-orm/db/types`, and `Type` built on them.
 2. Queries of SQL text in the layer: its fragments, the renderer of templates, and the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer, and the documentation of migrations uses its fragments and codecs.
 3. The driver contract and the tests of the layer on its own API, without tables and the expressions of the ORM.
 4. The package: its entry points, the dependencies of drivers and the migrator, the compatibility test, and a consumer that installs `kern-db`, a driver, and the migrator without `kern-orm`.

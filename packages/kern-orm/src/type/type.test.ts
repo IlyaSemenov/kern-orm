@@ -7,7 +7,7 @@ import { sql } from "../expression/sql"
 import { timestamptz } from "./builtins/datetime"
 import { numeric } from "./builtins/numeric"
 import { text, varchar } from "./builtins/text"
-import { defineType, isType } from "./type"
+import { defineType, describeRejectedCodec, isType } from "./type"
 
 describe("defineType", () => {
   const vectorCodec = defineCodec({ sqlType: "vector" })
@@ -82,6 +82,18 @@ describe("isType", () => {
     expect(isType(defineType(codec).unique())).toBe(false)
     // @ts-expect-error A codec is not a type.
     expect(() => sql(codec)).toThrow("sql() accepts a type")
+  })
+})
+
+describe("describeRejectedCodec", () => {
+  it("hints defineType for a codec, and describes no value that is not a codec", () => {
+    const codec = defineCodec({ sqlType: "ltree" })
+
+    expect(describeRejectedCodec(codec)).toBe(
+      "a codec without operators; create a type from it with defineType(codec)",
+    )
+    expect(describeRejectedCodec(defineType(codec).unique())).toBeUndefined()
+    expect(describeRejectedCodec("ltree")).toBeUndefined()
   })
 })
 

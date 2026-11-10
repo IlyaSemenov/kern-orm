@@ -1,6 +1,7 @@
 import { expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
+import { defineCodec } from "../database/codec/codec"
 import { createDatabase } from "../execution/database"
 import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"
@@ -19,6 +20,13 @@ const schema = defineSchema({ form })
 it("rejects a column passed to sql as a type", () => {
   // @ts-expect-error A column is not a type.
   expect(() => sql(t.uuid.primaryKey())).toThrow("sql() accepts a type, not a column")
+})
+
+it("rejects a codec without operators passed to sql, naming defineType", () => {
+  // @ts-expect-error A codec without operators is not a type.
+  expect(() => sql(defineCodec({ sqlType: "ltree" }))).toThrow(
+    "sql() accepts a type, not a codec without operators; create a type from it with defineType(codec)",
+  )
 })
 
 it("interpolates a query of a table without clauses, also of a singleton table, as the name of the table of its Db", () => {
@@ -139,5 +147,12 @@ it("rejects a column passed to param as a type", () => {
   // @ts-expect-error A column is not a type.
   expect(() => param(t.uuid.primaryKey(), "id")).toThrow(
     "param() accepts a type or an expression, not a column",
+  )
+})
+
+it("rejects a codec without operators passed to param, naming defineType", () => {
+  // @ts-expect-error A codec without operators is not a type.
+  expect(() => param(defineCodec({ sqlType: "ltree" }), "a.b")).toThrow(
+    "param() accepts a type or an expression, not a codec without operators; create a type from it with defineType(codec)",
   )
 })
