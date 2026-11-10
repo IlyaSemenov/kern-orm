@@ -41,7 +41,7 @@ export interface Database extends AsyncDisposable {
    * It names no tables of a `Db`: run a script that interpolates them with `$script` of that `Db`.
    */
   script(strings: TemplateStringsArray, ...values: unknown[]): Promise<void>
-  /** Executes a compiled statement, such as of `$compile` of a `Db`, in the ambient transaction, or on the pool outside of one unless the database was created with `test: true`. */
+  /** Executes a compiled statement, such as of `$compile` of a `Db`, in the ambient transaction or session, or on the pool outside of one unless the database was created with `test: true`. */
   execute(statement: SqlStatement): Promise<DriverResult>
   /**
    * Runs `callback` in a transaction that queries of every bound schema join automatically.
@@ -59,13 +59,27 @@ export interface Database extends AsyncDisposable {
   /** Tells whether the code runs in a transaction, not counting test transactions, so that code under test sees what it sees in production. */
   isInTransaction(): boolean
   /**
+   * Tells whether a statement of the code runs in a transaction block of PostgreSQL, counting test transactions, such as to choose a statement that PostgreSQL rejects there, `CREATE INDEX CONCURRENTLY`.
+   *
+   * It is `false` in a session outside its transactions.
+   */
+  isInTransactionBlock(): boolean
+  /**
+   * Runs `callback` in a session: on one connection outside a transaction, such as for statements that PostgreSQL rejects in a transaction block and that share a setting of the connection, such as its search path.
+   *
+   * Statements of every bound schema join the session automatically, each in a transaction of its own, and `transaction` in the callback starts a transaction on the connection of the session.
+   * A rejection of `callback` undoes nothing.
+   * It rejects inside a transaction, also a test transaction, inside another session, and on a database created with `test: true`.
+   */
+  session<T>(callback: () => Promise<T>, options?: SessionOptions): Promise<T>
+  /**
    * Takes the advisory lock of `key` until the transaction ends, waiting while another transaction holds it, such as to keep processes from running the same job at once.
    *
    * It rejects where `isInTransaction()` is `false`, since outside a transaction the lock would end with its statement.
    * A nested transaction that rolls back releases the locks it took.
    */
   lock(key: string): Promise<void>
-  /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions end. */
+  /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions and sessions end. */
   close(): Promise<void>
 }
 
@@ -88,13 +102,23 @@ export interface TransactionOptions {
   searchPath?: readonly string[]
 }
 
+/** Options of `session` of a `Database` and `$session` of a `Db`. */
+export interface SessionOptions {
+  /**
+   * PostgreSQL schemas where the unqualified names of the statements of the session resolve, in their order, such as the schema of a tenant followed by the schema of extensions.
+   *
+   * It applies to the statements of the callback, including those of its transactions, until the session ends, which restores the search path that its connection had.
+   */
+  searchPath?: readonly string[]
+}
+
 /** Options of `createDatabase`. */
 export interface DatabaseOptions {
   driver: Driver
   /** Rejects queries and transactions outside the test transactions and the seeds of test fixtures of `kern-orm/testing`, so that every statement of the tests runs in a transaction that rolls back. */
   test?: boolean
   /**
-   * Receives a failure to release the connection of a transaction, such as to log it; the failure does not change the result or error of the transaction.
+   * Receives a failure to release the connection of a transaction or a session, or to restore the settings of a session, such as to log it; the failure does not change the result or error of the transaction or session.
    *
    * Without it, the failure goes to `console.error`.
    */
@@ -119,6 +143,8 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     transaction: (callback, options) => coordinator.transaction(callback, options),
     ensureTransaction: callback => coordinator.ensureTransaction(callback),
     isInTransaction: () => coordinator.isInTransaction(),
+    isInTransactionBlock: () => coordinator.isInTransactionBlock(),
+    session: (callback, options) => coordinator.session(callback, options),
     async lock(key) {
       if (!coordinator.isInTransaction()) {
         throw new Error(

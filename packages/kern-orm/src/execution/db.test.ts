@@ -197,6 +197,28 @@ it("joins a transaction of the database with $ensureTransaction and reports it t
   expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT"])
 })
 
+it("runs a session of the database with $session and tells a transaction block with $isInTransactionBlock", async () => {
+  const { db, statements } = connectRecorded()
+
+  const blocks: boolean[] = []
+  const result = await db.$session(async () => {
+    blocks.push(db.$isInTransactionBlock())
+    await db.$script("SELECT 1")
+    await db.$transaction(async () => {
+      blocks.push(db.$isInTransactionBlock())
+    })
+    return "done"
+  })
+
+  expect(result).toBe("done")
+  expect(blocks).toEqual([false, true])
+  expect(db.$isInTransactionBlock()).toBe(false)
+  expect(statements).toEqual([
+    { connection: 1, text: "BEGIN", parameters: [] },
+    { connection: 1, text: "COMMIT", parameters: [] },
+  ])
+})
+
 it("takes an advisory lock in a transaction of the database with $lock", async () => {
   const { db, statements } = connectRecorded()
 

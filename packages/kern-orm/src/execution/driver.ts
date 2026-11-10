@@ -45,17 +45,17 @@ export interface Driver {
    * Either way, no transaction stays open on the pool.
    */
   executeScript(text: string): Promise<void>
-  /** Reserves a dedicated connection, such as for a transaction. */
+  /** Reserves a dedicated connection, such as for a transaction or a session. */
   acquire(): Promise<Connection>
   /**
-   * Closes the connections once the statements on the pool and the transactions on reserved connections end.
+   * Closes the connections once the statements on the pool and the transactions and sessions on reserved connections end.
    *
    * From the call, it rejects a new statement or script on the pool and a new connection with `ConnectionError`.
    */
   close(): Promise<void>
 }
 
-/** Connection reserved by a driver, such as for a transaction. */
+/** Connection reserved by a driver, such as for a transaction or a session. */
 export interface Connection {
   /**
    * Executes a statement on the connection.

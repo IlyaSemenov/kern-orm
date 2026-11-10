@@ -4,6 +4,7 @@
   `bind` binds schemas to it, and all schemas bound to the same database share its transactions.
 - **Transaction coordinator** (`execution/transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
 - **Transaction level** (`execution/transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `execution/transaction/settings.ts`.
+- **Session** (`execution/transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions).
 
 ## Levels
 
@@ -40,6 +41,32 @@
   A test transaction and the seed of a test fixture are not such levels, so code under test starts a transaction of its own where it does in production, which runs as a savepoint of the test level.
 - Joining a level that accepts no statements, such as of late code of a finished transaction or beside a running nested level, rejects without calling the callback, as starting a nested level does; whether the level accepts statements does not affect `isInTransaction`.
 
+## Sessions
+
+- `session` of a `Database` and `$session` of a `Db` run their callback in a session: a level on a reserved connection outside a transaction, for statements that PostgreSQL rejects in a transaction block, such as `CREATE INDEX CONCURRENTLY`, when they need the state of one connection, such as its search path ([decision](../decisions/transactions/sessions.md)).
+  One such statement that needs no such state runs on the pool.
+  A statement or a script of the callback runs on that connection in a transaction of its own, so a rejection of the callback undoes nothing.
+- `transaction` in a session starts a transaction on the connection of the session, with `BEGIN` and `COMMIT` rather than a savepoint, at the isolation level of its options, and rejects with `TransactionConnectionError` as a transaction on a connection of its own does; the levels nested in it are savepoints.
+  It is the nested level of the session by the rules of [levels](#levels): the session rejects its own statements while it runs, and a session whose callback settles while it is still active ends it and rejects.
+  Such a transaction rolls back, unless its own end has started, such as its `COMMIT`, which the session then awaits.
+- A session whose transaction fails to end keeps accepting statements, unless its connection failed: PostgreSQL has ended a transaction whose `COMMIT` it rejected, such as for a deferred constraint.
+- A statement of a finished session fails and never runs on the pool.
+- `session` rejects without calling its callback:
+  - inside a transaction, a test transaction, or the seed of a test fixture, where its statements would run in a transaction block;
+  - inside another session;
+  - on a database created with `test: true`, whose statements all run in test transactions.
+- `isInTransactionBlock` of a `Database` and `$isInTransactionBlock` of a `Db` tell whether a statement of the current context runs in a transaction block of PostgreSQL: in a transaction, a test transaction, or the seed of a test fixture, and not in a session outside its transactions.
+  Unlike `isInTransaction`, it counts the levels of the test helpers, since PostgreSQL rejects such a statement in any transaction block; code that has one checks it to choose what to run.
+- A session takes the search path of its statements as `transaction` does.
+  It sets the search path for the session of PostgreSQL, with `set_config(..., false)`, since it has no transaction that would end the setting, after it reads the value it replaces, and restores that value before its connection returns to the driver.
+- After a `ConnectionError` of a statement or a script on its connection, also of its transactions, a session rejects its later statements and transactions: the connection may be lost, and a statement that ran on a new one would run without the settings of the session.
+  A [driver](drivers.md) rejects every statement on a reserved connection that is lost.
+- A connection whose settings fail to restore must not return to the pool with them, and `release` of a connection takes no argument ([decision](../decisions/drivers/release-by-driver.md)), so the session leaves it in a transaction, which a driver closes on release.
+  - It sends `BEGIN`, again while PostgreSQL rejects it with a `QueryError` that may leave the connection idle, such as when a cancel request hits the statement, and releases the connection only after that.
+  - A `BEGIN` that completes, one that a failed transaction rejects, and one that rejects with `ConnectionError` end it, since a driver closes each such connection on release.
+  - A client that refuses, without sending them, both the statement that restores the settings and `BEGIN` keeps an idle connection, which returns to the pool with the settings: kern-orm cannot tell such a `ConnectionError` from a lost connection, on which sending `BEGIN` again would never end.
+  - The failure does not change the result or the error of the session, and goes to the handler of [failed releases](#levels) unless it is a `ConnectionError`, which a lost connection gives, with nothing to restore.
+
 ## Locks
 
 - `lock` of a `Database` and `$lock` of a `Db` take `pg_advisory_xact_lock` of `hashtextextended` of a string key with seed `0` on the connection of the current level.
@@ -66,5 +93,9 @@
 ## Lifecycle
 
 - Objects with an explicit lifecycle, such as a database and a test fixture, are async disposable.
-- Closing a database closes its test fixtures, including those still opening, and then closes the driver; closing it inside a transaction rejects, since the driver would wait for that transaction forever.
-  From the first closing, statements, transactions, and fixtures started outside a transaction reject, so nothing opens after the fixtures close; the levels already running still end, and a repeated closing returns the first one.
+- Closing a database closes its test fixtures, including those still opening, and then closes the driver; closing it inside a transaction or a session rejects, since the driver would wait for that transaction or session forever.
+  From the first closing, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, so nothing opens after the fixtures close; the levels already running still end, and a repeated closing returns the first one.
+
+## Open questions
+
+- Sessions inside a session: `session` rejects there, so code that starts a session cannot run in another one; decide whether it joins the enclosing session, with settings of its own that it restores.

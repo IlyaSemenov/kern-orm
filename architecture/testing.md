@@ -12,6 +12,7 @@
   A test wraps its body, or a Vitest `aroundEach` hook wraps the test with its other hooks, since test runners do not carry the async context of an ordinary hook into the test.
 - A test transaction and a test fixture take an [isolation level](transactions.md#isolation), which the transactions of code under test nested in them must match.
 - A database created for tests rejects every statement and transaction outside a test transaction or the seed of a test fixture instead of running them on the pool.
+  It rejects a [session](transactions.md#sessions) everywhere, since none of its statements can run outside a transaction.
 - Late code of a timed-out test never runs in the transaction of another test, but it keeps running in its own level until that level ends, is aborted, or, in a fixture, is preempted.
 - A test transaction takes the abort signal of its test, such as `t.signal` of `node:test` or the signal of the test context of Vitest; `bun:test` has no signal for each test and relies on preemption.
   - Aborted while it waits for its turn in the fixture stack or for a connection, it rejects at once and never calls its callback: its change of the stack starts nothing, so it never preempts the active level, and a connection acquired after the abort returns to the pool.

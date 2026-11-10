@@ -25,7 +25,10 @@ export async function releaseConnection(
 }
 
 /** Passes a failed release to `onReleaseError`, or to `console.error` without one, without throwing. */
-function reportReleaseError(error: unknown, onReleaseError: ReleaseErrorHandler | undefined): void {
+export function reportReleaseError(
+  error: unknown,
+  onReleaseError: ReleaseErrorHandler | undefined,
+): void {
   if (!onReleaseError) {
     logReleaseError(error)
     return

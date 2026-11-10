@@ -9,7 +9,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import type { IsolationLevel } from "./database"
+import type { Database, IsolationLevel } from "./database"
 import { createDatabase } from "./database"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
@@ -261,6 +261,109 @@ describePooledPostgres("isolation levels in PostgreSQL", ({ database }) => {
       }
     },
   )
+})
+
+describePooledPostgres("sessions in PostgreSQL", ({ database }) => {
+  /** Creates a database of one pooled connection, so that a statement after a session runs on the connection that the session released. */
+  const createSingle = (onReleaseError?: (error: unknown) => void) =>
+    createDatabase({
+      driver: postgresJsDriver(postgres(process.env.DATABASE_URL!, { max: 1 })),
+      onReleaseError,
+    })
+
+  const readConnection = async (database: Database) =>
+    await database.query`SELECT pg_backend_pid() AS pid, current_setting('search_path') AS path`
+      .take()
+      .select({ pid: t.integer, path: t.text })
+
+  it("sets the search path of the statements and transactions of a session, and restores it before the connection returns to the pool", async () => {
+    await using single = createSingle()
+    const before = await readConnection(single)
+
+    const inside = await single.session(
+      async () => ({
+        session: await readConnection(single),
+        transaction: await single.transaction(() => readConnection(single)),
+      }),
+      { searchPath: ["kern_session_test", "public"] },
+    )
+
+    expect(inside).toEqual({
+      session: { pid: before.pid, path: '"kern_session_test", "public"' },
+      transaction: { pid: before.pid, path: '"kern_session_test", "public"' },
+    })
+    expect(await readConnection(single)).toEqual(before)
+  })
+
+  it("runs a statement that PostgreSQL rejects in a transaction block, in the schema of the search path", async () => {
+    const schemaName = `kern_session_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`
+    await database.script(`
+      CREATE SCHEMA ${schemaName};
+      CREATE TABLE ${schemaName}.job (id integer);
+    `)
+    try {
+      expect(database.isInTransactionBlock()).toBe(false)
+      await database.session(
+        async () => {
+          expect(database.isInTransactionBlock()).toBe(false)
+          const inTransaction = database.transaction(async () => {
+            expect(database.isInTransactionBlock()).toBe(true)
+            await database.script("CREATE INDEX CONCURRENTLY job_id_idx ON job (id)")
+          })
+          await expect(inTransaction).rejects.toThrow("cannot run inside a transaction block")
+          await database.script("CREATE INDEX CONCURRENTLY job_id_idx ON job (id)")
+        },
+        { searchPath: [schemaName] },
+      )
+
+      const indexes = await database.query`
+        SELECT indexname FROM pg_indexes WHERE schemaname = ${schemaName}
+      `.pluck(t.text)
+      expect(indexes).toEqual(["job_id_idx"])
+    } finally {
+      // Dropping the table first keeps PostgreSQL from sending a notice of what the schema drops with it.
+      await database.script(`
+        DROP TABLE ${schemaName}.job;
+        DROP SCHEMA ${schemaName};
+      `)
+    }
+  })
+
+  it("rejects the later statements of a session whose connection is lost, and keeps the pool usable", async () => {
+    const reported: unknown[] = []
+    await using single = createSingle(error => reported.push(error))
+
+    const session = single.session(
+      async () => {
+        const terminated = single.script("SELECT pg_terminate_backend(pg_backend_pid())")
+        await expect(terminated).rejects.toBeInstanceOf(ConnectionError)
+        await single.query`SELECT 1`
+      },
+      { searchPath: ["kern_session_test"] },
+    )
+
+    await expect(session).rejects.toThrow("the connection of the session failed")
+    expect((await readConnection(single)).path).not.toContain("kern_session_test")
+    expect(reported).toEqual([])
+  })
+
+  it("closes a connection whose search path fails to restore instead of returning it to the pool", async () => {
+    const reported: unknown[] = []
+    await using single = createSingle(error => reported.push(error))
+    const before = await readConnection(single)
+
+    // A script must not start a transaction; this one leaves a failed one, which rejects the statement that restores the search path.
+    const session = single.session(() => single.script("BEGIN; SELECT 1 / 0"), {
+      searchPath: ["kern_session_test"],
+    })
+
+    await expect(session).rejects.toThrow("division by zero")
+    const after = await readConnection(single)
+    expect(after.pid).not.toBe(before.pid)
+    expect(after.path).toBe(before.path)
+    expect(reported).toHaveLength(1)
+    expect(reported[0]).toMatchObject({ message: "Restoring the settings of a session failed" })
+  })
 })
 
 describePooledPostgres("connection failures of transactions in PostgreSQL", ({ database }) => {

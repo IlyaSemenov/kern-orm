@@ -85,6 +85,7 @@ The SQL that loads nested queries and relations.
 ## Transactions
 
 - [Phase of a connection failure watched on every statement](transactions/connection-failure-phase.md): through a wrapper of the connection of a transaction, rather than a flag of the driver or the rejection of the callback.
+- [Sessions for statements outside a transaction](transactions/sessions.md): a level on a reserved connection, rather than a transaction that holds a lock beside the pool or access to the driver.
 
 ## Drivers
 

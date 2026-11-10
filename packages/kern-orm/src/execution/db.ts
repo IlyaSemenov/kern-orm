@@ -27,7 +27,7 @@ import type { AnySchema, Schema, Tables } from "../schema/schema"
 import { defineEntries, schemaRelations } from "../schema/schema"
 import type { AnyTable } from "../table/table"
 
-import type { Database, TransactionOptions } from "./database"
+import type { Database, SessionOptions, TransactionOptions } from "./database"
 import type { SqlStatement } from "./driver"
 import { createStatement } from "./driver"
 
@@ -110,7 +110,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    */
   $query(strings: TemplateStringsArray, ...values: unknown[]): SqlQuery<InitialSqlQueryState>
   /**
-   * Executes a script of statements without parameters, such as DDL separated by semicolons, in the ambient transaction, or on the pool outside of one, where PostgreSQL runs them in one implicit transaction.
+   * Executes a script of statements without parameters, such as DDL separated by semicolons, in the ambient transaction or session, or on the pool outside of one; outside a transaction, PostgreSQL runs them in one implicit transaction.
    *
    * The script must not start or end transactions, which the database tracks.
    */
@@ -139,6 +139,20 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   $ensureTransaction<Result>(callback: () => Promise<Result>): Promise<Result>
   /** Tells whether the code runs in a transaction of the database, not counting test transactions, so that code under test sees what it sees in production. */
   $isInTransaction(): boolean
+  /**
+   * Tells whether a statement of the code runs in a transaction block of PostgreSQL, counting test transactions, such as to choose a statement that PostgreSQL rejects there, `CREATE INDEX CONCURRENTLY`.
+   *
+   * It is `false` in a session outside its transactions.
+   */
+  $isInTransactionBlock(): boolean
+  /**
+   * Runs `callback` in a session of the database: on one connection outside a transaction, such as for statements that PostgreSQL rejects in a transaction block and that share a setting of the connection, such as its search path.
+   *
+   * Statements of every schema bound to the database join the session automatically, each in a transaction of its own, and `$transaction` in the callback starts a transaction on the connection of the session.
+   * A rejection of `callback` undoes nothing.
+   * It rejects inside a transaction, also a test transaction, inside another session, and on a database created with `test: true`.
+   */
+  $session<Result>(callback: () => Promise<Result>, options?: SessionOptions): Promise<Result>
   /**
    * Takes the advisory lock of `key` until the transaction of the database ends, waiting while another transaction holds it, such as to keep processes from running the same job at once.
    *
@@ -220,6 +234,8 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     $transaction: (callback, options) => database.transaction(callback, options),
     $ensureTransaction: callback => database.ensureTransaction(callback),
     $isInTransaction: () => database.isInTransaction(),
+    $isInTransactionBlock: () => database.isInTransactionBlock(),
+    $session: (callback, options) => database.session(callback, options),
     $lock: key => database.lock(key),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)

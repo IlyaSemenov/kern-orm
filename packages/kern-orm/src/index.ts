@@ -105,6 +105,7 @@ export type {
   Database,
   DatabaseOptions,
   IsolationLevel,
+  SessionOptions,
   TransactionOptions,
 } from "./execution/database"
 export { createDatabase } from "./execution/database"

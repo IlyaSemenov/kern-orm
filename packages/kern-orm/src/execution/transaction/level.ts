@@ -1,4 +1,4 @@
-// Levels of an ambient transaction: their state, how they start, run their callbacks, and end, and how the errors of their cleanup combine.
+// Levels of an ambient transaction and of a session: their state, how they start, run their callbacks, and end, and how the errors of their cleanup combine.
 
 import type { AsyncLocalStorage } from "node:async_hooks"
 
@@ -11,15 +11,20 @@ import { ConnectionWatch } from "./connection-loss"
 import type { LevelSetting } from "./settings"
 import { applySettings } from "./settings"
 
-/** Transaction or savepoint nested in it, run by one callback in its own async context, or a test fixture without a context. */
+/** Transaction, savepoint nested in it, or session, run by one callback in its own async context, or a test fixture without a context. */
 export interface TransactionLevel {
-  /** Connection of the level, which the watch of a transaction of `transaction` wraps for the levels nested in it too. */
+  /** Connection of the level, which the watch of a transaction of `transaction` or of a session wraps for the levels nested in it too. */
   readonly connection: Connection
-  /** Watch of the connection of a transaction of `transaction` without a parent; `undefined` for every other level. */
+  /** Watch of the connection of a session, or of a transaction of `transaction` that is not a savepoint; `undefined` for every other level. */
   readonly watch: ConnectionWatch | undefined
+  /** Enclosing level: the transaction or savepoint of a savepoint, or the session of a transaction that runs on its connection. */
   readonly parent: TransactionLevel | undefined
-  /** Number of enclosing levels, which names the savepoint of a nested level. */
+  /** Number of enclosing levels of its transaction, which names the savepoint of a nested level. */
   readonly depth: number
+  /** Whether the level is a session rather than a transaction or a savepoint: its statements run on its connection outside a transaction block. */
+  readonly session: boolean
+  /** Whether the level is a savepoint of its enclosing level rather than a session or a transaction of its own, which a level nested in a session is too. */
+  readonly savepoint: boolean
   /**
    * Whether the level or an enclosing one is a transaction of `transaction` rather than a test transaction, the seed of a test fixture, or a test fixture.
    *
@@ -27,7 +32,7 @@ export interface TransactionLevel {
    */
   readonly inTransaction: boolean
   /**
-   * A level accepts statements only while `open`; it is `starting` until its `BEGIN` or `SAVEPOINT` and its settings complete.
+   * A level accepts statements only while `open`; it is `starting` until its `BEGIN` or `SAVEPOINT` and its settings complete, and a session until its settings do.
    *
    * A nested level is `reserved` before `starting` while it checks the isolation level of its transaction, before its `SAVEPOINT` is sent, so ending it sends nothing.
    */
@@ -40,7 +45,7 @@ export interface TransactionLevel {
   cleanup: Promise<Cleanup> | undefined
   /** Why something other than its callback ended the level, which its rejection reports. */
   endedBy: "enclosing level" | "preemption" | "abort" | undefined
-  /** Statement that restores the values that the settings of a nested level replaced, sent before its `RELEASE`. */
+  /** Statement that restores the values that the settings of a savepoint or of a session replaced, sent before the `RELEASE` of the savepoint or before the connection of the session is released. */
   restore: SqlStatement | undefined
   /** Isolation level of the transaction, such as `read committed`, when it is known: given to its `BEGIN`, or read for a nested level. */
   isolation: string | undefined
@@ -87,7 +92,7 @@ const commitStatement = /* @__PURE__ */ createStatement("COMMIT")
 const rollbackStatement = /* @__PURE__ */ createStatement("ROLLBACK")
 
 /**
- * Statement that starts the transaction of a level without a parent, a transaction of `transaction`, a test transaction, or the first test fixture, at `isolation` if given.
+ * Statement that starts the transaction of a level that is not a savepoint, a transaction of `transaction`, a test transaction, or the first test fixture, at `isolation` if given.
  *
  * PostgreSQL takes the isolation level only before the first query of a transaction, so `BEGIN` sets it.
  */
@@ -96,12 +101,12 @@ export function getBeginStatement(isolation: IsolationLevel | undefined): SqlSta
 }
 
 /**
- * Creates the state of a `starting` level on `connection`, nested in `parent` if given.
+ * Creates the state of a `starting` level on `connection`: a savepoint of `parent`, or a transaction, in the session `parent` if given.
  *
  * It sends no SQL and does not reserve the level as the `child` of `parent`; the caller does both.
  * `transaction` tells whether the level is a transaction of `transaction` rather than a level of the test helpers.
- * A transaction of `transaction` without a parent watches its connection for a `ConnectionError`.
- * `isolation` is the isolation level that a level without a parent begins with.
+ * A transaction of `transaction` that is not a savepoint watches its connection for a `ConnectionError`.
+ * `isolation` is the isolation level that a level that is not a savepoint begins with.
  */
 export function createLevel(
   connection: Connection,
@@ -109,20 +114,23 @@ export function createLevel(
   transaction: boolean,
   isolation?: IsolationLevel,
 ): TransactionLevel {
-  const watch = transaction && !parent ? new ConnectionWatch(connection) : undefined
+  const enclosing = parent && !parent.session ? parent : undefined
+  const watch = transaction && !enclosing ? new ConnectionWatch(connection) : undefined
   return {
     connection: watch ?? connection,
     watch,
     parent,
-    depth: parent ? parent.depth + 1 : 0,
-    inTransaction: transaction || (parent?.inTransaction ?? false),
+    depth: enclosing ? enclosing.depth + 1 : 0,
+    session: false,
+    savepoint: enclosing !== undefined,
+    inTransaction: transaction || (enclosing?.inTransaction ?? false),
     state: "starting",
     child: undefined,
     rollbackOnly: undefined,
     cleanup: undefined,
     endedBy: undefined,
     restore: undefined,
-    isolation: parent ? parent.isolation : isolation,
+    isolation: enclosing ? enclosing.isolation : isolation,
   }
 }
 
@@ -270,7 +278,9 @@ export async function runLevel<T>(
   if (!rejection && level.child) {
     rejection = {
       error: new Error(
-        "Transaction was rolled back: a nested transaction was still running when its callback finished",
+        level.session
+          ? "Session ended with an error: a transaction of it was still running when its callback finished"
+          : "Transaction was rolled back: a nested transaction was still running when its callback finished",
       ),
     }
   }
@@ -319,16 +329,21 @@ async function cleanUpLevel(
 ): Promise<Cleanup> {
   const nestedCleanup = await nested
   const { parent } = level
-  const cleanup = parent
-    ? await endSavepoint(level, commit && !level.rollbackOnly)
-    : await endTransaction(level, commit)
-  level.state = "closed"
-  if (parent) {
-    if (parent.child === level) {
-      parent.child = undefined
-    }
+  let cleanup: Cleanup
+  if (level.session) {
+    // A session ends without a statement of its own; the coordinator restores its settings when it releases its connection.
+    cleanup = {}
+  } else if (level.savepoint) {
+    cleanup = await endSavepoint(level, commit && !level.rollbackOnly)
     // Only a failure of its own statements leaves the parent in an unknown state; a nested failure was rolled back with the level.
-    parent.rollbackOnly ??= cleanup.rejection
+    parent!.rollbackOnly ??= cleanup.rejection
+  } else {
+    // A session whose transaction fails to end keeps accepting statements unless its connection failed: PostgreSQL has ended a transaction whose COMMIT it rejected, such as for a deferred constraint.
+    cleanup = await endTransaction(level, commit)
+  }
+  level.state = "closed"
+  if (parent?.child === level) {
+    parent.child = undefined
   }
   return { rejection: combineRejections(nestedCleanup?.rejection, cleanup) }
 }
@@ -390,8 +405,8 @@ function getSavepointName(level: TransactionLevel): string {
   return `kern_${level.depth}`
 }
 
-/** Closes a nested level whose `SAVEPOINT` was not sent or failed, freeing its parent for other statements. */
-function closeStarting(level: TransactionLevel): void {
+/** Closes a level whose `SAVEPOINT` or `BEGIN` was not sent or failed, freeing its parent for other statements. */
+export function closeStarting(level: TransactionLevel): void {
   level.state = "closed"
   if (level.parent?.child === level) {
     level.parent.child = undefined
@@ -407,6 +422,9 @@ export function createUnavailableError(
   level: TransactionLevel,
   operation: string,
 ): Error | undefined {
+  if (level.session) {
+    return createSessionUnavailableError(level, operation)
+  }
   if (level.state !== "open") {
     return new Error(`Cannot ${operation}: its transaction is already finished`)
   }
@@ -423,12 +441,37 @@ export function createUnavailableError(
   return undefined
 }
 
+/** Creates the error of `operation` on a session that rejects statements and transactions, or returns `undefined` when it accepts them. */
+function createSessionUnavailableError(
+  level: TransactionLevel,
+  operation: string,
+): Error | undefined {
+  if (level.state !== "open") {
+    return new Error(`Cannot ${operation}: its session is already finished`)
+  }
+  // PostgreSQL would run them inside the transaction.
+  if (level.child) {
+    return new Error(`Cannot ${operation}: a transaction of the session is running; await it first`)
+  }
+  // The connection may be lost, and a client that reconnected would run the statement without the settings of the session.
+  const failure = level.watch?.failure
+  if (failure) {
+    return new Error(
+      `Cannot ${operation}: the connection of the session failed, so the session accepts no more statements`,
+      { cause: failure.error },
+    )
+  }
+  return undefined
+}
+
 /** Error of a level that another level ended, keeping the rejection of its callback as the cause. */
 function createClosedError(level: TransactionLevel, rejection: Rejection | undefined): Error {
   return new Error(
     level.endedBy === "preemption"
       ? "Transaction was rolled back: its test fixture started another level before it finished"
-      : "Transaction was rolled back: its enclosing transaction ended first",
+      : level.parent?.session
+        ? "Transaction was rolled back: its session ended first"
+        : "Transaction was rolled back: its enclosing transaction ended first",
     rejection && { cause: rejection.error },
   )
 }

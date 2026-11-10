@@ -212,3 +212,43 @@ await db.$transaction(
 ```
 
 The search path applies to the queries of the callback, including those of its nested transactions, until the transaction ends; a nested transaction with its own `searchPath` then restores the search path of the enclosing one.
+
+## Statements outside a transaction
+
+To run several statements on one connection outside a transaction, pass a callback to `$session`:
+
+```ts
+await db.$session(async () => {
+  await db.$query`CREATE INDEX CONCURRENTLY form_name_idx ON ${db.form} (name)`
+  await db.$query`VACUUM ANALYZE ${db.form}`
+})
+```
+
+Every query in the callback runs on the connection of the session, outside a transaction, so a callback that fails does not undo the statements it has completed.
+`$transaction` in the callback starts a transaction on the same connection.
+
+To resolve the unqualified names of the statements in a PostgreSQL schema of your choice, such as the schema of a tenant, pass `searchPath`, as to [`$transaction`](#search-path); it applies until the session ends:
+
+```ts
+await db.$session(
+  async () => {
+    await db.$query`CREATE INDEX CONCURRENTLY form_name_idx ON form (name)`
+    await db.$query`CREATE INDEX CONCURRENTLY field_form_id_idx ON field (form_id)`
+  },
+  { searchPath: ["tenant_3"] },
+)
+```
+
+A statement that PostgreSQL rejects in a transaction, such as `CREATE INDEX CONCURRENTLY` or `VACUUM`, needs no session by itself: run it with `$query` outside a transaction.
+Send each such statement on its own, since PostgreSQL runs a script of several statements in one transaction.
+
+`$session` rejects inside a transaction, also a [test transaction](./testing).
+To tell whether the code runs in a transaction of either kind, such as to choose a statement that a transaction accepts, call `$isInTransactionBlock()`:
+
+```ts
+if (db.$isInTransactionBlock()) {
+  await db.$query`CREATE INDEX form_name_idx ON ${db.form} (name)`
+} else {
+  await db.$query`CREATE INDEX CONCURRENTLY form_name_idx ON ${db.form} (name)`
+}
+```

@@ -48,3 +48,4 @@ Scenarios worth comparing that the topics do not cover yet:
 - A connection returned to the pool in a transaction, such as after a failed `COMMIT` or a `BEGIN` sent outside a transaction.
 - A transaction whose connection fails: whether it may have been committed, and whether it commits after its callback caught the error.
 - The isolation level of a nested transaction, which PostgreSQL sets only for a whole transaction.
+- Statements that PostgreSQL rejects in a transaction block, such as `CREATE INDEX CONCURRENTLY`, on one connection with its search path.
