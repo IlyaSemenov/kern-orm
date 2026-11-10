@@ -178,6 +178,106 @@ export default defineMigration([
 
 To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](./queries/sql#names-known-at-runtime) from `kern-orm`.
 
+## Migrations outside a transaction
+
+To change a big table that your application keeps writing to, such as to index it with `CREATE INDEX CONCURRENTLY`, which does not block writes, run the change outside a transaction: PostgreSQL rejects such statements in a transaction.
+Give the step `outsideTransaction` with the changes to run there instead of `up` and `down`:
+
+```ts [src/migrations/0007_index_job_run_at.ts]
+import { defineMigration } from "@kern-orm/migrations"
+
+export default defineMigration({
+  up: "CREATE INDEX job_run_at_idx ON job (run_at)",
+  down: "DROP INDEX job_run_at_idx",
+  outsideTransaction: {
+    up: async database => {
+      // Checks what an earlier attempt left, and runs CREATE INDEX CONCURRENTLY.
+    },
+    down: "DROP INDEX CONCURRENTLY IF EXISTS job_run_at_idx",
+  },
+})
+```
+
+`migrate` commits the migrations before such a migration, runs its `outsideTransaction.up` outside a transaction, and then applies the migrations after it in a transaction of their own.
+Rolling back runs `outsideTransaction.down` the same way; a step without it rolls back with `down` in a transaction.
+
+Send each statement that PostgreSQL rejects in a transaction in a call of its own: PostgreSQL runs a script of several statements in one transaction.
+
+Write the changes so that they can run again: when a change fails, or when the connection breaks after it succeeds and before the migration is recorded, the next `migrate`, or `rollback` for `outsideTransaction.down`, runs it again.
+Check what an earlier attempt left: a failed `CREATE INDEX CONCURRENTLY` leaves an index that is not valid, which `IF NOT EXISTS` would keep.
+
+::: details Example: an index of a partitioned table
+
+PostgreSQL builds an index of a partitioned table concurrently only partition by partition: create the index of the table with `ON ONLY`, build the index of each partition concurrently, and attach it to the index of the table.
+One function does it for both forms, with `CONCURRENTLY` outside a transaction and without it in one, so that both build the same indexes, and checks the catalog for what an earlier attempt left of each partition.
+The step has no `outsideTransaction.down`, since PostgreSQL cannot drop the index of a partitioned table concurrently.
+
+```ts
+import type { MigrationDatabase } from "@kern-orm/migrations"
+import { defineMigration, quoteIdentifier } from "@kern-orm/migrations"
+import * as t from "kern-orm/types"
+
+const indexJob = (concurrently: boolean) => async (database: MigrationDatabase) => {
+  const mode = concurrently ? "CONCURRENTLY " : ""
+  await database.script("CREATE INDEX IF NOT EXISTS job_run_at_idx ON ONLY job (run_at)")
+  // The partitions with what an earlier attempt left of their indexes.
+  const partitions = await database.query`
+    SELECT
+      namespace.nspname::text AS schema,
+      partition.relname::text AS table,
+      naming.index::text AS index,
+      index.indisvalid AS valid,
+      attached.inhrelid IS NOT NULL AS attached
+    FROM pg_inherits AS inheritance
+    JOIN pg_class AS partition ON partition.oid = inheritance.inhrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = partition.relnamespace
+    -- The cast to name truncates the name to 63 bytes, as PostgreSQL does.
+    CROSS JOIN LATERAL (SELECT (partition.relname || '_run_at_idx')::name AS index) AS naming
+    LEFT JOIN pg_class AS index_class
+      ON index_class.relnamespace = partition.relnamespace AND index_class.relname = naming.index
+    LEFT JOIN pg_index AS index
+      ON index.indexrelid = index_class.oid AND index.indrelid = partition.oid
+    LEFT JOIN pg_inherits AS attached ON attached.inhrelid = index.indexrelid
+    WHERE inheritance.inhparent = 'job'::regclass
+  `.select({
+    schema: t.text,
+    table: t.text,
+    index: t.text,
+    valid: t.boolean.nullable(),
+    attached: t.boolean,
+  })
+  for (const partition of partitions) {
+    // A partition may be in another schema, where PostgreSQL creates its index.
+    const schema = quoteIdentifier(partition.schema)
+    const index = `${schema}.${quoteIdentifier(partition.index)}`
+    if (partition.valid === false) {
+      await database.script(`DROP INDEX ${mode}${index}`)
+    }
+    if (partition.valid !== true) {
+      await database.script(
+        `CREATE INDEX ${mode}${quoteIdentifier(partition.index)} ON ${schema}.${quoteIdentifier(partition.table)} (run_at)`,
+      )
+    }
+    if (!partition.attached) {
+      await database.script(`ALTER INDEX job_run_at_idx ATTACH PARTITION ${index}`)
+    }
+  }
+}
+
+export default defineMigration({
+  up: indexJob(false),
+  down: "DROP INDEX job_run_at_idx",
+  outsideTransaction: { up: indexJob(true) },
+})
+```
+
+:::
+
+Keep `up` and `down` of the step, and make them build the same objects, with the same names, as the changes outside a transaction: inside a transaction, such as the one that [creates a tenant](#tenants), a [test transaction](./testing), or [`verifyMigrations`](#test-migrations), `migrate` runs them instead, which is quick on the empty tables of a new schema.
+Migrate existing schemas outside a transaction, such as tenants at their first request when your requests run in transactions: inside one, `up` builds the index while it blocks writes to the table.
+
+Export a step with `outsideTransaction` as the only step of its migration, and put other changes, such as creating the table that it indexes, in migrations of their own.
+
 ## List the migrations
 
 Pass the migration modules to `defineMigrations`.
@@ -237,12 +337,13 @@ import { migrate } from "@kern-orm/migrations"
 await migrate(db, migrations)
 ```
 
-It applies the pending migrations to the PostgreSQL schema of the `Db` in one transaction, and resolves to their names.
+It applies the pending migrations to the PostgreSQL schema of the `Db` in one transaction, unless one of them runs [outside a transaction](#migrations-outside-a-transaction), and resolves to their names.
 Pass `count` to apply only the first pending migrations, such as `{ count: 2 }` for the first two.
 It creates the schema and its table of migrations when they are missing.
 Instances of the application that migrate one schema at once, such as when they start together, apply each migration once.
 
-When a migration fails, `migrate` rolls back all the migrations of the call and rejects with a `MigrationError`, which names the migration and its step and keeps the original error in `cause`.
+When a migration fails, `migrate` rolls back the migrations of the call and rejects with a `MigrationError`, which names the migration and its step and keeps the original error in `cause`.
+When the call has a migration outside a transaction, the migrations that it has committed before the failure stay applied: call `migrate` again to apply the rest.
 
 Instances of an older version of the application keep migrating during a rolling deploy: `migrate` accepts migrations that a newer version has applied after its own last migration.
 Give a migration that you merge from another branch a number after the migrations already applied anywhere: `migrate` rejects a pending migration before an applied one.
@@ -291,7 +392,7 @@ await rollback(db, migrations)
 
 Pass `count` to undo several of the last migrations, or `"all"` to undo every migration.
 
-To undo the last applied migration and apply it again in one transaction, such as after you change it while you write it, call `redo`; it also takes `count`:
+To undo the last applied migration and apply it again, such as after you change it while you write it, call `redo`; it also takes `count`:
 
 ```ts
 import { redo } from "@kern-orm/migrations"
@@ -300,6 +401,12 @@ await redo(db, migrations)
 ```
 
 Both reject when the schema has a migration that `migrations` lack, since they cannot undo it.
+
+When `rollback` or `redo` with a migration outside a transaction fails, what it has committed before the failure stays, and calling it again starts from the migrations applied then.
+Read the migrations recorded as applied with [`getMigrationStatus`](#status), and complete the call from them:
+
+- Roll back again with `rollback` a migration that the call was rolling back and that is still recorded as applied, since its failed rollback may have dropped part of it.
+- Then roll back the rest, or apply the pending migrations with `migrate`.
 
 ## Status
 
@@ -417,6 +524,7 @@ test(
 
 `verifyMigrations` applies the migrations one by one to an empty schema of its own.
 It rolls back each migration, checks that the structure of the schema is the same as before the migration, such as that no index or `NOT NULL` of the migration is left, and applies the migration again.
+It runs `up` and `down` of a step with [`outsideTransaction`](#migrations-outside-a-transaction), so test the changes outside a transaction on a database of your own.
 `tests` is the directory of your [migration tests](#check-how-a-migration-changes-data).
 
 It rolls back all its changes.

@@ -17,6 +17,37 @@ describe("invertStep", () => {
     })
   })
 
+  it("swaps up and down of the changes outside a transaction too", () => {
+    expect(
+      invertStep({
+        up: "CREATE INDEX form_name_idx ON form (name)",
+        down: "DROP INDEX form_name_idx",
+        outsideTransaction: {
+          up: "CREATE INDEX CONCURRENTLY form_name_idx ON form (name)",
+          down: "DROP INDEX CONCURRENTLY form_name_idx",
+        },
+      }),
+    ).toStrictEqual({
+      up: "DROP INDEX form_name_idx",
+      down: "CREATE INDEX form_name_idx ON form (name)",
+      outsideTransaction: {
+        up: "DROP INDEX CONCURRENTLY form_name_idx",
+        down: "CREATE INDEX CONCURRENTLY form_name_idx ON form (name)",
+      },
+    })
+    expect(
+      invertStep({
+        up: "CREATE INDEX form_name_idx ON form (name)",
+        down: "DROP INDEX form_name_idx",
+        outsideTransaction: { up: "CREATE INDEX CONCURRENTLY form_name_idx ON form (name)" },
+      }),
+    ).toStrictEqual({
+      up: "DROP INDEX form_name_idx",
+      down: "CREATE INDEX form_name_idx ON form (name)",
+      outsideTransaction: { down: "CREATE INDEX CONCURRENTLY form_name_idx ON form (name)" },
+    })
+  })
+
   it("rejects a step without down", () => {
     expect(() => invertStep({ up: "UPDATE form SET slug = ''" })).toThrow(
       "Cannot invert a step without down",
@@ -99,6 +130,17 @@ describe("combineSteps", () => {
 
     expect(() => combineSteps({ up: "CREATE TABLE tag ()" }, step)).toThrow(
       "Step 2 of combineSteps has unknown property donw",
+    )
+  })
+
+  it("rejects a step with outsideTransaction, which must be the only step of its migration", () => {
+    const step = {
+      up: "CREATE INDEX form_name_idx ON form (name)",
+      outsideTransaction: { up: "CREATE INDEX CONCURRENTLY form_name_idx ON form (name)" },
+    }
+
+    expect(() => combineSteps(step)).toThrow(
+      "Step 1 of combineSteps has outsideTransaction, so it must be the only step of its migration",
     )
   })
 

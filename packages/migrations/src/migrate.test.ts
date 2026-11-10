@@ -34,6 +34,16 @@ const createTag = {
   down: "DROP TABLE tag",
 }
 
+const indexForm = {
+  up: "CREATE INDEX form_id_idx ON form (id)",
+  down: "DROP INDEX form_id_idx",
+  outsideTransaction: {
+    // `IF [NOT] EXISTS` makes the changes safe to run again in these tests, which leave no index that is not valid.
+    up: "CREATE INDEX CONCURRENTLY IF NOT EXISTS form_id_idx ON form (id)",
+    down: "DROP INDEX CONCURRENTLY IF EXISTS form_id_idx",
+  },
+}
+
 describePostgres("migrate", ({ database, testTransaction, recordStatements, notices }) => {
   const db = database.bind(schema, { schemaName: "migrations_tenant" })
 
@@ -313,6 +323,23 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       pending: ["0001_create_form"],
       unknown: [],
     })
+  })
+
+  it("runs up and down of a step with outsideTransaction in a test transaction", async () => {
+    const history = defineTestHistory({
+      "0001_create_form": createForm,
+      "0002_index_form": indexForm,
+    })
+
+    const statements = await testTransaction(() =>
+      recordStatements(async () => {
+        await migrate(db, history)
+        await rollback(db, history)
+      }),
+    )
+
+    expect(statements).toEqual(expect.arrayContaining([indexForm.up, indexForm.down]))
+    expect(statements.filter(text => text.includes("CONCURRENTLY"))).toEqual([])
   })
 
   it("rolls back every migration of the call when a step fails, and rejects with a MigrationError of its key and step", async () => {
@@ -607,127 +634,488 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 })
 
-describePooledPostgres("at once", ({ database }) => {
-  const db = database.bind(schema)
-  const target = { schemaName: "migrations_pool_1" }
-
-  /** Operations that a scenario started, and the gate that holds the migrations that wait for it. */
-  interface Scenario {
-    readonly gate: Promise<void>
-    openGate(): void
-    /** Registers an operation, such as `migrate`, which the scenario waits for before dropping the schemas. */
-    start<T>(operation: Promise<T>): Promise<T>
-  }
-
-  /** Runs `scenario`, then opens its gate, waits for the operations it started, and drops the schemas that they committed. */
-  async function runScenario(scenario: (context: Scenario) => Promise<void>): Promise<void> {
-    const gate = Promise.withResolvers<void>()
-    const operations: Promise<unknown>[] = []
-    try {
-      await scenario({
-        gate: gate.promise,
-        openGate: gate.resolve,
-        start(operation) {
-          operations.push(operation)
-          // Keeps a rejection before the scenario awaits the operation from being reported as unhandled.
-          operation.catch(() => {})
-          return operation
-        },
-      })
-    } finally {
-      gate.resolve()
-      await Promise.allSettled(operations)
-      // Keeps PostgreSQL from sending a notice of each table that the drop cascades to.
-      await database.script(`
-        SET LOCAL client_min_messages = warning;
-        DROP SCHEMA IF EXISTS migrations_pool_1, migrations_pool_2 CASCADE;
-      `)
-    }
-  }
-
-  /** Change that counts its runs in `runs` and waits for `gate` before running `sql`. */
-  function waitBefore(sql: string, gate: Promise<void>, runs: { count: number }) {
-    return async (database: MigrationDatabase) => {
-      runs.count++
-      await gate
-      await database.script(sql)
-    }
-  }
-
-  it("applies each migration once when processes migrate a target at once", async () => {
-    const runs = { count: 0 }
-
-    await runScenario(async ({ gate, openGate, start }) => {
-      const history = defineTestHistory({
-        "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
-      })
-      const first = start(migrate(db, history, target))
-      await waitFor(async () => runs.count === 1)
-      const second = start(migrate(db, history, target))
-      await waitFor(
-        async () =>
-          (await countLockWaiters(database, '"migrations_pool_1"."kern_migration"')) === 1,
-      )
-      openGate()
-
-      expect([await first, await second]).toEqual([["0001_create_form"], []])
+describePooledPostgres(
+  "outside a transaction",
+  ({ database, recordStatements, failStatement, connect }) => {
+    const db = database.bind(schema)
+    const target = { schemaName: "migrations_pool_1" }
+    const history = defineTestHistory({
+      "0001_create_form": createForm,
+      "0002_index_form": indexForm,
+      "0003_create_user": createUser,
     })
 
-    expect(runs.count).toBe(1)
-  })
+    /** Operations that a scenario started, and the gate that holds the migrations that wait for it. */
+    interface Scenario {
+      readonly gate: Promise<void>
+      openGate(): void
+      /** Registers an operation, such as `migrate`, which the scenario waits for before dropping the schemas. */
+      start<T>(operation: Promise<T>): Promise<T>
+    }
 
-  // rake-db 2.37.48 locked every target with one key, so a migration of one target blocked all others: https://github.com/romeerez/orchid-orm/issues/771
-  it("migrates different targets at once", async () => {
-    const runs = { count: 0 }
+    /** Runs `scenario`, then opens its gate, waits for the operations it started, and drops the schemas that the migrations committed. */
+    async function runScenario(scenario: (context: Scenario) => Promise<void>): Promise<void> {
+      const gate = Promise.withResolvers<void>()
+      const operations: Promise<unknown>[] = []
+      try {
+        await scenario({
+          gate: gate.promise,
+          openGate: gate.resolve,
+          start(operation) {
+            operations.push(operation)
+            // Keeps a rejection before the scenario awaits the operation from being reported as unhandled.
+            operation.catch(() => {})
+            return operation
+          },
+        })
+      } finally {
+        gate.resolve()
+        await Promise.allSettled(operations)
+        // Keeps PostgreSQL from sending a notice of each table that the drop cascades to.
+        await database.script(`
+          SET LOCAL client_min_messages = warning;
+          DROP SCHEMA IF EXISTS migrations_pool_1, migrations_pool_2 CASCADE;
+        `)
+      }
+    }
 
-    await runScenario(async ({ gate, openGate, start }) => {
-      const history = defineTestHistory({
-        "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
+    /** Change that counts its runs in `runs` and waits for `gate` before running `sql`. */
+    function waitBefore(sql: string, gate: Promise<void>, runs: { count: number }) {
+      return async (database: MigrationDatabase) => {
+        runs.count++
+        await gate
+        await database.script(sql)
+      }
+    }
+
+    it("runs a migration with outsideTransaction alone in a session after the migrations before it commit, and records it after it", async () => {
+      let statements: string[] = []
+      await runScenario(async () => {
+        statements = await recordStatements(() => migrate(db, history, target))
       })
-      const first = start(migrate(db, history, target))
-      await waitFor(async () => runs.count === 1)
-      const second = await settleWithin(
-        start(
-          migrate(db, defineTestHistory({ "0001_create_form": createForm }), {
-            schemaName: "migrations_pool_2",
+
+      expect(nameStatements(statements)).toEqual([
+        "read target",
+        "read search path",
+        "set search path",
+        "try lock",
+        "read target",
+        "BEGIN",
+        "create schema",
+        "create table of versions",
+        createForm.up,
+        "insert version",
+        "COMMIT",
+        indexForm.outsideTransaction.up,
+        "insert version",
+        "BEGIN",
+        createUser.up,
+        "insert version",
+        "COMMIT",
+        "unlock",
+        "set search path",
+      ])
+    })
+
+    it("creates the schema and the table of versions before a first migration outside a transaction", async () => {
+      const outsideFirst = defineTestHistory({
+        "0001_create_form": { ...createForm, outsideTransaction: { up: createForm.up } },
+      })
+      let statements: string[] = []
+      let applied: readonly string[] = []
+
+      await runScenario(async () => {
+        statements = await recordStatements(() => migrate(db, outsideFirst, target))
+        applied = (await getMigrationStatus(db, outsideFirst, target)).applied
+      })
+
+      expect(listChanges(statements)).toEqual([
+        "create schema",
+        "create table of versions",
+        createForm.up,
+        "insert version",
+      ])
+      expect(applied).toEqual(["0001_create_form"])
+    })
+
+    it("migrates a target that is up to date with two statements and no session", async () => {
+      await runScenario(async () => {
+        await migrate(db, history, target)
+        const statements = await recordStatements(() => migrate(db, history, target))
+
+        expect(nameStatements(statements)).toEqual(["read target", "read versions"])
+      })
+    })
+
+    it("rolls back and redoes the last migrations of both kinds, each migration counting once", async () => {
+      await runScenario(async () => {
+        await migrate(db, history, target)
+        let keys: string[][] = []
+        const statements = await recordStatements(async () => {
+          keys = [
+            await redo(db, history, { ...target, count: 3 }),
+            await rollback(db, history, { ...target, count: 2 }),
+          ]
+        })
+
+        expect(keys).toEqual([
+          ["0001_create_form", "0002_index_form", "0003_create_user"],
+          ["0003_create_user", "0002_index_form"],
+        ])
+        expect(listChanges(statements)).toEqual([
+          "BEGIN",
+          createUser.down,
+          "delete version",
+          "COMMIT",
+          indexForm.outsideTransaction.down,
+          "delete version",
+          "BEGIN",
+          createForm.down,
+          "delete version",
+          createForm.up,
+          "insert version",
+          "COMMIT",
+          indexForm.outsideTransaction.up,
+          "insert version",
+          "BEGIN",
+          createUser.up,
+          "insert version",
+          "COMMIT",
+          "BEGIN",
+          createUser.down,
+          "delete version",
+          "COMMIT",
+          indexForm.outsideTransaction.down,
+          "delete version",
+        ])
+      })
+    })
+
+    it("runs up and down of a step with outsideTransaction inside a transaction", async () => {
+      await runScenario(async () => {
+        const statements = await recordStatements(() =>
+          database.transaction(async () => {
+            await migrate(db, history, target)
+            await rollback(db, history, { ...target, count: 2 })
           }),
-        ),
-      )
-      openGate()
+        )
 
-      expect([await first, second]).toEqual([["0001_create_form"], ["0001_create_form"]])
-    })
-  })
-
-  it("rolls back each migration once when processes roll back a target at once", async () => {
-    const runs = { count: 0 }
-
-    await runScenario(async ({ gate, openGate, start }) => {
-      const history = defineTestHistory({
-        "0001_create_form": createForm,
-        "0002_create_user": { up: createUser.up, down: waitBefore(createUser.down, gate, runs) },
+        expect(statements).toEqual(expect.arrayContaining([indexForm.up, indexForm.down]))
+        expect(statements.filter(text => text.includes("CONCURRENTLY"))).toEqual([])
       })
-      await migrate(db, history, target)
-      const first = start(rollback(db, history, target))
-      await waitFor(async () => runs.count === 1)
-      const second = start(rollback(db, history, target))
-      await waitFor(
-        async () =>
-          (await countLockWaiters(database, '"migrations_pool_1"."kern_migration"')) === 1,
-      )
-      openGate()
-
-      expect([await first, await second]).toEqual([["0002_create_user"], ["0001_create_form"]])
     })
 
-    expect(runs.count).toBe(1)
-  })
-})
+    it("rejects in a session, whose lock would last until the session ends, before changing anything", async () => {
+      await runScenario(async () => {
+        await expect(database.session(() => migrate(db, history, target))).rejects.toThrow(
+          "Cannot start a session inside a session",
+        )
+        expect((await getMigrationStatus(db, history, target)).applied).toEqual([])
+      })
+    })
+
+    it("keeps the migrations committed before a migration that fails outside a transaction, which the next call applies", async () => {
+      let attempts = 0
+      const failing = defineTestHistory({
+        "0001_create_form": createForm,
+        "0002_index_form": {
+          up: indexForm.up,
+          down: indexForm.down,
+          outsideTransaction: {
+            up: async database => {
+              attempts++
+              if (attempts === 1) {
+                throw new Error("interrupted")
+              }
+              await database.script(indexForm.outsideTransaction.up)
+            },
+          },
+        },
+        "0003_create_user": createUser,
+      })
+
+      await runScenario(async () => {
+        const error = await migrate(db, failing, target).catch((error: unknown) => error)
+        const status = await getMigrationStatus(db, failing, target)
+        const keys = await migrate(db, failing, target)
+
+        expect(error).toBeInstanceOf(MigrationError)
+        expect(error).toMatchObject({
+          message:
+            "Migration 0002_index_form failed in up of step 1 outside a transaction: interrupted",
+          key: "0002_index_form",
+          step: 1,
+          direction: "up",
+        })
+        expect(status).toMatchObject({
+          applied: ["0001_create_form"],
+          pending: ["0002_index_form", "0003_create_user"],
+        })
+        expect(keys).toEqual(["0002_index_form", "0003_create_user"])
+        expect(await listFormIndexes(database, "migrations_pool_1")).toEqual([
+          "form_id_idx",
+          "form_pkey",
+        ])
+      })
+    })
+
+    describe("a failure between a change outside a transaction and its record", () => {
+      const indexHistory = defineTestHistory({
+        "0001_create_form": createForm,
+        "0002_index_form": indexForm,
+      })
+
+      it("applies the migration again on the next call after up", async () => {
+        await runScenario(async () => {
+          await migrate(db, indexHistory, { ...target, count: 1 })
+          failStatement(text => text.startsWith("INSERT INTO"), new Error("connection lost"))
+          const error = await migrate(db, indexHistory, target).catch(
+            (error: unknown) => (error as Error).message,
+          )
+          const status = await getMigrationStatus(db, indexHistory, target)
+          const indexes = await listFormIndexes(database, "migrations_pool_1")
+
+          expect({ error, pending: status.pending, indexes }).toEqual({
+            error: "connection lost",
+            pending: ["0002_index_form"],
+            indexes: ["form_id_idx", "form_pkey"],
+          })
+          expect(await migrate(db, indexHistory, target)).toEqual(["0002_index_form"])
+        })
+      })
+
+      it("rolls the migration back again on the next call after down", async () => {
+        await runScenario(async () => {
+          await migrate(db, indexHistory, target)
+          failStatement(text => text.startsWith("DELETE FROM"), new Error("connection lost"))
+          const error = await rollback(db, indexHistory, target).catch(
+            (error: unknown) => (error as Error).message,
+          )
+          const status = await getMigrationStatus(db, indexHistory, target)
+          const indexes = await listFormIndexes(database, "migrations_pool_1")
+
+          expect({ error, applied: status.applied, indexes }).toEqual({
+            error: "connection lost",
+            applied: ["0001_create_form", "0002_index_form"],
+            indexes: ["form_pkey"],
+          })
+          expect(await rollback(db, indexHistory, target)).toEqual(["0002_index_form"])
+          expect((await getMigrationStatus(db, indexHistory, target)).applied).toEqual([
+            "0001_create_form",
+          ])
+        })
+      })
+    })
+
+    describe("at once", () => {
+      // Databases of other processes that migrate the target at once.
+      const others = [connect(), connect()]
+
+      /** Waits until each database of `contexts` finds the lock of a session held after the call, such as `migrate` that polls for the lock of its target. */
+      async function waitForRefusedLocks(...contexts: { countRefusedLocks(): number }[]) {
+        const counts = contexts.map(context => context.countRefusedLocks())
+        await waitFor(async () =>
+          contexts.every((context, index) => context.countRefusedLocks() > counts[index]!),
+        )
+      }
+
+      it("applies each migration once when several databases migrate a target at once", async () => {
+        const runs = { count: 0 }
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          const waiting = defineTestHistory({
+            "0001_create_form": createForm,
+            "0002_index_form": {
+              ...indexForm,
+              outsideTransaction: {
+                ...indexForm.outsideTransaction,
+                up: waitBefore(indexForm.outsideTransaction.up, gate, runs),
+              },
+            },
+          })
+          const first = start(migrate(db, waiting, target))
+          await waitFor(async () => runs.count === 1)
+          const refused = waitForRefusedLocks(...others)
+          const rest = others.map(other => start(migrate(other.database, waiting, target)))
+          await refused
+          openGate()
+
+          expect([await first, ...(await Promise.all(rest))]).toEqual([
+            ["0001_create_form", "0002_index_form"],
+            [],
+            [],
+          ])
+        })
+
+        expect(runs.count).toBe(1)
+      })
+
+      it("waits in a transaction for a process that migrates the target in a session", async () => {
+        const runs = { count: 0 }
+        const [other] = others
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          const waiting = defineTestHistory({
+            "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
+          })
+          const first = start(migrate(db, waiting, target))
+          await waitFor(async () => runs.count === 1)
+          const second = start(
+            other!.database.transaction(() => migrate(other!.database, waiting, target)),
+          )
+          await waitFor(
+            async () =>
+              (await countLockWaiters(database, '"migrations_pool_1"."kern_migration"')) === 1,
+          )
+          openGate()
+
+          expect([await first, await second]).toEqual([["0001_create_form"], []])
+        })
+
+        expect(runs.count).toBe(1)
+      })
+
+      // rake-db 2.37.48 locked every target with one key, so a migration of one target blocked all others: https://github.com/romeerez/orchid-orm/issues/771
+      it("migrates different targets at once", async () => {
+        const runs = { count: 0 }
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          const waiting = defineTestHistory({
+            "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
+          })
+          const first = start(migrate(db, waiting, target))
+          await waitFor(async () => runs.count === 1)
+          const second = await settleWithin(
+            start(
+              migrate(db, defineTestHistory({ "0001_create_form": createForm }), {
+                schemaName: "migrations_pool_2",
+              }),
+            ),
+          )
+          openGate()
+
+          expect([await first, second]).toEqual([["0001_create_form"], ["0001_create_form"]])
+        })
+      })
+
+      it("rolls back each migration once when processes roll back a target at once", async () => {
+        const runs = { count: 0 }
+        const [other] = others
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          const waiting = defineTestHistory({
+            "0001_create_form": createForm,
+            "0002_create_user": {
+              up: createUser.up,
+              down: waitBefore(createUser.down, gate, runs),
+            },
+          })
+          await migrate(db, waiting, target)
+          const first = start(rollback(db, waiting, target))
+          await waitFor(async () => runs.count === 1)
+          const refused = waitForRefusedLocks(other!)
+          const second = start(rollback(other!.database, waiting, target))
+          await refused
+          openGate()
+
+          expect([await first, await second]).toEqual([["0002_create_user"], ["0001_create_form"]])
+        })
+
+        expect(runs.count).toBe(1)
+      })
+
+      it("applies the migrations pending once it takes the lock, after another process rolls back migrations meanwhile", async () => {
+        const runs = { count: 0 }
+        const [other] = others
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          const waiting = defineTestHistory({
+            "0001_create_form": {
+              up: createForm.up,
+              down: waitBefore(createForm.down, gate, runs),
+            },
+            "0002_index_form": indexForm,
+            "0003_create_user": createUser,
+          })
+          await migrate(db, waiting, { ...target, count: 2 })
+          // It rolls back 0002_index_form outside a transaction, and then waits in the transaction of 0001_create_form.
+          const rolledBack = start(rollback(db, waiting, { ...target, count: 2 }))
+          await waitFor(async () => runs.count === 1)
+          let keys: string[] = []
+          const statements = await other!.recordStatements(async () => {
+            const refused = waitForRefusedLocks(other!)
+            // Its first read finds 0002_index_form and 0003_create_user pending.
+            const migrated = start(migrate(other!.database, waiting, target))
+            await refused
+            openGate()
+            keys = await migrated
+          })
+
+          expect(await rolledBack).toEqual(["0002_index_form", "0001_create_form"])
+          expect(keys).toEqual(["0001_create_form", "0002_index_form", "0003_create_user"])
+          expect(listChanges(statements)).toEqual([
+            "BEGIN",
+            createForm.up,
+            "insert version",
+            "COMMIT",
+            indexForm.outsideTransaction.up,
+            "insert version",
+            "BEGIN",
+            createUser.up,
+            "insert version",
+            "COMMIT",
+          ])
+        })
+      })
+    })
+  },
+)
+
+/** Names of the statements of the migrator and of its session by the start of their text. */
+const statementNames: readonly (readonly [prefix: string, name: string])[] = [
+  ["SELECT target.name", "read target"],
+  ["SELECT key FROM", "read versions"],
+  ["SELECT current_setting($1)", "read search path"],
+  ["SELECT set_config($1, $2, false)", "set search path"],
+  ["SELECT pg_try_advisory_lock(", "try lock"],
+  ["SELECT pg_advisory_unlock(", "unlock"],
+  ["CREATE SCHEMA IF NOT EXISTS", "create schema"],
+  ["CREATE TABLE IF NOT EXISTS", "create table of versions"],
+  ["INSERT INTO", "insert version"],
+  ["DELETE FROM", "delete version"],
+]
+
+/** Names the statements of the migrator and of its session, such as `try lock`, keeping the statements of migrations and transactions as they are. */
+function nameStatements(texts: readonly string[]): string[] {
+  return texts.map(text => statementNames.find(([prefix]) => text.startsWith(prefix))?.[1] ?? text)
+}
+
+/** Names of the statements that read a target or keep its session and lock rather than change it. */
+const readingNames = new Set([
+  "read target",
+  "read versions",
+  "read search path",
+  "set search path",
+  "try lock",
+  "unlock",
+])
+
+/** Lists the statements of `texts` that change a target, with their transactions, naming those of the migrator. */
+function listChanges(texts: readonly string[]): string[] {
+  return nameStatements(texts).filter(name => !readingNames.has(name))
+}
 
 /** Lists the tables of PostgreSQL schema `schemaName` by name. */
 async function listTables(database: Database, schemaName: string): Promise<string[]> {
   return await database.query`
     SELECT table_name FROM information_schema.tables WHERE table_schema = ${schemaName} ORDER BY table_name
+  `.pluck(t.text)
+}
+
+/** Lists the indexes of table `form` of PostgreSQL schema `schemaName` by name. */
+async function listFormIndexes(database: Database, schemaName: string): Promise<string[]> {
+  return await database.query`
+    SELECT indexname::text FROM pg_indexes WHERE schemaname = ${schemaName} AND tablename = 'form' ORDER BY indexname
   `.pluck(t.text)
 }
 

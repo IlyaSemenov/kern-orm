@@ -1,8 +1,8 @@
 import type { MigrationChange, MigrationStep } from "../migration"
-import { findStepProblem, runChange } from "../migration"
+import { findSharedStepProblem, findStepProblem, runChange } from "../migration"
 
 /**
- * Inverts a step: its `down` becomes `up`, and its `up` becomes `down`, such as to build a helper that drops what another helper creates.
+ * Inverts a step: its `down` becomes `up`, and its `up` becomes `down`, also of its changes outside a transaction, such as to build a helper that drops what another helper creates.
  *
  * It throws for a step without `down`, which gives nothing to apply, and for a value that is not a step, such as one with a misspelled `down`, which the inverted step would hide.
  */
@@ -14,7 +14,17 @@ export function invertStep(step: MigrationStep): MigrationStep {
   if (step.down === undefined) {
     throw new Error("Cannot invert a step without down")
   }
-  return { up: step.down, down: step.up }
+  const { outsideTransaction } = step
+  if (outsideTransaction === undefined) {
+    return { up: step.down, down: step.up }
+  }
+  const inverted: NonNullable<MigrationStep["outsideTransaction"]> =
+    outsideTransaction.down === undefined
+      ? { down: outsideTransaction.up! }
+      : outsideTransaction.up === undefined
+        ? { up: outsideTransaction.down }
+        : { up: outsideTransaction.down, down: outsideTransaction.up }
+  return { up: step.down, down: step.up, outsideTransaction: inverted }
 }
 
 /**
@@ -22,7 +32,7 @@ export function invertStep(step: MigrationStep): MigrationStep {
  *
  * A direction whose changes are all SQL scripts is one script of them; otherwise, it is a function that runs them in order.
  * The step has no `down` when no step has one.
- * It throws for a value that is not a step, such as one with a misspelled `down`, which the combined step would hide.
+ * It throws for a value that is not a step, such as one with a misspelled `down`, which the combined step would hide, and for a step with changes outside a transaction, which runs alone in its migration.
  */
 export function combineSteps(...steps: readonly MigrationStep[]): MigrationStep {
   if (steps.length === 0) {
@@ -31,7 +41,7 @@ export function combineSteps(...steps: readonly MigrationStep[]): MigrationStep 
   const ups: MigrationChange[] = []
   const downs: MigrationChange[] = []
   for (let index = 0; index < steps.length; index++) {
-    const problem = findStepProblem(steps[index])
+    const problem = findStepProblem(steps[index]) ?? findSharedStepProblem(steps[index]!)
     if (problem !== undefined) {
       throw new Error(`Step ${index + 1} of combineSteps ${problem}`)
     }

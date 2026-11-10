@@ -19,6 +19,8 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing) 0.3.0.
 - [Slonik](https://github.com/gajus/slonik) 49.13.0.
 - [Django](https://github.com/django/django) 6.0.10.
+- [node-pg-migrate](https://github.com/salsita/node-pg-migrate) 9.0.0.
+- [Rails](https://github.com/rails/rails) 8.1.4.1, with its migrations of Active Record.
 
 ## Topics
 

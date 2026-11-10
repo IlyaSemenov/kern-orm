@@ -97,3 +97,6 @@ The SQL that loads nested queries and relations.
 ## Migrations
 
 - [Capabilities the migrator does not add](migrations/migrator-scope.md).
+- [Changes in a transaction beside those outside one](migrations/transactional-form.md): a step keeps `up` and `down` for a transaction block, rather than a call there rejecting the migration.
+- [One step outside a transaction without records of progress](migrations/outside-transaction-step.md): a change that is safe to run again, rather than several steps or a record of the steps done.
+- [Polling for the lock of a target outside a transaction](migrations/polling-for-the-lock.md): rather than waiting in `pg_advisory_lock` or rejecting.

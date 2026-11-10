@@ -44,7 +44,7 @@
     "postgres": "catalog:"
   },
   "peerDependencies": {
-    "kern-orm": ">=0.3.0 <1"
+    "kern-orm": ">=0.10.0 <1"
   },
   "engines": {
     "bun": ">=1.4",

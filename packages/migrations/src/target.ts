@@ -35,7 +35,7 @@ export interface ResolvedTarget {
   readonly tableName: string
   /** Name of the table of versions qualified by the target schema, quoted. */
   readonly table: string
-  /** Search path of the transaction of the migrations: the target schema followed by the schemas of the history. */
+  /** Search path of the migrations: the target schema followed by the schemas of the history. */
   readonly searchPath: readonly string[]
 }
 
@@ -76,15 +76,6 @@ export async function openTarget(
 export async function readVersions(target: ResolvedTarget): Promise<TargetVersions> {
   const state = await readState(target.database, target.schemaName, target.tableName)
   return await readApplied(target, state)
-}
-
-/**
- * Locks the target until the end of the transaction, so that processes that migrate it at once apply each migration once.
- *
- * The lock belongs to the qualified name of the table of versions, so that different targets migrate at once.
- */
-export async function lockTarget(target: ResolvedTarget): Promise<void> {
-  await target.database.lock(target.table)
 }
 
 /**

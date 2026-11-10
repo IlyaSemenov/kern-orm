@@ -83,7 +83,7 @@
   - They reject without a statement outside a session, and in a transaction, which would keep a snapshot between the attempts, and where `lock` waits.
   - The waiters form no queue, so one of them can miss the lock while others take it.
   - Once their signal aborts, they make no more attempts and reject with its reason, at once during a pause; an attempt that runs when the signal aborts is awaited, and if it takes the lock, they resolve, since the session holds the lock until it ends.
-- The [migrator](migrations.md#applying-and-rolling-back) locks its target with `lock`.
+- The [migrator](migrations.md#applying-and-rolling-back) locks its target with `lock` in a transaction block, and with `pollLock` in a session of its own outside one.
 - A query that locks rows rejects under the same condition, as its [row locks](queries.md#row-locks) describe.
 
 ## Settings

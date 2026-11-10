@@ -84,6 +84,32 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
     expect(searchPath).toMatch(/^"kern_verify_[0-9a-f]{12}", "extensions"$/)
   })
 
+  it("verifies a step with outsideTransaction by its up and down", async () => {
+    const history = defineTestHistory({
+      "0001_create_form": createForm,
+      "0002_index_form": {
+        up: "CREATE INDEX form_name_idx ON form (name)",
+        down: "DROP INDEX form_name_idx",
+        outsideTransaction: {
+          up: "CREATE INDEX CONCURRENTLY form_name_idx ON form (name)",
+          down: "DROP INDEX CONCURRENTLY form_name_idx",
+        },
+      },
+    })
+
+    const statements = await testTransaction(() =>
+      recordStatements(() => verifyMigrations(database, history)),
+    )
+
+    expect(statements).toEqual(
+      expect.arrayContaining([
+        "CREATE INDEX form_name_idx ON form (name)",
+        "DROP INDEX form_name_idx",
+      ]),
+    )
+    expect(statements.filter(text => text.includes("CONCURRENTLY"))).toEqual([])
+  })
+
   it("rejects a rollback that leaves the structure of the schema different from before the migration", async () => {
     const history = defineTestHistory({
       "0001_create_form": createForm,

@@ -5,25 +5,36 @@
   It leaves to the application generating migrations from tables and tables from the database, column types of migrations, commands that create, drop, or reset a database or rename migrations, callbacks around migrating, and a command that verifies a history ([decision](../decisions/migrations/migrator-scope.md)).
 - A need of the migrator that the public API of `kern-orm` does not cover becomes a general capability of `kern-orm`, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
   The migrator imports only types from `kern-orm`.
-- The migrator runs everything through the `Database` of its target: transactions with `transaction`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
+- The migrator runs everything through the `Database` of its target: transactions with `transaction`, sessions with `session`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
 - The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
   The entry point `@kern-orm/migrations/cli` holds the [command line](#command-line), and `@kern-orm/migrations/testing` the [verification](#verification), which import `node:*` modules.
 
 ## Compatibility
 
-The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `lock`, and `close` of `Database`, `$database` and `$schemaName` of a `Db`, and the types of their options and results that it uses, such as the `searchPath` option and the text values of `execute`.
+The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `session`, `isInTransactionBlock`, `lock`, `pollLock`, and `close` of `Database`, `$database` and `$schemaName` of a `Db`, and the types of their options and results that it uses, such as the `searchPath` option of transactions and sessions and the text values of `execute`.
 
 ## Migrations
 
 - Migrations are fixed artifacts: they never import the tables, the custom types, or the database of the application, so that a migration does the same on every target and in every later version of the application.
 - A migration is the default export of a module: a step or a non-empty array of steps, plain values without runtime identity, which `defineMigration` only types.
   A module that does not export a migration rejects when it loads, rather than being recorded as applied.
-- A step has `up` and an optional `down`, each a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects when the migration loads instead of doing nothing on rollback.
+- A step has `up`, an optional `down`, and optional [changes outside a transaction](#changes-outside-a-transaction), each change a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects when the migration loads instead of doing nothing on rollback.
   Blank SQL text rejects too, so that a migration left blank is never recorded as applied.
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
-- The database of a migration is `Pick<Database, "query" | "script">` of the target: its statements run in the transaction of the migration, and its unqualified names resolve in the target schema through the search path.
+- The database of a migration is `Pick<Database, "query" | "script">` of the target: its statements run in the transaction of the migration, or, for a change outside a transaction, each in a transaction of its own on the connection of the session, and its unqualified names resolve in the target schema through the search path.
   It lacks the other members of `Database`, such as `close` and `bind`, which a migration must not use.
+
+### Changes outside a transaction
+
+- `outsideTransaction` of a step has `up`, `down`, or both: the changes that a call outside a transaction block runs instead of `up` and `down` of the step, for statements that PostgreSQL rejects in a transaction block, such as `CREATE INDEX CONCURRENTLY`.
+  A direction without a change there runs in a transaction, as the changes of other steps do.
+  - Such a change sends each statement that PostgreSQL rejects in a transaction block in a call of its own, since PostgreSQL runs a script of several statements in one transaction.
+- In a transaction block, the step runs `up` and `down`, so that every migration applies inside an enclosing transaction, such as one that creates a tenant, in a test transaction, and in the [verification](#verification) ([decision](../decisions/migrations/transactional-form.md)).
+  So the step requires `up` as every step does, and `outsideTransaction.down` requires `down`, which undoes the step in a transaction block.
+  `up` and `down` must build the same objects, with the same names, as the changes outside a transaction, since later migrations rely on them whichever form ran.
+- A step with `outsideTransaction` must be the only step of its migration, and the migrator records no progress of the steps of a migration ([decision](../decisions/migrations/outside-transaction-step.md)).
+- The migrator records the migration in a statement of its own after the change, so a change outside a transaction must be safe to run again: after it fails, and after it succeeds but the record of its migration fails to change.
 
 ## Histories
 
@@ -50,17 +61,31 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - Every call first resolves the target schema and checks that it and its table of versions exist, then reads the table only when it exists, since a statement on a missing table would fail and abort an enclosing transaction.
   It checks them with a query of `pg_catalog` rather than with `to_regclass` and `to_regnamespace`, whose lookups in the catalog cache of the connection miss a schema that another transaction committed while this one waited for the lock of the target.
   It rejects a target schema or a table of versions whose name is longer than `max_identifier_length` bytes before changing anything, since PostgreSQL truncates such a name, and the check would miss what the migrator created under it.
-- `migrate` applies the pending migrations of a target, or the first `count` of them, in one transaction and resolves to their keys.
-  Inside a transaction, such as one that creates a tenant with its schema, or a test fixture, it runs as a nested level, so that its changes commit or roll back with the enclosing transaction.
+- `migrate` applies the pending migrations of a target, or the first `count` of them, and resolves to their keys.
 - `migrate` returns after the first read when nothing is pending, so that migrating a tenant that is up to date at the first access of each process costs two statements outside a transaction.
   Otherwise, it locks the target with the [advisory lock](transactions.md#locks) of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
-- Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction.
-  Creating only what is missing keeps PostgreSQL from sending a notice of an existing schema, which postgres.js logs by default.
 - The lock belongs to the target, so that different targets, such as tenants, migrate at once.
-- The search path of the level of the migrations is the target schema followed by the schemas of the history, and the level restores the previous search path when it ends.
+- In a transaction block, where `isInTransactionBlock` of the `Database` is `true`, such as inside a transaction that creates a tenant with its schema, a test transaction, or the seed of a test fixture, a call runs as a nested level that takes the lock with `lock`, and every migration runs `up` and `down` of its steps, so that its changes commit or roll back with the enclosing transaction.
+- Outside one, a call runs in a [session](transactions.md#sessions), also without a migration that has changes outside a transaction, since it learns of them only from the migrations that it loads under the lock:
+  - The session takes the lock with `pollLock`, since a transaction that waits for the lock with `lock` keeps a snapshot, which `CREATE INDEX CONCURRENTLY` of the session that holds the lock waits for ([decision](../decisions/migrations/polling-for-the-lock.md)).
+  - Under the lock, it reads the versions again, chooses the migrations, loads them, and only then tells which run outside a transaction, since another process may change the applied migrations before the lock.
+  - A migration with a change of its direction outside a transaction runs it alone, and the migrator records the migration after it in a statement of its own.
+    The other migrations between such migrations run in one transaction of the session with their records, so that a call without such migrations runs in one transaction.
+- A call inside a session outside its transactions rejects, since `session` rejects there; the migrator does not join that session, whose lock would last until the session ends, such as for the whole life of a worker.
+- Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction.
+  In a session, it creates them in the transaction of the first migrations, so that a call that fails there changes nothing, or before a first migration outside a transaction, each in a transaction of its own.
+  Creating only what is missing keeps PostgreSQL from sending a notice of an existing schema, which postgres.js logs by default.
+- The search path of the level of the migrations, a nested level or a session, is the target schema followed by the schemas of the history, and the level restores the previous search path when it ends.
+- After a call in a session fails, what committed before the failure stays, and the lock ends with the session.
+  A change outside a transaction that failed may have run in part, and the record of its migration keeps the state before the change, unless the connection broke after the record committed:
+  - a migration recorded as pending after its `up` failed needs `migrate`, which runs its `up` again;
+  - a migration recorded as applied after its `down` failed needs `rollback`, which runs its `down` again, whereas `migrate` skips it.
+- The migrator keeps no record of a call in progress, so running the same `rollback` or `redo` again does not continue it: their `count` chooses from the migrations applied then.
+  `getMigrationStatus` reads the records of the migrations, not what a failed change has left in the schema, so the records tell which of the two calls a target needs.
+- A call in a transaction block that waits for the lock of a target and a call in a session that runs `CREATE INDEX CONCURRENTLY` on that target can deadlock, since the waiting transaction keeps a snapshot that the index build waits for: PostgreSQL fails one of them with `40P01`, and calling `migrate` again recovers.
 - A target is up to date when its applied keys are the keys of the history, followed by keys after the last key of the history, if any, which a newer version of the application has applied, such as during a rolling deploy.
   `migrate` rejects an applied key that the history lacks before its last key or that is not of the form of a key, and a pending migration before an applied one.
-- `rollback` undoes the last applied migrations of a target, one by default, a given number of them, or all, and `redo` undoes and applies them again, each in one transaction that locks the target.
+- `rollback` undoes the last applied migrations of a target, one by default, a given number of them, or all, and `redo` undoes and applies them again, each locking the target and running the migrations as `migrate` does; `count` counts migrations with and without changes outside a transaction alike.
   They resolve to the keys in the order they undo and apply them, and to none without a transaction when the target has no table of versions.
   They reject when the target has applied keys that the history lacks, since they cannot run the `down` of a migration they do not have.
 - `getMigrationStatus` gives the PostgreSQL schema that it resolved, the applied and the pending keys of the target, and its applied keys that the history lacks, as `unknown`.
@@ -72,9 +97,10 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - Helpers (`src/helpers/`) build steps of typical changes, such as `createTable` and `changeColumn`, as plain steps of SQL text, so that they combine in the array of a migration with steps of its own.
 - A project writes its own helpers with the public primitives that the built-in helpers use:
   - `quoteIdentifier` and `quoteLiteral`; `quoteLiteral` matches `quote_literal` of PostgreSQL, doubling quotes and backslashes and prefixing `E` to a value with a backslash, so that a literal keeps its value whatever `standard_conforming_strings` is;
-  - `invertStep`, which swaps `up` and `down` and rejects a step without `down`;
+  - `invertStep`, which swaps `up` and `down`, also of the changes outside a transaction, and rejects a step without `down`;
   - `combineSteps`, which makes one step that runs the `up` of the steps in order and the `down` of those that have one in reverse order.
     Changes of a direction that are all SQL text join into one script with each semicolon on a line of its own, so that a script that ends with a line comment does not comment it out; other changes run in order from a function.
+    It rejects a step with changes outside a transaction, which must be the only step of its migration.
   - `invertStep` and `combineSteps` reject a value that is not a step, as loading a migration does, since the step they return would hide a problem such as a misspelled `down`.
 - The SQL that a helper builds never changes: applied migrations call the same helper on new targets, and a change of its SQL would change what they do there.
   A new behavior requires a new helper or option; the helpers of a project must follow the same rule.
@@ -138,6 +164,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - `verifyMigrations(target, history, options)` (`src/verification/`) checks a history in a temporary schema of the database of its target, whose schema it ignores, in a transaction that always rolls back, nested in the enclosing one, such as a test transaction.
   - The temporary schema is `kern_verify_` with 12 random hexadecimal digits, so that verifications in parallel test processes do not wait for each other on the unique index of `pg_namespace`.
   - Its search path is the temporary schema followed by the schemas of the history, as `migrate` gives a target.
+  - In the transaction, every step runs its `up` and `down`, so the [changes outside a transaction](#changes-outside-a-transaction) go unchecked.
 - Before any statement, it rejects a history without migrations, which more likely comes from a pattern that matches no file than from a project without migrations, loads the migration tests, rejecting a file of tests that matches no migration, and loads every migration.
 - It verifies the migrations in the order of the history, each on the schema that the migrations before it leave:
   1. It applies the migration and describes the structure of the schema.

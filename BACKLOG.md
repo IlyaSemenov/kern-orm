@@ -9,10 +9,6 @@ Moving a project from rake-db to `@kern-orm/migrations`:
 - Decide whether the migrator imports the applied versions of a rake-db table, of `version` and `name`, once, or projects convert them.
 - Decide how a history whose earlier migrations a baseline of the schema replaces marks the baseline applied on existing targets.
 
-## Migrations outside a transaction
-
-Migrations that PostgreSQL rejects in a transaction block, such as of `CREATE INDEX CONCURRENTLY`, while `@kern-orm/migrations` applies the pending migrations of a target in one transaction.
-
 ## Irreversible migrations in verification
 
 A migration whose `down` cannot restore the structure, such as one that adds a value to an enum type, since PostgreSQL cannot remove a value of an enum, fails `verifyMigrations`.
@@ -374,6 +370,14 @@ SQL that the migrator runs again after every migration, such as of functions and
 ## Migration helpers of enums
 
 Helpers that change enum types: PostgreSQL cannot drop a value of an enum, so undoing an added value creates the type again with the columns that use it.
+
+## Changes outside a transaction in verification
+
+`verifyMigrations` and migration tests run in a transaction, so they check `up` and `down` of a step with [changes outside a transaction](architecture/migrations.md#changes-outside-a-transaction), while a call outside a transaction block runs those changes instead, such as in production.
+
+- Decide whether the verification runs them in a session on a temporary schema that it drops after, which a database created with `test: true` rejects, or a project tests them on a database of its own.
+- Running each change twice would check that it is safe to run again, as its contract requires.
+- Decide whether the verification compares the structure that they build with the structure that `up` builds.
 
 ## Relation-aware mutations
 

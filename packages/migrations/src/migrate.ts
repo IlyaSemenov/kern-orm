@@ -1,7 +1,13 @@
+import type { MigrationDirection } from "./error"
 import type { MigrationHistory } from "./history"
 import { getMigrationNumber } from "./history"
 import type { MigrationStep } from "./migration"
-import { runMigrationSteps, toMigrationDatabase } from "./migration"
+import {
+  getOutsideTransactionChange,
+  runMigrationSteps,
+  runOutsideTransaction,
+  toMigrationDatabase,
+} from "./migration"
 import type {
   MigrationTarget,
   MigrationTargetOptions,
@@ -12,7 +18,6 @@ import {
   createVersionsTable,
   deleteVersion,
   insertVersion,
-  lockTarget,
   openTarget,
   readVersions,
 } from "./target"
@@ -48,9 +53,10 @@ export interface MigrationStatus {
 }
 
 /**
- * Applies the pending migrations of `history` to `target` in one transaction, or the first `count` of them, and resolves to their keys.
+ * Applies the pending migrations of `history` to `target`, or the first `count` of them, and resolves to their keys.
  *
- * Inside a transaction, it runs in a nested transaction, so that the migrations commit or roll back with the enclosing one.
+ * It applies them in one transaction, unless a migration runs outside a transaction: that migration runs alone, after the migrations before it commit, and the migrations after it run in a transaction of their own.
+ * Inside a transaction, it runs in a nested transaction, so that the migrations commit or roll back with the enclosing one, and every migration runs in it.
  * A target that is up to date costs two statements outside a transaction; otherwise, it locks the target, so that processes that migrate it at once apply each migration once.
  * It rejects when the target has applied a migration that the history lacks before its last migration, or a migration after a pending one; applied migrations after the last one, such as of a newer version of the application, are allowed.
  */
@@ -65,23 +71,16 @@ export async function migrate(
   if (getPendingKeys(history, opened.target, opened.versions).length === 0) {
     return []
   }
-  return await runLocked(opened.target, async () => {
-    const versions = await readVersions(opened.target)
-    const pending = getPendingKeys(history, opened.target, versions).slice(0, count)
-    const migrations = await loadMigrations(history, pending)
-    await createVersionsTable(opened.target, versions)
-    const database = toMigrationDatabase(opened.target.database)
-    for (const { key, steps } of migrations) {
-      await runMigrationSteps(database, key, steps, "up")
-      await insertVersion(opened.target, key)
-    }
-    return pending
+  return await runLocked(opened.target, history, versions => {
+    const keys = getPendingKeys(history, opened.target, versions).slice(0, count)
+    return { keys, runs: keys.map(key => ({ key, direction: "up" })) }
   })
 }
 
 /**
- * Rolls back the last applied migrations of `target` in one transaction, one by default, and resolves to their keys in the order of rolling back.
+ * Rolls back the last applied migrations of `target`, one by default, and resolves to their keys in the order of rolling back.
  *
+ * It rolls them back in one transaction, unless a migration runs outside a transaction, as `migrate` applies them.
  * It rejects when the target has applied a migration that the history lacks, since it cannot roll it back.
  */
 export async function rollback(
@@ -95,22 +94,17 @@ export async function rollback(
   if (opened.versions.applied.length === 0) {
     return []
   }
-  return await runLocked(opened.target, async () => {
-    const versions = await readVersions(opened.target)
+  return await runLocked(opened.target, history, versions => {
     checkAppliedKeys(history, opened.target, versions, "roll back the migrations of")
     const keys = getLastKeys(versions, count).reverse()
-    const database = toMigrationDatabase(opened.target.database)
-    for (const { key, steps } of await loadMigrations(history, keys)) {
-      await runMigrationSteps(database, key, steps, "down")
-      await deleteVersion(opened.target, key)
-    }
-    return keys
+    return { keys, runs: keys.map(key => ({ key, direction: "down" })) }
   })
 }
 
 /**
- * Rolls back the last applied migrations of `target` and applies them again in one transaction, one by default, and resolves to their keys in order.
+ * Rolls back the last applied migrations of `target` and applies them again, one by default, and resolves to their keys in order.
  *
+ * It runs them in one transaction, unless a migration runs outside a transaction, as `migrate` applies them.
  * It rejects when the target has applied a migration that the history lacks, since it cannot roll it back.
  */
 export async function redo(
@@ -124,22 +118,17 @@ export async function redo(
   if (opened.versions.applied.length === 0) {
     return []
   }
-  return await runLocked(opened.target, async () => {
-    const versions = await readVersions(opened.target)
+  return await runLocked(opened.target, history, versions => {
     checkAppliedKeys(history, opened.target, versions, "redo the migrations of")
     const keys = getLastKeys(versions, count)
-    const migrations = await loadMigrations(history, keys)
-    const database = toMigrationDatabase(opened.target.database)
-    for (let index = migrations.length - 1; index >= 0; index--) {
-      const { key, steps } = migrations[index]!
-      await runMigrationSteps(database, key, steps, "down")
-      await deleteVersion(opened.target, key)
+    const runs: PlannedRun[] = []
+    for (let index = keys.length - 1; index >= 0; index--) {
+      runs.push({ key: keys[index]!, direction: "down" })
     }
-    for (const { key, steps } of migrations) {
-      await runMigrationSteps(database, key, steps, "up")
-      await insertVersion(opened.target, key)
+    for (const key of keys) {
+      runs.push({ key, direction: "up" })
     }
-    return keys
+    return { keys, runs }
   })
 }
 
@@ -161,10 +150,21 @@ export async function getMigrationStatus(
   }
 }
 
-/** Migration that a call loaded. */
-interface LoadedMigration {
+/** Migration that a call runs in one direction. */
+interface PlannedRun {
   readonly key: string
+  readonly direction: MigrationDirection
+}
+
+/** Migration that a call runs in one direction, with its loaded steps. */
+interface MigrationRun extends PlannedRun {
   readonly steps: readonly MigrationStep[]
+}
+
+/** Migrations that a call runs in order under the lock of its target, and the keys that it resolves to. */
+interface CallPlan {
+  readonly keys: string[]
+  readonly runs: readonly PlannedRun[]
 }
 
 /**
@@ -224,27 +224,128 @@ function checkAppliedKeys(
   }
 }
 
-/** Runs `callback` in a transaction that locks `target`, with the search path of its migrations. */
-function runLocked<T>(target: ResolvedTarget, callback: () => Promise<T>): Promise<T> {
-  return target.database.transaction(
-    async () => {
-      await lockTarget(target)
-      return await callback()
-    },
-    { searchPath: target.searchPath },
-  )
+/**
+ * Locks `target`, reads its versions again, loads the migrations that `plan` chooses from them, runs them, and resolves to the keys of the plan.
+ *
+ * The lock belongs to the qualified name of the table of versions, so that different targets migrate at once.
+ * In a transaction block, such as of an enclosing transaction or a test, it runs every migration in a nested transaction that locks the target, with the search path of the migrations.
+ * Outside one, it runs them in a session with that search path, which polls for the lock, since a transaction that waits for it would keep a snapshot, which `CREATE INDEX CONCURRENTLY` of the session that holds the lock waits for.
+ * It decides which migrations run outside a transaction only from the steps that it loads under the lock, since another process may change the applied migrations before the lock.
+ */
+async function runLocked(
+  target: ResolvedTarget,
+  history: MigrationHistory,
+  plan: (versions: TargetVersions) => CallPlan,
+): Promise<string[]> {
+  const { database } = target
+  const inTransaction = database.isInTransactionBlock()
+  const run = async () => {
+    await (inTransaction ? database.lock(target.table) : database.pollLock(target.table))
+    const versions = await readVersions(target)
+    const { keys, runs } = plan(versions)
+    const loaded = await loadMigrations(history, runs)
+    await (inTransaction
+      ? runInTransaction(target, versions, loaded)
+      : runInSession(target, versions, loaded))
+    return keys
+  }
+  const options = { searchPath: target.searchPath }
+  return inTransaction
+    ? await database.transaction(run, options)
+    : await database.session(run, options)
 }
 
-/** Loads the migrations of `keys` in order, before any of them runs, so that a module that fails to load changes nothing. */
+/** Runs `runs` in order in the transaction of a call, creating the schema and the table of versions that `versions` lacks before them. */
+async function runInTransaction(
+  target: ResolvedTarget,
+  versions: TargetVersions,
+  runs: readonly MigrationRun[],
+): Promise<void> {
+  if (runs.length === 0) {
+    return
+  }
+  await createVersionsTable(target, versions)
+  await runMigrations(target, runs)
+}
+
+/**
+ * Runs `runs` in order in the session of a call: a migration that has a change of its direction outside a transaction runs it alone and is recorded after it in a statement of its own, and each sequence of other migrations between such migrations runs in one transaction.
+ *
+ * The migrations before a failure stay committed, and a migration whose change fails outside a transaction keeps its record, so that `migrate` runs its `up` again, and `rollback` its `down`.
+ */
+async function runInSession(
+  target: ResolvedTarget,
+  versions: TargetVersions,
+  runs: readonly MigrationRun[],
+): Promise<void> {
+  let start = 0
+  while (start < runs.length) {
+    const run = runs[start]!
+    const change = getOutsideTransactionChange(run.steps, run.direction)
+    if (change !== undefined) {
+      if (start === 0) {
+        await createVersionsTable(target, versions)
+      }
+      await runOutsideTransaction(
+        toMigrationDatabase(target.database),
+        run.key,
+        run.direction,
+        change,
+      )
+      await recordRun(target, run)
+      start++
+      continue
+    }
+    let end = start + 1
+    while (
+      end < runs.length &&
+      getOutsideTransactionChange(runs[end]!.steps, runs[end]!.direction) === undefined
+    ) {
+      end++
+    }
+    const batch = runs.slice(start, end)
+    // The first transaction creates the schema and the table of versions, so that a call that fails in it changes nothing.
+    const first = start === 0
+    await target.database.transaction(async () => {
+      if (first) {
+        await createVersionsTable(target, versions)
+      }
+      await runMigrations(target, batch)
+    })
+    start = end
+  }
+}
+
+/** Runs `runs` in order in a transaction with the changes of `up` and `down` of their steps, recording each migration after it runs. */
+async function runMigrations(target: ResolvedTarget, runs: readonly MigrationRun[]): Promise<void> {
+  const database = toMigrationDatabase(target.database)
+  for (const run of runs) {
+    await runMigrationSteps(database, run.key, run.steps, run.direction)
+    await recordRun(target, run)
+  }
+}
+
+/** Records migration `run` as applied after `up`, and as not applied after `down`. */
+async function recordRun(target: ResolvedTarget, run: MigrationRun): Promise<void> {
+  await (run.direction === "up" ? insertVersion(target, run.key) : deleteVersion(target, run.key))
+}
+
+/** Loads the migrations of `runs` in order, each once, before any of them runs, so that a module that fails to load changes nothing. */
 async function loadMigrations(
   history: MigrationHistory,
-  keys: readonly string[],
-): Promise<LoadedMigration[]> {
-  const migrations: LoadedMigration[] = []
-  for (const key of keys) {
-    migrations.push({ key, steps: await history.load(key) })
+  runs: readonly PlannedRun[],
+): Promise<MigrationRun[]> {
+  const steps = new Map<string, readonly MigrationStep[]>()
+  const loaded: MigrationRun[] = []
+  for (const { key, direction } of runs) {
+    let migration = steps.get(key)
+    if (migration === undefined) {
+      migration = await history.load(key)
+      steps.set(key, migration)
+    }
+    loaded.push({ key, direction, steps: migration })
   }
-  return migrations
+  return loaded
 }
 
 /** Returns the last `count` applied keys in order. */

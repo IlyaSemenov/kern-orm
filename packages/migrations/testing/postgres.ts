@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe } from "bun:test"
 
 import { postgresJsDriver } from "@kern-orm/postgres-js"
-import type { Connection, Database, Driver } from "kern-orm"
+import type { Connection, Database, Driver, DriverResult, SqlStatement } from "kern-orm"
 import { createDatabase } from "kern-orm"
 import type { TestHelpers } from "kern-orm/testing"
 import { createTestHelpers } from "kern-orm/testing"
@@ -18,10 +18,20 @@ export interface PostgresContext {
   recordStatements(callback: () => Promise<unknown>): Promise<string[]>
   /** Messages of the notices that PostgreSQL has sent to the database of the block, such as of `CREATE SCHEMA IF NOT EXISTS` of an existing schema. */
   readonly notices: string[]
+  /** Counts the attempts of the database to take an advisory lock in a session, such as of `pollLock`, that found it held by another session. */
+  countRefusedLocks(): number
+  /** Makes the next statement or script of the database whose text `matches` reject with `error` without running it, such as to fail a call between two statements. */
+  failStatement(matches: (text: string) => boolean, error: Error): void
 }
 
 /** Database of a `describePostgres` block, created with `test: true`, with its test helpers. */
 export interface PostgresTestContext extends PostgresContext, TestHelpers {}
+
+/** Database of a `describePooledPostgres` block, created without `test: true`. */
+export interface PooledPostgresContext extends PostgresContext {
+  /** Creates another database at `DATABASE_URL`, closed after the block, such as of another process that migrates at once; call it in the body of the block. */
+  connect(): PostgresContext
+}
 
 /**
  * Declares a `describe` block of tests that run in PostgreSQL, skipped when `DATABASE_URL` is not set.
@@ -45,10 +55,10 @@ export function describePostgres(name: string, body: (context: PostgresTestConte
  */
 export function describePooledPostgres(
   name: string,
-  body: (context: PostgresContext) => void,
+  body: (context: PooledPostgresContext) => void,
 ): void {
   describe.skipIf(!DATABASE_URL)(name, () => {
-    body(connect(false))
+    body({ ...connect(false), connect: () => connect(false) })
   })
 }
 
@@ -56,14 +66,30 @@ export function describePooledPostgres(
 function connect(test: boolean): PostgresContext {
   const notices: string[] = []
   let statements: string[] | undefined
-  const record = (text: string) => statements?.push(text)
-  const driver = recordStatements(
+  let refusedLocks = 0
+  const failures: { matches: (text: string) => boolean; error: Error }[] = []
+  const driver = interceptStatements(
     postgresJsDriver(
       postgres(DATABASE_URL!, {
         onnotice: notice => notices.push(String(notice.message)),
       }),
     ),
-    record,
+    {
+      before(text) {
+        statements?.push(text)
+        const index = failures.findIndex(failure => failure.matches(text))
+        if (index !== -1) {
+          const { error } = failures[index]!
+          failures.splice(index, 1)
+          throw error
+        }
+      },
+      after(text, result) {
+        if (text.includes("pg_try_advisory_lock(") && result.rows[0]?.[0] === "f") {
+          refusedLocks++
+        }
+      },
+    },
   )
   const database = createDatabase({ driver, test })
   afterAll(() => database.close())
@@ -80,34 +106,44 @@ function connect(test: boolean): PostgresContext {
       }
       return recorded
     },
+    countRefusedLocks: () => refusedLocks,
+    failStatement(matches, error) {
+      failures.push({ matches, error })
+    },
   }
 }
 
-/** Wraps `driver` to pass the text of every statement and script it executes, on the pool or on a connection, to `record`. */
-function recordStatements(driver: Driver, record: (text: string) => void): Driver {
+/** Callbacks of `interceptStatements`. */
+interface StatementInterceptor {
+  /** Receives the text of a statement or a script before it runs; it can throw to reject it without running it. */
+  before(text: string): void
+  /** Receives the text and the result of a statement after it succeeds. */
+  after(text: string, result: DriverResult): void
+}
+
+/** Wraps `driver` to pass every statement and script it executes, on the pool or on a connection, to `interceptor`. */
+function interceptStatements(driver: Driver, interceptor: StatementInterceptor): Driver {
+  const execute = async (target: Pick<Driver, "execute">, statement: SqlStatement) => {
+    interceptor.before(statement.text)
+    const result = await target.execute(statement)
+    interceptor.after(statement.text, result)
+    return result
+  }
+  const executeScript = async (target: Pick<Driver, "executeScript">, text: string) => {
+    interceptor.before(text)
+    await target.executeScript(text)
+  }
   return {
-    execute(statement) {
-      record(statement.text)
-      return driver.execute(statement)
-    },
-    executeScript(text) {
-      record(text)
-      return driver.executeScript(text)
-    },
+    execute: statement => execute(driver, statement),
+    executeScript: text => executeScript(driver, text),
     async acquire() {
       const connection = await driver.acquire()
-      const recorded: Connection = {
-        execute(statement) {
-          record(statement.text)
-          return connection.execute(statement)
-        },
-        executeScript(text) {
-          record(text)
-          return connection.executeScript(text)
-        },
+      const intercepted: Connection = {
+        execute: statement => execute(connection, statement),
+        executeScript: text => executeScript(connection, text),
         release: () => connection.release(),
       }
-      return recorded
+      return intercepted
     },
     close: () => driver.close(),
   }
