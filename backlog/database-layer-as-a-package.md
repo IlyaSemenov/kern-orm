@@ -14,9 +14,6 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 - `script` of the layer compiles its template with the same renderer and rejects a parameter at any depth before the driver gets the script.
 - A [codec](../architecture/types.md) is the contract of the layer: its SQL type and cast type, encoding, decoding, and nullability.
   A `Type` of the ORM is a codec with operators and the factories of columns, and the layer takes it wherever it takes a codec, such as in `get(t.uuid)`.
-- `Type` extends the contract and copies the members of a derivable codec, so that `encode` and `decode` of a type are the functions of its codec, without a call of its own for each value.
-  `defineType` also takes a derivable codec, with its type parameters, so that a codec defined without the ORM becomes a type, which `withOperators` gives operators.
-- `Type` declares `nullable`, `transform`, `of`, `withParameters`, and `with` of its own, which return a `Type` with its operators, rather than sharing their signatures with a derivable codec through a higher-kinded type, which costs 60 to 80% more instantiations for each of their calls.
 - The built-in codecs live in `database/codecs/`, and `kern-orm/types` builds its types on them, adding their operators.
 - Until the package exists, `kern-orm/db` exports the layer and `kern-orm/db/types` its built-in codecs, as `kern-db` and `kern-db/types` will: the root of `kern-orm` exports the functions of the ORM of the same names.
 - A query of SQL text of the layer holds the source of its statement apart from the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.

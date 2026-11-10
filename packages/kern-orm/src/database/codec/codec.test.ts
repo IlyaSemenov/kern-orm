@@ -27,7 +27,9 @@ describe("defineCodec", () => {
 
   it("rejects a codec, which would lose its conversion and nullability", () => {
     // @ts-expect-error A codec is not options of a codec.
-    expect(() => defineCodec(vector.nullable())).toThrow("defineCodec() takes options, not a codec")
+    expect(() => defineCodec(vector.nullable())).toThrow(
+      "defineCodec() takes options, not a codec or a type, which is a codec already",
+    )
   })
 
   it("creates a codec that cannot be changed", () => {

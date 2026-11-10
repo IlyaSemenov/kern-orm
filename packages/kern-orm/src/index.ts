@@ -86,15 +86,14 @@ export {
 } from "./expression/aggregates"
 export type { NumberTypeOperators } from "./type/number"
 export type {
-  AnyType,
-  BaseType,
-  Type,
-  TypeInput,
-  TypeOperators,
-  TypeOptions,
-  TypeOutput,
-  TypeTransform,
-} from "./type/type"
+  BaseDerivableCodec,
+  Codec,
+  CodecOptions,
+  CodecTransform,
+  DerivableCodec,
+  DerivableCodecWithParameters,
+} from "./database/codec/codec"
+export type { AnyType, BaseType, Type, TypeInput, TypeOperators, TypeOutput } from "./type/type"
 export { defineType } from "./type/type"
 export type { CompileOptions } from "./compiler/postgres/compile"
 export type { ResultMode, ResultRows } from "./result/result"

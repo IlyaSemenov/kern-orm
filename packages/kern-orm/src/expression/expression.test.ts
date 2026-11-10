@@ -132,6 +132,46 @@ describe("operators of a type", () => {
     })
   })
 
+  it("receive self of the type they were added to on every type derived from it", () => {
+    const received: unknown[] = []
+    const amount = t.numeric.withOperators({
+      isAbove: (self, limit: number) => {
+        received.push(getType(self))
+        return sql<boolean>`${self} > ${param(self, limit)}`
+      },
+    })
+    const cents = amount.transform({
+      decode: value => Number(value) * 100,
+      encode: (value: number) => value / 100,
+    })
+    const price = defineTable("price", {
+      amount,
+      nullable: amount.nullable(),
+      scaled: amount.with(10, 2),
+      narrowed: amount.of<"1" | "2">(),
+      cents,
+      nullableCents: cents.nullable().with(10, 2),
+    })
+
+    const statement = from(price)
+      .where(columns =>
+        and(
+          columns.amount.isAbove(1),
+          columns.nullable.isAbove(2),
+          columns.scaled.isAbove(3),
+          columns.narrowed.isAbove(4),
+          columns.cents.isAbove(5),
+          columns.nullableCents.isAbove(6),
+        ),
+      )
+      .toSQL()
+
+    // The limits are encoded by `numeric`, not by the types of cents, which would divide them by 100.
+    expect(statement.parameters).toEqual(["1", "2", "3", "4", "5", "6"])
+    expect(received).toHaveLength(6)
+    expect(received.every(type => type === t.numeric)).toBe(true)
+  })
+
   it("may use the names of expression internals and of Object.prototype", () => {
     const tagged = defineType({ sqlType: "text" }).withOperators({
       ...equalityOperators,

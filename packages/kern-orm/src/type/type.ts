@@ -1,4 +1,14 @@
-import type { AcceptedNull, AcceptedValues } from "../database/codec/codec"
+import type {
+  AcceptedNull,
+  AcceptedValues,
+  AnyDerivableCodec,
+  CodecOptions,
+  CodecTransform,
+  codecValues,
+  DerivableCodec,
+  DerivableCodecWithParameters,
+} from "../database/codec/codec"
+import { defineCodec, isCodec } from "../database/codec/codec"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { getType, toExpression, toNode } from "../expression/expression"
 import type {
@@ -10,15 +20,13 @@ import { isGenericOperator } from "../expression/operators/generic"
 import type { NullablePrimaryKey } from "../table/column"
 import { Column } from "../table/column"
 
-declare const typeValues: unique symbol
-
-/** Runtime mark of types, which tells them apart from columns and other objects. */
+/** Runtime mark of types, which tells them apart from columns, codecs without operators, and other objects. */
 const typeBrand = Symbol("kern-orm.type")
 
 /**
  * SQL type: a PostgreSQL type, the JavaScript representation of its values, and the operators of its expressions.
  *
- * A type is shared by columns, parameters, and SQL expressions, so the same value is encoded and decoded identically everywhere.
+ * A type is a codec, shared by columns, parameters, and SQL expressions, so the same value is encoded and decoded identically everywhere.
  * In a table, a type is a column; `columnName`, `primaryKey`, `unique`, and `hasDefault` create a column of the type with these attributes.
  * A type with PostgreSQL type parameters, such as the length of `varchar(255)`, has `with`.
  */
@@ -40,8 +48,9 @@ export interface BaseType<
   Parameters extends unknown[] | undefined,
 > {
   readonly [typeBrand]: true
+  // The members of `Codec`, declared here rather than inherited, which would cost instantiations for each type derived in user code.
   /** Value types for type inference; absent at runtime. */
-  readonly [typeValues]: { output: Output; input: Input; operators: Operators }
+  readonly [codecValues]: { output: Output; input: Input }
   /** SQL type name used in DDL, such as `numeric` or `vector(1536)`. */
   readonly sqlType: string
   /**
@@ -50,13 +59,13 @@ export interface BaseType<
    * It omits type parameters, so that their precision, scale, or length do not constrain a parameter.
    */
   readonly castType: string
+  readonly isNullable: boolean
+  /** Converts a non-null value to its PostgreSQL text representation; it does not read `this`. */
+  readonly encode: (value: NonNullable<Input>) => string
+  /** Converts a non-null PostgreSQL text representation to a value; it does not read `this`. */
+  readonly decode: (text: string) => Exclude<Output, null>
   /** Operators of expressions of this type, in addition to `isNull` or replacing it. */
   readonly operators: Operators
-  readonly isNullable: boolean
-  /** Converts a non-null value to its PostgreSQL text representation. */
-  encode(value: NonNullable<Input>): string
-  /** Converts a non-null PostgreSQL text representation to a value. */
-  decode(text: string): Exclude<Output, null>
   /**
    * Creates a type whose expressions also have `operators`.
    *
@@ -88,7 +97,7 @@ export interface BaseType<
    * `decode` receives the values that this type decodes from values other than `NULL`, including `undefined` that an earlier decoder returns, and returns a value other than `null`; `encode` returns values that this type encodes; `NULL` stays `null` without them.
    */
   transform<NewOutput extends {} | undefined, NewInput>(
-    options: TypeTransform<Exclude<Output, null>, NonNullable<Input>, NewOutput, NewInput>,
+    options: CodecTransform<Exclude<Output, null>, NonNullable<Input>, NewOutput, NewInput>,
   ): Type<
     NewOutput | AcceptedNull<NewInput | Input>,
     NewInput | AcceptedNull<Input>,
@@ -134,81 +143,74 @@ export interface TypeWithParameters<
   with(...parameters: Parameters): Type<Output, Input, Operators, Parameters>
 }
 
-/** Conversion between the values of a type and their new representation. */
-export interface TypeTransform<Output, Input, NewOutput, NewInput> {
-  decode: (value: Output) => NewOutput
-  encode: (value: NewInput) => Input
-}
-
 /** Type of any values, operators, and parameters. */
 // oxlint-disable-next-line typescript/no-explicit-any -- any type regardless of its value types, operators, and parameters
 export type AnyType = Type<any, any, any, any>
 
 /** Values that a type decodes. */
-export type TypeOutput<T extends AnyType> = T[typeof typeValues]["output"]
+export type TypeOutput<T extends AnyType> = T[typeof codecValues]["output"]
 
 /** Values that a type encodes. */
-export type TypeInput<T extends AnyType> = T[typeof typeValues]["input"]
+export type TypeInput<T extends AnyType> = T[typeof codecValues]["input"]
 
 /** Operators of the expressions of a type. */
-export type TypeOperators<T extends AnyType> = T[typeof typeValues]["operators"]
+export type TypeOperators<T extends AnyType> = T["operators"]
 
-/** Type definition. */
-export interface TypeOptions {
-  /** SQL type name, such as `ltree`; `withParameters` adds type parameters to it, and a name with them requires `castType`. */
-  sqlType: string
-  /** SQL type name that `param` casts parameters to when `sqlType` constrains values, such as `bpchar` for `char`, whose length is 1. */
-  castType?: string
-}
-
+// An overload of its own, since TypeScript 6 does not take every type for a derivable codec by its members.
+/** Defines a type from `type`, keeping its values and PostgreSQL type parameters, without its operators. */
+export function defineType<Output, Input, Parameters extends unknown[] | undefined>(
+  // oxlint-disable-next-line typescript/no-explicit-any -- the operators of the type are left out
+  type: Type<Output, Input, any, Parameters>,
+): Type<Output, Input, NoOperators, Parameters>
+/**
+ * Defines a type from `codec`, such as a codec defined without kern-orm, keeping its values and PostgreSQL type parameters.
+ *
+ * Its expressions have only `isNull` until `withOperators` adds operators.
+ */
+export function defineType<Output, Input, Parameters extends unknown[] | undefined>(
+  codec: DerivableCodec<Output, Input, Parameters>,
+): Type<Output, Input, NoOperators, Parameters>
 /**
  * Defines a type whose values are the PostgreSQL text representations as they are.
  *
  * `transform` converts them to other values, such as `number[]` for `vector`.
  */
-export function defineType(options: TypeOptions): Type<string> {
-  // Casting a parameter to type parameters would apply their precision, scale, or length to it.
-  if (options.castType === undefined && options.sqlType.includes("(")) {
-    throw new TypeError(
-      `Define the type parameters of "${options.sqlType}" using withParameters(), or set castType`,
-    )
-  }
-  return createType({
-    sqlType: options.sqlType,
-    castType: options.castType ?? options.sqlType,
-    encode: (value: string) => value,
-    decode: text => text,
-    operators: Object.freeze({}),
-    isNullable: false,
-    formatSqlType: undefined,
-  })
+export function defineType(
+  // A codec has the members of the options, so the options are checked not to be one: a codec typed by its contract alone would otherwise give a type of strings.
+  options: CodecOptions & { readonly [codecValues]?: NotADerivableCodec },
+): Type<string>
+export function defineType(definition: AnyDerivableCodec | CodecOptions): AnyType {
+  const codec = isCodec(definition)
+    ? (definition as AnyDerivableCodec)
+    : defineCodec(definition as CodecOptions)
+  return createType(codec, Object.freeze({}))
 }
 
-/** Tells whether `value` is a type, as opposed to a column or another object. */
+/** Type that the options of `defineType` are checked against when they are a codec typed without the methods that derive codecs, naming the reason. */
+interface NotADerivableCodec {
+  readonly "defineType takes a codec typed as a DerivableCodec, as defineCodec creates it": never
+}
+
+/** Tells whether `value` is a type, as opposed to a column, a codec without operators, or another object. */
 export function isType(value: unknown): value is AnyType {
   return typeof value === "object" && value !== null && typeBrand in value
 }
 
-interface TypeState {
-  readonly sqlType: string
-  readonly castType: string
-  // oxlint-disable-next-line typescript/no-explicit-any -- the caller types the values
-  readonly encode: (value: any) => string
-  readonly decode: (text: string) => unknown
-  readonly operators: OperatorDefinitions
-  readonly isNullable: boolean
-  /** Formats the SQL type name with type parameters; types without parameters have none. */
-  readonly formatSqlType: ((...parameters: never[]) => string) | undefined
-}
+/** Derivable codec that has `with`, of any values and parameters. */
+// oxlint-disable-next-line typescript/no-explicit-any -- any codec regardless of its value types
+type CodecWithAnyParameters = DerivableCodecWithParameters<any, any, never[]>
 
-function createType(state: TypeState): AnyType {
-  const derive = (changes: Partial<TypeState>) => createType({ ...state, ...changes })
-  const { formatSqlType } = state
+/** Creates the type of the values of `codec` whose expressions have `operators`. */
+function createType(codec: AnyDerivableCodec, operators: OperatorDefinitions): AnyType {
+  // Each derivation derives the codec and gives the result the operators of this type.
+  const derive = (derived: AnyDerivableCodec) => createType(derived, operators)
   const type: AnyType = Object.freeze({
-    ...state,
+    // The members of the codec with its brand, by which the database layer takes the type as a codec; `encode` and `decode` are the functions of the codec, without a call of the type for each value.
+    ...codec,
     [typeBrand]: true,
+    operators,
     withOperators(extra: OperatorDefinitions) {
-      const operators: OperatorDefinitions = { ...state.operators }
+      const merged: OperatorDefinitions = { ...operators }
       for (const name of Object.keys(extra)) {
         // `await` and `Promise.resolve` would call such an operator on any expression.
         if (name === "then") {
@@ -216,7 +218,7 @@ function createType(state: TypeState): AnyType {
         }
         const operator = extra[name]!
         // `defineProperty` keeps operator names such as `__proto__` own properties.
-        Object.defineProperty(operators, name, {
+        Object.defineProperty(merged, name, {
           value: isGenericOperator(operator)
             ? operator
             : (self: AnyExpression, ...args: unknown[]) =>
@@ -224,21 +226,17 @@ function createType(state: TypeState): AnyType {
           enumerable: true,
         })
       }
-      return derive({ operators: Object.freeze(operators) })
+      return createType(codec, Object.freeze(merged))
     },
     // oxlint-disable-next-line typescript/no-explicit-any -- the caller types the values
-    transform: ({ decode, encode }: Partial<TypeTransform<any, any, any, any>>) =>
-      derive({
-        encode: encode ? value => state.encode(encode(value)) : state.encode,
-        decode: text => decode!(state.decode(text)),
-      }),
+    transform: (options: CodecTransform<any, any, any, any>) => derive(codec.transform(options)),
     withParameters: (format: (...parameters: never[]) => string) =>
-      derive({ formatSqlType: format }),
-    // Type parameters change only the SQL type name, so the other changes of the type are kept.
-    ...(formatSqlType && {
-      with: (...parameters: never[]) => derive({ sqlType: formatSqlType(...parameters) }),
+      derive(codec.withParameters(format)),
+    ...("with" in codec && {
+      with: (...parameters: never[]) =>
+        derive((codec as CodecWithAnyParameters).with(...parameters)),
     }),
-    nullable: () => derive({ isNullable: true }),
+    nullable: () => derive(codec.nullable()),
     // The narrowed values exist only in TypeScript.
     of: () => type,
     columnName: (name: string) => new Column(type, { name, keyKind: undefined, hasDefault: false }),

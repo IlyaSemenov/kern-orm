@@ -1,6 +1,8 @@
 // Codecs: the contract by which the database layer converts the values of a PostgreSQL type, and the codecs that `defineCodec` creates.
 
 declare const codecValues: unique symbol
+// Exported so that a type declares the members of a codec without extending `Codec`.
+export type { codecValues }
 
 /** Runtime mark of codecs, which tells them apart from other objects with the same members. */
 const codecBrand = Symbol("kern-orm.codec")
@@ -155,7 +157,9 @@ export function defineCodec(
   options: CodecOptions & { readonly [codecValues]?: NotCodecOptions },
 ): DerivableCodec<string> {
   if (isCodec(options)) {
-    throw new TypeError("defineCodec() takes options, not a codec")
+    throw new TypeError(
+      "defineCodec() takes options, not a codec or a type, which is a codec already",
+    )
   }
   // Casting a parameter to type parameters would apply their precision, scale, or length to it.
   if (options.castType === undefined && options.sqlType.includes("(")) {
@@ -173,9 +177,9 @@ export function defineCodec(
   })
 }
 
-/** Type that the options of `defineCodec` are checked against when they are a codec, naming the reason. */
+/** Type that the options of `defineCodec` are checked against when they are a codec or a type, naming the reason. */
 interface NotCodecOptions {
-  readonly "defineCodec takes options, not a codec": never
+  readonly "defineCodec takes options, not a codec or a type, which is a codec already": never
 }
 
 /** Tells whether `value` is a codec, including an object that copies the members of one. */

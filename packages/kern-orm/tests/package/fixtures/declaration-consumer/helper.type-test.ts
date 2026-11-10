@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import type { EmptyRecord, ResultOf, TableKeys } from "kern-orm"
+import type { EmptyRecord, NoOperators, ResultOf, TableKeys, Type } from "kern-orm"
 import { createDatabase, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
@@ -26,6 +26,7 @@ import {
   licenseSchema,
   namesWithFields,
   pageOfForms,
+  plainNumeric,
   renameForm,
   requireLicenseToken,
   schema,
@@ -189,6 +190,15 @@ describe("emitted relation declarations", () => {
     >()
     // @ts-expect-error The schema lacks the relations of the shared schema.
     void database.bind(defineSchema(schema.$tables)).$execute(namesWithFields)
+  })
+})
+
+describe("emitted declarations of a type defined from another type", () => {
+  test("keep its values and type parameters, without its operators", () => {
+    expectTypeOf(plainNumeric).toEqualTypeOf<
+      Type<string, string | number | bigint, NoOperators, [precision: number, scale?: number]>
+    >()
+    expectTypeOf(plainNumeric.with(10, 2)).toEqualTypeOf(plainNumeric)
   })
 })
 

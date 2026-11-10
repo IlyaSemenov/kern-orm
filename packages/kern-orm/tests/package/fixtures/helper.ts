@@ -10,6 +10,7 @@ import {
   defineHelper,
   defineSchema,
   defineTable,
+  defineType,
   from,
   greatest,
   literal,
@@ -75,6 +76,9 @@ export const nameLength = param(t.text, "name").length()
 
 /** Expression of `trim`, whose type names the operators of text; see the file header. */
 export const trimmedName = param(t.text, "name").trim()
+
+/** Type of the values and the type parameters of a built-in type, without its operators; see the file header. */
+export const plainNumeric = defineType(t.numeric)
 
 /** Table with columns of the shared `integer` and `text` types; see the file header. */
 export const counter = defineTable("counter", {

@@ -5,11 +5,13 @@
   - `encode` and `decode` are properties of function types rather than methods, whose parameters TypeScript compares bivariantly, so a codec is not a codec of more accepted values, such as of numbers for `text`.
     They must not read `this`, so that an object that copies them calls the same functions.
   - `defineCodec` creates a `DerivableCodec`, which adds `nullable`, `transform`, `of`, and `withParameters`, and, once `withParameters` gave it a format, `with`; each returns a derivable codec, by the rules of the same methods of a type.
-    It rejects a codec in place of its options, in types and at runtime, since it would take only its SQL type names and lose its conversion and nullability.
+    It rejects a codec or a type in place of its options, in types and at runtime, since it would take only its SQL type names and lose its conversion and nullability.
   - A codec is told from other objects at runtime by its brand, never by its shape.
     Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a codec too.
     A codec that `defineCodec` or a derivable codec creates is frozen.
 - **Type** (`type/`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
+  A type is a codec with operators and the factories of columns.
+  `defineType` creates a type from the options of `defineCodec`, from a derivable codec, such as one defined without the ORM, or from another type; it keeps the values and the type parameters of the codec or the type, without the operators of the type.
   PostgreSQL type parameters, such as `varchar.with(255)`, change only the SQL type name and not the cast type of parameters, so they apply at any point of a chain of type changes.
   `nullable` adds `null` to the values that a type returns and accepts, where it stands for `NULL`, as `coalesce`, object conditions, and the results of operators read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
   A type is nullable when it accepts `null`, which a query always passes as `NULL`: `primaryKey`, the keys of a table, `of`, and `transform` read nullability from the values that a type accepts rather than from those that it returns ([decision](../decisions/types/nullability-of-accepted-values.md)), so an `encode` of `transform` that takes `null`, also as `unknown`, makes the type nullable.
@@ -23,6 +25,10 @@
   - `nullable` adds `null` before or after `of`, which keeps it beside `T`.
   - Generic operators, such as `eq`, `in`, and `lt`, read `T` from the expression, while an operator defined as a function keeps the values of the type it was added to, and a pattern of `like` stays a string.
   - `enum` narrows its values with `of` rather than with an identity `transform`, which would call a decoder for each value.
+  - A type copies the members of its codec with the brand, so the database layer takes a type wherever it takes a codec, and `encode` and `decode` of a type are the functions of the codec, without a call of the type for each value.
+  - `nullable`, `transform`, `withParameters`, and `with` of a type derive its codec and give the result the operators of the type as they are, so an operator defined as a function is wrapped once, by the `withOperators` that added it.
+  - `Type` declares the members of `Codec` and these methods itself rather than inheriting them, which would cost instantiations for each type derived in user code ([decision](../decisions/types/codec-members-of-a-type.md)); type tests check that a type is assignable to `Codec`.
+  - A codec without operators is not a type, which `isType` tells by a brand of its own: `sql`, `param`, `caseWhen`, and `defineTable` reject it in types and at runtime.
 - **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, `sql`/`param` fragments, and functions such as `coalesce` and `caseWhen`.
   Every expression has `isNull`; the operators of its type are added to it and replace `isNull` if one has its name, in types and at runtime alike.
   SQL `=` is a capability of a type given only by the operators of `equalityOperators`, which `orderingOperators` include; these operators are marked, so that another operator named `eq` does not give it, and an array type has them only when its element type has the capability.

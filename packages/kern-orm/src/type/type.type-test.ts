@@ -1,5 +1,9 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
+import type { Codec } from "../database/codec/codec"
+import { defineCodec } from "../database/codec/codec"
+import type { NoOperators } from "../expression/operators/definitions"
+import { orderingOperators } from "../expression/operators/ordering"
 import { param, sql } from "../expression/sql"
 import { from } from "../query/select"
 import type { InsertValues } from "../query/values"
@@ -7,7 +11,122 @@ import type { Selectable } from "../table/table"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import type { TypeInput, TypeOutput } from "./type"
+import type { Type, TypeInput, TypeOutput } from "./type"
+import { defineType } from "./type"
+
+describe("defineType", () => {
+  const vectorCodec = defineCodec({ sqlType: "vector" })
+    .transform({
+      decode: text => JSON.parse(text) as number[],
+      encode: (value: number[]) => JSON.stringify(value),
+    })
+    .withParameters((dimensions: number) => `vector(${dimensions})`)
+
+  test("defines a type of strings without operators", () => {
+    expectTypeOf(defineType({ sqlType: "ltree" })).toEqualTypeOf<Type<string>>()
+  })
+
+  test("keeps the values and the type parameters of a codec", () => {
+    const vector = defineType(vectorCodec)
+    expectTypeOf(vector).toEqualTypeOf<
+      Type<number[], number[], NoOperators, [dimensions: number]>
+    >()
+    expectTypeOf(vector.with(1536)).toEqualTypeOf(vector)
+    // @ts-expect-error Type parameters are typed by the codec.
+    vector.with("1536")
+
+    const nullable = defineType(vectorCodec.nullable())
+    expectTypeOf<TypeInput<typeof nullable>>().toEqualTypeOf<number[] | null>()
+
+    const ltree = defineType(defineCodec({ sqlType: "ltree" }))
+    expectTypeOf(ltree).toEqualTypeOf<Type<string>>()
+    // @ts-expect-error Only a codec with PostgreSQL type parameters gives a type `with`.
+    ltree.with(1)
+  })
+
+  test("keeps the values and the type parameters of a type, without its operators", () => {
+    const plain = defineType(t.numeric.nullable())
+    expectTypeOf(plain).toEqualTypeOf<
+      Type<
+        string | null,
+        string | number | bigint | null,
+        NoOperators,
+        [precision: number, scale?: number]
+      >
+    >()
+    plain.with(10, 2)
+    // @ts-expect-error The type is defined without the operators of `numeric`.
+    sql(plain)`1`.lt(2)
+
+    expectTypeOf(defineType(t.integer)).toEqualTypeOf<Type<number>>()
+  })
+
+  test("rejects a codec typed by its contract alone, which derives no codecs", () => {
+    const contract: Codec<number[]> = vectorCodec
+    // @ts-expect-error The contract of a codec is neither a derivable codec nor options.
+    defineType(contract)
+  })
+
+  test("defines a type that takes operators and makes columns", () => {
+    const vector = defineType(vectorCodec).withOperators(orderingOperators)
+    const document = defineTable("document", {
+      id: t.uuid.primaryKey(),
+      embedding: vector.with(1536),
+    })
+    from(document).where(columns => columns.embedding.eq([1, 2]))
+    expectTypeOf<Selectable<typeof document>["embedding"]>().toEqualTypeOf<number[]>()
+  })
+
+  test("is required for a codec to be a type", () => {
+    // @ts-expect-error A codec is not a type.
+    sql(vectorCodec)
+    // @ts-expect-error A codec is not a type.
+    param(vectorCodec, [1, 2])
+    defineTable("document", {
+      // @ts-expect-error A codec is not a type.
+      embedding: vectorCodec,
+    })
+  })
+})
+
+describe("Codec", () => {
+  test("rejects a type passed as options to defineCodec", () => {
+    // @ts-expect-error A type is a codec already.
+    defineCodec(t.bigint)
+  })
+
+  test("is the contract of a type, whatever its operators and type parameters", () => {
+    expectTypeOf(t.uuid).toExtend<Codec<string>>()
+    expectTypeOf(t.timestamptz.nullable()).toExtend<Codec<string | null, string | Date | null>>()
+    expectTypeOf(t.numeric.with(10, 2)).toExtend<Codec<string, string | number | bigint>>()
+  })
+
+  test("reads the values of a type passed as the contract", () => {
+    function encodeAndDecode<Output, Input>(
+      codec: Codec<Output, Input>,
+      value: NonNullable<Input>,
+    ) {
+      return codec.decode(codec.encode(value))
+    }
+
+    expectTypeOf(encodeAndDecode(t.timestamptz, new Date())).toEqualTypeOf<string>()
+    expectTypeOf(encodeAndDecode(t.integer.nullable(), 1)).toEqualTypeOf<number>()
+    // @ts-expect-error The value is one that the type accepts.
+    encodeAndDecode(t.integer, "1")
+  })
+
+  test("is not the contract of a column", () => {
+    // @ts-expect-error A column is not a codec.
+    const codec: Codec<string> = t.uuid.primaryKey()
+    void codec
+  })
+
+  test("rejects a type whose encoder accepts fewer values", () => {
+    // @ts-expect-error The encoder of `text` takes no number.
+    const wide: Type<string, string | number> = defineType({ sqlType: "text" })
+    void wide
+  })
+})
 
 describe("transform", () => {
   const price = defineTable("price", {
@@ -31,7 +150,13 @@ describe("transform", () => {
   })
 
   test("passes non-null values to `decode`", () => {
-    // @ts-expect-error `decode` receives non-null values of the column type.
+    t.text.nullable().transform({
+      decode: value => {
+        expectTypeOf(value).toEqualTypeOf<string>()
+        return value
+      },
+    })
+    // @ts-expect-error `decode` receives the values of the type.
     t.text.nullable().transform({ decode: (value: number) => value })
   })
 
