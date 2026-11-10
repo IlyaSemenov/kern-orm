@@ -1,10 +1,11 @@
-// Sessions: levels that run statements on a reserved connection outside a transaction, and how their connection returns to the pool without their settings.
+// Sessions: levels that run statements on a reserved connection outside a transaction, and how their connection returns to the pool without their advisory locks and settings.
 
-import type { Connection } from "../driver"
+import type { Connection, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 import { ConnectionError, QueryError } from "../driver-error"
 import { isQueryError } from "../error-condition"
 
+import { createUnlockStatement } from "./advisory-lock"
 import { ConnectionWatch } from "./connection-loss"
 import type { TransactionLevel } from "./level"
 import type { ReleaseErrorHandler } from "./release"
@@ -34,36 +35,82 @@ export function createSessionLevel(connection: Connection): TransactionLevel {
     endedBy: undefined,
     restore: undefined,
     isolation: undefined,
+    locks: undefined,
   }
 }
 
 /**
- * Restores the settings that an ended session changed and returns its connection to the driver.
+ * Releases the advisory locks that an ended session took, restores the settings that it changed, and returns its connection to the driver.
  *
- * A connection whose settings fail to restore is left in a transaction, so that the driver closes it rather than returning it to the pool with them.
+ * A connection whose locks fail to release or whose settings fail to restore is left in a transaction, so that the driver closes it rather than returning it to the pool with them, and so is one whose statement of `tryLock` failed, which may hold a lock that the session does not know of.
  * The failure does not change the result or the error of the session, which is decided before.
- * It goes to `onReleaseError`, or to `console.error` without one, unless it is a `ConnectionError`, which a lost connection gives, with nothing to restore.
+ * A failed release of the locks or restore of the settings goes to `onReleaseError`, or to `console.error` without one, unless it is a `ConnectionError`, which a lost connection gives, with nothing to restore.
  */
 export async function releaseSession(
   level: TransactionLevel,
   onReleaseError: ReleaseErrorHandler | undefined,
 ): Promise<void> {
-  const { connection, restore } = level
-  if (restore) {
-    try {
-      // Also after a `ConnectionError`: a client that refused a statement without sending it keeps the connection, which the driver then returns to the pool.
-      await connection.execute(restore)
-    } catch (error) {
-      if (!(error instanceof ConnectionError)) {
-        reportReleaseError(
-          new Error("Restoring the settings of a session failed", { cause: error }),
-          onReleaseError,
-        )
-      }
-      await leaveInTransaction(connection)
+  if (!(await restoreSession(level, onReleaseError))) {
+    await leaveInTransaction(level.connection)
+  }
+  await releaseConnection(level.connection, onReleaseError)
+}
+
+/**
+ * Releases the advisory locks of an ended session and then restores its settings, and tells whether its connection can return to the pool.
+ *
+ * It sends them also after a `ConnectionError`: a client that refused a statement without sending it keeps the connection, which the driver then returns to the pool.
+ */
+async function restoreSession(
+  level: TransactionLevel,
+  onReleaseError: ReleaseErrorHandler | undefined,
+): Promise<boolean> {
+  const { connection, locks, restore } = level
+  if (locks) {
+    const keys = await locks.settle()
+    if (!keys) {
+      // The failure is not reported: its error has rejected the call of `tryLock`.
+      return false
+    }
+    if (
+      keys.length > 0 &&
+      !(await executeRestoring(
+        connection,
+        createUnlockStatement(keys),
+        "Releasing the advisory locks of a session failed",
+        onReleaseError,
+      ))
+    ) {
+      return false
     }
   }
-  await releaseConnection(connection, onReleaseError)
+  return (
+    !restore ||
+    (await executeRestoring(
+      connection,
+      restore,
+      "Restoring the settings of a session failed",
+      onReleaseError,
+    ))
+  )
+}
+
+/** Executes a statement that restores the state of the connection of an ended session, and tells whether it completed, reporting a failure other than a `ConnectionError` with `message`. */
+async function executeRestoring(
+  connection: Connection,
+  statement: SqlStatement,
+  message: string,
+  onReleaseError: ReleaseErrorHandler | undefined,
+): Promise<boolean> {
+  try {
+    await connection.execute(statement)
+    return true
+  } catch (error) {
+    if (!(error instanceof ConnectionError)) {
+      reportReleaseError(new Error(message, { cause: error }), onReleaseError)
+    }
+    return false
+  }
 }
 
 /**

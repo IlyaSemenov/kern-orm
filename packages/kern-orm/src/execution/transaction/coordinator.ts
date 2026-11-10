@@ -1,4 +1,4 @@
-// Ambient transactions and sessions of a database: routing of statements to the connection of the current level, transactions, sessions, test transactions, and closing.
+// Ambient transactions and sessions of a database: routing of statements to the connection of the current level, transactions, sessions, advisory locks, test transactions, and closing.
 
 import { AsyncLocalStorage } from "node:async_hooks"
 
@@ -13,6 +13,7 @@ import type {
 } from "../testing"
 
 import { acquireUnlessAborted } from "./abort"
+import { createLockStatement, createTryLockStatement, isTaken, SessionLocks } from "./advisory-lock"
 import { TransactionConnectionError } from "./connection-loss"
 import { TestFixtureStack } from "./fixture-stack"
 import type { LevelOptions, Outcome, Rejection, TransactionLevel } from "./level"
@@ -177,6 +178,46 @@ export class TransactionCoordinator {
       )
     }
     return this.#runSession(callback, getLevelSettings(options))
+  }
+
+  /**
+   * Takes the advisory lock of `key` until the transaction of `transaction` ends, waiting while another transaction or session holds it.
+   *
+   * It rejects without a statement outside such a transaction, where the lock would end with its statement, and in a session outside its transactions, where the waiting statement keeps a snapshot that `CREATE INDEX CONCURRENTLY` in the session that holds the lock waits for.
+   */
+  async lock(key: string): Promise<void> {
+    const level = this.#storage.getStore()
+    if (!level?.inTransaction) {
+      throw new Error(
+        level?.session
+          ? "Cannot wait for an advisory lock in a session outside a transaction: the waiting statement would keep a snapshot that CREATE INDEX CONCURRENTLY in the session holding the lock waits for; take it with tryLock, which does not wait"
+          : "Cannot take an advisory lock outside a transaction, where it would end with its statement; a test transaction alone does not count",
+      )
+    }
+    await this.execute(createLockStatement(key))
+  }
+
+  /**
+   * Takes the advisory lock of `key` unless another transaction or session holds it, and tells whether it took it: until the transaction of `transaction` ends, or in a session outside its transactions, until the session ends.
+   *
+   * It rejects without a statement outside both, where the lock would end with its statement.
+   * A session takes a key that it holds without a statement, and releases its locks when it ends.
+   */
+  async tryLock(key: string): Promise<boolean> {
+    const level = this.#storage.getStore()
+    if (level?.inTransaction) {
+      return isTaken(await this.execute(createTryLockStatement(key)))
+    }
+    if (!level?.session) {
+      throw new Error(
+        "Cannot take an advisory lock outside a transaction or a session, where it would end with its statement; a test transaction alone does not count",
+      )
+    }
+    const unavailable = createUnavailableError(level, "take an advisory lock")
+    if (unavailable) {
+      throw unavailable
+    }
+    return (level.locks ??= new SessionLocks()).take(level.connection, key)
   }
 
   /**

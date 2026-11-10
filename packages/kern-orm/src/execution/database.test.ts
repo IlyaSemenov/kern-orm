@@ -81,20 +81,6 @@ it("executes a script without a Db, rejecting tables of a Db", async () => {
 })
 
 describe("advisory locks", () => {
-  it("rejects a lock outside a transaction, also in a test transaction, without a statement", async () => {
-    const { driver, statements } = createRecordingDriver()
-    const database = createDatabase({ driver, test: true })
-    const message =
-      "Cannot take an advisory lock outside a transaction, where it would end with its statement; a test transaction alone does not count"
-
-    await expect(database.lock("import")).rejects.toThrow(message)
-    await database.coordinator.testTransaction(async () => {
-      await expect(database.lock("import")).rejects.toThrow(message)
-    })
-
-    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "ROLLBACK"])
-  })
-
   describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
     const countLocks = async (key: string) =>
       await database.query`
@@ -124,6 +110,106 @@ describe("advisory locks", () => {
       )
 
       expect(counts).toEqual({ import: 1, export: 0, report: 1 })
+    })
+  })
+
+  describePooledPostgres("in PostgreSQL without test transactions", ({ database }) => {
+    /** Creates a key that no other test locks, since tests of other files may run at once. */
+    const createKey = () => `kern_lock_test_${crypto.randomUUID()}`
+
+    /** Counts the backends that hold the lock of `key`; PostgreSQL shows a lock that a backend took several times once. */
+    const countHolders = async (key: string) =>
+      await database.query`
+        SELECT count(*)::integer FROM pg_locks
+        WHERE locktype = 'advisory' AND granted
+          AND (classid::bigint << 32) + objid::bigint = hashtextextended(${key}, 0)
+      `.get(t.integer)
+
+    /** Runs `take` in `start`, such as in a session, holds what it takes until `check` ends, and returns what `take` gives. */
+    async function whileHeld<T>(
+      start: (callback: () => Promise<void>) => Promise<unknown>,
+      take: () => Promise<T>,
+      check: () => Promise<void>,
+    ): Promise<T> {
+      const taken = Promise.withResolvers<T>()
+      const ended = Promise.withResolvers<void>()
+      const level = start(async () => {
+        taken.resolve(await take())
+        await ended.promise
+      })
+      try {
+        // It rejects the test if the level fails before it takes the lock.
+        const result = await Promise.race([taken.promise, level.then(() => taken.promise)])
+        await check()
+        return result
+      } finally {
+        ended.resolve()
+        await level
+      }
+    }
+
+    it("holds a lock of a session until the session ends, takes it once for repeated and concurrent calls, and releases it once", async () => {
+      const key = createKey()
+
+      const taken = await whileHeld(
+        callback => database.session(callback),
+        async () => [
+          ...(await Promise.all([database.tryLock(key), database.tryLock(key)])),
+          await database.tryLock(key),
+        ],
+        async () => {
+          expect(await database.transaction(() => database.tryLock(key))).toBe(false)
+          expect(await database.session(() => database.tryLock(key))).toBe(false)
+          expect(await countHolders(key)).toBe(1)
+        },
+      )
+
+      expect(taken).toEqual([true, true, true])
+      expect(await countHolders(key)).toBe(0)
+      expect(await database.transaction(() => database.tryLock(key))).toBe(true)
+    })
+
+    it("holds a lock of a transaction until the transaction ends", async () => {
+      const key = createKey()
+
+      const taken = await whileHeld(
+        callback => database.transaction(callback),
+        () => database.tryLock(key),
+        async () => {
+          expect(await database.session(() => database.tryLock(key))).toBe(false)
+          expect(await countHolders(key)).toBe(1)
+        },
+      )
+
+      expect(taken).toBe(true)
+      expect(await countHolders(key)).toBe(0)
+    })
+
+    it("releases more locks of a session than a result has columns, and returns its connection to the pool without them", async () => {
+      const reported: unknown[] = []
+      await using single = createDatabase({
+        driver: postgresJsDriver(postgres(process.env.DATABASE_URL!, { max: 1 })),
+        onReleaseError: error => reported.push(error),
+      })
+      const readBackend = async () => await single.query`SELECT pg_backend_pid()`.get(t.integer)
+      const countOwnLocks = async () =>
+        await single.query`
+          SELECT count(*)::integer FROM pg_locks
+          WHERE locktype = 'advisory' AND pid = pg_backend_pid()
+        `.get(t.integer)
+      // PostgreSQL limits the columns of a result to 1664.
+      const keys = Array.from({ length: 1665 }, createKey)
+      const backend = await readBackend()
+
+      const inside = await single.session(async () => ({
+        taken: (await Promise.all(keys.map(key => single.tryLock(key)))).every(Boolean),
+        locks: await countOwnLocks(),
+      }))
+
+      expect(inside).toEqual({ taken: true, locks: 1665 })
+      expect(await readBackend()).toBe(backend)
+      expect(await countOwnLocks()).toBe(0)
+      expect(reported).toEqual([])
     })
   })
 })

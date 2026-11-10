@@ -164,7 +164,7 @@ A query with [`distinct`](./queries/selecting#distinct-rows), [`distinctOn`](./q
 
 ## Advisory locks
 
-To keep processes from running the same work at once, such as an import of one file, take a lock of a key in a transaction with `$lock`: the call waits while another transaction holds the lock of the key, and the lock is released when the transaction ends.
+To keep processes from running the same work at once, such as an import of one file, take a lock of a key in a transaction with `$lock`: the call waits while another transaction or session holds the lock of the key, and the lock is released when the transaction ends.
 
 ```ts
 await db.$transaction(async () => {
@@ -175,7 +175,31 @@ await db.$transaction(async () => {
 
 A [nested transaction](#nested-transactions) that rolls back releases the locks it took.
 
-Call `$lock` in `$transaction` or `$ensureTransaction`, also in code under test: outside a transaction, the lock would end with its own statement, and a [test transaction](./testing) alone does not count as one.
+To skip the work while another process does it, rather than wait, take the lock with `$tryLock`, which returns whether it took the lock:
+
+```ts
+await db.$transaction(async () => {
+  if (!(await db.$tryLock("cleanup"))) {
+    return
+  }
+  // ...
+})
+```
+
+To hold a lock until the transaction ends, call `$lock` and `$tryLock` in `$transaction` or `$ensureTransaction`, also in code under test: outside a transaction, the lock would end with its own statement, and a [test transaction](./testing) alone does not count as one.
+
+In a [session](#statements-outside-a-transaction), outside its transactions, `$tryLock` holds the lock until the session ends, such as to keep the instances of an application from running the same maintenance at once:
+
+```ts
+await db.$session(async () => {
+  if (await db.$tryLock("form-maintenance")) {
+    await db.$query`VACUUM ANALYZE ${db.form}`
+  }
+})
+```
+
+A session cannot wait for a lock with `$lock`, since a statement such as `CREATE INDEX CONCURRENTLY` in the session that holds the lock would wait for the statement that waits for the lock.
+To wait in a session, call `$tryLock` again after a pause until it takes the lock.
 
 ## Isolation level
 

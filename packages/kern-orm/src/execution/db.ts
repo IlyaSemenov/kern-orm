@@ -154,12 +154,19 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    */
   $session<Result>(callback: () => Promise<Result>, options?: SessionOptions): Promise<Result>
   /**
-   * Takes the advisory lock of `key` until the transaction of the database ends, waiting while another transaction holds it, such as to keep processes from running the same job at once.
+   * Takes the advisory lock of `key` until the transaction of the database ends, waiting while another transaction or session holds it, such as to keep processes from running the same job at once.
    *
-   * It rejects where `$isInTransaction()` is `false`, since outside a transaction the lock would end with its statement.
+   * It rejects where `$isInTransaction()` is `false`, since outside a transaction the lock would end with its statement; in a session, take the lock with `$tryLock`, which does not wait.
    * A nested transaction that rolls back releases the locks it took.
    */
   $lock(key: string): Promise<void>
+  /**
+   * Takes the advisory lock of `key` unless another transaction or session holds it, and tells whether it took it, such as to skip a job that another process is running.
+   *
+   * In a transaction of the database, it holds the lock until the transaction ends, as `$lock` does; in a session outside its transactions, until the session ends.
+   * It rejects outside both, since the lock would end with its statement; a test transaction alone does not count.
+   */
+  $tryLock(key: string): Promise<boolean>
 }
 
 /**
@@ -237,6 +244,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     $isInTransactionBlock: () => database.isInTransactionBlock(),
     $session: (callback, options) => database.session(callback, options),
     $lock: key => database.lock(key),
+    $tryLock: key => database.tryLock(key),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
   const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>

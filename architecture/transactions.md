@@ -4,7 +4,8 @@
   `bind` binds schemas to it, and all schemas bound to the same database share its transactions.
 - **Transaction coordinator** (`execution/transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
 - **Transaction level** (`execution/transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `execution/transaction/settings.ts`.
-- **Session** (`execution/transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions).
+- **Session** (`execution/transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).
+- **Advisory locks** (`execution/transaction/advisory-lock.ts`): the statements of [locks](#locks) of string keys, and the locks that a session holds until it ends.
 
 ## Levels
 
@@ -61,17 +62,23 @@
   It sets the search path for the session of PostgreSQL, with `set_config(..., false)`, since it has no transaction that would end the setting, after it reads the value it replaces, and restores that value before its connection returns to the driver.
 - After a `ConnectionError` of a statement or a script on its connection, also of its transactions, a session rejects its later statements and transactions: the connection may be lost, and a statement that ran on a new one would run without the settings of the session.
   A [driver](drivers.md) rejects every statement on a reserved connection that is lost.
-- A connection whose settings fail to restore must not return to the pool with them, and `release` of a connection takes no argument ([decision](../decisions/drivers/release-by-driver.md)), so the session leaves it in a transaction, which a driver closes on release.
+- A connection whose settings fail to restore, or whose [advisory locks](#locks) fail to release, must not return to the pool with them, and `release` of a connection takes no argument ([decision](../decisions/drivers/release-by-driver.md)), so the session leaves it in a transaction, which a driver closes on release.
   - It sends `BEGIN`, again while PostgreSQL rejects it with a `QueryError` that may leave the connection idle, such as when a cancel request hits the statement, and releases the connection only after that.
   - A `BEGIN` that completes, one that a failed transaction rejects, and one that rejects with `ConnectionError` end it, since a driver closes each such connection on release.
-  - A client that refuses, without sending them, both the statement that restores the settings and `BEGIN` keeps an idle connection, which returns to the pool with the settings: kern-orm cannot tell such a `ConnectionError` from a lost connection, on which sending `BEGIN` again would never end.
+  - A client that refuses, without sending them, both the statement that releases the locks or restores the settings and `BEGIN` keeps an idle connection, which returns to the pool with them: kern-orm cannot tell such a `ConnectionError` from a lost connection, on which sending `BEGIN` again would never end.
   - The failure does not change the result or the error of the session, and goes to the handler of [failed releases](#levels) unless it is a `ConnectionError`, which a lost connection gives, with nothing to restore.
 
 ## Locks
 
-- `lock` of a `Database` and `$lock` of a `Db` take `pg_advisory_xact_lock` of `hashtextextended` of a string key with seed `0` on the connection of the current level.
-  They reject without a statement where `isInTransaction` is `false`, since a lock taken outside a transaction ends with its statement and one taken in a test transaction would not be held in production.
+- `lock` of a `Database` and `$lock` of a `Db` take `pg_advisory_xact_lock` of `hashtextextended` of a string key with seed `0` on the connection of the current level, and `tryLock` and `$tryLock` take `pg_try_advisory_xact_lock` of the same key and resolve with whether they took it.
+  They reject without a statement where `isInTransaction` is `false`, since a lock taken outside a transaction ends with its statement and one taken in a test transaction would not be held in production; `tryLock` takes a lock of the session in a [session](#sessions) outside its transactions instead.
 - PostgreSQL holds the lock until the transaction ends and releases it at `ROLLBACK TO` of a savepoint taken before it, so a nested level that rolls back releases its locks and one that is released keeps them.
+- In a session outside its transactions, `tryLock` takes `pg_try_advisory_lock` of the key, which PostgreSQL holds until the session of PostgreSQL ends, or until `pg_advisory_unlock` releases it as many times as it was taken.
+  - The session records the attempt of each key that it holds or is taking, and returns it to a later `tryLock` of the key without a statement, so that it takes each lock once.
+  - Before it restores its settings, the session awaits the attempts still running and releases its locks with `pg_advisory_unlock` of each key rather than `pg_advisory_unlock_all`, so that it leaves the locks that the SQL of its callback took.
+    It releases them in one statement, in a row of each key of an array parameter, since PostgreSQL limits the columns of a result to 1664.
+  - After a failed statement of `tryLock`, the session leaves its connection in a transaction instead, as after a failed release: PostgreSQL keeps a lock of a session that it took before the statement failed, so the connection may hold a lock that the session does not know of.
+- `lock` rejects in a session outside its transactions too, since a statement that waits for a lock keeps a snapshot, which `CREATE INDEX CONCURRENTLY` in the session that holds the lock waits for.
 - The [migrator](migrations.md#applying-and-rolling-back) locks its target with `lock`.
 - A query that locks rows rejects under the same condition, as its [row locks](queries.md#row-locks) describe.
 

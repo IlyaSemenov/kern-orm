@@ -79,7 +79,7 @@ The error that the transaction rejects with otherwise, such as the error of its 
 
 ## Failures to release a connection
 
-To log a failure to release the connection of a transaction or a session, including a failure to restore the search path of a session, pass `onReleaseError` to `createDatabase`:
+To log a failure to release the connection of a transaction or a session, including a failure to release the advisory locks or restore the search path of a session, pass `onReleaseError` to `createDatabase`:
 
 ```ts
 export const database = createDatabase({

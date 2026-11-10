@@ -7,6 +7,7 @@ import type { Connection, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 
 import { settleUnlessAborted } from "./abort"
+import type { SessionLocks } from "./advisory-lock"
 import { ConnectionWatch } from "./connection-loss"
 import type { LevelSetting } from "./settings"
 import { applySettings } from "./settings"
@@ -49,6 +50,8 @@ export interface TransactionLevel {
   restore: SqlStatement | undefined
   /** Isolation level of the transaction, such as `read committed`, when it is known: given to its `BEGIN`, or read for a nested level. */
   isolation: string | undefined
+  /** Advisory locks that a session took with `tryLock`, which it releases before its connection returns to the driver; `undefined` for every other level and for a session before its first `tryLock`. */
+  locks: SessionLocks | undefined
 }
 
 /** Options of starting a level; the options of a test transaction and of a test fixture pass as they are, so their fields keep these names. */
@@ -131,6 +134,7 @@ export function createLevel(
     endedBy: undefined,
     restore: undefined,
     isolation: enclosing ? enclosing.isolation : isolation,
+    locks: undefined,
   }
 }
 

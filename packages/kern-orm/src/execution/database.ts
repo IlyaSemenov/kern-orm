@@ -6,7 +6,6 @@ import { defineSchema } from "../schema/schema"
 import type { AnyDb, BindOptions, Db } from "./db"
 import { bindSchema } from "./db"
 import type { Driver, DriverResult, SqlStatement } from "./driver"
-import { createStatement } from "./driver"
 import { TransactionCoordinator } from "./transaction/coordinator"
 
 /**
@@ -73,12 +72,19 @@ export interface Database extends AsyncDisposable {
    */
   session<T>(callback: () => Promise<T>, options?: SessionOptions): Promise<T>
   /**
-   * Takes the advisory lock of `key` until the transaction ends, waiting while another transaction holds it, such as to keep processes from running the same job at once.
+   * Takes the advisory lock of `key` until the transaction ends, waiting while another transaction or session holds it, such as to keep processes from running the same job at once.
    *
-   * It rejects where `isInTransaction()` is `false`, since outside a transaction the lock would end with its statement.
+   * It rejects where `isInTransaction()` is `false`, since outside a transaction the lock would end with its statement; in a session, take the lock with `tryLock`, which does not wait.
    * A nested transaction that rolls back releases the locks it took.
    */
   lock(key: string): Promise<void>
+  /**
+   * Takes the advisory lock of `key` unless another transaction or session holds it, and tells whether it took it, such as to skip a job that another process is running.
+   *
+   * In a transaction, it holds the lock until the transaction ends, as `lock` does; in a session outside its transactions, until the session ends.
+   * It rejects outside both, since the lock would end with its statement; a test transaction alone does not count.
+   */
+  tryLock(key: string): Promise<boolean>
   /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions and sessions end. */
   close(): Promise<void>
 }
@@ -118,7 +124,7 @@ export interface DatabaseOptions {
   /** Rejects queries and transactions outside the test transactions and the seeds of test fixtures of `kern-orm/testing`, so that every statement of the tests runs in a transaction that rolls back. */
   test?: boolean
   /**
-   * Receives a failure to release the connection of a transaction or a session, or to restore the settings of a session, such as to log it; the failure does not change the result or error of the transaction or session.
+   * Receives a failure to release the connection of a transaction or a session, or to release the advisory locks or restore the settings of a session, such as to log it; the failure does not change the result or error of the transaction or session.
    *
    * Without it, the failure goes to `console.error`.
    */
@@ -145,21 +151,10 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     isInTransaction: () => coordinator.isInTransaction(),
     isInTransactionBlock: () => coordinator.isInTransactionBlock(),
     session: (callback, options) => coordinator.session(callback, options),
-    async lock(key) {
-      if (!coordinator.isInTransaction()) {
-        throw new Error(
-          "Cannot take an advisory lock outside a transaction, where it would end with its statement; a test transaction alone does not count",
-        )
-      }
-      await coordinator.execute(createLockStatement(key))
-    },
+    lock: key => coordinator.lock(key),
+    tryLock: key => coordinator.tryLock(key),
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }
   return database
-}
-
-/** Creates the statement that takes a transaction-level advisory lock on a 64-bit hash of `key`. */
-function createLockStatement(key: string): SqlStatement {
-  return createStatement("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key])
 }

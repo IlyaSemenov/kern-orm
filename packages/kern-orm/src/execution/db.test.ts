@@ -219,14 +219,18 @@ it("runs a session of the database with $session and tells a transaction block w
   ])
 })
 
-it("takes an advisory lock in a transaction of the database with $lock", async () => {
+it("takes advisory locks in a transaction of the database with $lock and $tryLock", async () => {
   const { db, statements } = connectRecorded()
 
-  await db.$transaction(() => db.$lock("import"))
+  await db.$transaction(async () => {
+    await db.$lock("import")
+    await db.$tryLock("export")
+  })
 
   expect(statements).toMatchObject([
     { text: "BEGIN" },
     { text: "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", parameters: ["import"] },
+    { text: "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0))", parameters: ["export"] },
     { text: "COMMIT" },
   ])
 })

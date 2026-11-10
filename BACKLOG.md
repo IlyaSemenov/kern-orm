@@ -161,9 +161,9 @@ Orchid ORM 1.78.47 gives them as `columns` of its `QueryError`, which it reads f
 A type of the fields that a helper selects, such as of the records that a function returns from a query of the helper: `ResultOf` takes a query, while the fields are `E["fields"]` of `Helper<T, E, A>`, which `infer` reads from `typeof helper`.
 Decide between `ResultOf` of a helper and a type of its own.
 
-## Non-waiting advisory locks and integer keys
+## Integer keys of advisory locks
 
-A variant of [`$lock`](architecture/transactions.md#locks) that returns whether it took the lock instead of waiting, `pg_try_advisory_xact_lock`, such as for a job that only one process runs and others skip, and integer keys of PostgreSQL beside string keys, such as to share locks with code outside kern-orm.
+Integer keys of PostgreSQL beside the string keys of [`$lock` and `$tryLock`](architecture/transactions.md#locks), such as to share locks with code outside kern-orm.
 
 ## Migrating every tenant
 
