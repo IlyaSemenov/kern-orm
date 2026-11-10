@@ -55,7 +55,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 
 - Tables: `createTable(table, columns, { constraints })`, `dropTable` with the same arguments, and `renameTable(from, to)`.
 - Columns: `addColumn(table, column, definition)`, `dropColumn` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
-- Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, and `where`.
+- Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](#migrations-outside-a-transaction).
 - Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
 - Extensions: `createExtension(name, { schema })`.
 
@@ -180,26 +180,32 @@ To name a table or a column known only at runtime in `query`, such as in a loop 
 
 ## Migrations outside a transaction
 
-To change a big table that your application keeps writing to, such as to index it with `CREATE INDEX CONCURRENTLY`, which does not block writes, run the change outside a transaction: PostgreSQL rejects such statements in a transaction.
-Give the step `outsideTransaction` with the changes to run there instead of `up` and `down`:
+To index a big table that your application keeps writing to, pass `concurrently` to `createIndex`: it builds the index with `CREATE INDEX CONCURRENTLY`, which does not block writes, outside a transaction, where PostgreSQL requires it.
 
 ```ts [src/migrations/0007_index_job_run_at.ts]
-import { defineMigration } from "@kern-orm/migrations"
+import { createIndex, defineMigration } from "@kern-orm/migrations"
 
-export default defineMigration({
-  up: "CREATE INDEX job_run_at_idx ON job (run_at)",
-  down: "DROP INDEX job_run_at_idx",
-  outsideTransaction: {
-    up: async database => {
-      // Checks what an earlier attempt left, and runs CREATE INDEX CONCURRENTLY.
-    },
-    down: "DROP INDEX CONCURRENTLY IF EXISTS job_run_at_idx",
-  },
-})
+export default defineMigration(createIndex("job", ["run_at"], { concurrently: true }))
 ```
 
-`migrate` commits the migrations before such a migration, runs its `outsideTransaction.up` outside a transaction, and then applies the migrations after it in a transaction of their own.
+Rolling back drops the index with `DROP INDEX CONCURRENTLY`; `dropIndex` takes `concurrently` too.
+
+`migrate` commits the migrations before such a migration, builds the index outside a transaction, and then applies the migrations after it in a transaction of their own.
+Export a step that runs outside a transaction, such as this one, as the only step of its migration, and put other changes, such as creating the table that it indexes, in migrations of their own.
+
+When the build fails, such as of a unique index on duplicate values, fix the cause and call `migrate` again: it drops the index that is not valid, which the failed build leaves, and builds it again.
+
+Inside a transaction, such as the one that [creates a tenant](#tenants), a [test transaction](./testing), or [`verifyMigrations`](#test-migrations), `migrate` builds the index as without `concurrently`, which is quick on the empty tables of a new schema.
+Migrate existing schemas outside a transaction, such as tenants at their first request when your requests run in transactions: inside one, `migrate` builds the index while it blocks writes to the table.
+
+`concurrently` cannot index a partitioned table, which PostgreSQL indexes concurrently only partition by partition: index it with a [step of your own](#your-own-changes-outside-a-transaction).
+
+### Your own changes outside a transaction
+
+For another change that PostgreSQL rejects in a transaction, give a step `outsideTransaction` with the changes to run there instead of `up` and `down`.
 Rolling back runs `outsideTransaction.down` the same way; a step without it rolls back with `down` in a transaction.
+
+Keep `up` and `down` of the step, and make them build the same objects, with the same names, as the changes outside a transaction: `migrate` runs them inside a transaction.
 
 Send each statement that PostgreSQL rejects in a transaction in a call of its own: PostgreSQL runs a script of several statements in one transaction.
 
@@ -272,11 +278,6 @@ export default defineMigration({
 ```
 
 :::
-
-Keep `up` and `down` of the step, and make them build the same objects, with the same names, as the changes outside a transaction: inside a transaction, such as the one that [creates a tenant](#tenants), a [test transaction](./testing), or [`verifyMigrations`](#test-migrations), `migrate` runs them instead, which is quick on the empty tables of a new schema.
-Migrate existing schemas outside a transaction, such as tenants at their first request when your requests run in transactions: inside one, `up` builds the index while it blocks writes to the table.
-
-Export a step with `outsideTransaction` as the only step of its migration, and put other changes, such as creating the table that it indexes, in migrations of their own.
 
 ## List the migrations
 

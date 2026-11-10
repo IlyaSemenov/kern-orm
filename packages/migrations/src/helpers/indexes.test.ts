@@ -1,9 +1,14 @@
 import { describe, expect, it } from "bun:test"
 
-import { describePostgres } from "../../testing/postgres"
+import type { Database } from "kern-orm"
+import * as t from "kern-orm/types"
+
+import { describePooledPostgres, describePostgres } from "../../testing/postgres"
+import type { MigrationChange } from "../migration"
+import { runChange } from "../migration"
 
 import { createIndex, dropIndex } from "./indexes"
-import { applyStep } from "./testing"
+import { applyStep, describeHelperSchema, inHelperSession } from "./testing"
 
 describe("createIndex", () => {
   it("creates an index of the name that PostgreSQL gives it, and drops it", () => {
@@ -37,6 +42,13 @@ describe("createIndex", () => {
     expect(createIndex("form", ["lower(name)"], { name: "form_name_idx" })).toEqual({
       up: 'CREATE INDEX "form_name_idx" ON "form" (lower(name))',
       down: 'DROP INDEX "form_name_idx"',
+    })
+  })
+
+  it("adds changes outside a transaction with concurrently, keeping up and down", () => {
+    expect(createIndex("form_field", ["form_id"], { unique: true, concurrently: true })).toEqual({
+      ...createIndex("form_field", ["form_id"], { unique: true }),
+      outsideTransaction: { up: expect.any(Function), down: expect.any(Function) },
     })
   })
 
@@ -83,6 +95,13 @@ describe("dropIndex", () => {
     expect(dropIndex("form_field", ["form_id"], { where: "deleted_at IS NULL" })).toEqual({
       up: 'DROP INDEX "form_field_form_id_idx"',
       down: 'CREATE INDEX "form_field_form_id_idx" ON "form_field" (form_id) WHERE deleted_at IS NULL',
+    })
+  })
+
+  it("adds changes outside a transaction with concurrently, keeping up and down", () => {
+    expect(dropIndex("form_field", ["form_id"], { concurrently: true })).toEqual({
+      ...dropIndex("form_field", ["form_id"]),
+      outsideTransaction: { up: expect.any(Function), down: expect.any(Function) },
     })
   })
 })
@@ -133,3 +152,226 @@ describePostgres("index helpers in PostgreSQL", ({ database, testTransaction }) 
     expect(result.down).toEqual(result.before)
   })
 })
+
+describePooledPostgres(
+  "index helpers outside a transaction",
+  ({ database, recordStatements, notices }) => {
+    const createFormField =
+      "CREATE TABLE form_field (form_id integer, position integer, label text, deleted_at timestamptz)"
+    // Values that fail a unique index of `form_id`.
+    const createDuplicates = `${createFormField}; INSERT INTO form_field (form_id, position) VALUES (1, 1), (1, 2)`
+
+    /** Runs `change` and returns the statements of its changes to the schema, without its reads of the catalog. */
+    async function recordChanges(change: MigrationChange): Promise<string[]> {
+      const statements = await recordStatements(() => runChange(database, change))
+      return statements.filter(text => !text.includes("pg_catalog.to_regclass("))
+    }
+
+    it("createIndex with concurrently builds the index that up builds, and its rollback drops it", async () => {
+      const step = createIndex("form_field", ["form_id", "position DESC"], {
+        unique: true,
+        include: ["label"],
+        where: "deleted_at IS NULL",
+        concurrently: true,
+      })
+
+      const result = await inHelperSession(database, async () => {
+        await database.script(createFormField)
+        const before = await describeHelperSchema(database)
+        await runChange(database, step.up)
+        const inside = await describeHelperSchema(database)
+        await runChange(database, step.down!)
+        const created = await recordChanges(step.outsideTransaction!.up!)
+        const outside = await describeHelperSchema(database)
+        const dropped = await recordChanges(step.outsideTransaction!.down!)
+        return {
+          before,
+          inside,
+          outside,
+          after: await describeHelperSchema(database),
+          created,
+          dropped,
+        }
+      })
+
+      expect(result.outside).toEqual(result.inside)
+      expect(result.after).toEqual(result.before)
+      expect([result.created, result.dropped]).toEqual([
+        [
+          'CREATE UNIQUE INDEX CONCURRENTLY "form_field_form_id_position_label_idx" ON "form_field" (form_id, position DESC) INCLUDE (label) WHERE deleted_at IS NULL',
+        ],
+        ['DROP INDEX CONCURRENTLY "form_field_form_id_position_label_idx"'],
+      ])
+    })
+
+    it("dropIndex with concurrently drops the index, and its rollback builds it again", async () => {
+      const step = dropIndex("form_field", ["form_id"], { using: "hash", concurrently: true })
+
+      const result = await inHelperSession(database, async () => {
+        await database.script(`${createFormField}; CREATE INDEX ON form_field USING hash (form_id)`)
+        const before = await describeHelperSchema(database)
+        const dropped = await recordChanges(step.outsideTransaction!.up!)
+        const up = await describeHelperSchema(database)
+        const created = await recordChanges(step.outsideTransaction!.down!)
+        return { before, up, down: await describeHelperSchema(database), dropped, created }
+      })
+
+      expect(result.up).toEqual(result.before.filter(line => !line.startsWith("index ")))
+      expect(result.down).toEqual(result.before)
+      expect([result.dropped, result.created]).toEqual([
+        ['DROP INDEX CONCURRENTLY "form_field_form_id_idx"'],
+        ['CREATE INDEX CONCURRENTLY "form_field_form_id_idx" ON "form_field" USING hash (form_id)'],
+      ])
+    })
+
+    // Rails with `if_not_exists: true` passed on the index that a failed build left not valid: https://github.com/rails/rails/issues/52583
+    it("createIndex with concurrently builds again the index that a failed build left not valid", async () => {
+      const step = createIndex("form_field", ["form_id"], { unique: true, concurrently: true })
+
+      const result = await inHelperSession(database, async () => {
+        await database.script(createDuplicates)
+        const failure = await runChange(database, step.outsideTransaction!.up!).catch(
+          (error: unknown) => error,
+        )
+        const failed = await listValidity(database, "form_field_form_id_idx")
+        await database.script("DELETE FROM form_field WHERE position = 2")
+        const changes = await recordChanges(step.outsideTransaction!.up!)
+        return {
+          failure,
+          failed,
+          changes,
+          built: await listValidity(database, "form_field_form_id_idx"),
+        }
+      })
+
+      expect(result.failure).toMatchObject({ code: "23505" })
+      expect(result.failed).toEqual([false])
+      expect(result.changes).toEqual([
+        'DROP INDEX CONCURRENTLY "form_field_form_id_idx"',
+        'CREATE UNIQUE INDEX CONCURRENTLY "form_field_form_id_idx" ON "form_field" (form_id)',
+      ])
+      expect(result.built).toEqual([true])
+    })
+
+    it("createIndex with concurrently drops on rollback the index that a failed build left not valid", async () => {
+      const step = createIndex("form_field", ["form_id"], { unique: true, concurrently: true })
+
+      const result = await inHelperSession(database, async () => {
+        await database.script(createDuplicates)
+        await runChange(database, step.outsideTransaction!.up!).catch(() => {})
+        const failed = await listValidity(database, "form_field_form_id_idx")
+        const changes = [
+          await recordChanges(step.outsideTransaction!.down!),
+          await recordChanges(step.outsideTransaction!.down!),
+        ]
+        return { failed, changes, dropped: await listValidity(database, "form_field_form_id_idx") }
+      })
+
+      expect(result.failed).toEqual([false])
+      expect(result.changes).toEqual([['DROP INDEX CONCURRENTLY "form_field_form_id_idx"'], []])
+      expect(result.dropped).toEqual([])
+    })
+
+    it("createIndex with concurrently counts a valid index of its name as built, and its rollback does nothing without the index, sending no notices", async () => {
+      const step = createIndex("form_field", ["form_id"], { concurrently: true })
+      const noticesBefore = notices.length
+
+      const changes = await inHelperSession(database, async () => {
+        await database.script(createFormField)
+        await runChange(database, step.outsideTransaction!.up!)
+        return [
+          await recordChanges(step.outsideTransaction!.up!),
+          await recordChanges(step.outsideTransaction!.down!),
+          await recordChanges(step.outsideTransaction!.down!),
+        ]
+      })
+
+      expect(changes).toEqual([[], ['DROP INDEX CONCURRENTLY "form_field_form_id_idx"'], []])
+      expect(notices.slice(noticesBefore)).toEqual([])
+    })
+
+    it("createIndex and dropIndex with concurrently reject a name that finds an index of another table, also in an earlier schema of the search path, changing nothing", async () => {
+      const step = createIndex("form_field", ["form_id"], { concurrently: true })
+      const message =
+        "Index name form_field_form_id_idx finds a relation other than an index of table form_field through the search path"
+
+      const result = await inHelperSession(database, async () => {
+        // `DROP INDEX form_field_form_id_idx` finds the index of form, in the first schema of the search path.
+        await database.script(`
+            CREATE TABLE migrations_helpers_shared.form_field (form_id integer);
+            CREATE TABLE form (id integer);
+            CREATE INDEX form_field_form_id_idx ON form (id);
+          `)
+        const buildFailure = await runChange(database, step.outsideTransaction!.up!).catch(
+          (error: unknown) => error,
+        )
+        const built = await listIndexTables(database)
+        await database.script(
+          "CREATE INDEX form_field_form_id_idx ON migrations_helpers_shared.form_field (form_id)",
+        )
+        const dropFailure = await runChange(database, step.outsideTransaction!.down!).catch(
+          (error: unknown) => error,
+        )
+        return { buildFailure, built, dropFailure, dropped: await listIndexTables(database) }
+      }, ["migrations_helpers_shared"])
+
+      expect(result.buildFailure).toMatchObject({ message })
+      expect(result.built).toEqual(["migrations_helpers.form"])
+      expect(result.dropFailure).toMatchObject({ message })
+      expect(result.dropped).toEqual([
+        "migrations_helpers.form",
+        "migrations_helpers_shared.form_field",
+      ])
+    })
+
+    it("createIndex and dropIndex with concurrently reject a partitioned table without changing it", async () => {
+      const createJob = `
+        CREATE TABLE job (run_at timestamptz) PARTITION BY RANGE (run_at);
+        CREATE TABLE job_2026 PARTITION OF job FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')
+      `
+
+      const result = await inHelperSession(database, async () => {
+        await database.script(createJob)
+        const before = await describeHelperSchema(database)
+        const createFailure = await runChange(
+          database,
+          createIndex("job", ["run_at"], { concurrently: true }).outsideTransaction!.up!,
+        ).catch((error: unknown) => error)
+        const created = await describeHelperSchema(database)
+        await database.script("CREATE INDEX ON job (run_at)")
+        const indexed = await describeHelperSchema(database)
+        const dropFailure = await runChange(
+          database,
+          dropIndex("job", ["run_at"], { concurrently: true }).outsideTransaction!.up!,
+        ).catch((error: unknown) => error)
+        const dropped = await describeHelperSchema(database)
+        return { before, createFailure, created, indexed, dropFailure, dropped }
+      })
+
+      expect(result.createFailure).toMatchObject({
+        message: 'cannot create index on partitioned table "job" concurrently',
+      })
+      expect(result.created).toEqual(result.before)
+      expect(result.dropFailure).toMatchObject({
+        message: 'cannot drop partitioned index "job_run_at_idx" concurrently',
+      })
+      expect(result.dropped).toEqual(result.indexed)
+    })
+  },
+)
+
+/** Lists the tables of the indexes named `form_field_form_id_idx`, qualified with their schemas. */
+async function listIndexTables(database: Database): Promise<string[]> {
+  return await database.query`
+    SELECT schemaname || '.' || tablename FROM pg_indexes
+    WHERE indexname = 'form_field_form_id_idx' ORDER BY 1
+  `.pluck(t.text)
+}
+
+/** Lists whether each index of `name` in schema `migrations_helpers` is valid. */
+async function listValidity(database: Database, name: string): Promise<boolean[]> {
+  return await database.query`
+    SELECT indisvalid FROM pg_index JOIN pg_class ON pg_class.oid = indexrelid
+    WHERE relname = ${name} AND relnamespace = 'migrations_helpers'::regnamespace
+  `.pluck(t.boolean)
+}

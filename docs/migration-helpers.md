@@ -30,7 +30,7 @@ To change what a helper does, add a new helper or option.
 
 ## Undo a step
 
-To build a helper that undoes what another one does, pass its step to `invertStep`, which swaps `up` and `down`, also those of [`outsideTransaction`](./migrations#migrations-outside-a-transaction):
+To build a helper that undoes what another one does, pass its step to `invertStep`, which swaps `up` and `down`, also those of [`outsideTransaction`](./migrations#your-own-changes-outside-a-transaction):
 
 ```ts
 import { invertStep } from "@kern-orm/migrations"

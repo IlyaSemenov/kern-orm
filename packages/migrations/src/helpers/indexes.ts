@@ -1,4 +1,4 @@
-import type { MigrationStep } from "../migration"
+import type { MigrationChange, MigrationDatabase, MigrationStep } from "../migration"
 import { quoteIdentifier } from "../sql"
 
 import { invertStep } from "./step"
@@ -21,6 +21,13 @@ export interface IndexOptions {
   include?: readonly string[]
   /** SQL condition of a partial index, such as `"deleted_at IS NULL"`. */
   where?: string
+  /**
+   * Builds and drops the index without blocking writes to the table, with `CREATE INDEX CONCURRENTLY` and `DROP INDEX CONCURRENTLY`, when `migrate`, `rollback`, or `redo` runs outside a transaction; inside a transaction, the step builds and drops the index as without this option.
+   *
+   * A build after a failed one first drops the index that the failed build left not valid; a valid index of the name on the table counts as built.
+   * PostgreSQL rejects it for a partitioned table.
+   */
+  concurrently?: boolean
 }
 
 /**
@@ -37,28 +44,42 @@ export function createIndex(
     throw new Error(`Cannot create an index of table ${table} without columns`)
   }
   const include = options.include ?? []
-  const name = quoteIdentifier(options.name ?? getIndexName(table, columns, include))
-  let up = `CREATE ${options.unique ? "UNIQUE " : ""}INDEX ${name} ON ${quoteIdentifier(table)}`
+  const name = options.name ?? getIndexName(table, columns, include)
+  const quotedName = quoteIdentifier(name)
+  let definition = `${quotedName} ON ${quoteIdentifier(table)}`
   if (options.using !== undefined) {
-    up += ` USING ${options.using}`
+    definition += ` USING ${options.using}`
   }
-  up += ` (${columns.join(", ")})`
+  definition += ` (${columns.join(", ")})`
   if (include.length > 0) {
-    up += ` INCLUDE (${include.join(", ")})`
+    definition += ` INCLUDE (${include.join(", ")})`
   }
   if (options.nullsNotDistinct) {
-    up += " NULLS NOT DISTINCT"
+    definition += " NULLS NOT DISTINCT"
   }
   if (options.where !== undefined) {
-    up += ` WHERE ${options.where}`
+    definition += ` WHERE ${options.where}`
   }
-  return { up, down: `DROP INDEX ${name}` }
+  const index = options.unique ? "UNIQUE INDEX" : "INDEX"
+  const up = `CREATE ${index} ${definition}`
+  const down = `DROP INDEX ${quotedName}`
+  if (!options.concurrently) {
+    return { up, down }
+  }
+  return {
+    up,
+    down,
+    outsideTransaction: {
+      up: buildIndexConcurrently(table, name, `CREATE ${index} CONCURRENTLY ${definition}`),
+      down: dropIndexConcurrently(table, name),
+    },
+  }
 }
 
 /**
  * Builds a step that drops an index of a table, and creates it again on rollback as `createIndex` of the same arguments does.
  *
- * It drops the index of the name that `createIndex` gives it.
+ * It drops the index of the name that `createIndex` gives it, and with `concurrently`, drops and builds it as `createIndex` does.
  */
 export function dropIndex(
   table: string,
@@ -66,6 +87,73 @@ export function dropIndex(
   options: IndexOptions = {},
 ): MigrationStep {
   return invertStep(createIndex(table, columns, options))
+}
+
+/**
+ * Returns the change that builds index `name` of `table` with `create`, a `CREATE INDEX CONCURRENTLY`, unless the table has a valid index of the name.
+ *
+ * A valid index of the name counts as built, since an earlier attempt that built it may have failed to record the migration.
+ * An index of the name that is not valid, which a failed build leaves, is dropped first, since `CREATE INDEX` fails on its name, and `IF NOT EXISTS` would keep it.
+ */
+function buildIndexConcurrently(table: string, name: string, create: string): MigrationChange {
+  return async database => {
+    const index = await findIndex(database, table, name)
+    if (index === "valid") {
+      return
+    }
+    if (index === "invalid") {
+      await database.script(`DROP INDEX CONCURRENTLY ${quoteIdentifier(name)}`)
+    }
+    await database.script(create)
+  }
+}
+
+/** Returns the change that drops index `name` of `table` with `DROP INDEX CONCURRENTLY`, and does nothing when the index is missing, such as after an earlier attempt that dropped it. */
+function dropIndexConcurrently(table: string, name: string): MigrationChange {
+  return async database => {
+    if ((await findIndex(database, table, name)) !== "missing") {
+      await database.script(`DROP INDEX CONCURRENTLY ${quoteIdentifier(name)}`)
+    }
+  }
+}
+
+/**
+ * Returns whether index `name` of `table` is missing, valid, or not valid.
+ *
+ * It finds the index by its name through the search path, as `DROP INDEX` does, so that `DROP INDEX` drops the index that it found, and the table as `CREATE INDEX` does.
+ *
+ * It throws when the name finds another relation, such as an index of another table, also in an earlier schema of the search path, where it hides the index of the table: building would create an index that dropping cannot find, and dropping would leave the index while the migration is recorded as rolled back.
+ * It checks the catalog rather than using `IF [NOT] EXISTS`, which sends a notice.
+ */
+async function findIndex(
+  database: MigrationDatabase,
+  table: string,
+  name: string,
+): Promise<"missing" | "valid" | "invalid"> {
+  // `execute` returns the state as text, which needs no types of kern-orm to decode.
+  // `to_regclass` truncates a name to 63 bytes, as PostgreSQL truncates a name in DDL.
+  const { rows } = await database.execute({
+    text: `
+      SELECT CASE
+        WHEN pg_catalog.to_regclass($1) IS NULL THEN 'missing'
+        WHEN NOT EXISTS (
+          SELECT FROM pg_catalog.pg_index
+          WHERE indexrelid = pg_catalog.to_regclass($1) AND indrelid = pg_catalog.to_regclass($2)
+        ) THEN 'other'
+        WHEN (SELECT indisvalid FROM pg_catalog.pg_index WHERE indexrelid = pg_catalog.to_regclass($1))
+          THEN 'valid'
+        ELSE 'invalid'
+      END
+    `,
+    parameters: [quoteIdentifier(name), quoteIdentifier(table)],
+  })
+  const state = rows[0]![0]
+  if (state === "other") {
+    throw new Error(
+      `Index name ${name} finds a relation other than an index of table ${table} through the search path`,
+    )
+  }
+  return state as "missing" | "valid" | "invalid"
 }
 
 // A column whose name needs no quotes, which PostgreSQL names an index by.

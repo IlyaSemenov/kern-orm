@@ -5,7 +5,7 @@ import type { MigrationStep } from "../migration"
 import { runChange } from "../migration"
 import { describeSchema } from "../verification/structure"
 
-/** PostgreSQL schema that `inHelperSchema` creates. */
+/** PostgreSQL schema that `inHelperSchema` and `inHelperSession` create. */
 export const helperSchema = "migrations_helpers"
 
 /**
@@ -19,6 +19,30 @@ export async function inHelperSchema<T>(
 ): Promise<T> {
   await database.script(`CREATE SCHEMA ${helperSchema}`)
   return await database.transaction(callback, { searchPath: [helperSchema] })
+}
+
+/**
+ * Creates PostgreSQL schema `migrations_helpers` and runs `callback` in a session whose unqualified names resolve in it, as those of a change outside a transaction resolve in its target schema, then drops the schema.
+ *
+ * `laterSchemas` are schemas that it creates and drops too, which the search path lists after `migrations_helpers`, as the schemas of a history.
+ * Call it on a database without `test: true`.
+ */
+export async function inHelperSession<T>(
+  database: Database,
+  callback: () => Promise<T>,
+  laterSchemas: readonly string[] = [],
+): Promise<T> {
+  const schemas = [helperSchema, ...laterSchemas]
+  await database.script(`CREATE SCHEMA ${schemas.join(";\nCREATE SCHEMA ")}`)
+  try {
+    return await database.session(callback, { searchPath: schemas })
+  } finally {
+    // Keeps PostgreSQL from sending a notice of each object that the drop cascades to.
+    await database.script(`
+      SET LOCAL client_min_messages = warning;
+      DROP SCHEMA ${schemas.join(", ")} CASCADE;
+    `)
+  }
 }
 
 /** Structure of a schema before a step, after its `up`, and after its `down`. */

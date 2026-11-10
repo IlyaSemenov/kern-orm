@@ -95,6 +95,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 ## Helpers
 
 - Helpers (`src/helpers/`) build steps of typical changes, such as `createTable` and `changeColumn`, as plain steps of SQL text, so that they combine in the array of a migration with steps of its own.
+  A step with changes outside a transaction, such as of `createIndex` with `concurrently`, has functions there and must be the only step of its migration.
 - A project writes its own helpers with the public primitives that the built-in helpers use:
   - `quoteIdentifier` and `quoteLiteral`; `quoteLiteral` matches `quote_literal` of PostgreSQL, doubling quotes and backslashes and prefixing `E` to a value with a backslash, so that a literal keeps its value whatever `standard_conforming_strings` is;
   - `invertStep`, which swaps `up` and `down`, also of the changes outside a transaction, and rejects a step without `down`;
@@ -108,6 +109,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   They quote with `quoteIdentifier`, since a step is SQL text, which a fragment of `identifier` from `kern-orm` is not.
   They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
 - They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
+  The changes outside a transaction of `concurrently` check the catalog instead, since they must be safe to run again, so the `up` and `down` that a transaction runs catch such a mismatch.
 - A helper checks its arguments when it is called, that is, when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.
   `quoteIdentifier` rejects an empty name, so that a name left blank fails when the migration loads.
 - A helper that drops an object is `invertStep` of the helper that creates it, with the same arguments, which give the definition that its `down` creates again.
@@ -121,6 +123,15 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - It reads an element as PostgreSQL does: words separated by the whitespace of SQL only, since PostgreSQL reads another space, such as U+00A0, as a character of a name, and the keywords of an ordering in ASCII letters of any case.
   - It never appends the number that PostgreSQL appends to a name that exists, so that a collision fails.
   - Elements of `include` must be columns, since PostgreSQL accepts neither expressions nor orderings there.
+- `createIndex` and `dropIndex` with `concurrently` keep `up` and `down`, and add [changes outside a transaction](#changes-outside-a-transaction) of `CREATE INDEX CONCURRENTLY` and `DROP INDEX CONCURRENTLY`, each a statement of its own.
+  - They find the index and the table by their names with `to_regclass`, through the search path as `DROP INDEX` and `CREATE INDEX` find them, and check in `pg_index` that the index belongs to the table, so that dropping drops the index that the check found.
+    `to_regclass` truncates a name to 63 bytes, as PostgreSQL truncates the name of an index.
+  - They check the catalog rather than add `IF [NOT] EXISTS`, which sends a notice of what exists, and keeps an index that a failed build has left not valid.
+  - They reject a name that finds another relation, such as an index of another table, also in an earlier schema of the search path, where it hides the index of the table, before they change anything: building would create an index that dropping cannot find, and dropping would leave the index while its migration is recorded as rolled back.
+  - Building does nothing when the table has a valid index of the name, which an attempt whose record of the migration failed has built ([decision](../decisions/migrations/valid-index-counts-as-built.md)), and drops an index of the name that is not valid before building it.
+  - Dropping does nothing when the name finds nothing.
+  - They check the catalog with one statement of `execute`, which returns the state of the index as text, so that they need no types of `kern-orm` to decode it.
+  - A partitioned table requires a step of its own: PostgreSQL rejects `CREATE INDEX CONCURRENTLY` of a partitioned table and `DROP INDEX CONCURRENTLY` of its index before they change anything ([decision](../decisions/migrations/concurrent-index-of-partitioned-table.md)).
 - `createExtension` has no `down`, since an extension belongs to the whole database, such as to every tenant.
   - It checks `pg_extension` in a `DO` block rather than running `CREATE EXTENSION IF NOT EXISTS`, which sends a notice of an existing extension that postgres.js logs, at every new tenant of a history that creates one.
   - When the extension is missing, it takes a transaction-level advisory lock and checks again, so that migrations of different targets that create one extension at once wait for each other instead of failing on the unique index of `pg_extension`.

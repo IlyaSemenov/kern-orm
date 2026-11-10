@@ -64,6 +64,18 @@ The migrator records a migration outside a transaction after its change in a sta
 - node-pg-migrate, same: it records a migration with `noTransaction()` after its steps ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/migration.ts#L353)).
 - Rails, same: it records a migration with `disable_ddl_transaction!` after it runs ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/migration.rb#L1544-L1547)).
 
+## Indexes that a failed concurrent build left
+
+`createIndex` with `concurrently` checks the catalog before it builds: it drops an index of its name that is not valid, which a failed `CREATE INDEX CONCURRENTLY` leaves, and counts a valid one as built, which an attempt whose record failed has left.
+
+- Drizzle ORM, lacks: Drizzle Kit builds an index with `concurrently` without checking for one of its name ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-kit/src/sqlgenerator.ts#L3543-L3549)), which `migrate` runs in its transaction, where PostgreSQL rejects it.
+- Kysely, lacks: `createIndex()` has no concurrent build, and its `ifNotExists()` keeps an index that is not valid ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/schema/create-index-builder.ts#L43-L47)).
+- Kysely 0.30.0-beta.2, differs: its documentation drops the index with `drop index concurrently if exists` before every build, since `IF NOT EXISTS` keeps an index that is not valid ([source](https://github.com/kysely-org/kysely/blob/v0.30.0-beta.2/site/docs/migrations.mdx?plain=1#L134-L171)).
+- Django, lacks: `AddIndexConcurrently` builds without checking for an index of its name, so it fails on the index that a failed build left, and `RemoveIndexConcurrently` drops with `IF EXISTS` ([source](https://github.com/django/django/blob/6.0.10/django/db/backends/postgresql/schema.py#L21-L26)).
+- node-pg-migrate, lacks: `createIndex` with `concurrently` and `ifNotExists` builds with `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, which keeps an index that is not valid ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/operations/indexes/createIndex.ts#L74-L85)).
+- Rails, fails: after a build failed with a lock timeout, `add_index` with `algorithm: :concurrently, if_not_exists: true` accepted the index that the build left not valid, and the issue was closed as not one of Rails ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/connection_adapters/abstract/schema_creation.rb#L106-L122), [rails#52583](https://github.com/rails/rails/issues/52583)).
+  A migration can check the index with `index_exists?(table, columns, valid: true)`, which `add_index` does not call ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/connection_adapters/abstract/schema_statements.rb#L100-L105)).
+
 ## Verifying a history
 
 Verification applies each migration, rolls it back and requires the structure that the migration found, and applies it again.
