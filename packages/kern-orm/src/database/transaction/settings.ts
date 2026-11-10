@@ -1,10 +1,9 @@
 // Run-time parameters of PostgreSQL that a level sets until it ends, such as the search path of a transaction or of a session.
 
-import { quoteIdentifier } from "../../compiler/postgres/identifier"
-import type { TextValue } from "../../type/type"
 import type { TransactionOptions } from "../database"
-import type { SqlStatement } from "../driver"
+import type { SqlStatement, TextValue } from "../driver"
 import { createStatement } from "../driver"
+import { quoteIdentifier } from "../identifier"
 
 import type { TransactionLevel } from "./level"
 

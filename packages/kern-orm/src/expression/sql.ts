@@ -1,6 +1,6 @@
 import type { ExpressionNode, RawSqlNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
-import { quoteIdentifier } from "../compiler/postgres/identifier"
+import { quoteIdentifier } from "../database/identifier"
 import { TransformedQuery } from "../query/conversion"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"

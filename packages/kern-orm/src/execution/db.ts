@@ -1,5 +1,8 @@
 import type { CompiledQuery } from "../compiler/postgres/compile"
 import { compileStatement } from "../compiler/postgres/compile"
+import type { PollLockOptions, SessionOptions, TransactionOptions } from "../database/database"
+import type { SqlStatement } from "../database/driver"
+import { createStatement } from "../database/driver"
 import { toRawSqlNode } from "../expression/sql"
 import { lowerStatement } from "../lowering/lower"
 import type { TransformedQuery, TransformedQueryState } from "../query/conversion"
@@ -27,9 +30,7 @@ import type { AnySchema, Schema, Tables } from "../schema/schema"
 import { defineEntries, schemaRelations } from "../schema/schema"
 import type { AnyTable } from "../table/table"
 
-import type { Database, PollLockOptions, SessionOptions, TransactionOptions } from "./database"
-import type { SqlStatement } from "./driver"
-import { createStatement } from "./driver"
+import type { Database } from "./database"
 
 /** Physical placement of the tables of a schema bound to a database. */
 export interface BindOptions {

@@ -2,9 +2,9 @@
 
 import type { CompileOptions } from "../compiler/postgres/compile"
 import { compileStatement } from "../compiler/postgres/compile"
+import type { SqlStatement } from "../database/driver"
+import { createStatement } from "../database/driver"
 import type { AnyDb } from "../execution/db"
-import type { SqlStatement } from "../execution/driver"
-import { createStatement } from "../execution/driver"
 import { lowerStatement } from "../lowering/lower"
 
 import type { AnyTransformedQuery, TransformedQuery, TransformedQueryState } from "./conversion"

@@ -3,8 +3,8 @@
 import { types } from "node:util"
 
 import type { CompileOptions } from "../compiler/postgres/compile"
+import type { SqlStatement } from "../database/driver"
 import type { AnyDb } from "../execution/db"
-import type { SqlStatement } from "../execution/driver"
 import { operandNode } from "../expression/expression"
 import type { ResultConversion } from "../result/result"
 import type { UsedRelation } from "../schema/relation"

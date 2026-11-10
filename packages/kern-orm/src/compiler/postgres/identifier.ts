@@ -1,4 +1,4 @@
-// PostgreSQL identifiers: quoting and the length limit.
+// PostgreSQL identifiers: the length limit, and the names of projections.
 
 /** Most bytes a character other than ASCII takes in a server encoding, such as UTF-8 and EUC_TW ([PostgreSQL](https://www.postgresql.org/docs/current/multibyte.html)). */
 const maxCharacterBytes = 4
@@ -9,10 +9,6 @@ const maxCharacterBytes = 4
  * It leaves room for `_` and a number in the 63 bytes of an identifier, since PostgreSQL truncates a longer one ([PostgreSQL](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS)).
  */
 export const maxNameBytes = 50
-
-export function quoteIdentifier(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`
-}
 
 /**
  * Returns the longest prefix of `name` that takes at most `maxBytes` bytes in any server encoding.

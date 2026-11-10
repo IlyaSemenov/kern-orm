@@ -1,7 +1,7 @@
 import type { CastNode } from "../../ast/nodes"
+import type { TextValue } from "../../database/driver"
 import type { AnyDb } from "../../execution/db"
 import type { AnyTable } from "../../table/table"
-import type { TextValue } from "../../type/type"
 
 import { cutIdentifier, maxNameBytes } from "./identifier"
 

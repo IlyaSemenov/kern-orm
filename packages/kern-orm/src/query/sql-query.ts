@@ -1,8 +1,8 @@
 // Queries of SQL text: a statement of `$query`, which resolves to the number of the rows of its command tag or to the fields of its rows decoded by types.
 
 import type { RawSqlNode, TextStatementNode } from "../ast/nodes"
+import type { SqlStatement } from "../database/driver"
 import type { AnyDb } from "../execution/db"
-import type { SqlStatement } from "../execution/driver"
 import { operandNode } from "../expression/expression"
 import type { ResultRows, ScalarField } from "../result/result"
 import { isRecordKey } from "../result/result"

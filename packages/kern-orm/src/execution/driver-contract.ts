@@ -1,20 +1,19 @@
 // Tests of the contract of `Driver` in PostgreSQL, which take the functions of a test runner and assert with `node:assert/strict`, so that any supported runner can run them.
 import assert from "node:assert/strict"
 
+import type { Connection, Driver, TextValue } from "../database/driver"
+import { createStatement } from "../database/driver"
+import { ConnectionError, QueryError } from "../database/driver-error"
+import type { TestHooks } from "../database/testing"
+import { createTestHelpers } from "../database/testing"
+import { TransactionConnectionError } from "../database/transaction/connection-loss"
 import { and } from "../expression/predicates"
 import { param, sql } from "../expression/sql"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
-import type { TextValue } from "../type/type"
 import * as t from "../types"
 
 import { createDatabase } from "./database"
-import type { Connection, Driver } from "./driver"
-import { createStatement } from "./driver"
-import { ConnectionError, QueryError } from "./driver-error"
-import type { TestHooks } from "./testing"
-import { createTestHelpers } from "./testing"
-import { TransactionConnectionError } from "./transaction/connection-loss"
 
 /** Options of `describeDriverContract`: how to create the driver under test. */
 export interface DriverContractOptions {

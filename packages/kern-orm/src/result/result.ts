@@ -1,5 +1,5 @@
-import type { DriverResult } from "../execution/driver"
-import type { AnyType, TextValue } from "../type/type"
+import type { DriverResult, TextValue } from "../database/driver"
+import type { AnyType } from "../type/type"
 
 /** Field of a compiled result: the key of a record and how its value is decoded. */
 export type ResultField = ScalarField | NestedField

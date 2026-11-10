@@ -1,4 +1,5 @@
-import type { TextValue } from "../type/type"
+/** PostgreSQL text representation of a value, as a driver sends a parameter and returns a value of a result; `null` is SQL `NULL`. */
+export type TextValue = string | null
 
 /** SQL statement ready for a driver. */
 export interface SqlStatement {

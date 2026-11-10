@@ -6,7 +6,7 @@ import {
   startWaiting,
   whileHolding,
 } from "../../testing/postgres"
-import { isQueryError } from "../execution/error-condition"
+import { isQueryError } from "../database/error-condition"
 import { NotFoundError, RequiredRelationError } from "../result/result"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"

@@ -165,9 +165,6 @@ export interface TypeTransform<Output, Input, NewOutput, NewInput> {
 // oxlint-disable-next-line typescript/no-explicit-any -- any type regardless of its value types, operators, and parameters
 export type AnyType = Type<any, any, any, any>
 
-/** PostgreSQL text representation of a value, as types encode and decode it; `null` is SQL `NULL`. */
-export type TextValue = string | null
-
 /** Values that a type decodes. */
 export type TypeOutput<T extends AnyType> = T[typeof typeValues]["output"]
 

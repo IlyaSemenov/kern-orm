@@ -1,7 +1,7 @@
 # Testing
 
-- **Test helpers** (`execution/testing.ts`, exported from `kern-orm/testing`): test transactions and test fixtures of a database created with `test: true`, created once per project with the `before` and `after` hooks of a test runner.
-  They run through the transaction coordinator of the database, which keeps its [test fixtures](#test-fixtures) in a fixture stack (`execution/transaction/fixture-stack.ts`).
+- **Test helpers** (`database/testing.ts`, exported from `kern-orm/testing`): test transactions and test fixtures of a database created with `test: true`, created once per project with the `before` and `after` hooks of a test runner.
+  They run through the transaction coordinator of the database, which keeps its [test fixtures](#test-fixtures) in a fixture stack (`database/transaction/fixture-stack.ts`).
 - **Test runners**: the test helpers support `bun:test` on Bun, and `node:test` and Vitest on Node.js.
   Scenarios of each runner, run in a subprocess, check its timeouts and hooks: those of `bun:test` from the sources with the recording driver, and those of `node:test` and Vitest against the packed packages with a recording driver and in PostgreSQL, where they also check the abort signal of a test.
 

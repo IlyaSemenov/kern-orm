@@ -50,6 +50,7 @@
   - `$relations` rejects a required relation with a column `from` that is nullable by `isNullable` of its type, since a record with a `NULL` key has no related record; types do not check it, since `one` does not always know its source table, such as outside `$relations`.
   - In types, `required` of type `boolean` gives query results with `null`, as when the relation is not required, and `required` typed as an optional property, which may be missing at runtime, gives the union of its value and `false`.
 - **Db** (`execution/db.ts`): a schema bound to a database and a PostgreSQL schema; it compiles and executes queries over the tables of its schema.
+  `bind` of the `Database` of `execution/database.ts` creates it.
   The PostgreSQL schema is resolved when a `Db` compiles a query, and a compiled statement never changes afterwards.
   `$schemaName` resolves it when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
   `$database` is the database that a `Db` is bound to, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else.

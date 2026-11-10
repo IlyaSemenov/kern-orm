@@ -28,18 +28,26 @@ kern-orm exists to solve problems of production projects on Orchid ORM:
 - Singleton tables ([orchid-orm#752](https://github.com/romeerez/orchid-orm/issues/752)): a table that holds at most one row, such as application settings, is read and upserted without a sentinel key passed to every query or an `all()` that needs a comment at every use.
 - Migration verification ([rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing)): every migration applies, rolls back to the structure before it, and applies again, and migration tests check how it transforms existing rows; [`@kern-orm/migrations/testing`](migrations.md#verification) includes it.
 
-## Map
+## Layers
 
 Module paths are relative to `packages/kern-orm/src/`.
 
-- [Types and expressions](types.md): `type/` and `expression/`.
-- [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, and `execution/db.ts`.
+- The database layer (`database/`) runs statements on the connections of a driver.
+  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
+  Its production modules import only each other and Node.js built-ins, also for types, so that it works without the ORM ([backlog](../backlog/database-layer-as-a-package.md)).
+- The ORM, the other modules, builds on it.
+  `execution/database.ts` adds `bind`, `query`, and the template of `script` to its `Database`; `query` and `script` run on a `Db` of no tables.
+
+## Map
+
+- [Types and expressions](types.md): `type/`, `expression/`, and `database/codecs/`.
+- [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, `execution/db.ts`, and `bind` of `execution/database.ts`.
 - [Queries](queries.md): `query/` and `execution/db.ts`.
 - [Mutations](mutations.md): `query/mutation.ts` and `query/values.ts`.
-- [Queries of SQL text](sql-queries.md): `query/sql-query.ts`, and the scripts of `execution/db.ts`.
-- [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, and `result/`.
-- [Transactions](transactions.md): `execution/database.ts` and `execution/transaction/`.
-- [Testing](testing.md): `execution/testing.ts` and `execution/transaction/fixture-stack.ts`.
-- [Drivers](drivers.md): `execution/driver.ts`, `execution/driver-error.ts`, `execution/error-condition.ts`, `execution/error-condition-codes.ts`, `execution/driver-contract.ts`, `packages/postgres-js/` and `packages/node-postgres/`.
+- [Queries of SQL text](sql-queries.md): `query/sql-query.ts`, the scripts of `execution/db.ts`, and `query` and `script` of `execution/database.ts`.
+- [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, `result/`, and `database/identifier.ts`.
+- [Transactions](transactions.md): `database/database.ts` and `database/transaction/`.
+- [Testing](testing.md): `database/testing.ts` and `database/transaction/fixture-stack.ts`.
+- [Drivers](drivers.md): `database/driver.ts`, `database/driver-error.ts`, `database/error-condition.ts`, `database/error-condition-codes.ts`, `execution/driver-contract.ts`, `packages/postgres-js/` and `packages/node-postgres/`.
 - [Migrations](migrations.md): `packages/migrations/`.
 - [Package compatibility](compatibility.md): the peer dependency of companion packages on `kern-orm`, and `packages/kern-orm/tests/package/compatibility.package-test.ts`.

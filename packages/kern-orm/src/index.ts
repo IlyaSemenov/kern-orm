@@ -88,7 +88,6 @@ export type { NumberTypeOperators } from "./type/number"
 export type {
   AnyType,
   BaseType,
-  TextValue,
   Type,
   TypeInput,
   TypeOperators,
@@ -100,24 +99,23 @@ export { defineType } from "./type/type"
 export type { CompileOptions } from "./compiler/postgres/compile"
 export type { ResultMode, ResultRows } from "./result/result"
 export { NotFoundError, RequiredRelationError, ResultDecodeError } from "./result/result"
-export type { SqlStatement } from "./execution/driver"
 export type {
-  Database,
   DatabaseOptions,
   IsolationLevel,
   PollLockOptions,
   SessionOptions,
   TransactionOptions,
-} from "./execution/database"
+} from "./database/database"
+export type { Database } from "./execution/database"
 export { createDatabase } from "./execution/database"
-export type { Connection, Driver, DriverResult } from "./execution/driver"
-export type { TransactionCoordinator } from "./execution/transaction/coordinator"
-export { TransactionConnectionError } from "./execution/transaction/connection-loss"
-export { createStatement } from "./execution/driver"
-export type { DriverErrorFields } from "./execution/driver-error"
-export { ConnectionError, QueryError, toDriverError } from "./execution/driver-error"
-export { isQueryError } from "./execution/error-condition"
-export type { QueryErrorCode, QueryErrorCondition } from "./execution/error-condition"
+export type { Connection, Driver, DriverResult, SqlStatement, TextValue } from "./database/driver"
+export type { TransactionCoordinator } from "./database/transaction/coordinator"
+export { TransactionConnectionError } from "./database/transaction/connection-loss"
+export { createStatement } from "./database/driver"
+export type { DriverErrorFields } from "./database/driver-error"
+export { ConnectionError, QueryError, toDriverError } from "./database/driver-error"
+export { isQueryError } from "./database/error-condition"
+export type { QueryErrorCode, QueryErrorCondition } from "./database/error-condition"
 export type { OperandUses, ScalarQuery, TypedScalarQuery, ValuesQuery } from "./query/operand"
 export type {
   AnySelectQuery,

@@ -1,11 +1,11 @@
 # Transactions
 
-- **Database** (`execution/`): a driver and the ambient transaction coordinator of one connection domain.
-  `bind` binds schemas to it, and all schemas bound to the same database share its transactions.
-- **Transaction coordinator** (`execution/transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
-- **Transaction level** (`execution/transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `execution/transaction/settings.ts`.
-- **Session** (`execution/transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).
-- **Advisory locks** (`execution/transaction/advisory-lock.ts`): the statements of [locks](#locks) of string keys, and the locks that a session holds until it ends.
+- **Database** (`database/database.ts`): a driver and the ambient transaction coordinator of one connection domain.
+  `bind` of the `Database` of the ORM (`execution/database.ts`) binds schemas to it, and all schemas bound to the same database share its transactions.
+- **Transaction coordinator** (`database/transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
+- **Transaction level** (`database/transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `database/transaction/settings.ts`.
+- **Session** (`database/transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).
+- **Advisory locks** (`database/transaction/advisory-lock.ts`): the statements of [locks](#locks) of string keys, and the locks that a session holds until it ends.
 
 ## Levels
 
@@ -19,7 +19,7 @@
 - Starting a level rejects when its `BEGIN` or `SAVEPOINT` fails, and rolls the level back and rejects when its settings fail.
 - A cleanup error of a transaction never replaces an earlier error: it suppresses it in a `SuppressedError`.
 - A failed release of the connection of a transaction, a test transaction, or a test fixture never changes the result or error of the call, which is decided before the release: a committed transaction that rejected would be retried.
-  `execution/transaction/release.ts` passes the failure to `onReleaseError` of the database, or to `console.error` without one or when the handler throws or rejects.
+  `database/transaction/release.ts` passes the failure to `onReleaseError` of the database, or to `console.error` without one or when the handler throws or rejects.
 
 ## Connection failures
 

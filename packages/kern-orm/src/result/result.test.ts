@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import type { DriverResult } from "../execution/driver"
+import type { DriverResult } from "../database/driver"
 import * as t from "../types"
 
 import type {

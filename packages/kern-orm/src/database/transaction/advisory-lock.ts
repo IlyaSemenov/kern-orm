@@ -1,13 +1,9 @@
 // Advisory locks of string keys: the statements that take them in a transaction and in a session, the locks that a session holds until it ends, and polling for one in a session.
 
-import { array } from "../../type/builtins/array"
-import { boolean } from "../../type/builtins/boolean"
-import { text } from "../../type/builtins/text"
+import { formatArray } from "../codecs/array"
+import { decodeBoolean } from "../codecs/boolean"
 import type { Connection, DriverResult, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
-
-/** Type of the keys of a session that one statement releases. */
-const keysType = /* @__PURE__ */ array(text)
 
 /** Pause of `pollLock` in milliseconds after its first attempt, which doubles after each attempt up to `maxPollDelay`. */
 const firstPollDelay = 50
@@ -26,7 +22,7 @@ export function createTryLockStatement(key: string): SqlStatement {
 
 /** Tells whether the statement that tried to take a lock took it. */
 export function isTaken(result: DriverResult): boolean {
-  return boolean.decode(result.rows[0]![0]!)
+  return decodeBoolean(result.rows[0]![0]!)
 }
 
 /**
@@ -121,6 +117,6 @@ export class SessionLocks {
 export function createUnlockStatement(keys: string[]): SqlStatement {
   return createStatement(
     "SELECT pg_advisory_unlock(hashtextextended(key, 0)) FROM unnest($1::text[]) AS key",
-    [keysType.encode(keys)],
+    [formatArray(keys, key => key)],
   )
 }

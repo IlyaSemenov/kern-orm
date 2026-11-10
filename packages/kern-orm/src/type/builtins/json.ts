@@ -1,5 +1,5 @@
+import { stringifyJson } from "../../database/codecs/json"
 import { equalityOperators } from "../../expression/operators/equality"
-import { stringifyJson } from "../codecs/json"
 import type { Type } from "../type"
 import { defineType } from "../type"
 

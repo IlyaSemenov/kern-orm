@@ -1,5 +1,6 @@
-import { encodeBytea } from "./codecs/bytea"
-import { stringifyJson } from "./codecs/json"
+import { encodeBoolean } from "../database/codecs/boolean"
+import { encodeBytea } from "../database/codecs/bytea"
+import { stringifyJson } from "../database/codecs/json"
 
 /** Encodes a parameter without a type, such as a value interpolated into `sql`, by its JavaScript type. */
 export function encodeUntyped(value: unknown): string {
@@ -10,7 +11,7 @@ export function encodeUntyped(value: unknown): string {
     return String(value)
   }
   if (typeof value === "boolean") {
-    return value ? "t" : "f"
+    return encodeBoolean(value)
   }
   if (value instanceof Date) {
     return value.toISOString()
