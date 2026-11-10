@@ -1,9 +1,8 @@
-import { formatArray, parseArray } from "../../database/codecs/array"
-import type { TextValue } from "../../database/driver"
+import * as codecs from "../../database/codecs/array"
 import type { NoOperators, OperatorDefinitions } from "../../expression/operators/definitions"
 import type { EqualityOperators, HasEquality } from "../../expression/operators/equality"
 import { equalityOperators, hasEquality } from "../../expression/operators/equality"
-import type { AnyType, Type } from "../type"
+import type { Type } from "../type"
 import { defineType } from "../type"
 
 /**
@@ -17,22 +16,7 @@ export function array<Output, Input, O extends OperatorDefinitions>(
   // oxlint-disable-next-line typescript/no-explicit-any -- element parameters do not apply to arrays
   element: Type<Output, Input, O, any>,
 ): Type<Output[], Input[], HasEquality<O> extends true ? EqualityOperators : NoOperators> {
-  const encodeElement = (value: Input) =>
-    value === null ? null : element.encode(value as NonNullable<Input>)
-  const type: AnyType = defineType({
-    sqlType: `${element.sqlType}[]`,
-    castType: `${element.castType}[]`,
-  }).transform({
-    decode(text) {
-      const values: unknown[] = parseArray(text)
-      for (let index = 0; index < values.length; index++) {
-        const value = values[index] as TextValue
-        values[index] = value === null ? null : element.decode(value)
-      }
-      return values as Output[]
-    },
-    encode: (values: Input[]) => formatArray(values, encodeElement),
-  })
+  const type = defineType(codecs.array(element))
   // PostgreSQL compares arrays by their elements, so an array has `=` only when its elements do.
   return (hasEquality(element) ? type.withOperators(equalityOperators) : type) as Type<
     Output[],

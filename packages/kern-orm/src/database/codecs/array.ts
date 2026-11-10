@@ -1,6 +1,36 @@
-// PostgreSQL array literals of one dimension, such as `{a,"b c",NULL}`: the text representations of their elements.
+// Codec and text literal helpers for one-dimensional PostgreSQL arrays, such as `{a,"b c",NULL}`.
 
+import type { Codec, DerivableCodec } from "../codec/codec"
+import { defineCodec } from "../codec/codec"
 import type { TextValue } from "../driver"
+
+/**
+ * Creates a codec of one-dimensional arrays of `element` values.
+ *
+ * A `NULL` element decodes to `null`; a nullable `element` codec, such as `array(text.nullable())`, types such elements.
+ * Elements are separated by commas, as in arrays of all built-in types; a custom type with another delimiter, such as `box`, is not supported.
+ */
+export function array<Output, Input>(
+  element: Codec<Output, Input>,
+): DerivableCodec<Output[], Input[]> {
+  const encodeElement = (value: Input) =>
+    value === null ? null : element.encode(value as NonNullable<Input>)
+  // The type parameters of the element, such as the length of `varchar(255)`, stay in the SQL type and not in the cast type.
+  return defineCodec({
+    sqlType: `${element.sqlType}[]`,
+    castType: `${element.castType}[]`,
+  }).transform({
+    decode(text) {
+      const values: unknown[] = parseArray(text)
+      for (let index = 0; index < values.length; index++) {
+        const value = values[index] as TextValue
+        values[index] = value === null ? null : element.decode(value)
+      }
+      return values as Output[]
+    },
+    encode: (values: Input[]) => formatArray(values, encodeElement),
+  })
+}
 
 /** Parses a one-dimensional array literal, such as `{a,"b c",NULL}`, into the text representations of its elements. */
 export function parseArray(text: string): TextValue[] {

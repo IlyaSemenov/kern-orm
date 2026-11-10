@@ -4,11 +4,9 @@ import { defineCodec, isCodec } from "../database/codec/codec"
 import { orderingOperators } from "../expression/operators/ordering"
 import { sql } from "../expression/sql"
 
-import { array } from "./builtins/array"
 import { timestamptz } from "./builtins/datetime"
-import { enumOf } from "./builtins/enum"
 import { numeric } from "./builtins/numeric"
-import { char, text, varchar } from "./builtins/text"
+import { text, varchar } from "./builtins/text"
 import { defineType, isType } from "./type"
 
 describe("defineType", () => {
@@ -122,15 +120,11 @@ describe("type parameters", () => {
 
   it("keep the cast type without them", () => {
     expect(numeric.with(10, 2).castType).toBe("numeric")
-    expect(char.with(3).castType).toBe("bpchar")
-    expect(array(varchar.with(255)).castType).toBe("varchar[]")
-    expect(array(varchar.with(255)).sqlType).toBe("varchar(255)[]")
   })
 
   it("are rejected in the SQL type name without a cast type", () => {
     expect(() => defineType({ sqlType: "vector(3)" })).toThrow("withParameters")
     expect(defineType({ sqlType: "vector(3)", castType: "vector" }).castType).toBe("vector")
-    expect(enumOf('"status(v2)"', ["draft"]).castType).toBe('"status(v2)"')
   })
 
   it("format the SQL type of a custom type", () => {

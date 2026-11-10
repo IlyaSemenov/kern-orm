@@ -1,3 +1,11 @@
+import { defineCodec } from "../codec/codec"
+
+/** `boolean` values. */
+export const boolean = /* @__PURE__ */ defineCodec({ sqlType: "boolean" }).transform({
+  decode: decodeBoolean,
+  encode: encodeBoolean,
+})
+
 /** Converts a Boolean value to its PostgreSQL text representation. */
 export function encodeBoolean(value: boolean): string {
   return value ? "t" : "f"

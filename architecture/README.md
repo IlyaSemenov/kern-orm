@@ -33,7 +33,7 @@ kern-orm exists to solve problems of production projects on Orchid ORM:
 Module paths are relative to `packages/kern-orm/src/`.
 
 - The database layer (`database/`) runs statements on the connections of a driver.
-  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, the contract of codecs, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
+  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, the contract of codecs, the codecs of the built-in types, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
   Its production modules import only each other and Node.js built-ins, also for types, so that it works without the ORM ([backlog](../backlog/database-layer-as-a-package.md)).
 - The ORM, the other modules, builds on it.
   `execution/database.ts` adds `bind`, `query`, and the template of `script` to its `Database`; `query` and `script` run on a `Db` of no tables.

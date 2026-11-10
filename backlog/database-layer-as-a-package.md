@@ -14,7 +14,6 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 - `script` of the layer compiles its template with the same renderer and rejects a parameter at any depth before the driver gets the script.
 - A [codec](../architecture/types.md) is the contract of the layer: its SQL type and cast type, encoding, decoding, and nullability.
   A `Type` of the ORM is a codec with operators and the factories of columns, and the layer takes it wherever it takes a codec, such as in `get(t.uuid)`.
-- The built-in codecs live in `database/codecs/`, and `kern-orm/types` builds its types on them, adding their operators.
 - Until the package exists, `kern-orm/db` exports the layer and `kern-orm/db/types` its built-in codecs, as `kern-db` and `kern-db/types` will: the root of `kern-orm` exports the functions of the ORM of the same names.
 - A query of SQL text of the layer holds the source of its statement apart from the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.
   `$query` of a `Db` creates it with the compilation of that `Db`, which resolves a dynamic PostgreSQL schema when the query compiles.

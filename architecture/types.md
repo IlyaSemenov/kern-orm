@@ -9,6 +9,8 @@
   - A codec is told from other objects at runtime by its brand, never by its shape.
     Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a codec too.
     A codec that `defineCodec` or a derivable codec creates is frozen.
+  - The codecs of the built-in types live in `database/codecs/`, under the names of the types; a built-in type of `kern-orm/types` is `defineType` of its codec with the operators of the type.
+    `array` of the layer builds only the representation of an array of a codec, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type adds `orderingOperators`.
 - **Type** (`type/`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
   A type is a codec with operators and the factories of columns.
   `defineType` creates a type from the options of `defineCodec`, from a derivable codec, such as one defined without the ORM, or from another type; it keeps the values and the type parameters of the codec or the type, without the operators of the type.
