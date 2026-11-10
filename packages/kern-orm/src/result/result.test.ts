@@ -1,23 +1,12 @@
 import { describe, expect, it } from "bun:test"
 
 import type { DriverResult } from "../database/driver"
+import type { ResultMode, ResultRows } from "../database/result"
+import { NotFoundError, ResultDecodeError } from "../database/result"
 import * as t from "../types"
 
-import type {
-  ResultConversion,
-  ResultField,
-  ResultMode,
-  ResultPlan,
-  ResultRows,
-  StatementPlan,
-} from "./result"
-import {
-  decodeResult,
-  decodeStatement,
-  NotFoundError,
-  RequiredRelationError,
-  ResultDecodeError,
-} from "./result"
+import type { ResultConversion, ResultField, ResultPlan, StatementPlan } from "./result"
+import { decodeResult, decodeStatement, RequiredRelationError } from "./result"
 
 const fields: ResultField[] = [
   { key: "id", type: t.integer },
@@ -194,12 +183,18 @@ describe("one row", () => {
     expect(decodeResult({ ...value, fields: [titleField] }, [[null]])).toBeNull()
   })
 
-  it("rejects without a row of rows one, and gives null or undefined for rows nullable or optional", () => {
+  it("rejects without a row of rows one and with several rows, and gives null or undefined for rows nullable or optional", () => {
     expect(() => decodeResult({ ...record, fields }, [])).toThrow(NotFoundError)
     expect(() => decodeResult({ ...value, fields: [titleField] }, [])).toThrow(NotFoundError)
     expect(decodeResult({ ...record, rows: "nullable", fields }, [])).toBeNull()
     expect(decodeResult({ ...record, rows: "optional", fields }, [])).toBeUndefined()
     expect(decodeResult({ ...value, rows: "optional", fields: [titleField] }, [])).toBeUndefined()
+    expect(() =>
+      decodeResult({ ...record, rows: "optional", fields }, [
+        ["1", "Draft"],
+        ["2", "Final"],
+      ]),
+    ).toThrow("Query of one row returned 2 rows")
   })
 
   it("names the field whose value fails to decode without the index of the row", () => {
@@ -217,15 +212,6 @@ describe("one row", () => {
       message: 'Cannot decode result field "location": not a point',
       path: "location",
     })
-  })
-
-  it("rejects more than one row", () => {
-    expect(() =>
-      decodeResult({ ...record, rows: "optional", fields }, [
-        ["1", "Draft"],
-        ["2", "Final"],
-      ]),
-    ).toThrow("Query of one row returned 2 rows")
   })
 })
 

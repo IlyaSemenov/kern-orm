@@ -1,9 +1,8 @@
-import type { ResultRows } from "../result/result"
+import type { OneRow, ResultRows } from "../database/result"
 import type { NoRelations, SchemaContext, UsableRelation, UsedRelation } from "../schema/relation"
 import type { AnyTable } from "../table/table"
 
 import type { SelectQueryKind } from "./kind"
-import type { OneRow } from "./rows"
 import type { AnySelectQuery, ChangeState, SelectQuery, TableOrQuery } from "./select"
 import { requireDerived } from "./select"
 import type { FilteredStateRows, GroupedState } from "./select-method-state"

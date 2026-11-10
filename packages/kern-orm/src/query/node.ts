@@ -11,8 +11,9 @@ import type {
   TableSourceNode,
 } from "../ast/nodes"
 import { noFilters } from "../ast/nodes"
+import type { ResultMode } from "../database/result"
 import type { AnyDb } from "../execution/db"
-import type { ResultConversion, ResultMode } from "../result/result"
+import type { ResultConversion } from "../result/result"
 import type { RelationDefinition } from "../schema/relation"
 
 import { getRelationRows, getTableRows } from "./rows"

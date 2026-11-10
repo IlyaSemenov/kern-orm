@@ -2,13 +2,14 @@ import type { ExpressionNode, NestedQueryNode, ScalarProjection } from "../ast/n
 import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { SqlStatement } from "../database/driver"
+import type { OneRow, OneValueRows, ResultRows, ValueRows } from "../database/result"
+import { toValueRows } from "../database/result"
 import type { AnyDb } from "../execution/db"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { operandNode, toExpression } from "../expression/expression"
 import type { TypedOperand } from "../expression/functions"
 import type { Operand, OperandValue } from "../expression/operators/comparison"
 import { valuesQueryNode } from "../expression/operators/equality"
-import type { ResultRows } from "../result/result"
 import type { SchemaContext } from "../schema/relation"
 import type { AnyTable, AnyTableKeys, ColumnShape, Selectable, Table } from "../table/table"
 
@@ -45,8 +46,8 @@ import type { OrderKey, OrderTerms, SelectedRefs } from "./order"
 import { addOrder } from "./order"
 import { createPageCount } from "./pagination"
 import { coalesceValue, mergeProjections, projectValue } from "./projections"
-import type { OneRow, OneValueRows, QueryResult, ValueRows } from "./rows"
-import { limitToOne, toFilteredRows, toValueRows } from "./rows"
+import type { QueryResult } from "./rows"
+import { limitToOne, toFilteredRows } from "./rows"
 import type {
   AggregateState,
   CoalescedValue,

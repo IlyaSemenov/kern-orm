@@ -4,6 +4,7 @@ import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { integer } from "../database/codecs/numeric"
 import type { DriverResult } from "../database/driver"
+import { NotFoundError } from "../database/result"
 import {
   identifier as identifierFragment,
   param as paramFragment,
@@ -11,7 +12,6 @@ import {
 } from "../database/sql/fragment"
 import { createDatabase } from "../execution/database"
 import { identifier, sql } from "../expression/sql"
-import { NotFoundError } from "../result/result"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"

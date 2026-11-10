@@ -1,5 +1,6 @@
 // States of the methods of `SelectQuery` in types: the states of the queries that they apply to, and of those that they return.
 
+import type { OneRow } from "../database/result"
 import type { GroupValue } from "../expression/aggregates"
 import type {
   TypedOperand,
@@ -11,7 +12,7 @@ import type { AnyTable, ColumnOperators, ColumnValues, Selectable } from "../tab
 
 import type { CountValueType } from "./aggregate"
 import type { OperandUses } from "./operand"
-import type { FilteredRows, OneRow } from "./rows"
+import type { FilteredRows } from "./rows"
 import type { ChangeState } from "./select"
 import type { GroupedField, GroupedRecord, HelperFields, SelectedFieldTypes } from "./selection"
 import type { FoundKey, Grouped, QueryValueType, SelectQueryState } from "./state"

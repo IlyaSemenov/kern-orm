@@ -96,8 +96,16 @@ export type {
 export type { AnyType, BaseType, Type, TypeInput, TypeOperators, TypeOutput } from "./type/type"
 export { defineType } from "./type/type"
 export type { CompileOptions } from "./compiler/postgres/compile"
-export type { ResultMode, ResultRows } from "./result/result"
-export { NotFoundError, RequiredRelationError, ResultDecodeError } from "./result/result"
+export type {
+  OneRow,
+  OneValueRows,
+  ResultByRows,
+  ResultMode,
+  ResultRows,
+  ValueRows,
+} from "./database/result"
+export { NotFoundError, ResultDecodeError } from "./database/result"
+export { RequiredRelationError } from "./result/result"
 export type {
   DatabaseOptions,
   IsolationLevel,
@@ -182,14 +190,7 @@ export type {
   TransformedQuery,
   TransformedQueryState,
 } from "./query/conversion"
-export type {
-  FilteredRows,
-  OneRow,
-  OneValueRows,
-  QueryResult,
-  ResultByRows,
-  ValueRows,
-} from "./query/rows"
+export type { FilteredRows, QueryResult } from "./query/rows"
 export type { ColumnRefs, QueryContext, RelationRefs } from "./query/column-refs"
 export type {
   EqValue,

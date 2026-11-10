@@ -1,8 +1,8 @@
 import type { ScalarProjection, TableSourceNode } from "../ast/nodes"
 import { createList, createNode } from "../ast/nodes"
+import { isRecordKey } from "../database/result"
 import type { AnyExpression } from "../expression/expression"
 import { getType, isExpression, toFunctionOperandNode, toNode } from "../expression/expression"
-import { isRecordKey } from "../result/result"
 import { requireColumn } from "../table/table"
 import type { AnyType } from "../type/type"
 

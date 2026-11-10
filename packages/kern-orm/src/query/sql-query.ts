@@ -2,17 +2,16 @@
 
 import type { RawSqlNode, TextStatementNode } from "../ast/nodes"
 import type { SqlStatement } from "../database/driver"
+import type { OneRow, OneValueRows, ResultRows, ValueRows } from "../database/result"
+import { isRecordKey, toValueRows } from "../database/result"
 import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
-import type { ResultRows, ScalarField } from "../result/result"
-import { isRecordKey } from "../result/result"
+import type { ScalarField } from "../result/result"
 import type { AnyType, TypeOutput } from "../type/type"
 import { isType } from "../type/type"
 
 import type { QueryThen } from "./kind"
 import { executeOnAwait } from "./kind"
-import type { OneRow, OneValueRows, ValueRows } from "./rows"
-import { toValueRows } from "./rows"
 import type { MergeSelection } from "./selection"
 import type { EmptyRecord, QueryState } from "./state"
 

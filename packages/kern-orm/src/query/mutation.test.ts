@@ -7,10 +7,10 @@ import {
   whileHolding,
 } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
+import { NotFoundError } from "../database/result"
 import { createDatabase } from "../execution/database"
 import { coalesce } from "../expression/functions"
 import { sql } from "../expression/sql"
-import { NotFoundError } from "../result/result"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"

@@ -1,4 +1,6 @@
 import type { DriverResult, TextValue } from "../database/driver"
+import type { ResultMode } from "../database/result"
+import { NotFoundError, ResultDecodeError, takeOnlyRow, toMissingResult } from "../database/result"
 import type { AnyType } from "../type/type"
 
 /** Field of a compiled result: the key of a record and how its value is decoded. */
@@ -36,21 +38,6 @@ export interface ResultConversion {
   readonly transform: ((result: unknown) => unknown) | undefined
 }
 
-/**
- * How a query returns its rows: `many` as an array; `one` as one row, rejecting without it; `nullable` as one row or `null` without it; `optional` as one row or `undefined` without it.
- *
- * Without a row, a query of rows `one` rejects with `NotFoundError`, executed or nested, or with `RequiredRelationError` when a required relation guarantees the row.
- * This mode does not imply a SQL limit: `take` and `get` add `LIMIT 1` only when they change `many` to `one`.
- */
-export type ResultRows = "many" | "one" | "nullable" | "optional"
-
-/** How the rows of a query become its result, apart from its fields. */
-export interface ResultMode {
-  readonly rows: ResultRows
-  /** A row is the value of its only field instead of a record. */
-  readonly value: boolean
-}
-
 /** Fields of the rows of a query and how its rows become its result. */
 export interface ResultPlan extends ResultMode {
   /** Fields of a row, in the order of its values. */
@@ -78,18 +65,6 @@ export interface StatementPlan extends ResultPlan {
   readonly named: boolean
 }
 
-/** Error thrown when a query of one row finds no row, executed or nested, unless a required relation guarantees the row. */
-export class NotFoundError extends Error {
-  override readonly name = "NotFoundError"
-  /** Path of the missing nested rows from the result field that holds them, such as `user` or `fields[2].form`, after the index of the row of an executed query of rows `many`, such as `[2].form`; `undefined` when the executed query itself finds no row. */
-  readonly path: string | undefined
-
-  constructor(message: string, path?: string) {
-    super(message)
-    this.path = path
-  }
-}
-
 /**
  * Error thrown when a required relation, such as `field.form`, has no record for a row.
  *
@@ -106,30 +81,6 @@ export class RequiredRelationError extends Error {
   ) {
     super(`Required relation "${relation}" has no record for result field "${path}"`)
   }
-}
-
-/** Error thrown when a row does not match the result fields, a value fails to decode, or a callback of `transform` or `map` fails; the failure is its cause. */
-export class ResultDecodeError extends Error {
-  override readonly name = "ResultDecodeError"
-
-  constructor(
-    message: string,
-    /**
-     * Path of the value from its result field, such as `fields[2].label`, after the index of the row of an executed query of rows `many`, such as `[2].label`.
-     *
-     * A callback of `map` that fails has the path of its row, such as `fields[2]` or `[2]`, and one of `transform` the path of the field of its nested rows, such as `fields`.
-     * It is `undefined` for a row of the driver of another width than the result fields, and for a callback that fails on the only row or the whole result of an executed query.
-     */
-    readonly path: string | undefined,
-    options?: ErrorOptions,
-  ) {
-    super(message, options)
-  }
-}
-
-/** Tells whether `key` can be a key of a decoded record, such as a column key: assigning `__proto__` would change the prototype of the record instead. */
-export function isRecordKey(key: string): boolean {
-  return key !== "__proto__"
 }
 
 /**
@@ -172,7 +123,7 @@ function decodeCount(plan: StatementPlan, counted: "number" | "records", count: 
         )
       }
       if (counted === "records") {
-        return decodeMissing(plan)
+        return toMissingResult(plan)
       }
     }
   }
@@ -316,28 +267,16 @@ function decodeRows(plan: ResultPlan, rows: DriverResult["rows"]): unknown {
     }
     return results
   }
-  // A query of one row may have no limit, such as a relation that requires at most one match.
-  if (rows.length > 1) {
-    throw new Error(`Query of one row returned ${rows.length} rows`)
-  }
-  const row = rows[0]
+  // A query of a relation runs only nested in the row of its parent, so no relation guarantees the row of an executed query, and a missing row of rows `one` is a `NotFoundError`.
+  const row = takeOnlyRow(plan, rows)
   if (row === undefined) {
-    // A query of a relation runs only nested in the row of its parent, so no relation guarantees the row of an executed query.
-    if (plan.rows === "one") {
-      throw new NotFoundError("Query returned no rows")
-    }
-    return decodeMissing(plan)
+    return toMissingResult(plan)
   }
   try {
     return decodeRow(plan, row, false)
   } catch (error) {
     throw createRowError("", error)
   }
-}
-
-/** Returns the result of a query of rows `nullable` or `optional` without a row: `null` or `undefined`. */
-function decodeMissing(plan: ResultPlan): null | undefined {
-  return plan.rows === "nullable" ? null : undefined
 }
 
 /** Missing row of nested rows `one`, which the query turns into its error once the path is known. */
@@ -506,7 +445,7 @@ function decodeNestedRows(plan: ResultPlan, json: unknown): unknown {
     if (plan.rows === "one") {
       throw new MissingRow(plan.guaranteedBy)
     }
-    return decodeMissing(plan)
+    return toMissingResult(plan)
   }
   return decodePackedRow(plan, json)
 }

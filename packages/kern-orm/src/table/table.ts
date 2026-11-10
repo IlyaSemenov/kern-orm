@@ -1,4 +1,4 @@
-import { isRecordKey } from "../result/result"
+import { isRecordKey } from "../database/result"
 import type { AnyType, TypeInput, TypeOperators, TypeOutput } from "../type/type"
 import { describeRejectedCodec, isType } from "../type/type"
 import type { IsUnion } from "../utils/type-helpers"

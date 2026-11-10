@@ -1,6 +1,7 @@
 // Nodes and their nested objects are frozen, but their arrays are not, since freezing an array in Bun 1.4.4 costs about 180 ns and makes iterating it about 30 times slower, on every query built and compiled; only their `readonly` types protect them.
 // Values of users, such as parameter values and objects of column values, are held by reference and never frozen.
 
+import type { ResultMode } from "../database/result"
 import type { SqlFragment } from "../database/sql/fragment"
 import type { AnyDb } from "../execution/db"
 import type { NestedSelectionNode, QueryNode } from "../query/node"
@@ -8,7 +9,6 @@ import type {
   RecordTemplateField,
   ResultConversion,
   ResultField,
-  ResultMode,
   ScalarField,
 } from "../result/result"
 import type { AnyTable } from "../table/table"
