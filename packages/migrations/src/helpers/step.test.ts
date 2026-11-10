@@ -92,6 +92,9 @@ describe("combineSteps", () => {
       script: async (text: string | TemplateStringsArray) => {
         statements.push(String(text))
       },
+      execute: () => {
+        throw new Error("Unexpected statement")
+      },
     }
     const wait = (name: string) => async () => {
       statements.push(`${name} started`)

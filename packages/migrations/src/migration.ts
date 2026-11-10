@@ -4,11 +4,12 @@ import type { MigrationDirection } from "./error"
 import { getErrorMessage, MigrationError } from "./error"
 
 /**
- * Database of a migration: its queries and scripts run in the transaction of the migration, or each in a transaction of its own for a change outside a transaction, and their unqualified names resolve in the target schema.
+ * Database of a migration: its queries, scripts, and statements run in the transaction of the migration, or each in a transaction of its own for a change outside a transaction, and their unqualified names resolve in the target schema.
  *
+ * `execute` returns the values of a statement as text, such as for a helper of a package that reads the catalog without the types of `kern-orm`.
  * It lacks the other members of a `Database`, such as `close`, which a migration must not use.
  */
-export type MigrationDatabase = Pick<Database, "query" | "script">
+export type MigrationDatabase = Pick<Database, "query" | "script" | "execute">
 
 /** Change of a step in one direction: a SQL script, or a function that runs statements on the database of the migration. */
 export type MigrationChange = string | ((database: MigrationDatabase) => Promise<unknown>)
@@ -45,7 +46,11 @@ export function defineMigration(migration: Migration): Migration {
 
 /** Returns the database of the migrations of `database`, whose members join its ambient transaction or session. */
 export function toMigrationDatabase(database: Database): MigrationDatabase {
-  return { query: database.query.bind(database), script: database.script.bind(database) }
+  return {
+    query: database.query.bind(database),
+    script: database.script.bind(database),
+    execute: database.execute.bind(database),
+  }
 }
 
 /** Runs a change of a step on the database of the migration: a SQL script, or a function of the database. */

@@ -68,6 +68,21 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     })
   })
 
+  it("gives the functions of steps execute, which runs a statement in the target schema and returns its values as text", async () => {
+    let rows: unknown
+    const history = defineTestHistory({
+      "0001_read_schema": {
+        up: async database => {
+          rows = (await database.execute({ text: "SELECT current_schema()", parameters: [] })).rows
+        },
+      },
+    })
+
+    await testTransaction(() => migrate(db, history))
+
+    expect(rows).toEqual([["migrations_tenant"]])
+  })
+
   it("applies only the migrations that a history adds after the applied ones", async () => {
     const keys = await testTransaction(async () => {
       await migrate(db, defineTestHistory({ "0001_create_form": createForm }))

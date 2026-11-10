@@ -22,7 +22,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   Blank SQL text rejects too, so that a migration left blank is never recorded as applied.
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
-- The database of a migration is `Pick<Database, "query" | "script">` of the target: its statements run in the transaction of the migration, or, for a change outside a transaction, each in a transaction of its own on the connection of the session, and its unqualified names resolve in the target schema through the search path.
+- The database of a migration is `Pick<Database, "query" | "script" | "execute">` of the target: its statements run in the transaction of the migration, or, for a change outside a transaction, each in a transaction of its own on the connection of the session, and its unqualified names resolve in the target schema through the search path.
   It lacks the other members of `Database`, such as `close` and `bind`, which a migration must not use.
 
 ### Changes outside a transaction
