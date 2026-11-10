@@ -25,12 +25,13 @@
     "lint:check": "oxlint && oxfmt --check",
     "prepare": "lefthook install",
     "release": "changesets-local",
-    "release:check": "bun run types && bun run test && bun run test:node && bun run test:package && bun run test:compat && bun run docs:build",
+    "release:check": "bun run types && bun run types:ts6 && bun run test && bun run test:node && bun run test:package && bun run test:compat && bun run docs:build",
     "test": "bun test",
     "test:compat": "bun run build && bun test ./packages/kern-orm/tests/package/compatibility.package-test.ts",
     "test:node": "vitest run",
     "test:package": "bun run build && bun test ./packages/kern-orm/tests/package/consumer.package-test.ts",
     "types": "bun check",
+    "types:ts6": "bun run --cwd packages/kern-orm tsc --noEmit -p ../..",
     "types:stats": "tsc --noEmit -p . --extendedDiagnostics --checkers 1"
   },
   "devDependencies": {

@@ -55,6 +55,9 @@ jobs:
       - name: Typecheck package
         run: bun run types
 
+      - name: Typecheck repository with TypeScript 6
+        run: bun run types:ts6
+
       - name: Test under Bun
         run: bun run test
 

@@ -46,7 +46,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Pin the PostgreSQL major version of the CI service and state it in the install section of `docs/getting-started.md`.
   When raising it, regenerate `packages/kern-orm/src/database/error-condition-codes.ts` from `src/backend/utils/errcodes.txt` of that version, as its header describes.
 - Support TypeScript 6.0 or newer with `strictNullChecks` in consumer projects, and state it in the install section of `docs/getting-started.md`.
-  The package test type-checks its consumer with both the pinned `typescript` and the minimum version, `typescript-6` in `devDependencies` of `kern-orm`.
+  The package test type-checks its consumer with both the pinned `typescript` and the minimum version, `typescript-6` in `devDependencies` of `kern-orm`, and the `types:ts6` script type-checks the repository with the minimum version.
 - Test both runtimes in CI, at the versions pinned in `mise.toml`, against its PostgreSQL service: the `test` script on Bun, the `test:node` script on Node.js, the `test:package` script, which also runs the scenarios of `node:test` and Vitest, and the `test:compat` script, which installs the companion packages with versions of `kern-orm` from npm.
 
 ## Workspaces
@@ -231,7 +231,7 @@ Describe the user-visible change.
 
 ## Checks
 
-- Run the `types` script when public types or TypeScript configuration change.
+- Run the `types` and `types:ts6` scripts when public types or TypeScript configuration change.
 - When a change touches generic types that user code instantiates on every call, such as the signatures and states of query methods, column references, or table and type definitions, run the `bench:types` script of `benchmarks`, report the change of every count in percent, and write the new counts with `-u` in the same change.
   Warn when the growth is substantial, such as when existing queries become more expensive to type-check.
 - Run the `test` and `test:node` scripts when behavior changes.
