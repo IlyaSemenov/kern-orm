@@ -5,9 +5,20 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 ## Preliminary decisions
 
 - Code joins an ambient transaction through the instance of `Database` that it is given, not through a single copy of a package: the coordinator of each instance has its own async context.
-- The ORM keeps its AST, lowering, and compiler; the layer compiles only its SQL templates: text, parameters, quoted names, and nested fragments.
-- A codec is the contract of the layer: its SQL type and cast type, encoding, decoding, and nullability.
+- The ORM keeps its AST, lowering, and compiler, and its expressions with operators; the layer compiles only its SQL fragments: text, parameters, quoted names, and nested fragments.
+- The layer has `sql`, `identifier`, and `param(codec, value)` of its own, which create SQL fragments without operators; the ORM keeps functions of the same names that create expressions, and builds them on the fragments of the layer, so that quoting and encoding are written once.
+- The ORM interpolates a fragment of the layer, also into `sql` and `$query`, and compiles it in its own context of parameters, which numbers the parameters across the statement and keeps `bindOnce` for the keys of groups; the layer never interpolates an expression of the ORM.
+- A template of the layer takes values without a codec only of `string`, `number`, `bigint`, `boolean`, `null`, `Date`, and `Uint8Array`, its fragments, and nothing else, such as an object, an array, or an expression of the ORM: their types reject the others, and the template rejects them when it is created, with an error that names no ORM.
+  JSON and arrays take `param` with a codec.
+  The ORM encodes its untyped parameters by the same rule.
+- `script` of the layer compiles its template with the same renderer and rejects a parameter at any depth before the driver gets the script.
+- A [codec](../architecture/types.md) is the contract of the layer: its SQL type and cast type, encoding, decoding, and nullability.
   A `Type` of the ORM is a codec with operators and the factories of columns, and the layer takes it wherever it takes a codec, such as in `get(t.uuid)`.
+- `Type` extends the contract and copies the members of a derivable codec, so that `encode` and `decode` of a type are the functions of its codec, without a call of its own for each value.
+  `defineType` also takes a derivable codec, with its type parameters, so that a codec defined without the ORM becomes a type, which `withOperators` gives operators.
+- `Type` declares `nullable`, `transform`, `of`, `withParameters`, and `with` of its own, which return a `Type` with its operators, rather than sharing their signatures with a derivable codec through a higher-kinded type, which costs 60 to 80% more instantiations for each of their calls.
+- The built-in codecs live in `database/codecs/`, and `kern-orm/types` builds its types on them, adding their operators.
+- Until the package exists, `kern-orm/db` exports the layer and `kern-orm/db/types` its built-in codecs, as `kern-db` and `kern-db/types` will: the root of `kern-orm` exports the functions of the ORM of the same names.
 - A query of SQL text of the layer holds the source of its statement apart from the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.
   `$query` of a `Db` creates it with the compilation of that `Db`, which resolves a dynamic PostgreSQL schema when the query compiles.
 - The layer decodes flat results; the ORM keeps nested rows, required relations, literals, `map`, and `transform`.
@@ -17,14 +28,14 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 ## Steps
 
 1. The contract of codecs, and `Type` built on it.
-2. Queries of SQL text in the layer: `sql` fragments, `identifier`, parameters of a codec, the compiler of templates, and the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer.
+2. Queries of SQL text in the layer: its fragments, the renderer of templates, and the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer, and the documentation of migrations uses its fragments and codecs.
 3. The driver contract and the tests of the layer on its own API, without tables and the expressions of the ORM.
 4. The package: its entry points, the dependencies of drivers and the migrator, the compatibility test, and a consumer that installs `kern-db`, a driver, and the migrator without `kern-orm`.
 
 ## Open questions
 
-- Whether the layer offers only templates with values, `identifier`, and parameters of a codec, or also the expressions and operators of the ORM: `query` of a `Database` takes expressions of the ORM now, such as `identifier` of `kern-orm` in migrations.
 - How an application binds a schema without `bind` of the `Database` of the layer, such as with a function of `kern-orm`, and whether `kern-orm` keeps a `Database` with `bind`.
 - Whether `coordinator` stays a member of `Database`: its class has private fields, which make the types of two copies of `kern-db` incompatible, while the test helpers need only a few of its methods.
 - Which range of `kern-db` `kern-orm` and the companion packages require, and which compatibility contract the new package keeps.
+  A codec of one copy of `kern-db` is not a codec for another: at runtime by the brand of its module, and in types by the `unique symbol` key of its value types.
 - How `$execute` and `$compile` of a `Db` reject a query of SQL text of another `Db` once such a query holds no node of the ORM.

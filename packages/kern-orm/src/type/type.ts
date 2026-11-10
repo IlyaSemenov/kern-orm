@@ -1,3 +1,4 @@
+import type { AcceptedNull, AcceptedValues } from "../database/codec/codec"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { getType, toExpression, toNode } from "../expression/expression"
 import type {
@@ -131,28 +132,6 @@ export interface TypeWithParameters<
 > {
   /** Creates this type with PostgreSQL type parameters, such as `varchar.with(255)` for `varchar(255)`; other changes of the type are kept. */
   with(...parameters: Parameters): Type<Output, Input, Operators, Parameters>
-}
-
-/**
- * Values that `of` can narrow a type to: those both among the values `O` that it returns and among the values `I` that it accepts, or `UnacceptedValues` when there are none.
- *
- * A narrowed value is also accepted, so its encoder must take it.
- */
-// When one of the types contains the other, as the values of every built-in type do, it stands for the intersection, which an error would show as `string | (string & Date)` for `timestamptz`.
-type AcceptedValues<O, I> = [O] extends [I]
-  ? O
-  : [I] extends [O]
-    ? I
-    : [O & I] extends [never]
-      ? UnacceptedValues
-      : O & I
-
-/** `null` when the accepted values `I` include it, also as `unknown`; `never` otherwise. */
-type AcceptedNull<I> = null extends I ? null : never
-
-/** Type that `AcceptedValues` names for a type that accepts none of the values it returns. */
-interface UnacceptedValues {
-  readonly "of narrows only a type that accepts the values it returns": never
 }
 
 /** Conversion between the values of a type and their new representation. */

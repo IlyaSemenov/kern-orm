@@ -1,5 +1,14 @@
 # Types and expressions
 
+- **Codec** (`database/codec/`): the contract by which the database layer converts the values of a PostgreSQL type: its SQL type and cast type, the conversion between JavaScript values and their PostgreSQL text representation, and nullability.
+  - `Codec` has only these members, without the methods that derive codecs, so that an API that takes a codec infers its values from them alone.
+  - `encode` and `decode` are properties of function types rather than methods, whose parameters TypeScript compares bivariantly, so a codec is not a codec of more accepted values, such as of numbers for `text`.
+    They must not read `this`, so that an object that copies them calls the same functions.
+  - `defineCodec` creates a `DerivableCodec`, which adds `nullable`, `transform`, `of`, and `withParameters`, and, once `withParameters` gave it a format, `with`; each returns a derivable codec, by the rules of the same methods of a type.
+    It rejects a codec in place of its options, in types and at runtime, since it would take only its SQL type names and lose its conversion and nullability.
+  - A codec is told from other objects at runtime by its brand, never by its shape.
+    Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a codec too.
+    A codec that `defineCodec` or a derivable codec creates is frozen.
 - **Type** (`type/`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
   PostgreSQL type parameters, such as `varchar.with(255)`, change only the SQL type name and not the cast type of parameters, so they apply at any point of a chain of type changes.
   `nullable` adds `null` to the values that a type returns and accepts, where it stands for `NULL`, as `coalesce`, object conditions, and the results of operators read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
