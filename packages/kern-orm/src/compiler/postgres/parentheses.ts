@@ -27,6 +27,7 @@ export function needsParentheses(kind: ExpressionNode["kind"], position: Operand
       // Text after an interpolated cast could continue its type name, such as a subscript `[1]` after `integer[]`.
       return position === "interpolation"
     case "raw":
+    case "fragment":
       // An interpolated fragment stays as it is, since its text may be a list or a clause rather than a value.
       return position !== "interpolation"
     case "and":

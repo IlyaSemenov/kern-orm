@@ -24,6 +24,8 @@ import {
   createSubquery,
   createTextSubquery,
 } from "../../ast/testing"
+import { text } from "../../database/codecs/text"
+import { param as paramFragment, sql as sqlFragment } from "../../database/sql/fragment"
 import { createDatabase } from "../../execution/database"
 import type { AnyExpression, Expression } from "../../expression/expression"
 import { toExpression, toNode } from "../../expression/expression"
@@ -912,6 +914,27 @@ describe("groups", () => {
     expect(compileStatement(node)).toMatchObject({
       text: 'SELECT (SELECT "post_2"."created_at" at time zone ($1::text) AS "day" FROM "post" AS "post_2") AS "nested" FROM "post" AS "post" GROUP BY "post"."created_at" at time zone ($2::text), "post"."title" || $3 HAVING "post"."created_at" at time zone ($2::text) > ($2::text) OR "post"."title" || $4 > $5 ORDER BY "post"."created_at" at time zone ($2::text), "post"."title" || $6',
       parameters: ["UTC", "UTC", "x", "x", "y", "x"],
+    })
+    expect(
+      compileStatement({
+        ...createSelectNode(source),
+        filters: { user: toNode(sql<boolean>`${day} = ${day}`) },
+      }).parameters,
+    ).toEqual(["UTC", "UTC"])
+  })
+
+  it("binds the parameter of param of the database layer once at every place of a query of groups, and at each place elsewhere", () => {
+    const zone = paramFragment(text, "UTC")
+    const day = sql(t.text)`${columns.createdAt} at time zone ${zone}`
+    const node: SelectNode = {
+      ...createSelectNode(source, [{ key: "day", expression: toNode(day), type: t.text }]),
+      groupBy: [toNode(sql`${columns.createdAt} at time zone ${zone}`)],
+      having: toNode(sql<boolean>`${day} > ${sqlFragment`${zone} || ${"x"}`}`),
+    }
+
+    expect(compileStatement(node)).toMatchObject({
+      text: 'SELECT "post"."created_at" at time zone ($1::text) AS "day" FROM "post" AS "post" GROUP BY "post"."created_at" at time zone ($1::text) HAVING "post"."created_at" at time zone ($1::text) > ($1::text) || $2',
+      parameters: ["UTC", "x"],
     })
     expect(
       compileStatement({

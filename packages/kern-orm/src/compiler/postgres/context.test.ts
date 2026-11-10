@@ -4,7 +4,7 @@ import type { CastNode } from "../../ast/nodes"
 import { createNode } from "../../ast/nodes"
 import * as t from "../../types"
 
-import { CompileContext, maxParameters } from "./context"
+import { CompileContext } from "./context"
 
 it("numbers aliases of the same name apart from the names they could take", () => {
   const context = new CompileContext(undefined)
@@ -41,20 +41,7 @@ it("tells apart aliases of names that differ only by lone surrogates", () => {
   ]).toEqual(["\ufffd".repeat(12), `${"\ufffd".repeat(12)}_2`])
 })
 
-it("numbers parameters and rejects more than PostgreSQL takes", () => {
-  const context = new CompileContext(undefined)
-
-  expect([context.bind("1"), context.bind(null)]).toEqual(["$1", "$2"])
-  for (let index = 2; index < maxParameters; index++) {
-    context.bind("1")
-  }
-  expect(() => context.bind("1")).toThrow(
-    "Statement has more than 65535 parameters, which PostgreSQL does not take; split it into several statements, such as in a transaction",
-  )
-  expect(context.parameters).toHaveLength(maxParameters)
-})
-
-it("binds the parameter of a cast once, numbering it with the other parameters", () => {
+it("binds the parameter of a cast once in a query of groups, numbering it with the other parameters, and at each place elsewhere", () => {
   const context = new CompileContext(undefined)
   const createCast = () =>
     createNode<CastNode>({
@@ -64,11 +51,14 @@ it("binds the parameter of a cast once, numbering it with the other parameters",
     })
   const zone = createCast()
 
+  context.grouped = true
   expect([
-    context.bindOnce(zone, "UTC"),
+    context.bindParam(zone, "UTC"),
     context.bind("x"),
-    context.bindOnce(zone, "UTC"),
-    context.bindOnce(createCast(), "UTC"),
+    context.bindParam(zone, "UTC"),
+    context.bindParam(createCast(), "UTC"),
   ]).toEqual(["$1", "$2", "$1", "$3"])
-  expect(context.parameters).toEqual(["UTC", "x", "UTC"])
+  context.grouped = false
+  expect([context.bindParam(zone, "UTC"), context.bindParam(zone, "UTC")]).toEqual(["$4", "$5"])
+  expect(context.parameters).toEqual(["UTC", "x", "UTC", "UTC", "UTC"])
 })

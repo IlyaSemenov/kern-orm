@@ -17,6 +17,7 @@ import type {
 import { findValueProjection } from "../../ast/projections"
 import type { SqlStatement, TextValue } from "../../database/driver"
 import { quoteIdentifier } from "../../database/identifier"
+import { renderFragment } from "../../database/sql/fragment"
 import type { AnyDb } from "../../execution/db"
 import type { StatementPlan } from "../../result/result"
 import type { AnyTable } from "../../table/table"
@@ -421,11 +422,9 @@ function compileExpression(
       return context.bind(encodeParameter(node))
     case "cast": {
       const { operand } = node
-      // PostgreSQL takes an expression of a query of groups, such as in `HAVING` or `ORDER BY`, for a key of `GROUP BY` only when it is equal to the key, so the query binds the parameter of a cast once, such as of `param(type, value)`, which is `$1::type` with the same type at every place.
-      // A parameter without a cast takes its type from its place, so binding it once could convert its value by the type of another place, and a lookup of every parameter slows down statements of many parameters.
       const value =
-        context.grouped && operand.kind === "param"
-          ? context.bindOnce(node, encodeParameter(operand))
+        operand.kind === "param"
+          ? context.bindParam(node, encodeParameter(operand))
           : compileOperand(context, scope, operand, "value")
       return `${value}::${node.type.castType}`
     }
@@ -469,6 +468,8 @@ function compileExpression(
       }
       return text
     }
+    case "fragment":
+      return renderFragment(node.fragment, context)
     case "tableName":
       return compileInterpolatedTable(context, node)
     case "subquery":

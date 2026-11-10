@@ -1,6 +1,7 @@
 # Parameters bound once only in queries of groups
 
-A query of groups binds the parameter of a cast node once, and every other parameter binds at each place.
+A query of groups binds the parameter of a cast once, whether the cast is of a cast node or of `param` of a fragment of the database layer.
+Every other parameter binds at each place.
 
 For fields grouped by buckets of positions, whose condition reads the key through its field:
 

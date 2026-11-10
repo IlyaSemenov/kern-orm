@@ -1,6 +1,7 @@
 // Nodes and their nested objects are frozen, but their arrays are not, since freezing an array in Bun 1.4.4 costs about 180 ns and makes iterating it about 30 times slower, on every query built and compiled; only their `readonly` types protect them.
 // Values of users, such as parameter values and objects of column values, are held by reference and never frozen.
 
+import type { SqlFragment } from "../database/sql/fragment"
 import type { AnyDb } from "../execution/db"
 import type { NestedSelectionNode, QueryNode } from "../query/node"
 import type {
@@ -140,6 +141,12 @@ export interface RawSqlNode {
   readonly values: readonly ExpressionNode[]
 }
 
+/** SQL fragment of the database layer, such as a quoted name of `identifier`, which the layer renders with the parameters of the statement. */
+export interface FragmentNode {
+  readonly kind: "fragment"
+  readonly fragment: SqlFragment
+}
+
 /** Name of a table interpolated into a SQL fragment, qualified by the PostgreSQL schema of the statement. */
 export interface TableNameNode {
   readonly kind: "tableName"
@@ -193,6 +200,7 @@ export type ExpressionNode =
   | InQueryNode
   | IsNullNode
   | RawSqlNode
+  | FragmentNode
   | TableNameNode
   | SubqueryNode
   | ExistsNode

@@ -7,7 +7,7 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 - Code joins an ambient transaction through the instance of `Database` that it is given, not through a single copy of a package: the coordinator of each instance has its own async context.
 - The ORM keeps its AST, lowering, and compiler, and its expressions with operators; the layer compiles only its SQL fragments: text, parameters, quoted names, and nested fragments.
 - The layer has `sql`, `identifier`, and `param(codec, value)` of its own, which create SQL fragments without operators; the ORM keeps functions of the same names that create expressions, and builds them on the fragments of the layer, so that quoting and encoding are written once.
-- The ORM interpolates a fragment of the layer, also into `sql` and `$query`, and compiles it in its own context of parameters, which numbers the parameters across the statement and keeps `bindOnce` for the keys of groups; the layer never interpolates an expression of the ORM.
+- The ORM interpolates a fragment of the layer, also into `sql` and `$query`, and compiles it in its own context of parameters, which numbers the parameters across the statement and binds the parameter of `param` once in a query of groups; the layer never interpolates an expression of the ORM.
 - A template of the layer takes values without a codec only of `string`, `number`, `bigint`, `boolean`, `null`, `Date`, and `Uint8Array`, its fragments, and nothing else, such as an object, an array, or an expression of the ORM: their types reject the others, and the template rejects them when it is created, with an error that names no ORM.
   JSON and arrays take `param` with a codec.
   The ORM encodes its untyped parameters by the same rule.
@@ -23,7 +23,8 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 ## Steps
 
 1. Done: the contract of codecs and the codecs of the built-in types, exported from `kern-orm/db` and `kern-orm/db/types`, and `Type` built on them.
-2. Queries of SQL text in the layer: its fragments, the renderer of templates, and the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer, and the documentation of migrations uses its fragments and codecs.
+2. Queries of SQL text in the layer: the untyped parameters of the ORM by the rule of the layer, and the decoding of flat results; `query` and the template of `script` move from `execution/database.ts` to the layer, `kern-orm/db` exports its fragments, and the documentation of migrations uses its fragments and codecs.
+   Done: its fragments and the renderer of templates, which the ORM interpolates.
 3. The driver contract and the tests of the layer on its own API, without tables and the expressions of the ORM.
 4. The package: its entry points, the dependencies of drivers and the migrator, the compatibility test, and a consumer that installs `kern-db`, a driver, and the migrator without `kern-orm`.
 

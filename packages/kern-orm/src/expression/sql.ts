@@ -1,6 +1,6 @@
 import type { ExpressionNode, RawSqlNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
-import { quoteIdentifier } from "../database/identifier"
+import { identifier as createIdentifier, SqlFragment } from "../database/sql/fragment"
 import { TransformedQuery } from "../query/conversion"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"
@@ -61,19 +61,8 @@ export function sql(first: TemplateStringsArray | AnyType, ...values: unknown[])
  * The name is not qualified by the PostgreSQL schema of the statement.
  */
 export function identifier(...names: [string, ...string[]]): UntypedExpression {
-  let text = ""
-  for (const name of names) {
-    if (typeof name !== "string" || name === "") {
-      throw new TypeError("identifier() takes names as non-empty strings")
-    }
-    // Each name is quoted whole and never split at dots, since a quoted name may contain them.
-    text += (text === "" ? "" : ".") + quoteIdentifier(name)
-  }
-  if (text === "") {
-    throw new TypeError("identifier() takes at least one name")
-  }
   return toExpression(
-    createNode({ kind: "raw", fragments: [text], values: [] }),
+    createNode({ kind: "fragment", fragment: createIdentifier(...names) }),
   ) as UntypedExpression
 }
 
@@ -132,6 +121,7 @@ function createFragment(
  *
  * An interpolated expression keeps its node, and a query of a table without clauses becomes the name of the table, qualified by the PostgreSQL schema of the statement.
  * Another query of a table becomes a query in an expression, which lowering replaces with its SQL.
+ * A SQL fragment of the database layer becomes a node that the layer renders.
  * Other values become query parameters.
  * It rejects the other queries, which a parameter would encode as text.
  */
@@ -170,6 +160,9 @@ function toInterpolatedNode(value: unknown): ExpressionNode {
     throw new TypeError(
       "sql takes a query of a table, such as db.form or a query of its records, not a query of $select, a mutation, a query of SQL text, or a query of map or transform",
     )
+  }
+  if (value instanceof SqlFragment) {
+    return createNode({ kind: "fragment", fragment: value })
   }
   return toValueNode(value)
 }

@@ -87,6 +87,7 @@ function visitNodes(
     case "column":
     case "param":
     case "boolean":
+    case "fragment":
     case "tableName":
     // `where` resolves an object of column values, and lowering replaces a query in an expression, before a statement compiles them.
     case "values":

@@ -28,6 +28,7 @@ export function lowerExpression(node: ExpressionNode, context: LoweringContext):
     case "param":
     case "boolean":
     case "values":
+    case "fragment":
     case "tableName":
     // Only lowering creates the queries of subqueries and of `EXISTS`, which are lowered already.
     case "subquery":

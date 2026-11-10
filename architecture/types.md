@@ -140,9 +140,27 @@
   - A query of `exists` is `EXISTS` of its rows rather than its statement, `(SELECT EXISTS (...))`, which PostgreSQL evaluates as a subquery for each row of a condition instead of joining the rows as a semi-join.
   - It rejects a query of `$select`, a [query of `map` or `transform`](queries.md#converting-results), a mutation, and a query of SQL text, which a parameter would encode as text.
 - `identifier` creates a fragment of a quoted name without parameters, so that the template of a script takes it.
+  - It is an expression of the fragment of `identifier` of the [database layer](#sql-fragments-of-the-database-layer), which quotes the names.
   - Several names make a qualified name, such as of a schema and a table, each quoted and joined by dots.
   - It quotes each name whole and never splits it at dots, which a quoted name may contain.
   - It does not qualify the name with the PostgreSQL schema of the statement, since the name may be of any object, such as a column; a table of a `Db` interpolates as the table.
   - It requires at least one name, and every name must be a non-empty string, since PostgreSQL rejects an empty name; it checks them when it is called.
   - It takes no `undefined` for a missing schema, such as `$schemaName` of a `Db` without one, so that a name never loses its schema silently.
   - It is a function of its own, as `sql` and `param` are ([decision](../decisions/expressions/identifier-function.md)).
+
+## SQL fragments of the database layer
+
+- `sql`, `identifier`, and `param` of the database layer (`database/sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
+  The entry points do not export them yet ([backlog](../backlog/database-layer-as-a-package.md)).
+- The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a codec: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
+  - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a codec tells how PostgreSQL reads an object or an array.
+  - JSON and arrays take `param` with a codec.
+- `param` takes a codec, also a type, and the values that the codec accepts, and casts its parameter to the cast type of the codec, as `param` of the ORM does with a type.
+  - The cast is in parentheses, since text after it could continue its type name, such as a subscript `[1]` after `integer[]`.
+- A fragment is immutable and holds its values by reference: rendering encodes them (`database/sql/parameter.ts`), and rejects `undefined` and a value that a parameter does not take without a codec, so a fragment created without these functions cannot pass one.
+- `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
+  - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.
+  - `compileFragment` compiles a fragment as a statement of its own, which binds every parameter at each place.
+- The ORM interpolates a fragment of the layer into `sql`, and so into `$query` and `$script`, as a `fragment` node, which the compiler renders with its compile context as the binder.
+  - Its parameters are numbered with those of the statement, and a query of groups binds the parameter of its `param` once, as that of a cast node ([SQL generation](sql.md#statements)).
+  - Only these templates take a fragment: an operand of an operator or a function takes an expression.

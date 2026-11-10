@@ -2,7 +2,13 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { createRecordingDriver } from "../../testing/recording-driver"
+import { integer } from "../database/codecs/numeric"
 import type { DriverResult } from "../database/driver"
+import {
+  identifier as identifierFragment,
+  param as paramFragment,
+  sql as sqlFragment,
+} from "../database/sql/fragment"
 import { createDatabase } from "../execution/database"
 import { identifier, sql } from "../expression/sql"
 import { NotFoundError } from "../result/result"
@@ -61,6 +67,18 @@ describe("statements", () => {
       parameters: ["Survey"],
     })
     expect(query.toSQL()).toEqual(db.$compile(query))
+  })
+
+  it("interpolate a fragment of the database layer as SQL, numbering its parameters with those of the statement", () => {
+    const { db } = createDb()
+    const condition = sqlFragment`${identifierFragment("id")} = ANY(${paramFragment(integer, 1)}, ${2})`
+
+    const query = db.$query`DELETE FROM ${db.form} WHERE name = ${"Survey"} AND ${condition}`
+
+    expect(query.toSQL()).toEqual({
+      text: 'DELETE FROM "app"."form" WHERE name = $1 AND "id" = ANY(($2::integer), $3)',
+      parameters: ["Survey", "1", "2"],
+    })
   })
 
   it("reject a table of another Db and a table outside the schema of their Db", () => {

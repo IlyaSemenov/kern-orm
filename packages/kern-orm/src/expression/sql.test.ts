@@ -2,6 +2,12 @@ import { expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { defineCodec } from "../database/codec/codec"
+import { jsonb } from "../database/codecs/json"
+import {
+  identifier as identifierFragment,
+  param as paramFragment,
+  sql as sqlFragment,
+} from "../database/sql/fragment"
 import { createDatabase } from "../execution/database"
 import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"
@@ -92,30 +98,43 @@ it("rejects a query of $select, a mutation, a query of SQL text, and a query of 
   }
 })
 
-it("creates a fragment of a quoted name with identifier, keeping dots and doubling quotes", () => {
-  expect(toNode(sql`SELECT FROM ${identifier('app.form "draft"')}`)).toEqual({
+it("interpolates a fragment of the database layer as SQL, numbering its parameters with those of the statement", () => {
+  const condition = sqlFragment`${identifierFragment("data")} @> ${paramFragment(jsonb, { a: 1 })} AND size > ${3}`
+  const query = from(form).where(() => sql<boolean>`${1} = ${1} AND ${condition} AND ${2} = ${2}`)
+
+  expect(toNode(sql`SELECT ${condition}`)).toEqual({
     kind: "raw",
-    fragments: ["SELECT FROM ", ""],
-    values: [{ kind: "raw", fragments: ['"app.form ""draft"""'], values: [] }],
+    fragments: ["SELECT ", ""],
+    values: [{ kind: "fragment", fragment: condition }],
+  })
+  expect(query.toSQL()).toEqual({
+    text: 'SELECT FROM "form" AS "form" WHERE $1 = $2 AND "data" @> ($3::jsonb) AND size > $4 AND $5 = $6',
+    parameters: ["1", "1", '{"a":1}', "3", "2", "2"],
   })
 })
 
-it("creates a fragment of a qualified name of several names with identifier", () => {
-  expect(toNode(identifier("app", "form", "name"))).toEqual({
-    kind: "raw",
-    fragments: ['"app"."form"."name"'],
-    values: [],
+it("creates an expression of the quoted name of the database layer with identifier", () => {
+  expect(toNode(identifier("app", 'form "draft"'))).toEqual({
+    kind: "fragment",
+    fragment: identifierFragment("app", 'form "draft"'),
+  })
+  expect(
+    from(form)
+      .where(() => identifier("form", "id").eq(1))
+      .toSQL(),
+  ).toEqual({
+    text: 'SELECT FROM "form" AS "form" WHERE ("form"."id") = $1',
+    parameters: ["1"],
   })
 })
 
-it("rejects a call of identifier without names or with an empty or non-string name", () => {
-  const message = "identifier() takes names as non-empty strings"
-
+it("rejects a call of identifier without names or with a non-string name", () => {
   // @ts-expect-error A name is required.
   expect(() => identifier()).toThrow("identifier() takes at least one name")
-  expect(() => identifier("app", "")).toThrow(message)
   // @ts-expect-error A name is a string.
-  expect(() => identifier("app", undefined)).toThrow(message)
+  expect(() => identifier("app", undefined)).toThrow(
+    "identifier() takes names as non-empty strings",
+  )
 })
 
 it("returns an expression value of param as it is", () => {

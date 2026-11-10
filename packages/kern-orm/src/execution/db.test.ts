@@ -2,6 +2,8 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/recording-driver"
 import { createSubquery } from "../ast/testing"
+import { text } from "../database/codecs/text"
+import { identifier as identifierFragment, param as paramFragment } from "../database/sql/fragment"
 import { identifier, sql } from "../expression/sql"
 import { lower } from "../lowering/testing"
 import type { AnySelectQuery } from "../query/select"
@@ -134,12 +136,14 @@ it("executes a script of its text or of a template that names its tables, in the
   ])
 })
 
-it("executes a script of a template that interpolates a name from identifier", async () => {
+it("executes a script of a template that interpolates a name from identifier, also of the database layer", async () => {
   const { db, scripts } = connectRecorded()
 
-  await db.$script`ANALYZE ${identifier("comment")}`
+  await db.$script`ANALYZE ${identifier("comment")}; ANALYZE ${identifierFragment("app", "post")}`
 
-  expect(scripts).toEqual([{ connection: "pool", script: 'ANALYZE "comment"' }])
+  expect(scripts).toEqual([
+    { connection: "pool", script: 'ANALYZE "comment"; ANALYZE "app"."post"' },
+  ])
 })
 
 it("executes a script of a template that interpolates a query without values as a subquery", async () => {
@@ -166,6 +170,7 @@ it("rejects values in the template of a script, also in a query and a sql fragme
     message,
   )
   await expect(db.$script`SELECT ${sql`upper(${"x"})`}`).rejects.toThrow(message)
+  await expect(db.$script`SELECT ${paramFragment(text, "x")}`).rejects.toThrow(message)
   expect(scripts).toEqual([])
 })
 
