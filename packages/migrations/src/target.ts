@@ -2,7 +2,7 @@ import type { Database, DriverResult, SqlStatement } from "kern-db"
 
 import type { MigrationHistory } from "./history"
 import { compareMigrationNumbers, getMigrationNumber } from "./history"
-import { quoteIdentifier } from "./sql"
+import { quoteDollar, quoteIdentifier, quoteLiteral } from "./sql"
 
 /**
  * Target of migrations: a database and a PostgreSQL schema, the target schema.
@@ -89,10 +89,7 @@ export async function createVersionsTable(
   versions: TargetVersions,
 ): Promise<void> {
   if (!versions.schemaExists) {
-    await execute(
-      target.database,
-      `CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(target.schemaName)}`,
-    )
+    await execute(target.database, buildCreateSchema(target.schemaName))
   }
   if (!versions.tableExists) {
     await execute(
@@ -100,6 +97,21 @@ export async function createVersionsTable(
       `CREATE TABLE IF NOT EXISTS ${target.table} (key text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`,
     )
   }
+}
+
+/**
+ * Builds a statement that creates schema `schemaName` unless it exists, checking it again under a transaction-level advisory lock of the schema.
+ *
+ * Histories of one target do not share the lock of the target, and `IF NOT EXISTS` misses a schema that another transaction has created and not committed, so without this lock a history that creates the schema while another one does fails on the unique index of `pg_namespace` once the other commits.
+ * The lock lasts until the transaction of the statement ends, and the check under it sees a schema that another history committed meanwhile under `READ COMMITTED`, since each statement of the block takes a new snapshot.
+ * The key of the lock includes the schema, so that targets of different schemas, such as new tenants, do not wait for each other.
+ */
+function buildCreateSchema(schemaName: string): string {
+  const name = quoteLiteral(schemaName)
+  const lockKey = quoteLiteral(`kern-migrations schema ${schemaName}`)
+  return `DO ${quoteDollar(
+    `BEGIN PERFORM pg_advisory_xact_lock(hashtextextended(${lockKey}, 0)); IF NOT EXISTS (SELECT FROM pg_catalog.pg_namespace WHERE nspname = ${name}) THEN CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schemaName)}; END IF; END`,
+  )}`
 }
 
 /** Records migration `key` as applied. */

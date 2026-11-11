@@ -1076,7 +1076,7 @@ describePooledPostgres(
         const runs = { count: 0 }
 
         await runScenario(async ({ gate, openGate, start }) => {
-          // Histories that create the target schema at once fail on its unique name, since they do not lock each other.
+          // A history that creates a missing target schema keeps the others waiting until it commits.
           await database.script("CREATE SCHEMA migrations_pool_1")
           const waiting = defineTestHistory({
             "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
@@ -1095,6 +1095,39 @@ describePooledPostgres(
           openGate()
 
           expect([await first, second]).toEqual([["0001_create_form"], ["0001_create_job"]])
+        })
+      })
+
+      it("waits for another history of the target that creates the missing target schema, rather than failing on its unique name", async () => {
+        const runs = { count: 0 }
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          const waiting = defineTestHistory({
+            "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
+          })
+          // It creates the schema in the transaction of its migration, which waits for the gate.
+          const first = start(migrate(db, waiting, target))
+          await waitFor(async () => runs.count === 1)
+          const second = start(
+            migrate(
+              db,
+              defineTestHistory({ "0001_create_job": createJob }, { tableName: "job_migration" }),
+              target,
+            ),
+          )
+          await waitFor(
+            async () =>
+              (await countLockWaiters(database, "kern-migrations schema migrations_pool_1")) === 1,
+          )
+          openGate()
+
+          expect([await first, await second]).toEqual([["0001_create_form"], ["0001_create_job"]])
+          expect(await listTables(database, "migrations_pool_1")).toEqual([
+            "form",
+            "job",
+            "job_migration",
+            "kern_migration",
+          ])
         })
       })
 
@@ -1179,7 +1212,7 @@ const statementNames: readonly (readonly [prefix: string, name: string])[] = [
   ["SELECT set_config($1, $2, false)", "set search path"],
   ["SELECT pg_try_advisory_lock(", "try lock"],
   ["SELECT pg_advisory_unlock(", "unlock"],
-  ["CREATE SCHEMA IF NOT EXISTS", "create schema"],
+  ["DO $", "create schema"],
   ["CREATE TABLE IF NOT EXISTS", "create table of versions"],
   ["INSERT INTO", "insert version"],
   ["DELETE FROM", "delete version"],
