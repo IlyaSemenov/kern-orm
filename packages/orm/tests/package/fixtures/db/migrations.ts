@@ -10,7 +10,7 @@ export const migration = defineMigration({
 export const migrations = defineMigrations(
   {
     "./migrations/0002_drop_form.ts": async () => ({ up: "DROP TABLE form" }),
-    "0001_create_form": async () => ({ default: migration }),
+    "0001_create_form": migration,
   },
   { searchPath: ["extensions"] },
 )

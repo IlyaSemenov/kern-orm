@@ -115,15 +115,20 @@ export async function runOutsideTransaction(
   }
 }
 
-/** Returns the steps of the default export of the module of migration `key`, rejecting a value that is not a migration. */
-export function toMigrationSteps(key: string, value: unknown): readonly MigrationStep[] {
+/**
+ * Returns the steps of migration `key`, rejecting a value that is not a migration.
+ *
+ * `requirement` completes the message that rejects a value that is neither a step nor a non-empty array of steps, such as `be a step or a non-empty array of steps`.
+ */
+export function toMigrationSteps(
+  key: string,
+  value: unknown,
+  requirement: string,
+): readonly MigrationStep[] {
   const steps: readonly unknown[] = Array.isArray(value) ? value : [value]
   // An array without steps is rejected too, so that a migration that forgot its steps is never recorded as applied.
   if (typeof value !== "object" || value === null || steps.length === 0) {
-    throw new MigrationError(
-      `Migration ${key} must export a step or a non-empty array of steps as its default export`,
-      { key },
-    )
+    throw new MigrationError(`Migration ${key} must ${requirement}`, { key })
   }
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index]

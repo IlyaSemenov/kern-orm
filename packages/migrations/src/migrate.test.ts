@@ -5,7 +5,6 @@ import { bindSchema, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { countLockWaiters, settleWithin, waitFor } from "../testing/concurrency"
-import { defineTestHistory } from "../testing/history"
 import { describePooledPostgres, describePostgres } from "../testing/postgres"
 
 import { MigrationError } from "./error"
@@ -53,7 +52,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   const db = bindSchema(schema, database, { schemaName: "migrations_tenant" })
 
   it("applies the pending migrations in the target schema of a Db in order and resolves to their keys", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_insert_form": {
         up: async database => await database.query`INSERT INTO form (id) VALUES (1)`,
@@ -75,7 +74,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
   it("gives the functions of steps execute, which runs a statement in the target schema and returns its values as text", async () => {
     let rows: unknown
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_read_schema": {
         up: async database => {
           rows = (await database.execute({ text: "SELECT current_schema()", parameters: [] })).rows
@@ -90,10 +89,10 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
   it("applies only the migrations that a history adds after the applied ones", async () => {
     const keys = await testTransaction(async () => {
-      await migrate(db, defineTestHistory({ "0001_create_form": createForm }))
+      await migrate(db, defineMigrations({ "0001_create_form": createForm }))
       return await migrate(
         db,
-        defineTestHistory({ "0001_create_form": createForm, "0002_create_user": createUser }),
+        defineMigrations({ "0001_create_form": createForm, "0002_create_user": createUser }),
       )
     })
 
@@ -101,7 +100,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("applies the first pending migrations of count", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_create_user": createUser,
       "0003_create_tag": createTag,
@@ -116,7 +115,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("rejects a count that is not a positive integer before any statement", async () => {
-    const history = defineTestHistory({ "0001_create_form": createForm })
+    const history = defineMigrations({ "0001_create_form": createForm })
 
     const statements = await recordStatements(async () => {
       await expect(migrate(db, history, { count: 1.5 })).rejects.toThrow(
@@ -128,7 +127,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("applies nothing to a target that is up to date, with two statements outside a transaction", async () => {
-    const history = defineTestHistory({ "0001_create_form": createForm })
+    const history = defineMigrations({ "0001_create_form": createForm })
 
     const result = await testTransaction(async () => {
       await migrate(db, history)
@@ -143,7 +142,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("creates the target schema and the table of versions, and the table in an existing schema, without notices", async () => {
-    const history = defineTestHistory({ "0001_create_form": createForm })
+    const history = defineMigrations({ "0001_create_form": createForm })
     notices.length = 0
 
     const tables = await testTransaction(async () => {
@@ -164,10 +163,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("keeps the applied migrations in the table of versions of the history", async () => {
-    const history = defineTestHistory(
-      { "0001_create_form": createForm },
-      { tableName: "migration" },
-    )
+    const history = defineMigrations({ "0001_create_form": createForm }, { tableName: "migration" })
 
     const tables = await testTransaction(async () => {
       await migrate(db, history)
@@ -179,11 +175,11 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
   it("applies, rolls back, and lists histories of the target with different tables of versions independently, such as of a package and the application", async () => {
     // The history of the package numbers its migrations as the application does.
-    const jobHistory = defineTestHistory(
+    const jobHistory = defineMigrations(
       { "0001_create_job": createJob },
       { tableName: "job_migration" },
     )
-    const appHistory = defineTestHistory({
+    const appHistory = defineMigrations({
       "0001_create_form": createForm,
       "0002_create_user": createUser,
     })
@@ -239,9 +235,9 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     const result = await testTransaction(async () => ({
       table: await migrate(
         db,
-        defineTestHistory({ "0001_create_form": createForm }, { tableName: longTableName }),
+        defineMigrations({ "0001_create_form": createForm }, { tableName: longTableName }),
       ).catch((error: unknown) => (error as Error).message),
-      schema: await migrate(db, defineTestHistory({ "0001_create_form": createForm }), {
+      schema: await migrate(db, defineMigrations({ "0001_create_form": createForm }), {
         schemaName: longSchemaName,
       }).catch((error: unknown) => (error as Error).message),
       tables: await listTables(database, "migrations_tenant"),
@@ -255,7 +251,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("resolves unqualified names in the target schema followed by the schemas of the history, and restores the search path of the enclosing transaction", async () => {
-    const history = defineTestHistory(
+    const history = defineMigrations(
       { "0001_create_form": { up: "CREATE TABLE form (id integer DEFAULT next_form_id())" } },
       { searchPath: ["migrations_extensions"] },
     )
@@ -285,7 +281,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
         return "migrations_tenant"
       },
     })
-    const history = defineTestHistory({ "0001_create_form": createForm })
+    const history = defineMigrations({ "0001_create_form": createForm })
 
     const tables = await testTransaction(async () => {
       await migrate(tenantDb, history, { schemaName: "migrations_tenant_2" })
@@ -306,14 +302,14 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     })
 
     await testTransaction(async () => {
-      await migrate(tenantDb, defineTestHistory({ "0001_create_form": createForm }))
+      await migrate(tenantDb, defineMigrations({ "0001_create_form": createForm }))
     })
 
     expect(calls).toBe(1)
   })
 
   it("targets current_schema() of a Database", async () => {
-    const history = defineTestHistory({ "0001_create_form": createForm })
+    const history = defineMigrations({ "0001_create_form": createForm })
 
     const result = await testTransaction(async () => {
       await database.script("CREATE SCHEMA migrations_current")
@@ -339,7 +335,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("targets the schema of the schemaName option of a Database", async () => {
-    const history = defineTestHistory({ "0001_create_form": createForm })
+    const history = defineMigrations({ "0001_create_form": createForm })
     const target = { schemaName: "migrations_tenant" }
 
     const result = await testTransaction(async () => ({
@@ -368,7 +364,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     await testTransaction(async () => {
       await expect(
         database.transaction(
-          () => migrate(database, defineTestHistory({ "0001_create_form": createForm })),
+          () => migrate(database, defineMigrations({ "0001_create_form": createForm })),
           { searchPath: ["migrations_missing"] },
         ),
       ).rejects.toThrow(
@@ -378,7 +374,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("runs inside a transaction as a nested transaction, which the enclosing one rolls back", async () => {
-    const history = defineTestHistory({ "0001_create_form": createForm })
+    const history = defineMigrations({ "0001_create_form": createForm })
     const failure = new Error("failure")
 
     const status = await testTransaction(async () => {
@@ -400,7 +396,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("runs up and down of a step with outsideTransaction in a test transaction", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_index_form": indexForm,
     })
@@ -417,7 +413,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   it("rolls back every migration of the call when a step fails, and rejects with a MigrationError of its key and step", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_create_user": [createUser, { up: "CREATE TABLE form (id integer)" }],
     })
@@ -462,14 +458,14 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
   })
 
   describe("history and applied migrations", () => {
-    const newHistory = defineTestHistory({
+    const newHistory = defineMigrations({
       "0001_create_form": createForm,
       "0002_create_user": createUser,
       "0003_create_tag": createTag,
     })
 
     it("allows applied migrations after the last migration of the history, such as of a newer version of the application", async () => {
-      const oldHistory = defineTestHistory({
+      const oldHistory = defineMigrations({
         "0001_create_form": createForm,
         "0002_create_user": createUser,
       })
@@ -499,7 +495,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
         await expect(
           migrate(
             db,
-            defineTestHistory({
+            defineMigrations({
               "0001_create_form": createForm,
               "0003_create_tag": createTag,
               "0004_drop_tag": { up: "DROP TABLE tag" },
@@ -515,7 +511,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       await testTransaction(async () => {
         await migrate(
           db,
-          defineTestHistory({ "0001_create_form": createForm, "0003_create_tag": createTag }),
+          defineMigrations({ "0001_create_form": createForm, "0003_create_tag": createTag }),
         )
         await expect(migrate(db, newHistory)).rejects.toThrow(
           'Cannot migrate schema "migrations_tenant": migration 0002_create_user is pending, but the later migration 0003_create_tag is applied',
@@ -530,7 +526,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       const recordChange = (change: string) => async () => {
         changes.push(change)
       }
-      return defineTestHistory({
+      return defineMigrations({
         "0001_create_form": { up: recordChange("0001:up"), down: recordChange("0001:down") },
         "0002_create_user": [
           { up: recordChange("0002:up:1"), down: recordChange("0002:down:1") },
@@ -583,7 +579,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     })
 
     it("keeps every migration applied when down of one fails, and rejects with a MigrationError of its key and step", async () => {
-      const history = defineTestHistory({
+      const history = defineMigrations({
         "0001_create_form": { up: createForm.up, down: "DROP TABLE missing_form" },
         "0002_create_user": createUser,
       })
@@ -613,7 +609,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       const result = await testTransaction(async () => {
         let keys: string[] = []
         const statements = await recordStatements(async () => {
-          keys = await rollback(db, defineTestHistory({ "0001_create_form": createForm }))
+          keys = await rollback(db, defineMigrations({ "0001_create_form": createForm }))
         })
         return { keys, statements: statements.length }
       })
@@ -625,10 +621,10 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       await testTransaction(async () => {
         await migrate(
           db,
-          defineTestHistory({ "0001_create_form": createForm, "0002_create_user": createUser }),
+          defineMigrations({ "0001_create_form": createForm, "0002_create_user": createUser }),
         )
         await expect(
-          rollback(db, defineTestHistory({ "0001_create_form": createForm })),
+          rollback(db, defineMigrations({ "0001_create_form": createForm })),
         ).rejects.toThrow(
           'Cannot roll back the migrations of schema "migrations_tenant": migration 0002_create_user is applied, but the history lacks it',
         )
@@ -636,7 +632,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     })
 
     it("rejects a count that is not a positive integer, or all for rollback", async () => {
-      const history = defineTestHistory({ "0001_create_form": createForm })
+      const history = defineMigrations({ "0001_create_form": createForm })
 
       await expect(rollback(db, history, { count: 0 })).rejects.toThrow(
         'count must be a positive integer or "all", not 0',
@@ -680,7 +676,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     })
 
     it("redo keeps the migration applied when applying it again fails", async () => {
-      const history = defineTestHistory({
+      const history = defineMigrations({
         "0001_create_form": { up: createForm.up, down: "DELETE FROM form" },
       })
 
@@ -713,7 +709,7 @@ describePooledPostgres(
   ({ database, recordStatements, failStatement, connect }) => {
     const db = bindSchema(schema, database)
     const target = { schemaName: "migrations_pool_1" }
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_index_form": indexForm,
       "0003_create_user": createUser,
@@ -792,7 +788,7 @@ describePooledPostgres(
     })
 
     it("creates the schema and the table of versions before a first migration outside a transaction", async () => {
-      const outsideFirst = defineTestHistory({
+      const outsideFirst = defineMigrations({
         "0001_create_form": { ...createForm, outsideTransaction: { up: createForm.up } },
       })
       let statements: string[] = []
@@ -890,7 +886,7 @@ describePooledPostgres(
 
     it("keeps the migrations committed before a migration that fails outside a transaction, which the next call applies", async () => {
       let attempts = 0
-      const failing = defineTestHistory({
+      const failing = defineMigrations({
         "0001_create_form": createForm,
         "0002_index_form": {
           up: indexForm.up,
@@ -934,7 +930,7 @@ describePooledPostgres(
     })
 
     describe("a failure between a change outside a transaction and its record", () => {
-      const indexHistory = defineTestHistory({
+      const indexHistory = defineMigrations({
         "0001_create_form": createForm,
         "0002_index_form": indexForm,
       })
@@ -997,7 +993,7 @@ describePooledPostgres(
         const runs = { count: 0 }
 
         await runScenario(async ({ gate, openGate, start }) => {
-          const waiting = defineTestHistory({
+          const waiting = defineMigrations({
             "0001_create_form": createForm,
             "0002_index_form": {
               ...indexForm,
@@ -1029,7 +1025,7 @@ describePooledPostgres(
         const [other] = others
 
         await runScenario(async ({ gate, openGate, start }) => {
-          const waiting = defineTestHistory({
+          const waiting = defineMigrations({
             "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
           })
           const first = start(migrate(db, waiting, target))
@@ -1054,14 +1050,14 @@ describePooledPostgres(
         const runs = { count: 0 }
 
         await runScenario(async ({ gate, openGate, start }) => {
-          const waiting = defineTestHistory({
+          const waiting = defineMigrations({
             "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
           })
           const first = start(migrate(db, waiting, target))
           await waitFor(async () => runs.count === 1)
           const second = await settleWithin(
             start(
-              migrate(db, defineTestHistory({ "0001_create_form": createForm }), {
+              migrate(db, defineMigrations({ "0001_create_form": createForm }), {
                 schemaName: "migrations_pool_2",
               }),
             ),
@@ -1078,7 +1074,7 @@ describePooledPostgres(
         await runScenario(async ({ gate, openGate, start }) => {
           // A history that creates a missing target schema keeps the others waiting until it commits.
           await database.script("CREATE SCHEMA migrations_pool_1")
-          const waiting = defineTestHistory({
+          const waiting = defineMigrations({
             "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
           })
           const first = start(migrate(db, waiting, target))
@@ -1087,7 +1083,7 @@ describePooledPostgres(
             start(
               migrate(
                 db,
-                defineTestHistory({ "0001_create_job": createJob }, { tableName: "job_migration" }),
+                defineMigrations({ "0001_create_job": createJob }, { tableName: "job_migration" }),
                 target,
               ),
             ),
@@ -1102,7 +1098,7 @@ describePooledPostgres(
         const runs = { count: 0 }
 
         await runScenario(async ({ gate, openGate, start }) => {
-          const waiting = defineTestHistory({
+          const waiting = defineMigrations({
             "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
           })
           // It creates the schema in the transaction of its migration, which waits for the gate.
@@ -1111,7 +1107,7 @@ describePooledPostgres(
           const second = start(
             migrate(
               db,
-              defineTestHistory({ "0001_create_job": createJob }, { tableName: "job_migration" }),
+              defineMigrations({ "0001_create_job": createJob }, { tableName: "job_migration" }),
               target,
             ),
           )
@@ -1136,7 +1132,7 @@ describePooledPostgres(
         const [other] = others
 
         await runScenario(async ({ gate, openGate, start }) => {
-          const waiting = defineTestHistory({
+          const waiting = defineMigrations({
             "0001_create_form": createForm,
             "0002_create_user": {
               up: createUser.up,
@@ -1162,7 +1158,7 @@ describePooledPostgres(
         const [other] = others
 
         await runScenario(async ({ gate, openGate, start }) => {
-          const waiting = defineTestHistory({
+          const waiting = defineMigrations({
             "0001_create_form": {
               up: createForm.up,
               down: waitBefore(createForm.down, gate, runs),

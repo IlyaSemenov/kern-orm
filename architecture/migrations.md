@@ -18,9 +18,10 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 ## Migrations
 
 - Migrations are fixed artifacts: they never import the tables, the custom types, or the database of the application, so that a migration does the same on every target and in every later version of the application.
-- A migration is the default export of a module: a step or a non-empty array of steps, plain values without runtime identity, which `defineMigration` only types.
+- A migration is a step or a non-empty array of steps, plain values without runtime identity, which `defineMigration` only types.
+  It is the default export of a module, or a value that a [history](#histories) takes directly.
   A module that does not export a migration rejects when it loads, rather than being recorded as applied.
-- A step has `up`, an optional `down`, and optional [changes outside a transaction](#changes-outside-a-transaction), each change a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects when the migration loads instead of doing nothing on rollback.
+- A step has `up`, an optional `down`, and optional [changes outside a transaction](#changes-outside-a-transaction), each change a SQL script or a function of the database of the migration, and no other properties, so that a misspelled `down` rejects before the migration runs instead of doing nothing on rollback.
   Blank SQL text rejects too, so that a migration left blank is never recorded as applied.
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
@@ -41,12 +42,15 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 
 ## Histories
 
-- `defineMigrations` takes the loaders of the migration modules by key, or by path as `import.meta.glob` returns them, and options of the history: the name of its table of versions and the schemas that its search path lists after the target schema, such as the schema of extensions.
+- `defineMigrations` takes the migrations by key, or by path as `import.meta.glob` returns them, and options of the history: the name of its table of versions and the schemas that its search path lists after the target schema, such as the schema of extensions.
+  - A function is the loader of a migration module, and another value is the migration itself, which lets a package define its migrations without a module for each and a chunk for each in a bundle.
+  - `defineMigrations` checks the steps of a migration given as a value when it is called, as a helper checks its arguments, and the default export of a module when its loader runs; PostgreSQL checks SQL text only when the step runs.
+    It rejects a value that is neither a loader nor a migration, such as an empty array.
 - A key is the file name without directories and extension, of the form `<number>_<name>` without dots, and the number orders the history as an integer.
-  A name of a loader that contains `/` is a path; another name is the key itself.
+  A name that contains `/` is a path; another name is the key itself.
   `defineMigrations` rejects a key of another form and two keys of one number, such as `0002_create_user` and `2_create_tag`, or migrations of two branches that took one number.
 - `defineMigrations` rejects a path of a file of [migration tests](#verification) with a hint to exclude migration tests from the patterns of `import.meta.glob`, rather than skipping it: a bundler builds a chunk of every module that the patterns match, with its imports, such as the test runner.
-- A call loads only the migrations it applies or rolls back, so that migrating a target that is up to date loads none.
+- A call loads only the modules of the migrations it applies or rolls back, so that migrating a target that is up to date loads none.
   It loads them all before running any, so that a module that fails to load changes nothing.
 - The cache of loaded modules is that of the runtime, so histories with the same keys never share migrations.
 - Migrations of a history rely on the search path and do not name the target schema, so that one history applies to any schema, such as the schema of each tenant.
@@ -121,8 +125,8 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
 - They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
   The changes outside a transaction of `concurrently` check the catalog instead, since they must be safe to run again, so the `up` and `down` that a transaction runs catch such a mismatch.
-- A helper checks its arguments when it is called, that is, when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.
-  `quoteIdentifier` rejects an empty name, so that a name left blank fails when the migration loads.
+- A helper checks its arguments when it is called, such as when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.
+  `quoteIdentifier` rejects an empty name, so that a name left blank fails before the migration runs.
 - A helper that drops an object is `invertStep` of the helper that creates it, with the same arguments, which give the definition that its `down` creates again.
   Dropping a table or a column also drops its indexes and constraints, and the definition restores only what it describes, so a migration must drop standalone indexes and constraints with their own steps before, and describe each constraint once.
 - `changeColumn` takes the states of a column before and after the change, which list the same of `type`, `notNull`, and `default`, so that a missing property never means a value; `using` of a state converts the values to its type.

@@ -1,6 +1,6 @@
 import { getErrorMessage, MigrationError } from "./error"
 import { getMigrationTestKey } from "./files"
-import type { MigrationStep } from "./migration"
+import type { Migration, MigrationStep } from "./migration"
 import { toMigrationSteps } from "./migration"
 
 /** Loader of a migration module, such as `() => import("./migrations/0001_create_form.ts")`, or one that `import.meta.glob` returns. */
@@ -23,7 +23,7 @@ export interface MigrationHistory {
   /** PostgreSQL schemas that the search path of the migrations lists after the target schema. */
   readonly searchPath: readonly string[]
   /**
-   * Loads the module of the migration of `key` and returns its steps.
+   * Returns the steps of the migration of `key`, loading its module when the history has its loader.
    *
    * It rejects with a `MigrationError` when the module fails to load or does not export a migration.
    */
@@ -34,7 +34,7 @@ export interface MigrationHistory {
 interface HistoryEntry {
   readonly key: string
   readonly number: bigint
-  readonly load: MigrationLoader
+  readonly load: () => Promise<readonly MigrationStep[]>
 }
 
 const keyPattern = /^(\d+)_[^.\s]+$/
@@ -51,17 +51,17 @@ export function compareMigrationNumbers(left: bigint, right: bigint): number {
 }
 
 /**
- * Defines a history of migrations from the loaders of their modules, by key or by path, as `import.meta.glob` returns them.
+ * Defines a history of migrations from the loaders of their modules or the migrations themselves, by key or by path as `import.meta.glob` returns them.
  *
  * A key is the file name without directories and extension, of the form `<number>_<name>`, such as `0001_create_form`, and the numbers order the history.
- * It rejects a key of another form, a path of a file of migration tests, and two keys of one number, such as migrations of two branches that took one number.
+ * It rejects a key of another form, a path of a file of migration tests, two keys of one number, such as migrations of two branches that took one number, and a value that is neither a loader nor a migration.
  */
 export function defineMigrations(
-  loaders: Readonly<Record<string, MigrationLoader>>,
+  migrations: Readonly<Record<string, MigrationLoader | Migration>>,
   options: MigrationHistoryOptions = {},
 ): MigrationHistory {
   const entries: HistoryEntry[] = []
-  for (const [name, load] of Object.entries(loaders)) {
+  for (const [name, value] of Object.entries(migrations)) {
     const isPath = name.includes("/")
     // `import.meta.glob` of the migration modules also returns the files of migration tests beside them, unless its patterns exclude them.
     if (isPath && getMigrationTestKey(name.slice(name.lastIndexOf("/") + 1)) !== undefined) {
@@ -76,7 +76,7 @@ export function defineMigrations(
         `Migration ${name} must be named <number>_<name>, such as 0001_create_form, without dots`,
       )
     }
-    entries.push({ key, number, load })
+    entries.push({ key, number, load: toEntryLoader(key, value) })
   }
   entries.sort((left, right) => compareMigrationNumbers(left.number, right.number))
   const byKey = new Map<string, HistoryEntry>()
@@ -100,23 +100,45 @@ export function defineMigrations(
       if (entry === undefined) {
         throw new Error(`The history has no migration ${key}`)
       }
-      let module: unknown
-      try {
-        module = await entry.load()
-      } catch (error) {
-        throw new MigrationError(`Cannot load migration ${key}: ${getErrorMessage(error)}`, {
-          key,
-          cause: error,
-        })
-      }
-      return toMigrationSteps(
-        key,
-        typeof module === "object" && module !== null
-          ? (module as { default?: unknown }).default
-          : undefined,
-      )
+      return await entry.load()
     },
   }
+}
+
+/** Returns the function that gives the steps of migration `key`: it checks a migration given as a value at once, and loads the module of a loader only when the function is called. */
+function toEntryLoader(
+  key: string,
+  value: MigrationLoader | Migration,
+): () => Promise<readonly MigrationStep[]> {
+  if (typeof value === "function") {
+    return () => loadModule(key, value)
+  }
+  const steps = toMigrationSteps(
+    key,
+    value,
+    "be the loader of its module, a step, or a non-empty array of steps",
+  )
+  return async () => steps
+}
+
+/** Loads the module of migration `key` with `loader` and returns the steps of its default export. */
+async function loadModule(key: string, loader: MigrationLoader): Promise<readonly MigrationStep[]> {
+  let module: unknown
+  try {
+    module = await loader()
+  } catch (error) {
+    throw new MigrationError(`Cannot load migration ${key}: ${getErrorMessage(error)}`, {
+      key,
+      cause: error,
+    })
+  }
+  return toMigrationSteps(
+    key,
+    typeof module === "object" && module !== null
+      ? (module as { default?: unknown }).default
+      : undefined,
+    "export a step or a non-empty array of steps as its default export",
+  )
 }
 
 /** Returns the key of a migration module at `path`: its file name without directories and extension. */

@@ -3,13 +3,16 @@ import { describe, expect, it } from "bun:test"
 import { MigrationError } from "./error"
 import { toMigrationSteps } from "./migration"
 
+/** End of the message that rejects a value that is not a migration. */
+const requirement = "be a step or a non-empty array of steps"
+
 describe("toMigrationSteps", () => {
   it("returns a step as the only step and an array of steps as it is", () => {
     const step = { up: "CREATE TABLE form (id integer)", down: "DROP TABLE form" }
     const steps = [step, { up: async () => {} }]
 
-    expect(toMigrationSteps("0001_form", step)).toEqual([step])
-    expect(toMigrationSteps("0001_form", steps)).toBe(steps)
+    expect(toMigrationSteps("0001_form", step, requirement)).toEqual([step])
+    expect(toMigrationSteps("0001_form", steps, requirement)).toBe(steps)
   })
 
   it("accepts a step with outsideTransaction as the only step of its migration", () => {
@@ -19,27 +22,30 @@ describe("toMigrationSteps", () => {
       outsideTransaction: { up: "CREATE INDEX CONCURRENTLY form_name_idx ON form (name)" },
     }
 
-    expect(toMigrationSteps("0002_index_form", step)).toEqual([step])
-    expect(toMigrationSteps("0002_index_form", [step])).toEqual([step])
+    expect(toMigrationSteps("0002_index_form", step, requirement)).toEqual([step])
+    expect(toMigrationSteps("0002_index_form", [step], requirement)).toEqual([step])
   })
 
   // rake-db 2.37.48 recorded a migration that registered no changes as applied: https://github.com/romeerez/orchid-orm/issues/765
   it.each([
-    ["no default export", undefined],
+    ["undefined, such as of a module without a default export", undefined],
     ["a string", "CREATE TABLE form (id integer)"],
     ["an empty array", []],
   ])("rejects %s", (_, value) => {
-    expect(() => toMigrationSteps("0001_form", value)).toThrow(
-      new MigrationError(
-        "Migration 0001_form must export a step or a non-empty array of steps as its default export",
-        { key: "0001_form" },
-      ),
+    expect(() => toMigrationSteps("0001_form", value, requirement)).toThrow(
+      new MigrationError("Migration 0001_form must be a step or a non-empty array of steps", {
+        key: "0001_form",
+      }),
     )
   })
 
   it("rejects a step with a misspelled down, which would do nothing on rollback", () => {
     const error = getError(() =>
-      toMigrationSteps("0001_form", [{ up: "SELECT 1" }, { up: "SELECT 2", donw: "SELECT 3" }]),
+      toMigrationSteps(
+        "0001_form",
+        [{ up: "SELECT 1" }, { up: "SELECT 2", donw: "SELECT 3" }],
+        requirement,
+      ),
     )
 
     expect(error).toBeInstanceOf(MigrationError)
@@ -86,17 +92,24 @@ describe("toMigrationSteps", () => {
       { up: "SELECT 1", outsideTransaction: { down: "SELECT 2" } },
     ],
   ])("rejects a step that %s", (problem, step) => {
-    expect(() => toMigrationSteps("0001_form", [step])).toThrow(
+    expect(() => toMigrationSteps("0001_form", [step], requirement)).toThrow(
       `Step 1 of migration 0001_form ${problem}`,
     )
   })
 
   it("rejects a step with outsideTransaction beside other steps, since a migration records no progress of its steps", () => {
     const error = getError(() =>
-      toMigrationSteps("0002_index_form", [
-        { up: "ALTER TABLE form ADD COLUMN name text" },
-        { up: "CREATE INDEX form_name_idx ON form (name)", outsideTransaction: { up: "SELECT 1" } },
-      ]),
+      toMigrationSteps(
+        "0002_index_form",
+        [
+          { up: "ALTER TABLE form ADD COLUMN name text" },
+          {
+            up: "CREATE INDEX form_name_idx ON form (name)",
+            outsideTransaction: { up: "SELECT 1" },
+          },
+        ],
+        requirement,
+      ),
     )
 
     expect(error).toBeInstanceOf(MigrationError)
@@ -109,11 +122,15 @@ describe("toMigrationSteps", () => {
   })
 
   it("rejects blank SQL text of up and down, such as of the template of a new migration", () => {
-    expect(() => toMigrationSteps("0001_form", { up: " \n ", down: "DROP TABLE form" })).toThrow(
-      "Step 1 of migration 0001_form requires up as a non-blank SQL script or a function",
-    )
     expect(() =>
-      toMigrationSteps("0001_form", { up: "CREATE TABLE form (id integer)", down: "" }),
+      toMigrationSteps("0001_form", { up: " \n ", down: "DROP TABLE form" }, requirement),
+    ).toThrow("Step 1 of migration 0001_form requires up as a non-blank SQL script or a function")
+    expect(() =>
+      toMigrationSteps(
+        "0001_form",
+        { up: "CREATE TABLE form (id integer)", down: "" },
+        requirement,
+      ),
     ).toThrow(
       "Step 1 of migration 0001_form requires down as a non-blank SQL script or a function, or no down",
     )

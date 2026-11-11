@@ -10,7 +10,6 @@ import * as t from "kern-orm/types"
 
 import { describePostgres } from "../../testing/postgres"
 import { MigrationError } from "../error"
-import type { MigrationLoader } from "../history"
 import { defineMigrations } from "../history"
 import type { MigrationTarget } from "../target"
 
@@ -25,14 +24,14 @@ const form = defineTable("form", {
 const schema = defineSchema({ form })
 
 const history = defineMigrations({
-  "0001_create_form": loadMigration({
+  "0001_create_form": {
     up: "CREATE TABLE form (id integer PRIMARY KEY)",
     down: "DROP TABLE form",
-  }),
-  "0002_create_user": loadMigration({
+  },
+  "0002_create_user": {
     up: "CREATE TABLE app_user (id integer PRIMARY KEY)",
     down: "DROP TABLE app_user",
-  }),
+  },
 })
 
 /** Output of a run of the command line, with its exit code. */
@@ -289,9 +288,4 @@ describe("runCli without a database", () => {
 /** Rejects a statement of a database that a test must not query. */
 async function rejectStatement(): Promise<never> {
   throw new Error("The test must not query the database")
-}
-
-/** Returns a loader of a module whose default export is `migration`. */
-function loadMigration(migration: unknown): MigrationLoader {
-  return async () => ({ default: migration })
 }

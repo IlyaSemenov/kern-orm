@@ -4,10 +4,10 @@ import type { Database } from "kern-db"
 import * as t from "kern-db/types"
 import { bindSchema, defineSchema } from "kern-orm"
 
-import { defineTestHistory } from "../../testing/history"
 import { describePostgres } from "../../testing/postgres"
 import { MigrationError } from "../error"
 import { createExtension } from "../helpers/extensions"
+import { defineMigrations } from "../history"
 import type { MigrationDatabase } from "../migration"
 
 import type { MigrationTest } from "./migration-test"
@@ -36,7 +36,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
       const schemaName = await database.query`SELECT current_schema()::text`.get(t.text)
       calls.push(`${call} in ${schemaName.replace(/^kern_verify_[0-9a-f]{12}$/, "kern_verify_*")}`)
     }
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": [createForm, { up: record("up 1"), down: record("down 1") }],
       "0002_add_form_slug": [
         { up: "ALTER TABLE form ADD COLUMN slug text", down: "ALTER TABLE form DROP COLUMN slug" },
@@ -67,7 +67,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
 
   it("runs the migrations with the schemas of the history after the temporary schema, and ignores the schema of a Db", async () => {
     let searchPath: string | undefined
-    const history = defineTestHistory(
+    const history = defineMigrations(
       {
         "0001_read_search_path": {
           up: async database => {
@@ -85,7 +85,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
   })
 
   it("verifies a step with outsideTransaction by its up and down", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_index_form": {
         up: "CREATE INDEX form_name_idx ON form (name)",
@@ -111,7 +111,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
   })
 
   it("rejects a rollback that leaves the structure of the schema different from before the migration", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_require_form_name": [
         { up: "ALTER TABLE form ALTER COLUMN name SET NOT NULL" },
@@ -134,7 +134,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
   })
 
   it("compares the owners of objects with the role that runs the verification, whatever role a migration sets", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_give_form": {
         up: "ALTER TABLE form OWNER TO pg_database_owner; SET LOCAL ROLE pg_database_owner",
@@ -153,7 +153,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
   })
 
   it("indents the continuation lines of a definition in the lines that differ", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_function": {
         up: "CREATE FUNCTION form_count() RETURNS bigint LANGUAGE sql AS 'SELECT 1'",
       },
@@ -175,7 +175,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
   })
 
   it("accepts a rollback that keeps the objects of the extensions that the migration creates", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_user": [
         createExtension("citext"),
         { up: "CREATE TABLE app_user (email citext)", down: "DROP TABLE app_user" },
@@ -186,7 +186,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
   })
 
   it("rejects a migration that fails to apply again after its rollback, such as one whose change of data has no down", async () => {
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_insert_form": { up: "INSERT INTO form (id) VALUES (1)" },
     })
@@ -206,7 +206,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
     ["up", { up: "SELECT * FROM missing_form", down: "SELECT 1" }],
     ["down", { up: "SELECT 1", down: "DROP TABLE missing_form" }],
   ] as const)("rejects with the MigrationError of %s that fails", async (direction, step) => {
-    const history = defineTestHistory({ "0001_create_form": createForm, "0002_fail": step })
+    const history = defineMigrations({ "0001_create_form": createForm, "0002_fail": step })
 
     const error = await testTransaction(() => verifyMigrations(database, history)).catch(
       (error: unknown) => error,
@@ -218,13 +218,13 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
 
   it("rejects a history without migrations", async () => {
     await expect(
-      testTransaction(() => verifyMigrations(database, defineTestHistory({}))),
+      testTransaction(() => verifyMigrations(database, defineMigrations({}))),
     ).rejects.toThrow("Cannot verify a history without migrations")
   })
 
   it("rejects a file of migration tests that matches no migration and a migration that fails to load before it executes any statement", async () => {
-    const history = defineTestHistory({ "0001_create_form": createForm })
-    const broken = defineTestHistory({ "0001_create_form": [] })
+    const history = defineMigrations({ "0001_create_form": createForm })
+    const broken = defineMigrations({ "0001_create_form": async () => ({ default: [] }) })
 
     const errors = await testTransaction(async () => {
       const tests = {
@@ -259,7 +259,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
       down: "ALTER TABLE form DROP COLUMN slug",
     }
 
-    const history = defineTestHistory({
+    const history = defineMigrations({
       "0001_create_form": createForm,
       "0002_add_form_slug": addFormSlug,
       "0003_create_tag": { up: "CREATE TABLE tag (id integer)", down: "DROP TABLE tag" },
@@ -320,7 +320,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
     })
 
     it("gives assertUpError the MigrationError of up, after which the database of the test still runs queries", async () => {
-      const uniqueNames = defineTestHistory({
+      const uniqueNames = defineMigrations({
         "0001_create_form": createForm,
         "0002_add_unique_name": {
           up: "CREATE UNIQUE INDEX form_lower_name_idx ON form (lower(name))",

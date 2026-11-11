@@ -84,6 +84,7 @@ export default defineConfig({
           { text: "Getting Started", link: "/migrations/getting-started" },
           { text: "Migrations", link: "/migrations/" },
           { text: "Custom Migration Helpers", link: "/migrations/custom-helpers" },
+          { text: "Migrations in a Package", link: "/migrations/package-migrations" },
         ],
       },
     ],

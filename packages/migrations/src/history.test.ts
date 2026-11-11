@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { MigrationError } from "./error"
 import { defineMigrations } from "./history"
+import type { MigrationStep } from "./migration"
 
 const load = async () => ({ default: { up: "SELECT 1" } })
 
@@ -14,6 +15,16 @@ describe("defineMigrations", () => {
     })
 
     expect(history.keys).toEqual(["0001_create_form", "0002_create_user", "10_add_email"])
+  })
+
+  it("takes migrations themselves beside loaders, by key or by path", () => {
+    const history = defineMigrations({
+      "0003_add_email": load,
+      "./migrations/0002_create_user.ts": [{ up: "CREATE TABLE app_user (id integer)" }],
+      "0001_create_form": { up: "CREATE TABLE form (id integer)" },
+    })
+
+    expect(history.keys).toEqual(["0001_create_form", "0002_create_user", "0003_add_email"])
   })
 
   it("defaults the table of versions and lists no schemas after the target schema", () => {
@@ -57,6 +68,37 @@ describe("defineMigrations", () => {
       "Migrations 0002_create_user and 2_create_tag have the same number: give each migration its own number",
     )
   })
+
+  it.each([
+    ["undefined", undefined],
+    ["a string", "CREATE TABLE form (id integer)"],
+    ["an empty array", []],
+  ])("rejects %s as a migration when it is called", (_, value) => {
+    expect(() =>
+      defineMigrations({ "0001_create_form": value as unknown as MigrationStep }),
+    ).toThrow(
+      new MigrationError(
+        "Migration 0001_create_form must be the loader of its module, a step, or a non-empty array of steps",
+        { key: "0001_create_form" },
+      ),
+    )
+  })
+
+  it("rejects a migration with a problem of a step when it is called, rather than when it is applied", () => {
+    expect(() =>
+      defineMigrations({
+        "0001_create_form": {
+          up: "CREATE TABLE form (id integer)",
+          donw: "DROP TABLE form",
+        } as MigrationStep,
+      }),
+    ).toThrow(
+      new MigrationError("Step 1 of migration 0001_create_form has unknown property donw", {
+        key: "0001_create_form",
+        step: 1,
+      }),
+    )
+  })
 })
 
 describe("load", () => {
@@ -78,6 +120,20 @@ describe("load", () => {
       { up: "CREATE TABLE app_user (id integer)" },
     ])
     expect(loaded).toEqual(["0002_create_user"])
+  })
+
+  it("returns the steps of a migration given as a value", async () => {
+    const steps = [
+      { up: "CREATE TABLE form (id integer)" },
+      { up: "CREATE TABLE app_user (id integer)" },
+    ]
+    const history = defineMigrations({
+      "0001_create_form": steps,
+      "0002_create_tag": { up: "CREATE TABLE tag (id integer)" },
+    })
+
+    expect(await history.load("0001_create_form")).toBe(steps)
+    expect(await history.load("0002_create_tag")).toEqual([{ up: "CREATE TABLE tag (id integer)" }])
   })
 
   // rake-db shared the changes of migrations of two histories under one key: https://github.com/romeerez/orchid-orm/issues/764

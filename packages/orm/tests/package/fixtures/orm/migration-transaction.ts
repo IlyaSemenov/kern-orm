@@ -12,12 +12,10 @@ const form = defineTable("form", {
 })
 
 const migrations = defineMigrations({
-  "0001_create_form": async () => ({
-    default: {
-      up: "CREATE TABLE form (id integer PRIMARY KEY, name text NOT NULL)",
-      down: "DROP TABLE form",
-    },
-  }),
+  "0001_create_form": {
+    up: "CREATE TABLE form (id integer PRIMARY KEY, name text NOT NULL)",
+    down: "DROP TABLE form",
+  },
 })
 
 const schemaName = "kern_package_migration"

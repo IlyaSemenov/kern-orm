@@ -27,12 +27,10 @@ try {
   const failure = await verifyMigrations(
     database,
     defineMigrations({
-      "0001_create_form": async () => ({
-        default: {
-          up: "CREATE TABLE form (id integer)",
-          down: "ALTER TABLE form RENAME TO survey",
-        },
-      }),
+      "0001_create_form": {
+        up: "CREATE TABLE form (id integer)",
+        down: "ALTER TABLE form RENAME TO survey",
+      },
     }),
   ).catch((error: unknown) => (error as Error).message)
   console.log(JSON.stringify({ calls, failure }))

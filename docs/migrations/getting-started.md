@@ -78,3 +78,4 @@ Without the ORM, pass your database instead: `await migrate(database, migrations
 
 - [Migrations](./): helpers, steps of SQL and code, listing migrations, tenants, rolling back, the command line, and testing migrations.
 - [Custom Migration Helpers](./custom-helpers): steps of your own that migrations reuse.
+- [Migrations in a Package](./package-migrations): migrations that a package ships to the applications that use it.
