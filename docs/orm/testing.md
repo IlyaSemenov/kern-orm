@@ -148,6 +148,43 @@ Without a signal, as with `bun:test`, which gives none for a test, the transacti
 A query that the test has already sent runs to its end before the rollback.
 To limit how long such a query delays the next test, set `statement_timeout` for the connections of the test database.
 
+## Queries that wait for a lock
+
+To check that a query waits for a lock that another transaction holds, such as of a row that it updates, read the backend PID of its transaction with `getBackendPid`.
+Then pass the PID to `waitForLock`, which resolves once the backend waits for a lock:
+
+```ts
+import { getBackendPid, waitForLock } from "kern-orm/testing"
+
+// Simplified example: a failure before the backend PID is read leaves the lock held.
+// Another transaction locks the form until the test unlocks it.
+const locked = Promise.withResolvers<void>()
+const unlock = Promise.withResolvers<void>()
+const locking = db.$transaction(async () => {
+  await db.form.find(formId).forUpdate()
+  locked.resolve()
+  await unlock.promise
+})
+await locked.promise
+
+const backend = Promise.withResolvers<number>()
+const publishing = db.$transaction(async () => {
+  backend.resolve(await getBackendPid(db.$database))
+  await db.form.find(formId).update({ published: true })
+})
+try {
+  await waitForLock(db.$database, await backend.promise)
+} finally {
+  unlock.resolve()
+  await Promise.all([locking, publishing])
+}
+```
+
+Run such tests on a database created without `test: true`, since their transactions run beside each other.
+
+When the code under test runs the query on a connection that the test cannot reach, wait for it by a part of its SQL with `waitForLockedStatement`, which resolves to its backend PID.
+Both reject when nothing waits within 2 seconds; pass `timeout` to wait longer or shorter.
+
 ## Test migrations
 
 To check that every migration applies and rolls back, and how migrations change existing rows, see [Test migrations](../migrations/#test-migrations).

@@ -1,13 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
 import { isQueryError, NotFoundError } from "kern-db"
+import { waitForLock } from "kern-db/testing"
 
-import {
-  describePooledPostgres,
-  startsWaiting,
-  startWaiting,
-  whileHolding,
-} from "../../testing/postgres"
+import { describePooledPostgres, startWaiting, whileHolding } from "../../testing/postgres"
 import { bindSchema } from "../execution/db"
 import { RequiredRelationError } from "../result/result"
 import { many, one } from "../schema/relation"
@@ -412,7 +408,7 @@ describePooledPostgres("in PostgreSQL", ({ database }) => {
 
             // The move no longer holds the query, which now waits for the new form with the row locked.
             await commitMove()
-            expect(await startsWaiting(db, pid)).toBe(true)
+            await waitForLock(db.$database, pid)
             expect(await isLocked(db.field.find(1))).toBe(true)
 
             await commitForm()
