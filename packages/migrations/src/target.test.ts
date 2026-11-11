@@ -56,10 +56,11 @@ describe("getTargetDatabase", () => {
   })
 
   it("throws TypeError for a value that is not a target", () => {
-    expect(() => getTargetDatabase({} as never)).toThrow(
-      new TypeError(
-        "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
-      ),
+    const get = () => getTargetDatabase({} as never)
+
+    expect(get).toThrow(TypeError)
+    expect(get).toThrow(
+      "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
     )
   })
 })

@@ -43,10 +43,10 @@ it("rejects a value that is not a target, such as a client of PostgreSQL, with T
   const message =
     "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db"
 
-  await expect(verifyMigrations(sql as never, defineMigrations({}))).rejects.toThrow(
+  await expect(verifyMigrations(sql as never, defineMigrations({}))).rejects.toEqual(
     new TypeError(message),
   )
-  await expect(verifyMigrations(sql as never, history)).rejects.toThrow(new TypeError(message))
+  await expect(verifyMigrations(sql as never, history)).rejects.toEqual(new TypeError(message))
   expect(loaded).toBe(false)
 })
 
