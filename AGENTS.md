@@ -145,7 +145,8 @@ Do not catalog files or restate information evident from their names and locatio
 - Write a rule of how users must do something as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
 - State a limitation, something that users cannot do, as a description, such as "A query with `distinct` cannot select related records", rather than as an instruction to avoid it, unless the description loses clarity.
 - In [architecture/](architecture/README.md), state what users must do as a requirement of the contract, such as "must be split" or "requires a key", rather than as a description of what users do, such as "users split".
-- Keep material for authors of extensions, such as custom types and operators, on Extending pages, separate from the guides for using the API.
+- Group the pages of the site in the sidebar by the package they document: ORM, Database, and Migrations.
+- Keep material for authors of extensions, such as custom types and operators, custom drivers, and custom migration helpers, on pages of their own in the group of their package, separate from the guides for using the API.
 - When a change makes an existing statement false, fix that statement rather than add an explanation next to it.
 - Add JSDoc to every exported declaration and to internal helpers whose contract, inputs, output, or failure behavior is not obvious.
 - Add inline comments beside every non-obvious invariant, algorithmic choice, safety constraint, and intentionally limited behavior.

@@ -177,7 +177,7 @@ export default defineMigration([
 ```
 
 To decode the rows of `query`, pass the types of `kern-orm/db/types` to `select`, `get`, and `pluck`.
-To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](./queries/sql#without-a-db) from `kern-orm/db`.
+To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](./database-sql) from `kern-orm/db`.
 
 ## Migrations outside a transaction
 
