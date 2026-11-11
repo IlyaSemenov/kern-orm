@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import type { Driver, DriverResult } from "kern-orm"
-import { createDatabase, defineSchema, many } from "kern-orm"
+import { bindSchema, createDatabase, defineSchema, many } from "kern-orm"
 import { provide, withOverrides } from "ripple-di"
 
 import {
@@ -53,8 +53,8 @@ function connectRecorded(rows: DriverResult["rows"]) {
   }
   const recorded = createDatabase({ driver })
   return {
-    tenantDb: recorded.bind(tenantSchema, { schemaName: "tenant_1" }),
-    saasDb: recorded.bind(saasSchema, { schemaName: "saas" }),
+    tenantDb: bindSchema(tenantSchema, recorded, { schemaName: "tenant_1" }),
+    saasDb: bindSchema(saasSchema, recorded, { schemaName: "saas" }),
     texts,
   }
 }
@@ -62,8 +62,8 @@ function connectRecorded(rows: DriverResult["rows"]) {
 describe("shared form tables", () => {
   it("compile into the PostgreSQL schema of each Db", () => {
     let currentTenant = "tenant_1"
-    const tenantDb = database.bind(tenantSchema, { schemaName: () => currentTenant })
-    const saasDb = database.bind(saasSchema, { schemaName: "saas" })
+    const tenantDb = bindSchema(tenantSchema, database, { schemaName: () => currentTenant })
+    const saasDb = bindSchema(saasSchema, database, { schemaName: "saas" })
 
     expect(tenantDb.$compile(publishedForms).text).toContain('FROM "tenant_1"."form"')
     currentTenant = "tenant_2"
@@ -72,7 +72,7 @@ describe("shared form tables", () => {
   })
 
   it("reject tables of another schema", () => {
-    const saasDb = database.bind(saasSchema, { schemaName: "saas" })
+    const saasDb = bindSchema(saasSchema, database, { schemaName: "saas" })
 
     // @ts-expect-error The SaaS schema has no answers.
     expect(() => saasDb.$compile(tenantSchema.answer)).toThrow(
@@ -81,8 +81,8 @@ describe("shared form tables", () => {
   })
 
   it("reject a nested query of the tenant Db in a query of the SaaS Db", () => {
-    const tenantDb = database.bind(tenantSchema, { schemaName: "tenant_1" })
-    const saasDb = database.bind(saasSchema, { schemaName: "saas" })
+    const tenantDb = bindSchema(tenantSchema, database, { schemaName: "tenant_1" })
+    const saasDb = bindSchema(saasSchema, database, { schemaName: "saas" })
     const query = saasDb.form.select("id").select(form => ({
       fields: tenantDb.field.where(field => field.formId.eq(form.id)).pluck("label"),
     }))
@@ -195,7 +195,7 @@ describe("shared relations", () => {
   })
 
   it("reject tenant-only relations on the SaaS Db before SQL runs", () => {
-    const saasDb = database.bind(saasSchema, { schemaName: "saas" })
+    const saasDb = bindSchema(saasSchema, database, { schemaName: "saas" })
     const answers = tenantSchema.form.select(form => ({
       fields: form.fields.select(field => ({
         answers: field.answers.pluck("value"),
@@ -209,7 +209,7 @@ describe("shared relations", () => {
   })
 
   it("reject a relation that another schema declared separately before SQL runs", () => {
-    const tenantDb = database.bind(tenantSchema, { schemaName: "tenant_1" })
+    const tenantDb = bindSchema(tenantSchema, database, { schemaName: "tenant_1" })
     const otherForms = defineSchema({ form, field }).$relations({
       form: {
         fields: many(field, { from: "id", to: "formId" }),

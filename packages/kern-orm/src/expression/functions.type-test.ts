@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import type { ResultOf } from "../query/select"
 import { from } from "../query/select"
 import { many, one } from "../schema/relation"
@@ -192,14 +193,17 @@ describe("the result of a function", () => {
   })
 
   test("is the value of a column of an update", () => {
-    const db = createDatabase({
-      driver: {
-        execute: () => Promise.reject(new Error("unused")),
-        executeScript: () => Promise.reject(new Error("unused")),
-        acquire: () => Promise.reject(new Error("unused")),
-        close: () => Promise.resolve(),
-      },
-    }).bind(schema)
+    const db = bindSchema(
+      schema,
+      createDatabase({
+        driver: {
+          execute: () => Promise.reject(new Error("unused")),
+          executeScript: () => Promise.reject(new Error("unused")),
+          acquire: () => Promise.reject(new Error("unused")),
+          close: () => Promise.resolve(),
+        },
+      }),
+    )
 
     db.form.where({ name: "x" }).update(form => ({
       position: coalesce(form.limit, 0),

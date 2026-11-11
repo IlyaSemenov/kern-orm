@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -37,7 +38,7 @@ const blog = defineSchema({ post, comment }).$relations({
   },
 })
 
-const db = createDatabase({ driver: createRecordingDriver().driver }).bind(blog)
+const db = bindSchema(blog, createDatabase({ driver: createRecordingDriver().driver }))
 
 const vote = defineTable(
   "vote",
@@ -50,8 +51,9 @@ const vote = defineTable(
   },
   { unique: [["postId", "userId"]] },
 )
-const votes = createDatabase({ driver: createRecordingDriver().driver }).bind(
+const votes = bindSchema(
   defineSchema({ vote }),
+  createDatabase({ driver: createRecordingDriver().driver }),
 )
 
 describe("values", () => {
@@ -231,8 +233,9 @@ describe("results", () => {
       .select(columns => ({
         post: columns.post.select("title"),
       }))
-    const other = createDatabase({ driver: createRecordingDriver().driver }).bind(
+    const other = bindSchema(
       defineSchema({ post, comment }),
+      createDatabase({ driver: createRecordingDriver().driver }),
     )
 
     expectTypeOf(db.$execute(deleted)).resolves.toEqualTypeOf<{ post: { title: string } }[]>()
@@ -241,8 +244,9 @@ describe("results", () => {
   })
 
   test("add the relations of the queries of values to the state, which a Db must have", () => {
-    const other = createDatabase({ driver: createRecordingDriver().driver }).bind(
+    const other = bindSchema(
       defineSchema({ post, comment }),
+      createDatabase({ driver: createRecordingDriver().driver }),
     )
     const updated = blog.post.find("post-id").update(columns => ({
       commentCount: columns.comments.count(),
@@ -349,8 +353,9 @@ describe("conflicts", () => {
   })
 
   test("add the relations of the queries of update to the state, which a Db must have", () => {
-    const other = createDatabase({ driver: createRecordingDriver().driver }).bind(
+    const other = bindSchema(
       defineSchema({ post, comment }),
+      createDatabase({ driver: createRecordingDriver().driver }),
     )
     const updated = blog.post
       .insert({ title: "Hello" })
@@ -435,8 +440,9 @@ describe("upsert", () => {
       },
       { unique: [["tenantId", "id"]] },
     )
-    const items = createDatabase({ driver: createRecordingDriver().driver }).bind(
+    const items = bindSchema(
       defineSchema({ item }),
+      createDatabase({ driver: createRecordingDriver().driver }),
     )
     let byId = items.item.find("item-id")
     let byTenant = items.item.findBy({ tenantId: "tenant-id", id: "item-id" })
@@ -486,8 +492,9 @@ describe("singleton tables", () => {
     },
     { singleton: true },
   )
-  const licenses = createDatabase({ driver: createRecordingDriver().driver }).bind(
+  const licenses = bindSchema(
     defineSchema({ license }),
+    createDatabase({ driver: createRecordingDriver().driver }),
   )
 
   test("upsert the row of the query of the table with the values of an insert, returning the row", () => {

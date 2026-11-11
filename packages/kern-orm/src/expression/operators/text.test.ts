@@ -1,6 +1,7 @@
 import { expect, it } from "bun:test"
 
 import { describePostgres } from "../../../testing/postgres"
+import { bindSchema } from "../../execution/db"
 import { from } from "../../query/select"
 import { defineSchema } from "../../schema/schema"
 import { defineTable } from "../../table/table"
@@ -98,7 +99,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const accounts = database.bind(defineSchema({ account })).account.orderBy("id")
+  const accounts = bindSchema(defineSchema({ account }), database).account.orderBy("id")
 
   it("reads the converted text without the decoder of the type, and NULL as null", async () => {
     const query = accounts.select(columns => ({

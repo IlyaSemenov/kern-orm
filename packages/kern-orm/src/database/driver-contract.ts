@@ -4,7 +4,7 @@ import assert from "node:assert/strict"
 import * as t from "../db/types"
 
 import type { AnyCodec } from "./codec/codec"
-import { createDatabase } from "./database"
+import { createDatabase, getCoordinator } from "./database"
 import type { Connection, Driver, TextValue } from "./driver"
 import { createStatement } from "./driver"
 import { ConnectionError, QueryError } from "./driver-error"
@@ -763,12 +763,12 @@ export function describeDriverContract(
         const selectLabels = () => testTransaction(queryLabels)
 
         {
-          await using _run = await database.coordinator.createTestFixture(async () => {
+          await using _run = await getCoordinator(database).createTestFixture(async () => {
             await runStatement("CREATE TABLE pg_fixture_test (label text)")
             await runStatement("INSERT INTO pg_fixture_test VALUES ('run')")
           })
           {
-            await using file = await database.coordinator.createTestFixture(async () => {
+            await using file = await getCoordinator(database).createTestFixture(async () => {
               await runStatement("INSERT INTO pg_fixture_test VALUES ('file')")
               return await database.query`SELECT label FROM pg_fixture_test WHERE label = ${"file"}`.select(
                 { label: t.text },
@@ -798,7 +798,7 @@ export function describeDriverContract(
           driver: createDriver({ max: 1 }),
           test: true,
         })
-        const fixture = await closed.coordinator.createTestFixture(() =>
+        const fixture = await getCoordinator(closed).createTestFixture(() =>
           closed.execute(createStatement("SELECT 1")),
         )
 

@@ -1,8 +1,9 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
 import type { DbOf } from "../execution/db"
+import { bindSchema } from "../execution/db"
 import { avg, count, every, max, min, some, stringAgg, sum } from "../expression/aggregates"
 import type { AnyExpression, Expression, TypedExpression } from "../expression/expression"
 import type { Operand } from "../expression/operators/comparison"
@@ -39,7 +40,10 @@ const post = defineTable("post", {
   hint: t.text.nullable(),
 })
 
-const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ post }))
+const db = bindSchema(
+  defineSchema({ post }),
+  createDatabase({ driver: createRecordingDriver().driver }),
+)
 
 /** State of a query over posts of any result. */
 interface AnyResultState extends InitialQueryState<typeof post> {
@@ -269,8 +273,9 @@ describe("find and findBy", () => {
     userId: t.uuid,
   })
   const widenedUser: Table<"user", typeof user.columns> = user
-  const usersDb = createDatabase({ driver: createRecordingDriver().driver }).bind(
+  const usersDb = bindSchema(
     defineSchema({ user, membership }),
+    createDatabase({ driver: createRecordingDriver().driver }),
   )
 
   test("find returns one row by the values of the primary key, as where followed by take, and keeps the columns of the key for upsert", () => {
@@ -395,7 +400,10 @@ describe("queries of a singleton table", () => {
     { singleton: true },
   )
   const licenseSchema = defineSchema({ license })
-  const licenses = createDatabase({ driver: createRecordingDriver().driver }).bind(licenseSchema)
+  const licenses = bindSchema(
+    licenseSchema,
+    createDatabase({ driver: createRecordingDriver().driver }),
+  )
 
   test("start as a query of its one row, which resolves to undefined without it", () => {
     expectTypeOf(licenses.license).toEqualTypeOf<

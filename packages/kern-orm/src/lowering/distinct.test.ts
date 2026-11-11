@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { compileStatement } from "../compiler/postgres/compile"
+import { bindSchema } from "../execution/db"
 import { count } from "../expression/aggregates"
 import type { AnyExpression, TypedExpression } from "../expression/expression"
 import { sql } from "../expression/sql"
@@ -401,12 +402,13 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     kind: t.text,
   })
 
-  const db = database.bind(
+  const db = bindSchema(
     defineSchema({ writer, entry }).$relations({
       writer: {
         entries: many(entry, { from: "id", to: "author" }),
       },
     }),
+    database,
   )
 
   it("aggregates the distinct rows of the selected fields, also of a page, of groups, nested, and in a condition", async () => {

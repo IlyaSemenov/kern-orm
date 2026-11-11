@@ -11,7 +11,7 @@
 
 ## Compatibility
 
-The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `session`, `isInTransactionBlock`, `lock`, `pollLock`, and `close` of `Database`, `$database` and `$schemaName` of a `Db`, and the types of their options and results that it uses, such as the `searchPath` option of transactions and sessions and the text values of `execute`.
+The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `session`, `isInTransactionBlock`, `lock`, `pollLock`, and `close` of the `Database` of `kern-orm/db`, `$database` and `$schemaName` of a `Db`, and the types of their options and results that it uses, such as the `searchPath` option of transactions and sessions and the text values of `execute`; it imports them only as types of `kern-orm/db`, so that a `Db` fits a target structurally.
 
 ## Migrations
 
@@ -23,7 +23,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - Applying runs `up` of the steps in their order, and rolling back runs `down` in reverse order, so that a step that depends on an earlier one, such as a table using a type, is undone before it.
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
 - The database of a migration is `Pick<Database, "query" | "script" | "execute">` of the target: its statements run in the transaction of the migration, or, for a change outside a transaction, each in a transaction of its own on the connection of the session, and its unqualified names resolve in the target schema through the search path.
-  It lacks the other members of `Database`, such as `close` and `bind`, which a migration must not use.
+  It lacks the other members of `Database`, such as `close`, which a migration must not use.
   Its `query` and `script` are of the [database layer](README.md#layers): their templates take the SQL fragments of `kern-orm/db`, and `query` decodes rows by codecs, such as of `kern-orm/db/types`.
 
 ### Changes outside a transaction

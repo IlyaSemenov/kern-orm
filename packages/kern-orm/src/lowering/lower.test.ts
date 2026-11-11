@@ -4,8 +4,9 @@ import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
 import type { RawSqlNode } from "../ast/nodes"
 import { compileStatement, compileTextStatement } from "../compiler/postgres/compile"
+import { createDatabase } from "../database/database"
 import { NotFoundError } from "../database/result"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { count, sum } from "../expression/aggregates"
 import type { AnyExpression } from "../expression/expression"
 import { toNode } from "../expression/expression"
@@ -188,7 +189,7 @@ describe("lowerStatement", () => {
 
   it("checks the relations and the Db of the nested queries of a query of $select", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
-    const db = database.bind(schema)
+    const db = bindSchema(schema, database)
     const { node } = schema.$select({
       fields: schema.field.select(field => ({
         options: field.options,
@@ -199,7 +200,7 @@ describe("lowerStatement", () => {
     expect(() => lowerStatement(node, collectDefinitions(forms[schemaRelations]))).toThrow(
       'Relation "field.options" is not part of the schema',
     )
-    expect(() => lowerStatement(node, undefined, database.bind(schema))).toThrow(
+    expect(() => lowerStatement(node, undefined, bindSchema(schema, database))).toThrow(
       'Selected field "forms" is bound to another Db',
     )
     expect(() =>
@@ -211,13 +212,13 @@ describe("lowerStatement", () => {
 describe("lowerTextStatement", () => {
   it("replaces the queries in the expressions interpolated into a statement of SQL text, and rejects a query bound to another Db", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
-    const db = database.bind(schema)
+    const db = bindSchema(schema, database)
     const node = toNode(sql`SELECT ${not(db.form.exists())} AS "empty"`) as RawSqlNode
 
     expect(compileTextStatement(lowerTextStatement(node, undefined, db)).text).toBe(
       'SELECT (NOT EXISTS (SELECT FROM "form" AS "form")) AS "empty"',
     )
-    expect(() => lowerTextStatement(node, undefined, database.bind(schema))).toThrow(
+    expect(() => lowerTextStatement(node, undefined, bindSchema(schema, database))).toThrow(
       "bound to another Db",
     )
   })
@@ -305,7 +306,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(defineSchema({ form }))
+  const db = bindSchema(defineSchema({ form }), database)
 
   it("sorts an executed query by the values of a selected expression, evaluated once", async () => {
     const query = db.form
@@ -648,7 +649,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       author: t.integer.nullable(),
       kind: t.text,
     })
-    const entryDb = database.bind(defineSchema({ entry }))
+    const entryDb = bindSchema(defineSchema({ entry }), database)
     /** Runs `callback` in a test transaction with entries of the authors `1`, `2`, and `NULL`, of the kinds `a` and `b`, whose ids grow with time. */
     const withEntries = <T>(callback: () => Promise<T>) =>
       testTransaction(async () => {

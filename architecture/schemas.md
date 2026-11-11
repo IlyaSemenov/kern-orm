@@ -50,10 +50,10 @@
   - `$relations` rejects a required relation with a column `from` that is nullable by `isNullable` of its type, since a record with a `NULL` key has no related record; types do not check it, since `one` does not always know its source table, such as outside `$relations`.
   - In types, `required` of type `boolean` gives query results with `null`, as when the relation is not required, and `required` typed as an optional property, which may be missing at runtime, gives the union of its value and `false`.
 - **Db** (`execution/db.ts`): a schema bound to a database and a PostgreSQL schema; it compiles and executes queries over the tables of its schema.
-  `bind` of the `Database` of `execution/database.ts` creates it.
+  `bindSchema` creates it from a `Database` of the database layer, which knows no schemas, so that code without schemas, such as the migrator, takes the same database.
   The PostgreSQL schema is resolved when a `Db` compiles a query, and a compiled statement never changes afterwards.
   `$schemaName` resolves it when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
-  `$database` is the database that a `Db` is bound to, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else.
+  `$database` is the database that a `Db` is bound to, typed as the `Database` of the layer, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else and nothing of the ORM.
   `DbOf` types the `Db` of a schema, and a `Db` of every schema that includes it fits that type, since the types of entries and relations accept more tables and relations, so code shared by several schemas takes such a `Db` as a parameter.
   Comparing two `Db` types compares the states of the queries of their entries, since a query is covariant in its state; the methods of a `Db` and a schema are generic or typed by `this`, so that comparing them compares no queries.
 

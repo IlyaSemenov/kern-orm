@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { coalesce } from "../expression/functions"
 import { and } from "../expression/predicates"
 import { param, sql } from "../expression/sql"
@@ -37,7 +38,7 @@ const schema = defineSchema({ form, field }).$relations({
 /** Creates a `Db` whose driver answers every statement with `rows`. */
 function createDb(rows: readonly (readonly (string | null)[])[]) {
   const { driver, statements } = createRecordingDriver({ respond: () => ({ rows }) })
-  return { db: createDatabase({ driver }).bind(schema), statements }
+  return { db: bindSchema(schema, createDatabase({ driver })), statements }
 }
 
 describe("selecting", () => {
@@ -229,7 +230,7 @@ describe("beyond a selection", () => {
 })
 
 describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
 
   /** Runs `body` in a transaction with a form and its fields. */
   function withForms<T>(body: () => Promise<T>): Promise<T> {

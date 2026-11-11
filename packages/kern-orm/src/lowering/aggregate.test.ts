@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { compileStatement } from "../compiler/postgres/compile"
+import { bindSchema } from "../execution/db"
 import { count, sum } from "../expression/aggregates"
 import type { AnyExpression } from "../expression/expression"
 import { and } from "../expression/predicates"
@@ -87,14 +88,14 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(defineSchema({ form }))
+  const db = bindSchema(defineSchema({ form }), database)
 
   const amount = defineTable("amount", {
     big: t.bigint,
     exact: t.numeric,
   })
 
-  const amountDb = database.bind(defineSchema({ amount }))
+  const amountDb = bindSchema(defineSchema({ amount }), database)
 
   it("counts the rows that the filters choose, also of a page", async () => {
     const counts = await testTransaction(async () => [

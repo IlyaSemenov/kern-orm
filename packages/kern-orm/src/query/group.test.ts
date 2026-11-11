@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { describePostgres } from "../../testing/postgres"
 import { combineNodes } from "../ast/boolean"
 import type { ProjectionNode } from "../ast/nodes"
+import { bindSchema } from "../execution/db"
 import { count, max, sum } from "../expression/aggregates"
 import { FALSE } from "../expression/constants"
 import { toNode } from "../expression/expression"
@@ -299,7 +300,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
   const totals = db.field.groupBy("formId").select(field => ({
     formId: field.formId,
     positions: coalesce(sum(field.position), 0),

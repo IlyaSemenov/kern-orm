@@ -2,6 +2,7 @@
 import { postgresJsDriver } from "@kern-orm/postgres-js"
 import type { ResultOf } from "kern-orm"
 import {
+  bindSchema,
   createDatabase,
   defineSchema,
   defineTable,
@@ -26,7 +27,7 @@ const form = defineTable("form", {
 
 const driver = postgresJsDriver(postgres())
 const database = createDatabase({ driver })
-const db = database.bind(defineSchema({ form }), { schemaName: "app" })
+const db = bindSchema(defineSchema({ form }), database, { schemaName: "app" })
 
 const query = db.form.where({ name: "Survey" }).select("id")
 const record: ResultOf<typeof query> = { id: "form-id" }

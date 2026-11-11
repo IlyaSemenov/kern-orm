@@ -3,8 +3,9 @@ import { runInNewContext } from "node:vm"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
+import { createDatabase } from "../database/database"
 import { NotFoundError, ResultDecodeError } from "../database/result"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { coalesce } from "../expression/functions"
 import { not } from "../expression/predicates"
 import { sql } from "../expression/sql"
@@ -46,7 +47,7 @@ const failOnCall = (): never => {
 /** Creates a `Db` whose driver answers every statement with `rows`, with the statements that it runs. */
 function connect(rows: readonly (readonly (string | null)[])[] = [], count = rows.length) {
   const { driver, statements } = createRecordingDriver({ respond: () => ({ rows, count }) })
-  return { db: createDatabase({ driver }).bind(schema), statements }
+  return { db: bindSchema(schema, createDatabase({ driver })), statements }
 }
 
 /** Returns the error that `query` rejects with. */
@@ -216,7 +217,7 @@ describe("transform of a query", () => {
 
   it("keeps a bound query bound to its Db, compiles as its Db does, and rejects options", () => {
     const { driver } = createRecordingDriver({ respond: () => ({ rows: [] }) })
-    const db = createDatabase({ driver }).bind(schema, { schemaName: "tenant" })
+    const db = bindSchema(schema, createDatabase({ driver }), { schemaName: "tenant" })
     const query = db.form.pluck("name")
     const transformed = query.transform(String)
 
@@ -604,7 +605,7 @@ describe("helpers", () => {
 })
 
 describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
 
   /** Runs `body` in a transaction with forms and their fields. */
   function withForms<T>(body: () => Promise<T>): Promise<T> {

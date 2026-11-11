@@ -38,12 +38,12 @@ Module paths are relative to `packages/kern-orm/src/`.
   Its tests, the [driver contract](drivers.md#tests-of-the-contract), and the harness of its tests in `packages/kern-orm/testing/database/` run on its own API and import no module of the ORM either, which `packages/kern-orm/tests/database-layer.test.ts` checks for every file of the layer.
   `kern-orm/db` exports the layer: its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-orm/db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs of the layer, without the ORM and the transaction coordinator.
 - The ORM, the other modules, builds on it.
-  `execution/database.ts` adds `bind` to its `Database`, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
+  It has no `Database` of its own: the root of `kern-orm` exports `createDatabase` of the layer, `bindSchema` of `execution/db.ts` binds a schema to a `Database` of the layer, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
 
 ## Map
 
 - [Types and expressions](types.md): `type/`, `expression/`, `database/codec/`, `database/codecs/`, `database/sql/`, `db.ts`, and `db/types.ts`.
-- [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, `execution/db.ts`, and `bind` of `execution/database.ts`.
+- [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, and `execution/db.ts`.
 - [Queries](queries.md): `query/` and `execution/db.ts`.
 - [Mutations](mutations.md): `query/mutation.ts` and `query/values.ts`.
 - [Queries of SQL text](sql-queries.md): `database/sql/query.ts`, `query` and `script` of `database/database.ts`, and `$query` and the scripts of `execution/db.ts`.

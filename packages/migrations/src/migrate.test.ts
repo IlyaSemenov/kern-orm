@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import type { Database } from "kern-orm"
-import { defineSchema, defineTable } from "kern-orm"
+import { bindSchema, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { countLockWaiters, settleWithin, waitFor } from "../testing/concurrency"
@@ -45,7 +45,7 @@ const indexForm = {
 }
 
 describePostgres("migrate", ({ database, testTransaction, recordStatements, notices }) => {
-  const db = database.bind(schema, { schemaName: "migrations_tenant" })
+  const db = bindSchema(schema, database, { schemaName: "migrations_tenant" })
 
   it("applies the pending migrations in the target schema of a Db in order and resolves to their keys", async () => {
     const history = defineTestHistory({
@@ -220,7 +220,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
   it("targets the schema of the schemaName option instead of that of the Db, such as of a tenant that is being created", async () => {
     let calls = 0
-    const tenantDb = database.bind(schema, {
+    const tenantDb = bindSchema(schema, database, {
       schemaName: () => {
         calls++
         return "migrations_tenant"
@@ -239,7 +239,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
   it("resolves the schema of a Db once per call", async () => {
     let calls = 0
-    const tenantDb = database.bind(schema, {
+    const tenantDb = bindSchema(schema, database, {
       schemaName: () => {
         calls++
         return "migrations_tenant"
@@ -652,7 +652,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 describePooledPostgres(
   "outside a transaction",
   ({ database, recordStatements, failStatement, connect }) => {
-    const db = database.bind(schema)
+    const db = bindSchema(schema, database)
     const target = { schemaName: "migrations_pool_1" }
     const history = defineTestHistory({
       "0001_create_form": createForm,

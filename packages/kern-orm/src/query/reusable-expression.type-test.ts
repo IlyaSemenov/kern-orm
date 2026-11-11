@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import type { Expression } from "../expression/expression"
 import { caseWhen, coalesce } from "../expression/functions"
 import { and, not, or } from "../expression/predicates"
@@ -50,8 +51,8 @@ const tenant = defineSchema(schema, { answer }).$relations({
 })
 
 const { driver } = createRecordingDriver()
-const db = createDatabase({ driver }).bind(schema)
-const tenantDb = createDatabase({ driver }).bind(tenant)
+const db = bindSchema(schema, createDatabase({ driver }))
+const tenantDb = bindSchema(tenant, createDatabase({ driver }))
 
 const hasField = defineExpression(db.form, (form, label: string) =>
   form.fields.where({ label }).exists(),

@@ -2,8 +2,9 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
+import { createDatabase } from "../database/database"
 import { NotFoundError } from "../database/result"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { sql } from "../expression/sql"
 import { many } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -53,7 +54,7 @@ describe("queries of $select", () => {
 
   it("execute on their Db when awaited only when bound", async () => {
     const { driver, statements } = createRecordingDriver({ respond: () => ({ rows: [["1"]] }) })
-    const db = createDatabase({ driver }).bind(schema)
+    const db = bindSchema(schema, createDatabase({ driver }))
     const query = db.$select({
       number: sql(t.integer)`1`,
     })
@@ -66,7 +67,7 @@ describe("queries of $select", () => {
   })
 
   it("compile a bound query as its Db executes it, rejecting compile options", () => {
-    const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema, {
+    const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }), {
       schemaName: "app",
     })
     const query = db.$select({
@@ -82,7 +83,7 @@ describe("queries of $select", () => {
   })
 
   it("compile an unbound query with a field bound to a Db only on that Db", () => {
-    const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema, {
+    const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }), {
       schemaName: "app",
     })
     const query = schema.$select({
@@ -106,7 +107,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
 
   it("gives each field the result of its query as it is executed", async () => {
     const page = db.$select({

@@ -2,8 +2,9 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
+import { createDatabase } from "../database/database"
 import { ResultDecodeError } from "../database/result"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { countType } from "../query/aggregate"
 import { desc } from "../query/order"
 import { from } from "../query/select"
@@ -204,8 +205,8 @@ describe("the SQL of an aggregate function", () => {
 
   it("runs a query of a Db only in a statement of the same Db", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
-    const db = database.bind(schema)
-    const otherDb = database.bind(schema)
+    const db = bindSchema(schema, database)
+    const otherDb = bindSchema(schema, database)
 
     expect(() =>
       db.$compile(
@@ -283,7 +284,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
   const fields = db.field.where({ formId: form1Id })
   const noFields = db.field.where({ formId: form2Id })
 

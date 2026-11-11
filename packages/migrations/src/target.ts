@@ -1,4 +1,4 @@
-import type { Database, DriverResult, SqlStatement } from "kern-orm"
+import type { Database, DriverResult, SqlStatement } from "kern-orm/db"
 
 import type { MigrationHistory } from "./history"
 import { compareMigrationNumbers, getMigrationNumber } from "./history"

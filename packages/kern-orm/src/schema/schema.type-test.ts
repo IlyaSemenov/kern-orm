@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import type { SelectQuery } from "../query/select"
 import { from } from "../query/select"
 import type { EmptyRecord, InitialQueryState } from "../query/state"
@@ -47,7 +48,7 @@ describe("defineSchema", () => {
   })
 
   test("rejects a part that is neither tables nor a schema", () => {
-    const db = createDatabase({ driver: createRecordingDriver().driver }).bind(posts)
+    const db = bindSchema(posts, createDatabase({ driver: createRecordingDriver().driver }))
 
     // @ts-expect-error A query is not a part of a schema.
     defineSchema(posts.post)

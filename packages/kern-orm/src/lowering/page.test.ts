@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { compileStatement } from "../compiler/postgres/compile"
+import { bindSchema } from "../execution/db"
 import { count, every, sum } from "../expression/aggregates"
 import { and, not } from "../expression/predicates"
 import { param, sql } from "../expression/sql"
@@ -359,7 +360,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(defineSchema({ form }))
+  const db = bindSchema(defineSchema({ form }), database)
 
   it("evaluates a selected sort expression once for each row and nested queries only for the rows of a page after an offset", async () => {
     const query = db.form
@@ -643,7 +644,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
       author: t.integer.nullable(),
       kind: t.text,
     })
-    const entryDb = database.bind(defineSchema({ entry }))
+    const entryDb = bindSchema(defineSchema({ entry }), database)
     /** Runs `callback` in a test transaction with entries of the authors `1`, `2`, and `NULL`, of the kinds `a` and `b`, whose ids grow with time. */
     const withEntries = <T>(callback: () => Promise<T>) =>
       testTransaction(async () => {

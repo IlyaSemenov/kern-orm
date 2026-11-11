@@ -1,7 +1,8 @@
 import { expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { sql } from "../expression/sql"
 import { collectDefinitions, many, one } from "../schema/relation"
 import { defineSchema, schemaRelations } from "../schema/schema"
@@ -74,8 +75,8 @@ it("rejects a relation outside the definitions at any depth, also of a query of 
 
 it("rejects a nested query bound to another Db than the one given, or to any Db without one, at any depth", () => {
   const database = createDatabase({ driver: createRecordingDriver().driver })
-  const db = database.bind(schema)
-  const otherDb = database.bind(schema)
+  const db = bindSchema(schema, database)
+  const otherDb = bindSchema(schema, database)
   const { node } = schema.form.select(form => ({
     fields: form.fields.select(field => ({
       options: db.option.where(option => option.fieldId.eq(field.id)),
@@ -93,13 +94,13 @@ it("rejects a nested query bound to another Db than the one given, or to any Db 
 
 it("rejects a query in an expression, also of the values of in and in SQL text, bound to another Db than the one given, or to any Db without one", () => {
   const database = createDatabase({ driver: createRecordingDriver().driver })
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
   for (const { node } of [
     schema.form.where(form => db.field.where(field => field.formId.eq(form.id)).exists()),
     schema.form.where(form => form.id.in(db.field.pluck("formId"))),
     schema.form.where(form => sql`${form.id} = ANY ${db.field.pluck("formId")}`),
   ]) {
-    expect(() => lowerQuery(node, undefined, database.bind(schema))).toThrow(
+    expect(() => lowerQuery(node, undefined, bindSchema(schema, database))).toThrow(
       "A query in an expression is bound to another Db",
     )
     expect(() => lowerQuery(node, undefined, db)).not.toThrow()

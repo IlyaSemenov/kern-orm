@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join, relative } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { createDatabase, defineSchema, defineTable } from "kern-orm"
+import { bindSchema, createDatabase, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { describePostgres } from "../../testing/postgres"
@@ -62,7 +62,7 @@ async function run(
 }
 
 describePostgres("runCli", ({ database, testTransaction, recordStatements }) => {
-  const db = database.bind(schema, { schemaName: "migrations_cli" })
+  const db = bindSchema(schema, database, { schemaName: "migrations_cli" })
 
   it("migrates, rolls back, and redoes migrations, and prints their keys", async () => {
     const runs = await testTransaction(async () => [
@@ -128,7 +128,7 @@ describePostgres("runCli", ({ database, testTransaction, recordStatements }) => 
 
   it("names --schema when the function of the schema of a Db throws, such as without a current tenant", async () => {
     const failure = new Error("No tenant in the context")
-    const tenantDb = database.bind(schema, {
+    const tenantDb = bindSchema(schema, database, {
       schemaName: () => {
         throw failure
       },

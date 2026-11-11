@@ -1,7 +1,8 @@
 import { describe, test } from "bun:test"
 
-import type { Database, DbOf } from "kern-orm"
+import type { Database as OrmDatabase, DbOf } from "kern-orm"
 import { defineSchema, defineTable, many } from "kern-orm"
+import type { Database } from "kern-orm/db"
 import * as t from "kern-orm/types"
 
 import { defineMigrations } from "./history"
@@ -21,13 +22,15 @@ const schema = defineSchema({ form, field }).$relations({
 })
 
 declare const database: Database
+declare const ormDatabase: OrmDatabase
 declare const db: DbOf<typeof schema>
 const history = defineMigrations({})
 
 describe("targets", () => {
-  test("accept a Db of any schema and a Database", async () => {
+  test("accept a Db of any schema, a Database of kern-orm/db, and one of kern-orm", async () => {
     await migrate(db, history)
     await migrate(database, history, { schemaName: "tenant_1" })
+    await migrate(ormDatabase, history, { schemaName: "tenant_1" })
   })
 
   test("reject other values and a count that is neither a number nor all", async () => {

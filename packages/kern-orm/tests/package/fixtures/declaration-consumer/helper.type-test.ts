@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import type { EmptyRecord, NoOperators, ResultOf, TableKeys, Type } from "kern-orm"
-import { createDatabase, defineSchema, defineTable } from "kern-orm"
+import { bindSchema, createDatabase, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import {
@@ -89,22 +89,25 @@ describe("emitted declarations of a converted query", () => {
       },
     })
 
-    expectTypeOf(database.bind(schema).$execute(convertedFormCount)).toEqualTypeOf<
+    expectTypeOf(bindSchema(schema, database).$execute(convertedFormCount)).toEqualTypeOf<
       Promise<number>
     >()
     // @ts-expect-error The schema lacks the relations of the query.
-    void database.bind(defineSchema(schema.$tables)).$execute(convertedFormCount)
+    void bindSchema(defineSchema(schema.$tables), database).$execute(convertedFormCount)
   })
 
   test("keep what a helper of map gives on a query of a table and on a mutation, without its marker", () => {
-    const db = createDatabase({
-      driver: {
-        execute: () => Promise.reject(new Error("unused")),
-        executeScript: () => Promise.reject(new Error("unused")),
-        acquire: () => Promise.reject(new Error("unused")),
-        close: () => Promise.resolve(),
-      },
-    }).bind(schema)
+    const db = bindSchema(
+      schema,
+      createDatabase({
+        driver: {
+          execute: () => Promise.reject(new Error("unused")),
+          executeScript: () => Promise.reject(new Error("unused")),
+          acquire: () => Promise.reject(new Error("unused")),
+          close: () => Promise.resolve(),
+        },
+      }),
+    )
     type View = { name: string; length: number }
 
     expectTypeOf(db.$execute(schema.form.use(withNameLength))).toEqualTypeOf<Promise<View[]>>()
@@ -128,10 +131,10 @@ describe("emitted schema declarations", () => {
       },
     })
 
-    const query = selectNames(database.bind(defineSchema(schema, { user })))
+    const query = selectNames(bindSchema(defineSchema(schema, { user }), database))
     expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<string>()
     // @ts-expect-error The schema lacks the relations of the shared schema.
-    selectNames(database.bind(defineSchema(schema.$tables)))
+    selectNames(bindSchema(defineSchema(schema.$tables), database))
   })
 })
 
@@ -146,7 +149,7 @@ describe("emitted declarations of queries of SQL text", () => {
       },
     })
 
-    expectTypeOf(await upsertForm(database.bind(schema), "Survey")).toEqualTypeOf<
+    expectTypeOf(await upsertForm(bindSchema(schema, database), "Survey")).toEqualTypeOf<
       { id: string; name: string } | undefined
     >()
   })
@@ -185,11 +188,11 @@ describe("emitted relation declarations", () => {
     const query = schema.form.select("id").use(withFieldIds)
 
     expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ id: string; fields: string[] }>()
-    expectTypeOf(database.bind(schema).$execute(namesWithFields)).toEqualTypeOf<
+    expectTypeOf(bindSchema(schema, database).$execute(namesWithFields)).toEqualTypeOf<
       Promise<{ name: string; fields: { id: string }[] }[]>
     >()
     // @ts-expect-error The schema lacks the relations of the shared schema.
-    void database.bind(defineSchema(schema.$tables)).$execute(namesWithFields)
+    void bindSchema(defineSchema(schema.$tables), database).$execute(namesWithFields)
   })
 })
 
@@ -245,7 +248,7 @@ describe("emitted declarations of queries that change rows", () => {
         close: () => Promise.resolve(),
       },
     })
-    const db = database.bind(schema)
+    const db = bindSchema(schema, database)
 
     expectTypeOf(db.$execute(renameForm("form-id", "Survey"))).toEqualTypeOf<
       Promise<{ id: string; name: string }>
@@ -265,13 +268,14 @@ describe("emitted declarations of queries that change rows", () => {
     expectTypeOf(db.$execute(insertFormWithFieldIds("Survey"))).toEqualTypeOf<
       Promise<{ fields: string[] }>
     >()
+    const plainDb = bindSchema(defineSchema(schema.$tables), database)
     // @ts-expect-error The schema lacks the relations of the helper.
-    void database.bind(defineSchema(schema.$tables)).$execute(insertFormWithFieldIds("Survey"))
+    void plainDb.$execute(insertFormWithFieldIds("Survey"))
     expectTypeOf(db.$execute(deleteFormsWithFields)).toEqualTypeOf<
       Promise<{ fields: string[] }[]>
     >()
     // @ts-expect-error The schema lacks the relations of the shared schema.
-    void database.bind(defineSchema(schema.$tables)).$execute(deleteFormsWithFields)
+    void plainDb.$execute(deleteFormsWithFields)
   })
 })
 
@@ -285,7 +289,7 @@ describe("emitted declarations of a singleton table", () => {
         close: () => Promise.resolve(),
       },
     })
-    const db = database.bind(licenseSchema)
+    const db = bindSchema(licenseSchema, database)
 
     expectTypeOf(db.$execute(licenseQuery)).toEqualTypeOf<Promise<EmptyRecord | undefined>>()
     expectTypeOf(db.$execute(upsertLicense("token"))).toEqualTypeOf<Promise<string>>()
@@ -293,9 +297,9 @@ describe("emitted declarations of a singleton table", () => {
     expectTypeOf(db.$execute(requireLicenseToken(licenseSchema.$tables.license))).toEqualTypeOf<
       Promise<string>
     >()
-    expectTypeOf(database.bind(schema).$execute(pageOfForms(schema.$tables.form))).toEqualTypeOf<
-      Promise<{ name: string }[]>
-    >()
+    expectTypeOf(
+      bindSchema(schema, database).$execute(pageOfForms(schema.$tables.form)),
+    ).toEqualTypeOf<Promise<{ name: string }[]>>()
     expectTypeOf(db.license.update({ token: "token" }).get("id")).resolves.toEqualTypeOf<
       string | undefined
     >()

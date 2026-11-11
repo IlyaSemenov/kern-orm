@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { sql } from "../expression/sql"
 import { many } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -30,7 +31,7 @@ const blog = defineSchema({ post, comment }).$relations({
 })
 
 const database = createDatabase({ driver: createRecordingDriver().driver })
-const db = database.bind(blog)
+const db = bindSchema(blog, database)
 
 describe("$select", () => {
   test("gives one record of the values of expressions and the results of queries", () => {
@@ -90,7 +91,7 @@ describe("$select", () => {
   })
 
   test("rejects in $execute a query of a relation that the schema of the Db lacks", () => {
-    const plainDb = database.bind(defineSchema({ post, comment }))
+    const plainDb = bindSchema(defineSchema({ post, comment }), database)
     const query = blog.$select({
       posts: blog.post.select(post => ({
         comments: post.comments,

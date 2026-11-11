@@ -1,5 +1,5 @@
 // Fixtures of the tests of the helpers in PostgreSQL: a schema that steps change, as the target schema of a migration.
-import type { Database } from "kern-orm"
+import type { Database } from "kern-orm/db"
 
 import type { MigrationStep } from "../migration"
 import { runChange } from "../migration"

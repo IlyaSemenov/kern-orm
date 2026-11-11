@@ -1,12 +1,9 @@
 // PostgreSQL of the tests of the ORM at `DATABASE_URL`, such as from `.env.test.local`; the tests that need it are skipped without it.
 import type { AnyDb } from "kern-orm"
-import { createDatabase, sql } from "kern-orm"
+import { sql } from "kern-orm"
 import * as t from "kern-orm/types"
 
-import { definePostgresBlocks } from "./database/postgres"
-
-// The blocks of the database layer, over the database of the ORM, which binds schemas.
-export const { describePooledPostgres, describePostgres } = definePostgresBlocks(createDatabase)
+export { describePooledPostgres, describePostgres } from "./database/postgres"
 
 /**
  * Runs `callback` while a transaction of `db` holds what `statement` takes, with what it gives, and commits it at the latest when `callback` ends.

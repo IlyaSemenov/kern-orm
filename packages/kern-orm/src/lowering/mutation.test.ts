@@ -2,7 +2,8 @@ import { expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { compileStatement } from "../compiler/postgres/compile"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { and, not } from "../expression/predicates"
 import { sql } from "../expression/sql"
 import { collectDefinitions, many, one } from "../schema/relation"
@@ -90,7 +91,7 @@ it("replaces the queries in the filters, the values, and the returned fields of 
 
 it("checks the relations and the Db of the nested queries of a mutation", () => {
   const database = createDatabase({ driver: createRecordingDriver().driver })
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
   const { node } = schema.field.insert({ id: 1, formId: 1, label: "Name" }).select(field => ({
     options: field.options,
     forms: db.form,
@@ -99,7 +100,7 @@ it("checks the relations and the Db of the nested queries of a mutation", () => 
   expect(() => lowerStatement(node, collectDefinitions(forms[schemaRelations]))).toThrow(
     'Relation "field.options" is not part of the schema',
   )
-  expect(() => lowerStatement(node, undefined, database.bind(schema))).toThrow(
+  expect(() => lowerStatement(node, undefined, bindSchema(schema, database))).toThrow(
     'Selected field "forms" is bound to another Db',
   )
   expect(() => lowerStatement(node, collectDefinitions(schema[schemaRelations]), db)).not.toThrow()

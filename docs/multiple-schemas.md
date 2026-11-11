@@ -113,8 +113,10 @@ Start [other nested queries](./queries/relations#other-queries) from `formsSchem
 Bind the tenant schema to the PostgreSQL schema of [the current request](./schemas#postgresql-schemas), and the SaaS schema to `saas`:
 
 ```ts
-export const tenantDb = database.bind(tenantSchema, { schemaName: () => useTenant().schema })
-export const saasDb = database.bind(saasSchema, { schemaName: "saas" })
+import { bindSchema } from "kern-orm"
+
+export const tenantDb = bindSchema(tenantSchema, database, { schemaName: () => useTenant().schema })
+export const saasDb = bindSchema(saasSchema, database, { schemaName: "saas" })
 
 await tenantDb.$execute(publishedForms) // FROM "tenant_1"."form"
 await saasDb.$execute(publishedForms) // FROM "saas"."form"

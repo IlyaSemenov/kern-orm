@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { count } from "../expression/aggregates"
 import { not } from "../expression/predicates"
 import { sql } from "../expression/sql"
@@ -51,7 +52,7 @@ const tenant = defineSchema(forms, { answer }).$relations({
     field: one(field, { from: "fieldId", to: "id" }),
   },
 })
-const tenantDb = createDatabase({ driver: createRecordingDriver().driver }).bind(tenant)
+const tenantDb = bindSchema(tenant, createDatabase({ driver: createRecordingDriver().driver }))
 
 /** Result of executing query `Q`. */
 type Executed<Q extends AnySelectQuery> = QueryResult<Q["types"]>
@@ -555,7 +556,7 @@ describe("callbacks of values", () => {
     const aggregate = tenant.field.max(field => field.answers.count())
     const counted = tenant.field.count(field => field.answers.get("id"))
     const expression = tenant.field.pluck(field => field.answers.count().expr())
-    const shared = createDatabase({ driver: createRecordingDriver().driver }).bind(forms)
+    const shared = bindSchema(forms, createDatabase({ driver: createRecordingDriver().driver }))
 
     expectTypeOf<(typeof expression)["types"]["uses"]>().toBeNever()
     // @ts-expect-error The schema of the Db lacks the relation.

@@ -24,9 +24,10 @@ import {
   createTextSubquery,
 } from "../../ast/testing"
 import { text } from "../../database/codecs/text"
+import { createDatabase } from "../../database/database"
 import { NotFoundError } from "../../database/result"
 import { param as paramFragment, sql as sqlFragment } from "../../database/sql/fragment"
-import { createDatabase } from "../../execution/database"
+import { bindSchema } from "../../execution/db"
 import type { AnyExpression, Expression } from "../../expression/expression"
 import { toExpression, toNode } from "../../expression/expression"
 import { and, not, or } from "../../expression/predicates"
@@ -1356,8 +1357,8 @@ describe("statements of SQL text", () => {
   it("rejects a table outside the tables of the statement, and a table bound to a Db other than the one that runs it", () => {
     const schema = defineSchema({ form })
     const database = createDatabase({ driver: createRecordingDriver().driver })
-    const db = database.bind(schema)
-    const otherDb = database.bind(schema)
+    const db = bindSchema(schema, database)
+    const otherDb = bindSchema(schema, database)
     const node = toRawSql(sql`SELECT FROM ${db.form}`)
 
     expect(compileTextStatement(node, {}, new Set<AnyTable>([form]), db).text).toBe(

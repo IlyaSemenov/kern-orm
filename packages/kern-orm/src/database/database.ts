@@ -11,8 +11,6 @@ import { TransactionCoordinator } from "./transaction/coordinator"
  * Disposing it, such as with `await using`, closes it.
  */
 export interface Database extends AsyncDisposable {
-  /** Routes the statements and transactions of the database; `kern-orm/testing` runs test transactions and test fixtures through it. */
-  readonly coordinator: TransactionCoordinator
   /**
    * Executes a script of statements without parameters, such as DDL separated by semicolons, in the ambient transaction or session, or on the pool outside of one; outside a transaction, PostgreSQL runs them in one implicit transaction.
    *
@@ -135,11 +133,28 @@ export interface DatabaseOptions {
   onReleaseError?: (error: unknown) => void
 }
 
+// The coordinator of each database, which `Database` does not expose, so that its type does not depend on the private members of the class of one copy of the module; the test helpers find it here.
+const coordinators = new WeakMap<Database, TransactionCoordinator>()
+
+/**
+ * Returns the transaction coordinator of a database of `createDatabase`, such as for the test helpers.
+ *
+ * It throws for another object, such as a copy of a database or a database of another copy of this module, which has no coordinator here.
+ */
+export function getCoordinator(database: Database): TransactionCoordinator {
+  const coordinator = coordinators.get(database)
+  if (coordinator === undefined) {
+    throw new TypeError(
+      "The database was not created by createDatabase of this copy of the package",
+    )
+  }
+  return coordinator
+}
+
 /** Creates a database over a driver. */
 export function createDatabase({ driver, ...options }: DatabaseOptions): Database {
   const coordinator = new TransactionCoordinator(driver, options)
   const database: Database = {
-    coordinator,
     // An async function, so that a template that it rejects rejects the promise.
     async script(script: string | TemplateStringsArray, ...values: SqlValue[]) {
       return coordinator.executeScript(
@@ -163,5 +178,6 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }
+  coordinators.set(database, coordinator)
   return database
 }

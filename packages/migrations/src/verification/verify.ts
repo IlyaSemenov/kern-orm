@@ -1,5 +1,5 @@
 // Verification of a history: each migration applies, rolls back to the structure before it, and applies again in a temporary schema, and its migration tests check how it changes data.
-import type { Database, TransactionOptions } from "kern-orm"
+import type { Database, TransactionOptions } from "kern-orm/db"
 
 import { getErrorMessage, MigrationError } from "../error"
 import type { MigrationHistory } from "../history"

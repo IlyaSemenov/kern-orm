@@ -2,7 +2,7 @@
 import { relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import type { Database } from "kern-orm"
+import type { Database } from "kern-orm/db"
 
 import { getErrorMessage } from "../error"
 import type { MigrationHistory } from "../history"

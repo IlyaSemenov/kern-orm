@@ -2,7 +2,8 @@ import { expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { compileStatement } from "../compiler/postgres/compile"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { sql } from "../expression/sql"
 import { lower } from "../lowering/testing"
 import { many } from "../schema/relation"
@@ -184,8 +185,9 @@ it("selects the relations of the query it is applied to", () => {
       fields: columns.fields,
     })),
   )
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(
+  const db = bindSchema(
     defineSchema(forms, { owner: defineTable("owner", { id: t.uuid }) }),
+    createDatabase({ driver: createRecordingDriver().driver }),
   )
 
   expect(db.$compile(db.form.use(withFields)).text).toContain(
@@ -194,7 +196,7 @@ it("selects the relations of the query it is applied to", () => {
 })
 
 it("keeps the Db of the query it is applied to", () => {
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+  const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
   const ofDb = defineHelper(db.form, form => form.select("name"))
 
   expect(db.form.use(ofDb).db).toBe(db)

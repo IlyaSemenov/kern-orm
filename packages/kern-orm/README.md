@@ -20,7 +20,7 @@ Describe the tables and their relations, then load forms with their fields in on
 
 ```ts
 import { postgresJsDriver } from "@kern-orm/postgres-js"
-import { createDatabase, defineSchema, defineTable, many } from "kern-orm"
+import { bindSchema, createDatabase, defineSchema, defineTable, many } from "kern-orm"
 import * as t from "kern-orm/types"
 import postgres from "postgres"
 
@@ -45,7 +45,7 @@ const schema = defineSchema({ form, field }).$relations({
 const database = createDatabase({
   driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
 })
-const db = database.bind(schema)
+const db = bindSchema(schema, database)
 
 const forms = await db.form
   .where({ published: true })

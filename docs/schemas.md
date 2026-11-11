@@ -114,14 +114,14 @@ A query of the table is then a query of its row, such as `await db.settings.upse
 
 ## Schemas
 
-Put the tables you query in a schema and bind it to the [database](./getting-started#connect) with `database.bind`:
+Put the tables you query in a schema and bind it to the [database](./getting-started#connect) with `bindSchema`:
 
 ```ts
-import { defineSchema } from "kern-orm"
+import { bindSchema, defineSchema } from "kern-orm"
 
 export const schema = defineSchema({ form, field })
 
-export const db = database.bind(schema)
+export const db = bindSchema(schema, database)
 ```
 
 Table keys cannot start with `$`, which schemas and `Db` reserve for their own members.
@@ -143,14 +143,14 @@ To reuse tables in several schemas, such as tenant schemas and a shared applicat
 To query tables in a specific PostgreSQL schema, pass `schemaName`; without it, PostgreSQL finds them through `search_path`, which you can override for a [transaction](./transactions#search-path):
 
 ```ts
-export const db = database.bind(schema, { schemaName: "app" })
+export const db = bindSchema(schema, database, { schemaName: "app" })
 ```
 
 For a PostgreSQL schema per tenant, pass a function that returns the schema of the current request; one `db` then serves every tenant, since the function is called on every query:
 
 ```ts
 // useTenant() returns the tenant of the current request
-export const db = database.bind(schema, { schemaName: () => useTenant().schema })
+export const db = bindSchema(schema, database, { schemaName: () => useTenant().schema })
 
 await db.form.select("id") // FROM "tenant_1"."form"
 ```

@@ -8,6 +8,7 @@ import {
 } from "../../testing/postgres"
 import { isQueryError } from "../database/error-condition"
 import { NotFoundError } from "../database/result"
+import { bindSchema } from "../execution/db"
 import { RequiredRelationError } from "../result/result"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
@@ -182,7 +183,7 @@ describe("the clause of a nested query", () => {
 
 // Testing conflicts between transactions requires separate connections, which see only committed rows, so these tests commit them in a PostgreSQL schema of their own, which each test drops.
 describePooledPostgres("in PostgreSQL", ({ database }) => {
-  const db = database.bind(schema, { schemaName: "row_lock_test" })
+  const db = bindSchema(schema, database, { schemaName: "row_lock_test" })
 
   // The lock timeout fails a test that a transaction left open rather than hanging the others.
   beforeEach(() =>

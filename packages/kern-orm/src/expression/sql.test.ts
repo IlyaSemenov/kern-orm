@@ -3,12 +3,13 @@ import { expect, it } from "bun:test"
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { defineCodec } from "../database/codec/codec"
 import { jsonb } from "../database/codecs/json"
+import { createDatabase } from "../database/database"
 import {
   identifier as identifierFragment,
   param as paramFragment,
   sql as sqlFragment,
 } from "../database/sql/fragment"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -36,7 +37,7 @@ it("rejects a codec without operators passed to sql, naming defineType", () => {
 })
 
 it("interpolates a query of a table without clauses, also of a singleton table, as the name of the table of its Db", () => {
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+  const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
   const license = defineTable(
     "license",
     {
@@ -57,7 +58,7 @@ it("interpolates a query of a table without clauses, also of a singleton table, 
 })
 
 it("interpolates another query of a table, of any rows and value, as a query in an expression of its Db", () => {
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+  const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
   const records = schema.form.where({ id: 1 })
   const values = db.form.pluck("id")
 
@@ -83,7 +84,7 @@ it("interpolates a query of distinct as a query in an expression rather than the
 })
 
 it("rejects a query of $select, a mutation, a query of SQL text, and a query of map or transform", () => {
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+  const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
 
   for (const query of [
     schema.$select({}),

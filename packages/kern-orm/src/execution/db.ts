@@ -1,7 +1,12 @@
 import type { RawSqlNode } from "../ast/nodes"
 import type { CompiledQuery } from "../compiler/postgres/compile"
 import { compileStatement, compileTextStatement } from "../compiler/postgres/compile"
-import type { PollLockOptions, SessionOptions, TransactionOptions } from "../database/database"
+import type {
+  Database,
+  PollLockOptions,
+  SessionOptions,
+  TransactionOptions,
+} from "../database/database"
 import type { SqlStatement } from "../database/driver"
 import { createStatement } from "../database/driver"
 import type { InitialSqlQueryState } from "../database/sql/query"
@@ -31,8 +36,6 @@ import type { AnySchema, Schema, Tables } from "../schema/schema"
 import { defineEntries, schemaRelations } from "../schema/schema"
 import type { AnyTable } from "../table/table"
 
-import type { Database } from "./database"
-
 /** Physical placement of the tables of a schema bound to a database. */
 export interface BindOptions {
   /** PostgreSQL schema of the tables; a function is called on every query, such as to resolve the current tenant. */
@@ -40,7 +43,7 @@ export interface BindOptions {
 }
 
 /**
- * Schema bound to a database with `database.bind`.
+ * Schema bound to a database with `bindSchema`.
  *
  * Its table entries start queries bound to it, which execute when awaited.
  */
@@ -188,7 +191,11 @@ export type DbOf<S extends AnySchema> = Db<S["$tables"], S[typeof schemaRelation
 // oxlint-disable-next-line typescript/no-explicit-any -- any Db regardless of its tables
 export type AnyDb = Db<any, any>
 
-/** Binds `schema` to `database`; see `Database.bind`. */
+/**
+ * Binds a schema to a database, placing its tables in a PostgreSQL schema.
+ *
+ * Schemas bound to the same database, such as tenant and SaaS schemas, share its connections and transactions.
+ */
 export function bindSchema<T extends Tables, R extends SchemaRelations>(
   schema: Schema<T, R>,
   database: Database,

@@ -3,8 +3,9 @@ import { describe, expect, it } from "bun:test"
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
 import { defineCodec } from "../database/codec/codec"
+import { createDatabase } from "../database/database"
 import { NotFoundError, ResultDecodeError } from "../database/result"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { desc } from "../query/order"
 import { from } from "../query/select"
 import { many, one } from "../schema/relation"
@@ -159,8 +160,8 @@ describe("rejected operands", () => {
 describe("a query of a Db among the operands", () => {
   it("runs only in a statement of the same Db", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
-    const db = database.bind(schema)
-    const otherDb = database.bind(schema)
+    const db = bindSchema(schema, database)
+    const otherDb = bindSchema(schema, database)
     const query = db.form.select(() => ({
       value: coalesce(otherDb.field.max("position"), 0),
     }))
@@ -292,8 +293,8 @@ describe("caseWhen", () => {
 
   it("runs a query of a Db only in a statement of the same Db", () => {
     const database = createDatabase({ driver: createRecordingDriver().driver })
-    const db = database.bind(schema)
-    const otherDb = database.bind(schema)
+    const db = bindSchema(schema, database)
+    const otherDb = bindSchema(schema, database)
 
     expect(() =>
       db.$compile(
@@ -344,7 +345,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
   const byName = db.form.orderBy("name")
 
   it("replaces NULL with the first value other than NULL", async () => {

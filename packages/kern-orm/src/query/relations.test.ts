@@ -2,8 +2,9 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
+import { createDatabase } from "../database/database"
 import { NotFoundError } from "../database/result"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { and, not, or } from "../expression/predicates"
 import { sql } from "../expression/sql"
 import { RequiredRelationError } from "../result/result"
@@ -352,7 +353,7 @@ describe("relation queries", () => {
 
   it("build without statements and execute in one statement", async () => {
     const { driver, statements } = createRecordingDriver({ respond: () => ({ rows: [["[]"]] }) })
-    const db = createDatabase({ driver }).bind(schema)
+    const db = bindSchema(schema, createDatabase({ driver }))
 
     const query = db.form.select(form => ({
       fields: form.fields.select(field => ({
@@ -421,14 +422,15 @@ describe("relation queries in the callbacks of values", () => {
 
   it("are checked by a Db at any depth, as a nested query of a selection", () => {
     const { driver } = createRecordingDriver()
-    const same = createDatabase({ driver }).bind(schema)
+    const same = bindSchema(schema, createDatabase({ driver }))
     // The same tables and the same keys, but other relation definitions.
-    const other = createDatabase({ driver }).bind(
+    const other = bindSchema(
       defineSchema({ form, field, option }).$relations({
         form: {
           fields: many(field, { from: "id", to: "formId" }),
         },
       }),
+      createDatabase({ driver }),
     )
     const message = 'Relation "form.fields" is not part of the schema'
 
@@ -444,8 +446,8 @@ describe("relation queries in the callbacks of values", () => {
 
   it("keep the bound query of another Db out of the statement", () => {
     const { driver } = createRecordingDriver()
-    const db = createDatabase({ driver }).bind(schema)
-    const other = createDatabase({ driver }).bind(schema)
+    const db = bindSchema(schema, createDatabase({ driver }))
+    const other = bindSchema(schema, createDatabase({ driver }))
 
     expect(() => db.$compile(db.form.pluck(() => other.field.count()))).toThrow(
       "A query in an expression is bound to another Db",
@@ -470,7 +472,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(schema, { schemaName: "tenant_1" })
+  const db = bindSchema(schema, database, { schemaName: "tenant_1" })
   const forms = db.form.select("id").select(form => ({
     fields: form.fields.where(or({ label: "Name" }, { label: "Comment" })).select(field => ({
       label: field.label,
@@ -1143,8 +1145,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
             children: many(category, { from: "id", to: "parentId" }),
           },
         })
-        return database
-          .bind(tree, { schemaName: "tenant_1" })
+        return bindSchema(tree, database, { schemaName: "tenant_1" })
           .category.where({ parentId: null })
           .select(category => ({
             [`${prefix}First`]: category.children

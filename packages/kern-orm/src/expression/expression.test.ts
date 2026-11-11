@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { compileStatement } from "../compiler/postgres/compile"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { lower } from "../lowering/testing"
 import { from } from "../query/select"
 import { decodeResult } from "../result/result"
@@ -230,7 +231,10 @@ describe("operators of a type", () => {
 })
 
 describe("toValueNode", () => {
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ user }))
+  const db = bindSchema(
+    defineSchema({ user }),
+    createDatabase({ driver: createRecordingDriver().driver }),
+  )
 
   it("takes a query of one value as a query in an expression, with its Db", () => {
     const name = db.user.where({ id: "user-id" }).get("name")

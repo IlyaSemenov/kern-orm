@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
+import { createDatabase } from "../database/database"
 import type { Driver } from "../database/driver"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -41,7 +42,7 @@ const schema = defineSchema({ form, field }).$relations({
 
 declare const driver: Driver
 const database = createDatabase({ driver })
-const db = database.bind(schema)
+const db = bindSchema(schema, database)
 
 describe("map", () => {
   test("takes each record or value and gives the rows of its result in the rows mode of the query", async () => {
@@ -424,7 +425,7 @@ describe("$execute and $compile of a Db", () => {
   })
 
   test("reject a query of a relation that the schema of the Db lacks", () => {
-    const plainDb = database.bind(defineSchema({ form, field }))
+    const plainDb = bindSchema(defineSchema({ form, field }), database)
     const mapped = schema.form
       .select(columns => ({
         fields: columns.fields.pluck("id"),
@@ -479,7 +480,7 @@ describe("nesting", () => {
   })
 
   test("a nested conversion keeps the relations in the state of the query", () => {
-    const plainDb = database.bind(defineSchema({ form, field }))
+    const plainDb = bindSchema(defineSchema({ form, field }), database)
     const query = schema.form.select(columns => ({
       fields: columns.fields.pluck("id").map(String),
     }))
@@ -628,7 +629,7 @@ describe("mutations", () => {
   })
 
   test("execute through $execute, which checks the relations they select", () => {
-    const plainDb = database.bind(defineSchema({ form, field }))
+    const plainDb = bindSchema(defineSchema({ form, field }), database)
     const query = schema.form
       .insert(values)
       .select(columns => ({

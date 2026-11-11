@@ -1,6 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
+import type { Database } from "../database/database"
+import { createDatabase } from "../database/database"
 import type { SelectQueryKind } from "../query/kind"
 import type { SelectQuery } from "../query/select"
 import { from } from "../query/select"
@@ -10,8 +12,8 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { createDatabase } from "./database"
 import type { DbOf } from "./db"
+import { bindSchema } from "./db"
 
 const post = defineTable("post", {
   id: t.uuid.primaryKey(),
@@ -22,7 +24,13 @@ const other = defineTable("other", {
 })
 const schema = defineSchema({ post })
 const database = createDatabase({ driver: createRecordingDriver().driver })
-const db = database.bind(schema)
+const db = bindSchema(schema, database)
+
+describe("$database", () => {
+  test("is the database that the schema is bound to, without anything of the ORM", () => {
+    expectTypeOf(db.$database).toEqualTypeOf<Database>()
+  })
+})
 
 describe("$execute and $compile", () => {
   test("accept a union of queries and give the union of their results", () => {
@@ -100,7 +108,7 @@ describe("relations", () => {
   type BlogDb = DbOf<typeof blog>
 
   test("give the queries of a table the relations of the schema", () => {
-    const blogDb = database.bind(blog)
+    const blogDb = bindSchema(blog, database)
 
     expectTypeOf(blogDb.post.types).toEqualTypeOf(blog.post.types)
   })
@@ -115,15 +123,15 @@ describe("relations", () => {
       comments: post.comments.select("id"),
     }))
 
-    expectTypeOf(database.bind(moderated).$execute(withComments)).toEqualTypeOf<
+    expectTypeOf(bindSchema(moderated, database).$execute(withComments)).toEqualTypeOf<
       Promise<{ comments: { id: string }[] }[]>
     >()
-    database.bind(blog).$compile(withComments)
-    database.bind(defineSchema({ post, comment })).$execute(blog.post.select("id"))
+    bindSchema(blog, database).$compile(withComments)
+    bindSchema(defineSchema({ post, comment }), database).$execute(blog.post.select("id"))
   })
 
   test("reject a query of a relation that the schema lacks, also in a nested query", () => {
-    const plainDb = database.bind(defineSchema({ post, comment }))
+    const plainDb = bindSchema(defineSchema({ post, comment }), database)
     const nested = blog.post.select(post => ({
       comments: post.comments.select(() => ({
         posts: blog.post.select(post => ({
@@ -149,9 +157,9 @@ describe("relations", () => {
       },
     })
 
-    const blogDb: BlogDb = database.bind(moderated)
+    const blogDb: BlogDb = bindSchema(moderated, database)
     // @ts-expect-error The schema lacks the relations of the blog.
-    const plainDb: BlogDb = database.bind(defineSchema({ post, comment }))
+    const plainDb: BlogDb = bindSchema(defineSchema({ post, comment }), database)
     void [blogDb, plainDb]
   })
 })

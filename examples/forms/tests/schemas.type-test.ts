@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import type { DbOf, ResultOf } from "kern-orm"
-import { createDatabase, defineSchema } from "kern-orm"
+import { bindSchema, createDatabase, defineSchema } from "kern-orm"
 
 import {
   appendField,
@@ -49,12 +49,12 @@ describe("schemas", () => {
 
 describe("Db", () => {
   test("of a tenant and of the SaaS serves shared code of the form tables", () => {
-    void getFieldLabels(database.bind(tenantSchema), "form-id")
-    void getFieldLabels(database.bind(saasSchema), "form-id")
+    void getFieldLabels(bindSchema(tenantSchema, database), "form-id")
+    void getFieldLabels(bindSchema(saasSchema, database), "form-id")
   })
 
   test("of a tenant and of the SaaS selects forms with their fields", async () => {
-    const form = await getForm(database.bind(saasSchema), "form-id")
+    const form = await getForm(bindSchema(saasSchema, database), "form-id")
 
     expectTypeOf(form).toEqualTypeOf<{
       id: string
@@ -64,7 +64,7 @@ describe("Db", () => {
   })
 
   test("of a tenant and of the SaaS lists forms with their first fields", async () => {
-    const forms = await listFormPreviews(database.bind(tenantSchema), 3)
+    const forms = await listFormPreviews(bindSchema(tenantSchema, database), 3)
 
     expectTypeOf(forms).toEqualTypeOf<
       {
@@ -76,7 +76,7 @@ describe("Db", () => {
   })
 
   test("of a tenant and of the SaaS lists forms with aggregates of their fields", async () => {
-    const forms = await listFormSummaries(database.bind(saasSchema))
+    const forms = await listFormSummaries(bindSchema(saasSchema, database))
 
     expectTypeOf(forms).toEqualTypeOf<
       {
@@ -91,16 +91,20 @@ describe("Db", () => {
   test("of a tenant and of the SaaS converts the results of its queries in code", async () => {
     type Card = { id: string; name: string; fieldCount: number; title: string }
 
-    expectTypeOf(await listFormCards(database.bind(tenantSchema), 1)).toEqualTypeOf<Card[]>()
-    expectTypeOf(await createFormCard(database.bind(saasSchema), "name")).toEqualTypeOf<Card>()
-    expectTypeOf(await listFormHeadlines(database.bind(tenantSchema))).toEqualTypeOf<string[]>()
-    expectTypeOf(await getFieldCountsById(database.bind(saasSchema))).toEqualTypeOf<
+    expectTypeOf(await listFormCards(bindSchema(tenantSchema, database), 1)).toEqualTypeOf<Card[]>()
+    expectTypeOf(
+      await createFormCard(bindSchema(saasSchema, database), "name"),
+    ).toEqualTypeOf<Card>()
+    expectTypeOf(await listFormHeadlines(bindSchema(tenantSchema, database))).toEqualTypeOf<
+      string[]
+    >()
+    expectTypeOf(await getFieldCountsById(bindSchema(saasSchema, database))).toEqualTypeOf<
       Map<string, number>
     >()
   })
 
   test("of a tenant and of the SaaS selects a form with the number of published forms", async () => {
-    const page = await getFormPage(database.bind(tenantSchema), "form-id")
+    const page = await getFormPage(bindSchema(tenantSchema, database), "form-id")
 
     expectTypeOf(page).toEqualTypeOf<{
       form: { id: string; name: string; fields: { id: string; label: string }[] }
@@ -109,13 +113,13 @@ describe("Db", () => {
   })
 
   test("of a tenant and of the SaaS selects a field with the name of its form", async () => {
-    const field = await getField(database.bind(tenantSchema), "field-id")
+    const field = await getField(bindSchema(tenantSchema, database), "field-id")
 
     expectTypeOf(field).toEqualTypeOf<{ id: string; label: string; formName: string }>()
   })
 
   test("of a tenant and of the SaaS selects the fields of a form with the fields they are shown after and before", async () => {
-    const fields = await listFieldConditions(database.bind(saasSchema), "form-id")
+    const fields = await listFieldConditions(bindSchema(saasSchema, database), "form-id")
 
     expectTypeOf(fields).toEqualTypeOf<
       {
@@ -127,31 +131,31 @@ describe("Db", () => {
   })
 
   test("of a tenant selects submissions with their users", async () => {
-    const submissions = await listSubmissions(database.bind(tenantSchema), "form-id")
+    const submissions = await listSubmissions(bindSchema(tenantSchema, database), "form-id")
 
     expectTypeOf(submissions).toEqualTypeOf<{ id: string; user: { id: string; email: string } }[]>()
   })
 
   test("of a tenant reads several aggregates of the fields of a form in one record", async () => {
-    const stats = await getFieldStats(database.bind(tenantSchema), "form-id")
+    const stats = await getFieldStats(bindSchema(tenantSchema, database), "form-id")
 
     expectTypeOf(stats).toEqualTypeOf<{ total: number; lastPosition: number | null }>()
   })
 
   test("of a tenant groups the submissions by form", async () => {
-    const forms = await listSubmittedForms(database.bind(tenantSchema), 2)
+    const forms = await listSubmittedForms(bindSchema(tenantSchema, database), 2)
 
     expectTypeOf(forms).toEqualTypeOf<{ name: string; submissions: number; reviewed: number }[]>()
   })
 
   test("of a tenant filters forms by the distinct values of another query", async () => {
-    const names = await listSubmittedFormNames(database.bind(tenantSchema))
+    const names = await listSubmittedFormNames(bindSchema(tenantSchema, database))
 
     expectTypeOf(names).toEqualTypeOf<string[]>()
   })
 
   test("of a tenant locks a form to add a field at its end, and a field with its form", async () => {
-    const db = database.bind(tenantSchema)
+    const db = bindSchema(tenantSchema, database)
 
     expectTypeOf(await appendField(db, "form-id", "Name")).toEqualTypeOf<number>()
     expectTypeOf(await lockFieldWithForm(db, "field-id")).toEqualTypeOf<{
@@ -161,7 +165,7 @@ describe("Db", () => {
   })
 
   test("of a tenant selects a submission with its user and reviewer, its answers by their key, and the comments", async () => {
-    const review = await getSubmissionReview(database.bind(tenantSchema), "submission-id")
+    const review = await getSubmissionReview(bindSchema(tenantSchema, database), "submission-id")
 
     expectTypeOf(review).toEqualTypeOf<{
       user: string
@@ -175,7 +179,7 @@ describe("Db", () => {
   })
 
   test("of a tenant counts the submissions that users filled in and reviewed, with the answers of their comments", async () => {
-    const users = await listUserActivity(database.bind(tenantSchema))
+    const users = await listUserActivity(bindSchema(tenantSchema, database))
 
     expectTypeOf(users).toEqualTypeOf<
       {
@@ -188,13 +192,13 @@ describe("Db", () => {
   })
 
   test("of a tenant gives the latest comment on each submission with its author", async () => {
-    const comments = await listLatestComments(database.bind(tenantSchema))
+    const comments = await listLatestComments(bindSchema(tenantSchema, database))
 
     expectTypeOf(comments).toEqualTypeOf<{ text: string; author: string }[]>()
   })
 
   test("of a tenant executes a page of the activity of its forms, which the SaaS lacks", async () => {
-    const page = await database.bind(tenantSchema).$execute(formActivity.limit(20))
+    const page = await bindSchema(tenantSchema, database).$execute(formActivity.limit(20))
 
     expectTypeOf(page).toEqualTypeOf<
       {
@@ -211,7 +215,7 @@ describe("Db", () => {
       }[]
     >()
     // @ts-expect-error The SaaS schema has no submissions.
-    void database.bind(saasSchema).$execute(formActivity)
+    void bindSchema(saasSchema, database).$execute(formActivity)
   })
 
   test("of the SaaS cannot select tenant-only relations", () => {
@@ -220,8 +224,8 @@ describe("Db", () => {
     }))
 
     // @ts-expect-error The SaaS schema has no answers.
-    void database.bind(saasSchema).$execute(answers)
-    void database.bind(tenantSchema).$execute(answers)
+    void bindSchema(saasSchema, database).$execute(answers)
+    void bindSchema(tenantSchema, database).$execute(answers)
   })
 
   test("from dependency injection gives shared code only the form tables", () => {
@@ -231,7 +235,7 @@ describe("Db", () => {
 
   test("of the SaaS cannot serve code of a tenant", () => {
     // @ts-expect-error The SaaS schema has no submissions and answers.
-    const saasDb: DbOf<typeof tenantSchema> = database.bind(saasSchema)
+    const saasDb: DbOf<typeof tenantSchema> = bindSchema(saasSchema, database)
     void saasDb
   })
 
@@ -239,7 +243,7 @@ describe("Db", () => {
     const tables = defineSchema(formsSchema, { user, submission, answer })
 
     // @ts-expect-error The schema lacks the relations of the tenant schema.
-    const tenantDb: DbOf<typeof tenantSchema> = database.bind(tables)
+    const tenantDb: DbOf<typeof tenantSchema> = bindSchema(tables, database)
     void tenantDb
   })
 })

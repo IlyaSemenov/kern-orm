@@ -4,7 +4,7 @@
 // - A schema of a singleton table of settings.
 
 import type { Driver } from "kern-orm"
-import { createDatabase, defineSchema, defineTable, many, one } from "kern-orm"
+import { bindSchema, createDatabase, defineSchema, defineTable, many, one } from "kern-orm"
 import * as t from "kern-orm/types"
 
 const form = defineTable("form", {
@@ -176,7 +176,7 @@ const settings = defineTable(
 
 // The benchmarks only check the types of queries and never run them.
 const database = createDatabase({ driver: {} as Driver })
-export const formsDb = database.bind(formsSchema)
-export const tenantDb = database.bind(tenantSchema)
-export const storeDb = database.bind(storeSchema)
-export const settingsDb = database.bind(defineSchema({ settings }))
+export const formsDb = bindSchema(formsSchema, database)
+export const tenantDb = bindSchema(tenantSchema, database)
+export const storeDb = bindSchema(storeSchema, database)
+export const settingsDb = bindSchema(defineSchema({ settings }), database)

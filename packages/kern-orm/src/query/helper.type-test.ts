@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { count, sum } from "../expression/aggregates"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
@@ -31,7 +32,7 @@ const field = defineTable("field", {
 })
 
 const schema = defineSchema({ form, field })
-const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
 
 /** Result of executing query `Q`. */
 type Executed<Q extends AnySelectQuery> = QueryResult<Q["types"]>
@@ -505,7 +506,7 @@ describe("relations", () => {
       answers: many(answer, { from: "id", to: "fieldId" }),
     },
   })
-  const tenantDb = createDatabase({ driver: createRecordingDriver().driver }).bind(tenant)
+  const tenantDb = bindSchema(tenant, createDatabase({ driver: createRecordingDriver().driver }))
   const withFields = defineHelper(forms.form, form =>
     form.select(columns => ({
       fields: columns.fields.select("id"),
@@ -585,8 +586,9 @@ describe("relations", () => {
     const query = forms.field.use(withForms)
 
     void tenantDb.$execute(query)
+    const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
     // @ts-expect-error The schema has no relation `form.fields`.
-    void createDatabase({ driver: createRecordingDriver().driver }).bind(schema).$execute(query)
+    void db.$execute(query)
   })
 
   test("rejects a query of the table under another key, whose relations the callback would read", () => {

@@ -107,17 +107,16 @@ export type {
 export { NotFoundError, ResultDecodeError } from "./database/result"
 export { RequiredRelationError } from "./result/result"
 export type {
+  Database,
   DatabaseOptions,
   IsolationLevel,
   PollLockOptions,
   SessionOptions,
   TransactionOptions,
 } from "./database/database"
+export { createDatabase } from "./database/database"
 export type { SqlFragment, SqlValue } from "./database/sql/fragment"
-export type { Database } from "./execution/database"
-export { createDatabase } from "./execution/database"
 export type { Connection, Driver, DriverResult, SqlStatement, TextValue } from "./database/driver"
-export type { TransactionCoordinator } from "./database/transaction/coordinator"
 export { TransactionConnectionError } from "./database/transaction/connection-loss"
 export { createStatement } from "./database/driver"
 export type { DriverErrorFields } from "./database/driver-error"
@@ -234,6 +233,7 @@ export type {
   SelectionUses,
 } from "./query/selection"
 export type { AnyDb, BindOptions, Db, DbMutationState, DbOf, DbQueryState } from "./execution/db"
+export { bindSchema } from "./execution/db"
 export type {
   AnySchema,
   Schema,

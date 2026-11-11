@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { sql } from "../expression/sql"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -64,8 +65,9 @@ describe("mergeProjections", () => {
 
   it("selects the rows of a query under its key with the Db it is bound to", () => {
     const comments = from(post).pluck("title")
-    const db = createDatabase({ driver: createRecordingDriver().driver }).bind(
+    const db = bindSchema(
       defineSchema({ post }),
+      createDatabase({ driver: createRecordingDriver().driver }),
     )
 
     expect(

@@ -1,4 +1,5 @@
 import type { Database, IsolationLevel } from "./database"
+import { getCoordinator } from "./database"
 
 /** Test fixture of `useTestFixture`, open while the tests of its `describe` block or test file run. */
 export interface TestFixture<T = unknown> {
@@ -81,7 +82,7 @@ export interface TestHelpers {
 
 /** Creates the test helpers of a database created with `test: true`, registering fixtures with the hooks of a test runner. */
 export function createTestHelpers(database: Database, hooks: TestHooks): TestHelpers {
-  const { coordinator } = database
+  const coordinator = getCoordinator(database)
   if (!coordinator.test) {
     throw new Error("createTestHelpers requires a database created with test: true")
   }

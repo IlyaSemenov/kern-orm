@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { createSubquery } from "../ast/testing"
 import { text } from "../database/codecs/text"
+import { createDatabase } from "../database/database"
 import type { DriverResult } from "../database/driver"
 import { NotFoundError } from "../database/result"
 import {
@@ -10,6 +11,7 @@ import {
   param as paramFragment,
   sql as sqlFragment,
 } from "../database/sql/fragment"
+import { createTestHelpers } from "../database/testing"
 import { identifier, sql } from "../expression/sql"
 import { lower } from "../lowering/testing"
 import type { AnySelectQuery } from "../query/select"
@@ -19,7 +21,7 @@ import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import { createDatabase } from "./database"
+import { bindSchema } from "./db"
 
 const post = defineTable("post", {
   id: t.uuid,
@@ -34,7 +36,7 @@ function connectRecorded() {
   const { driver, statements, scripts } = createRecordingDriver({
     respond: () => ({ rows: [["post-id"]] }),
   })
-  const db = createDatabase({ driver }).bind(schema, { schemaName: "app" })
+  const db = bindSchema(schema, createDatabase({ driver }), { schemaName: "app" })
   return { db, statements, scripts }
 }
 
@@ -57,7 +59,7 @@ it("decodes selected fields with the types of their expressions", async () => {
   const { driver } = createRecordingDriver({
     respond: () => ({ rows: [["post-id", "Draft", "t", "DRAFT", "5"]] }),
   })
-  const db = createDatabase({ driver }).bind(schema)
+  const db = bindSchema(schema, createDatabase({ driver }))
   const label = t.text.transform({ decode: value => `label: ${value}` })
 
   const rows = await db.post.select("id").select(columns => ({
@@ -89,7 +91,7 @@ it("returns the row of a query of one row or its value", async () => {
 
 it("rejects a query of one row without a row unless optional", async () => {
   const { driver } = createRecordingDriver()
-  const db = createDatabase({ driver }).bind(schema)
+  const db = bindSchema(schema, createDatabase({ driver }))
 
   await expect(Promise.resolve(db.post.take())).rejects.toThrow(NotFoundError)
   await expect(db.$execute(schema.post.get("id"))).rejects.toThrow(NotFoundError)
@@ -112,7 +114,7 @@ it("executes a query of $select of its schema in its PostgreSQL schema", async (
   const { driver, statements } = createRecordingDriver({
     respond: () => ({ rows: [['["post-id"]']] }),
   })
-  const db = createDatabase({ driver }).bind(schema, { schemaName: "app" })
+  const db = bindSchema(schema, createDatabase({ driver }), { schemaName: "app" })
   const query = schema.$select({
     post: schema.post.select("id").take(),
   })
@@ -127,7 +129,7 @@ describe("$query", () => {
     const tenant = { name: "app" }
     const { driver, statements } = createRecordingDriver({ respond: () => result })
     const database = createDatabase({ driver })
-    const db = database.bind(schema, { schemaName: () => tenant.name })
+    const db = bindSchema(schema, database, { schemaName: () => tenant.name })
     return { database, db, statements, tenant }
   }
 
@@ -189,7 +191,7 @@ describe("$query", () => {
 
   it("rejects a table of another Db and a table outside the schema of its Db, when it compiles and when it executes", async () => {
     const { database, db, statements } = connectTenant()
-    const query = database.bind(schema).$query`SELECT FROM ${db.post}`
+    const query = bindSchema(schema, database).$query`SELECT FROM ${db.post}`
 
     expect(() => query.toSQL()).toThrow('Table "post" interpolated into SQL is bound to another Db')
     await expect(Promise.resolve(query)).rejects.toThrow(
@@ -223,7 +225,7 @@ describe("$query", () => {
 
 it("executes a script of its text or of a template that names its tables, in the ambient transaction", async () => {
   const { driver, statements, scripts } = createRecordingDriver()
-  const db = createDatabase({ driver }).bind(schema, { schemaName: "app" })
+  const db = bindSchema(schema, createDatabase({ driver }), { schemaName: "app" })
 
   await db.$script("CREATE SCHEMA app; CREATE TABLE app.post (id uuid, title text)")
   await db.$transaction(() => db.$script`CREATE INDEX ON ${db.post} (id); ANALYZE ${schema.post}`)
@@ -277,6 +279,24 @@ it("rejects values in the template of a script, also in a query and a sql fragme
   await expect(db.$script`SELECT ${sql`upper(${"x"})`}`).rejects.toThrow(message)
   await expect(db.$script`SELECT ${paramFragment(text, "x")}`).rejects.toThrow(message)
   expect(scripts).toEqual([])
+})
+
+it("rejects a table of a Db and an expression in the templates of a script and a query of its database, which take the fragments of the database layer", async () => {
+  const { driver, scripts, statements } = createRecordingDriver()
+  const database = createDatabase({ driver })
+  const db = bindSchema(schema, database)
+  const message = "A parameter without a codec takes a string"
+
+  // @ts-expect-error A table of a Db takes $script of the Db.
+  await expect(database.script`ANALYZE ${db.post}`).rejects.toThrow(message)
+  // @ts-expect-error An expression is not a fragment of the database layer.
+  await expect(database.script`ANALYZE ${identifier("post")}`).rejects.toThrow(message)
+  // @ts-expect-error A table of a Db takes $query of the Db.
+  expect(() => database.query`SELECT FROM ${db.post}`).toThrow(message)
+  // @ts-expect-error An expression is not a fragment of the database layer.
+  expect(() => database.query`SELECT FROM ${identifier("post")}`).toThrow(message)
+  expect(scripts).toEqual([])
+  expect(statements).toEqual([])
 })
 
 it("runs a transaction of the database with the options of $transaction", async () => {
@@ -347,7 +367,7 @@ it("takes advisory locks in a transaction of the database with $lock and $tryLoc
 
 it("polls for an advisory lock in a session of the database with $pollLock, passing its signal", async () => {
   const { driver, statements } = createRecordingDriver({ respond: () => ({ rows: [["t"]] }) })
-  const db = createDatabase({ driver }).bind(schema)
+  const db = bindSchema(schema, createDatabase({ driver }))
   const reason = new Error("timeout")
 
   await db.$session(async () => {
@@ -407,10 +427,11 @@ describe("row locks", () => {
       respond: () => ({ rows: [["post-id"]] }),
     })
     const database = createDatabase({ driver, test: true })
-    const db = database.bind(schema)
+    const db = bindSchema(schema, database)
     const locked = db.post.select("id").forUpdate()
+    const { testTransaction } = createTestHelpers(database, { before() {}, after() {} })
 
-    await database.coordinator.testTransaction(async () => {
+    await testTransaction(async () => {
       await expect(db.$execute(locked)).rejects.toThrow(message)
       await db.$ensureTransaction(async () => await locked)
     })
@@ -461,7 +482,7 @@ it("compiles a bound query as its Db executes it", () => {
 it("resolves a schema name function on each compilation of a bound query", () => {
   let tenant = "tenant_1"
   const { driver } = createRecordingDriver()
-  const db = createDatabase({ driver }).bind(schema, { schemaName: () => tenant })
+  const db = bindSchema(schema, createDatabase({ driver }), { schemaName: () => tenant })
   const query = db.post.select("id")
 
   expect(query.toSQL().text).toContain('FROM "tenant_1"."post"')
@@ -472,19 +493,19 @@ it("resolves a schema name function on each compilation of a bound query", () =>
 it("gives its PostgreSQL schema by $schemaName, calling a schema name function when read", () => {
   let tenant = "tenant_1"
   const database = createDatabase({ driver: createRecordingDriver().driver })
-  const tenantDb = database.bind(schema, { schemaName: () => tenant })
+  const tenantDb = bindSchema(schema, database, { schemaName: () => tenant })
 
   expect(tenantDb.$schemaName).toBe("tenant_1")
   tenant = "tenant_2"
   expect(tenantDb.$schemaName).toBe("tenant_2")
-  expect(database.bind(schema, { schemaName: "app" }).$schemaName).toBe("app")
-  expect(database.bind(schema).$schemaName).toBeUndefined()
+  expect(bindSchema(schema, database, { schemaName: "app" }).$schemaName).toBe("app")
+  expect(bindSchema(schema, database).$schemaName).toBeUndefined()
 })
 
 it("keeps the bind options it was bound with", () => {
   const { driver } = createRecordingDriver()
   const options = { schemaName: "app" }
-  const db = createDatabase({ driver }).bind(schema, options)
+  const db = bindSchema(schema, createDatabase({ driver }), options)
   options.schemaName = "other"
 
   expect(db.post.select("id").toSQL().text).toContain('FROM "app"."post"')
@@ -494,7 +515,26 @@ it("keeps the bind options it was bound with", () => {
 it("gives the database it is bound to by $database", () => {
   const database = createDatabase({ driver: createRecordingDriver().driver })
 
-  expect(database.bind(schema).$database).toBe(database)
+  expect(bindSchema(schema, database).$database).toBe(database)
+})
+
+it("runs its queries in the transactions of its database, together with statements of the database", async () => {
+  const { driver, statements } = createRecordingDriver()
+  const database = createDatabase({ driver })
+  const db = bindSchema(schema, database, { schemaName: "app" })
+
+  await database.transaction(async () => {
+    await db.post.select("id")
+    await database.query`SELECT 1`
+  })
+
+  expect(statements.map(({ connection }) => connection)).toEqual([1, 1, 1, 1])
+  expect(statements.map(({ text }) => text)).toEqual([
+    "BEGIN",
+    'SELECT "post"."id" AS "id" FROM "app"."post" AS "post"',
+    "SELECT 1",
+    "COMMIT",
+  ])
 })
 
 it("rejects compile options of a bound query", () => {
@@ -536,7 +576,7 @@ it("rejects a relation outside its schema, also in a nested query, even of the s
       comments: many(commented, { from: "id", to: "postId" }),
     },
   })
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(blog)
+  const db = bindSchema(blog, createDatabase({ driver: createRecordingDriver().driver }))
   const query = other.post.select(post => ({
     comments: post.comments,
   }))

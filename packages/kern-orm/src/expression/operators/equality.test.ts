@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "../../../testing/database/recording-driver"
 import { falseNode } from "../../ast/nodes"
-import { createDatabase } from "../../execution/database"
+import { createDatabase } from "../../database/database"
+import { bindSchema } from "../../execution/db"
 import type { AnySelectQuery } from "../../query/select"
 import { from } from "../../query/select"
 import { defineSchema } from "../../schema/schema"
@@ -64,7 +65,10 @@ it("in takes the values of a query of any rows as a subquery of its statement, a
 })
 
 it("in rejects a query of records, and a value other than an array or a query of a table", () => {
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ user }))
+  const db = bindSchema(
+    defineSchema({ user }),
+    createDatabase({ driver: createRecordingDriver().driver }),
+  )
   // Types reject these values, which a query held as any query can still take.
   const records: AnySelectQuery = from(user)
 

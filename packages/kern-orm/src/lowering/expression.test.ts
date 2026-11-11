@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { compileStatement } from "../compiler/postgres/compile"
+import { bindSchema } from "../execution/db"
 import { count } from "../expression/aggregates"
 import { not } from "../expression/predicates"
 import { sql } from "../expression/sql"
@@ -187,7 +188,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(defineSchema({ form }))
+  const db = bindSchema(defineSchema({ form }), database)
 
   it("tells whether a query has a row, also of a page", async () => {
     const results = await testTransaction(async () => [

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
 import type { Database } from "kern-orm"
-import { defineSchema } from "kern-orm"
+import { bindSchema, defineSchema } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { defineTestHistory } from "../../testing/history"
@@ -77,7 +77,7 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
       },
       { searchPath: ["extensions"] },
     )
-    const db = database.bind(defineSchema({}), { schemaName: "migrations_tenant" })
+    const db = bindSchema(defineSchema({}), database, { schemaName: "migrations_tenant" })
 
     await testTransaction(() => verifyMigrations(db, history))
 

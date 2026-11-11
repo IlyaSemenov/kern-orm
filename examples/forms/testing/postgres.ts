@@ -4,7 +4,7 @@ import { createHash } from "node:crypto"
 
 import { postgresJsDriver } from "@kern-orm/postgres-js"
 import type { Database, DbOf } from "kern-orm"
-import { createDatabase } from "kern-orm"
+import { bindSchema, createDatabase } from "kern-orm"
 import type { TestHelpers } from "kern-orm/testing"
 import { createTestHelpers } from "kern-orm/testing"
 import postgres from "postgres"
@@ -95,8 +95,8 @@ function connect(options: { test: boolean; prefix: string }): FormsDatabaseConte
   afterAll(() => database.close())
   return {
     database,
-    tenantDb: database.bind(tenantSchema, { schemaName: () => useTenantSchemaName() }),
-    saasDb: database.bind(saasSchema, { schemaName: `${options.prefix}saas` }),
+    tenantDb: bindSchema(tenantSchema, database, { schemaName: () => useTenantSchemaName() }),
+    saasDb: bindSchema(saasSchema, database, { schemaName: `${options.prefix}saas` }),
     inTenant: (schemaName, callback) =>
       withOverrides(provide(useTenantSchemaName, schemaName), callback),
   }

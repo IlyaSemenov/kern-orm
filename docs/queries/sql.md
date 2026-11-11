@@ -122,7 +122,7 @@ const total = await database.query`SELECT count(*) FROM form`.get(t.integer)
 
 `database.query` runs and returns rows as `$query` does; pass the types of `kern-orm/db/types` to its `select`, `get`, and `pluck`.
 
-In code that uses no schemas, such as a runner of jobs, create the database with `createDatabase` from `kern-orm/db`, which takes the options of `createDatabase` of `kern-orm` and has no `bind`:
+In code that uses no schemas, such as a runner of jobs, import `createDatabase` from `kern-orm/db`, which exports the database without the query builder:
 
 ```ts
 import { postgresJsDriver } from "@kern-orm/postgres-js"

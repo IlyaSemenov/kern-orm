@@ -35,6 +35,15 @@ it("rejects a database not created for tests", () => {
   )
 })
 
+it("rejects an object that createDatabase did not create, such as a copy of a database", () => {
+  const { driver } = createRecordingDriver()
+  const database = createDatabase({ driver, test: true })
+
+  expect(() => createTestHelpers({ ...database }, createManualHooks().hooks)).toThrow(
+    "The database was not created by createDatabase of this copy of the package",
+  )
+})
+
 describe("testTransaction", () => {
   it("rolls back a test transaction that resolves and returns its result", async () => {
     const { database, statements, releases, testTransaction } = createTestDatabase()

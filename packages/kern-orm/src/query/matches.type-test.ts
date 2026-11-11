@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { caseWhen } from "../expression/functions"
 import { or } from "../expression/predicates"
 import { param } from "../expression/sql"
@@ -35,7 +36,7 @@ const schema = defineSchema({ form, field }).$relations({
   },
 })
 
-const db = createDatabase({ driver: createRecordingDriver().driver }).bind(schema)
+const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
 
 describe("result", () => {
   test("is boolean of columns and values that are never NULL", () => {

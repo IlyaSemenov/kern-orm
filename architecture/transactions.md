@@ -1,7 +1,8 @@
 # Transactions
 
 - **Database** (`database/database.ts`): a driver and the ambient transaction coordinator of one connection domain.
-  `bind` of the `Database` of the ORM (`execution/database.ts`) binds schemas to it, and all schemas bound to the same database share its transactions.
+  `bindSchema` binds schemas to it, and all schemas bound to the same database share its transactions.
+  It does not expose its coordinator, so that its type does not depend on the private members of a class of one copy of the module: `getCoordinator` finds the coordinator by the object of the database for the test helpers and the driver contract, and finds none for another object, such as a copy of a database.
 - **Transaction coordinator** (`database/transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
 - **Transaction level** (`database/transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `database/transaction/settings.ts`.
 - **Session** (`database/transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).

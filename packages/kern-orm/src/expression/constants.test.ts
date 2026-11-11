@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { describePostgres } from "../../testing/postgres"
 import { falseNode, trueNode } from "../ast/nodes"
+import { bindSchema } from "../execution/db"
 import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -57,7 +58,7 @@ describe("TRUE and FALSE", () => {
 })
 
 describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
-  const db = database.bind(defineSchema({ form }))
+  const db = bindSchema(defineSchema({ form }), database)
 
   it("selects and decodes them", async () => {
     const query = db.$select({

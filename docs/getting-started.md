@@ -66,7 +66,7 @@ Connect to PostgreSQL with the postgres.js driver and bind the schema to the dat
 
 ```ts [src/db.ts]
 import { postgresJsDriver } from "@kern-orm/postgres-js"
-import { createDatabase } from "kern-orm"
+import { bindSchema, createDatabase } from "kern-orm"
 import postgres from "postgres"
 
 import { schema } from "./schema"
@@ -75,7 +75,7 @@ export const database = createDatabase({
   driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
 })
 
-export const db = database.bind(schema)
+export const db = bindSchema(schema, database)
 ```
 
 Close the database with `database.close()` when the application stops; it waits for the running transactions to end.
@@ -86,7 +86,7 @@ In a script, declare the database with `await using` to close it at the end of t
 await using database = createDatabase({
   driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
 })
-const db = database.bind(schema)
+const db = bindSchema(schema, database)
 ```
 
 ## Query

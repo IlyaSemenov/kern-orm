@@ -1,4 +1,4 @@
-import type { Database } from "kern-orm"
+import type { Database } from "kern-orm/db"
 
 import type { MigrationDirection } from "./error"
 import { getErrorMessage, MigrationError } from "./error"

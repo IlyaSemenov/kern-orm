@@ -47,7 +47,11 @@ export function createFixture({ orm, types: t }: Build, result: DriverResult = n
       answers: orm.many(answer, { from: "id", to: "fieldId" }),
     },
   })
-  const db = orm.createDatabase({ driver: createDriver(result) }).bind(schema)
+  // A build before `bindSchema` binds a schema with `bind` of its database, so that `--base` compares with it; remove this after the release of 1.0.
+  const bindSchema = (orm.bindSchema ??
+    ((schema: unknown, database: { bind(schema: unknown): unknown }) =>
+      database.bind(schema))) as typeof orm.bindSchema
+  const db = bindSchema(schema, orm.createDatabase({ driver: createDriver(result) }))
   return { db }
 }
 

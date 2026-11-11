@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
 import * as t from "../types"
@@ -17,7 +18,10 @@ const post = defineTable("post", {
   title: t.text,
 })
 
-const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ post }))
+const db = bindSchema(
+  defineSchema({ post }),
+  createDatabase({ driver: createRecordingDriver().driver }),
+)
 
 /** Result of executing query `Q`. */
 type Executed<Q extends AnySelectQuery> = QueryResult<Q["types"]>

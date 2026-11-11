@@ -3,7 +3,8 @@ import { runInNewContext } from "node:vm"
 
 import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { falseNode, trueNode } from "../ast/nodes"
-import { createDatabase } from "../execution/database"
+import { createDatabase } from "../database/database"
+import { bindSchema } from "../execution/db"
 import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
@@ -132,7 +133,10 @@ describe("a condition that is not one", () => {
 })
 
 describe("queries", () => {
-  const db = createDatabase({ driver: createRecordingDriver().driver }).bind(defineSchema({ user }))
+  const db = bindSchema(
+    defineSchema({ user }),
+    createDatabase({ driver: createRecordingDriver().driver }),
+  )
 
   it("nest a query of one value, such as of exists, and reject another query rather than take it as column values", () => {
     const exists = db.user.exists()

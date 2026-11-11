@@ -7,8 +7,9 @@ import {
   startWaiting,
   whileHolding,
 } from "../../testing/postgres"
+import { createDatabase } from "../database/database"
 import { NotFoundError } from "../database/result"
-import { createDatabase } from "../execution/database"
+import { bindSchema } from "../execution/db"
 import { coalesce } from "../expression/functions"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
@@ -68,7 +69,7 @@ const license = defineTable(
 /** Binds the schema to a database whose driver answers every statement with `rows`, reporting `count` rows. */
 function connect(count: number, rows: string[][] = []) {
   const { driver, statements } = createRecordingDriver({ respond: () => ({ count, rows }) })
-  return { db: createDatabase({ driver }).bind(schema, { schemaName: "app" }), statements }
+  return { db: bindSchema(schema, createDatabase({ driver }), { schemaName: "app" }), statements }
 }
 
 describe("insert", () => {
@@ -452,9 +453,9 @@ describe("values of queries", () => {
 
   it("are checked by a Db at any depth, as queries in expressions", () => {
     const { driver } = createRecordingDriver()
-    const db = createDatabase({ driver }).bind(schema)
-    const other = createDatabase({ driver }).bind(schema)
-    const withoutRelations = createDatabase({ driver }).bind(defineSchema({ form, field }))
+    const db = bindSchema(schema, createDatabase({ driver }))
+    const other = bindSchema(schema, createDatabase({ driver }))
+    const withoutRelations = bindSchema(defineSchema({ form, field }), createDatabase({ driver }))
     const related = schema.form.where(columns => columns.fields.exists()).get("note")
     const message = 'Relation "form.fields" is not part of the schema'
 
@@ -527,8 +528,8 @@ describe("update of a query of a relation", () => {
 
   it("is checked by a Db as a nested query of a selection, in the values and in what it returns", () => {
     const { driver } = createRecordingDriver()
-    const db = createDatabase({ driver }).bind(schema)
-    const other = createDatabase({ driver }).bind(defineSchema({ form, field }))
+    const db = bindSchema(schema, createDatabase({ driver }))
+    const other = bindSchema(defineSchema({ form, field }), createDatabase({ driver }))
     const message = 'Relation "form.fields" is not part of the schema'
     const update = schema.form.find(1).update(columns => ({
       note: columns.fields.get("label"),
@@ -552,7 +553,7 @@ describe("update of a query of a relation", () => {
 
   it("rejects a query of a relation in a filter of the changed rows of another schema", () => {
     const { driver } = createRecordingDriver()
-    const other = createDatabase({ driver }).bind(defineSchema({ form, field }))
+    const other = bindSchema(defineSchema({ form, field }), createDatabase({ driver }))
 
     expect(() =>
       other.$compile(
@@ -563,8 +564,8 @@ describe("update of a query of a relation", () => {
 
   it("rejects a bound query of another Db", () => {
     const { driver } = createRecordingDriver()
-    const db = createDatabase({ driver }).bind(schema)
-    const other = createDatabase({ driver }).bind(schema)
+    const db = bindSchema(schema, createDatabase({ driver }))
+    const other = bindSchema(schema, createDatabase({ driver }))
 
     expect(() =>
       db.$compile(db.form.find(1).update(() => ({ note: other.field.max("label") }))),
@@ -864,7 +865,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     `),
   )
 
-  const db = database.bind(schema)
+  const db = bindSchema(schema, database)
 
   it("inserts records with the defaults of the columns they omit, returning their fields", async () => {
     const { id, inserted, stored } = await testTransaction(async () => {
@@ -1050,7 +1051,7 @@ describePostgres("conflicts in PostgreSQL", ({ database, testTransaction, useTes
     `),
   )
 
-  const db = database.bind(defineSchema({ tag }))
+  const db = bindSchema(defineSchema({ tag }), database)
 
   it("skips the rows that conflict on the key of its target or on any key, returning the inserted rows", async () => {
     const result = await testTransaction(async () => ({
@@ -1193,7 +1194,7 @@ describePostgres("upsert in PostgreSQL", ({ database, testTransaction, useTestFi
     `),
   )
 
-  const db = database.bind(defineSchema({ vote }))
+  const db = bindSchema(defineSchema({ vote }), database)
 
   it("inserts the record of a missing key and updates the values of an existing one, returning its row", async () => {
     const result = await testTransaction(async () => ({
@@ -1235,7 +1236,7 @@ describePostgres(
       `),
     )
 
-    const db = database.bind(defineSchema({ license }))
+    const db = bindSchema(defineSchema({ license }), database)
 
     it("upserts the missing row and the values of the existing one, keeping its other values", async () => {
       const result = await testTransaction(async () => ({
@@ -1289,7 +1290,7 @@ describePostgres(
 
 // Testing concurrent upserts requires separate connections, which see only committed rows, so these tests commit them in a PostgreSQL schema of their own, which each test drops.
 describePooledPostgres("concurrent upserts in PostgreSQL", ({ database }) => {
-  const db = database.bind(defineSchema({ vote, license }), { schemaName: "upsert_test" })
+  const db = bindSchema(defineSchema({ vote, license }), database, { schemaName: "upsert_test" })
 
   // The lock timeout fails a test that a transaction left open rather than hanging the others.
   beforeEach(() =>
@@ -1393,7 +1394,7 @@ describePostgres(
     `),
     )
 
-    const db = database.bind(boards)
+    const db = bindSchema(boards, database)
     const rows = () => db.board.orderBy("id").select("id", "title", "postCount", "hasPosts")
 
     it("gives each changed row the values of its own relations", async () => {
