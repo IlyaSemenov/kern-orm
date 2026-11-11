@@ -50,15 +50,6 @@
         "postgres": "catalog:",
       },
     },
-    "packages/kern-orm": {
-      "name": "kern-orm",
-      "version": "0.9.0",
-      "devDependencies": {
-        "@kern-orm/postgres-js": "workspace:*",
-        "postgres": "catalog:",
-        "typescript-6": "catalog:",
-      },
-    },
     "packages/migrations": {
       "name": "@kern-orm/migrations",
       "version": "0.3.1",
@@ -87,6 +78,15 @@
       "optionalPeers": [
         "@types/pg",
       ],
+    },
+    "packages/orm": {
+      "name": "kern-orm",
+      "version": "0.9.0",
+      "devDependencies": {
+        "@kern-orm/postgres-js": "workspace:*",
+        "postgres": "catalog:",
+        "typescript-6": "catalog:",
+      },
     },
     "packages/postgres-js": {
       "name": "@kern-orm/postgres-js",
@@ -875,7 +875,7 @@
 
     "jsonstream-next": ["jsonstream-next@3.0.0", "", { "dependencies": { "jsonparse": "^1.2.0", "through2": "^4.0.2" }, "bin": { "jsonstream-next": "bin.js" } }, "sha512-aAi6oPhdt7BKyQn1SrIIGZBt0ukKuOUE1qV6kJ3GgioSOYzsRc8z9Hfr1BVmacA/jLe9nARfmgMGgn68BqIAgg=="],
 
-    "kern-orm": ["kern-orm@workspace:packages/kern-orm"],
+    "kern-orm": ["kern-orm@workspace:packages/orm"],
 
     "keyv": ["keyv@5.6.0", "", { "dependencies": { "@keyv/serialize": "^1.1.1" } }, "sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw=="],
 

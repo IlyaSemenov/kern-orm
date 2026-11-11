@@ -67,7 +67,7 @@ if (!Number.isInteger(runs) || runs < 1) {
 }
 
 try {
-  const current = join(root, "packages/kern-orm/dist")
+  const current = join(root, "packages/orm/dist")
   const base = options.base === undefined ? undefined : await buildBase(options.base)
   console.log(
     base === undefined
@@ -104,8 +104,8 @@ async function buildBase(ref: string): Promise<{ build: string; commit: string }
   await execute("git", ["worktree", "add", "--detach", worktree, commit], root)
   // Lifecycle scripts, such as `prepare` that installs Git hooks, do not run for a build.
   await execute(process.execPath, ["install", "--frozen-lockfile", "--ignore-scripts"], worktree)
-  await execute(process.execPath, ["run", "build"], join(worktree, "packages/kern-orm"))
-  return { build: join(worktree, "packages/kern-orm/dist"), commit }
+  await execute(process.execPath, ["run", "build"], join(worktree, "packages/orm"))
+  return { build: join(worktree, "packages/orm/dist"), commit }
 }
 
 function removeWorktree(): void {

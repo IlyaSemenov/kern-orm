@@ -1,6 +1,6 @@
 import { defineConfig } from "vitepress"
 
-import kernOrmPackage from "../../packages/kern-orm/package.json"
+import kernOrmPackage from "../../packages/orm/package.json"
 
 // The site serves the docs of the last release, Release, at its root and the docs of `main`, Dev, under dev/.
 const origin = "https://ilyasemenov.github.io"

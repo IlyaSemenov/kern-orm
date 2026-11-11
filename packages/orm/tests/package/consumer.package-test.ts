@@ -12,7 +12,7 @@ import { run } from "./run"
 const root = join(import.meta.dir, "../../../..")
 
 const packages = [
-  "packages/kern-orm",
+  "packages/orm",
   "packages/postgres-js",
   "packages/node-postgres",
   "packages/migrations",

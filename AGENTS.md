@@ -45,7 +45,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Prefer DX over older runtimes: when a newer runtime version enables a simpler or safer API, raise the minimum version instead of working around older ones.
 - Declare the minimum versions in `engines` of every published package and in the install section of `docs/getting-started.md`.
 - Pin the PostgreSQL major version of the CI service and state it in the install section of `docs/getting-started.md`.
-  When raising it, regenerate `packages/kern-orm/src/database/error-condition-codes.ts` from `src/backend/utils/errcodes.txt` of that version, as its header describes.
+  When raising it, regenerate `packages/orm/src/database/error-condition-codes.ts` from `src/backend/utils/errcodes.txt` of that version, as its header describes.
 - Support TypeScript 6.0 or newer with `strictNullChecks` in consumer projects, and state it in the install section of `docs/getting-started.md`.
   The package test type-checks its consumer with both the pinned `typescript` and the minimum version, `typescript-6` in `devDependencies` of `kern-orm`, and the `types:ts6` script type-checks the repository with the minimum version.
 - Test both runtimes in CI, at the versions pinned in `mise.toml`, against its PostgreSQL service: the `test` script on Bun, the `test:node` script on Node.js, and the `test:package` script, which also runs the scenarios of `node:test` and Vitest.
@@ -53,7 +53,7 @@ Do not catalog files or restate information evident from their names and locatio
 ## Workspaces
 
 - Register every workspace package and its subpath exports in `paths` of the root `tsconfig.json`; tests, examples, and typecheck resolve packages to their sources through it.
-- Keep the database layer independent of the ORM: no module of `packages/kern-orm/src/database/`, of the entry points `src/db.ts`, `src/db/types.ts`, and `src/testing.ts`, or of the harness `packages/kern-orm/testing/database/` imports a module of the ORM, also for types, which `packages/kern-orm/tests/database-layer.test.ts` checks.
+- Keep the database layer independent of the ORM: no module of `packages/orm/src/database/`, of the entry points `src/db.ts`, `src/db/types.ts`, and `src/testing.ts`, or of the harness `packages/orm/testing/database/` imports a module of the ORM, also for types, which `packages/orm/tests/database-layer.test.ts` checks.
   The layer becomes the package `kern-db` ([backlog](backlog/database-layer-as-a-package.md)), on which `kern-orm` and the migrator depend and which depends on neither.
 - Declare the dependency of a published package on another package of the repository by a range of one minor line, such as `^0.1.0`, under the contract in [architecture/compatibility.md](architecture/compatibility.md).
   - Declare it in `dependencies` when the package does not work without the other, such as `kern-orm` on `kern-db`.
@@ -69,7 +69,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Keep `typescript` at 7.1 or later: tsdown generates declarations through the API of TypeScript 7, which 7.0 does not provide.
   Pin a prerelease of `typescript` to its exact version: a caret range resolves to a nightly `-dev` build.
   Typecheck uses `bun check`.
-- In scripts of `benchmarks` and `packages/kern-orm`, call TypeScript 7 by its path: `tsc` there is TypeScript 6 of `typescript-6`, which the profiler of types patches.
+- In scripts of `benchmarks` and `packages/orm`, call TypeScript 7 by its path: `tsc` there is TypeScript 6 of `typescript-6`, which the profiler of types patches.
 
 ## Design
 
@@ -196,13 +196,13 @@ Describe the user-visible change.
     Register there by name any other matcher of `jest-extended` that a test needs, rather than all of them: some, such as `toBeOneOf` and `toBeNaN`, differ from those of Vitest.
   - Do not use the test context of Vitest, such as its `signal`: `bun:test` passes a `done` callback to a test function that declares a parameter.
   - In Bun 1.4.4, `await expect(promise).rejects` ignores the timeout of the test, so a regression that leaves the promise pending hangs `bun test`; the `test:node` script fails such a test at its timeout instead.
-- Test how the test helpers work with a test runner, such as with its timeouts, hooks, and abort signal, by running the runner in a subprocess with a timeout and checking the outcome of each test and the recorded statements: `bun:test` in `packages/kern-orm/tests/test-runner.test.ts`, and `node:test` and Vitest against the packed packages in the package test.
-- Test SQL generation and transaction routing without a database through the recording driver in `packages/kern-orm/testing/database/`.
+- Test how the test helpers work with a test runner, such as with its timeouts, hooks, and abort signal, by running the runner in a subprocess with a timeout and checking the outcome of each test and the recorded statements: `bun:test` in `packages/orm/tests/test-runner.test.ts`, and `node:test` and Vitest against the packed packages in the package test.
+- Test SQL generation and transaction routing without a database through the recording driver in `packages/orm/testing/database/`.
 - Test the contract of a driver with `describeDriverContract` of `kern-orm/testing`, which `tests/driver.test.ts` of every driver package calls, skipping it when `DATABASE_URL` is not set; keep in that file only the tests of what its client alone does.
   Write the tests of the contract with `node:assert/strict` and only the functions of `DriverContractRunner`: users run them with any supported test runner.
 - Skip tests that need PostgreSQL when `DATABASE_URL` is not set; CI provides it.
   Locally, it points to an empty database, set in `.env.test.local` copied from `.env.test.local.example`, which `bun test` and the Vitest config load instead of `.env.local`.
-  In `kern-orm`, declare them with `describePostgres` of `packages/kern-orm/testing/postgres.ts`, which skips them and gives them a database created with `test: true`, and in the database layer with that of `packages/kern-orm/testing/database/postgres.ts`, which gives them a `Database` of the layer.
+  In `kern-orm`, declare them with `describePostgres` of `packages/orm/testing/postgres.ts`, which skips them and gives them a database created with `test: true`, and in the database layer with that of `packages/orm/testing/database/postgres.ts`, which gives them a `Database` of the layer.
   In `examples/forms`, declare them with `describePostgres` of `examples/forms/testing/postgres.ts`, which also creates the SaaS and the sample tenants in their PostgreSQL schemas.
   Declare tests that need statements outside a transaction to run on the pool, such as tests of transactions, with `describePooledPostgres` of the same files, which gives them a database without `test: true`.
 - Leave the test database unchanged: create tables and data in `testTransaction` or in the seed of a test fixture of a database created with `test: true`, or, in a database without it, in a transaction that rolls them back or drops them, such as with `ON COMMIT DROP`, and close every fixture the test opens.

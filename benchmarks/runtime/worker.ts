@@ -1,5 +1,5 @@
 // Measures the scenarios of a topic against one build of kern-orm and prints their times as JSON; `run.ts` starts it on Bun and on Node.js.
-// Arguments: the path of the topic, and the directory of the build, such as `packages/kern-orm/dist`.
+// Arguments: the path of the topic, and the directory of the build, such as `packages/orm/dist`.
 // Every function is called once as a check, warmed up untimed, and measured by mitata, which collects garbage before it.
 // The times of a scenario differ more between processes than within one, so a worker measures each briefly, and `run.ts` runs several workers.
 

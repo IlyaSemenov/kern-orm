@@ -30,12 +30,12 @@ kern-orm exists to solve problems of production projects on Orchid ORM:
 
 ## Layers
 
-Module paths are relative to `packages/kern-orm/src/`.
+Module paths are relative to `packages/orm/src/`.
 
 - The database layer (`database/`) runs statements on the connections of a driver.
   It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
   Its production modules import only each other and Node.js built-ins, also for types, so that it works without the ORM ([backlog](../backlog/database-layer-as-a-package.md)).
-  Its tests, the [driver contract](drivers.md#tests-of-the-contract), and the harness of its tests in `packages/kern-orm/testing/database/` run on its own API and import no module of the ORM either, which `packages/kern-orm/tests/database-layer.test.ts` checks for every file of the layer.
+  Its tests, the [driver contract](drivers.md#tests-of-the-contract), and the harness of its tests in `packages/orm/testing/database/` run on its own API and import no module of the ORM either, which `packages/orm/tests/database-layer.test.ts` checks for every file of the layer.
   `kern-orm/db` exports the layer: its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-orm/db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs of the layer, without the ORM and the transaction coordinator.
 - The ORM, the other modules, builds on it.
   It has no `Database` of its own: the root of `kern-orm` exports `createDatabase` of the layer, `bindSchema` of `execution/db.ts` binds a schema to a `Database` of the layer, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.

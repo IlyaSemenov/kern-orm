@@ -18,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/IlyaSemenov/kern-orm.git",
-    "directory": "packages/kern-orm"
+    "directory": "packages/orm"
   },
   "files": [
     "README.md",

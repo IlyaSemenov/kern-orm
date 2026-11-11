@@ -6,11 +6,11 @@
     "noUnusedParameters": true,
     // Resolve workspace packages to their sources in tests, examples, and typecheck without building them.
     "paths": {
-      "kern-orm": ["./packages/kern-orm/src/index.ts"],
-      "kern-orm/testing": ["./packages/kern-orm/src/testing.ts"],
-      "kern-orm/types": ["./packages/kern-orm/src/types.ts"],
-      "kern-orm/db": ["./packages/kern-orm/src/db.ts"],
-      "kern-orm/db/types": ["./packages/kern-orm/src/db/types.ts"],
+      "kern-orm": ["./packages/orm/src/index.ts"],
+      "kern-orm/testing": ["./packages/orm/src/testing.ts"],
+      "kern-orm/types": ["./packages/orm/src/types.ts"],
+      "kern-orm/db": ["./packages/orm/src/db.ts"],
+      "kern-orm/db/types": ["./packages/orm/src/db/types.ts"],
       "@kern-orm/migrations": ["./packages/migrations/src/index.ts"],
       "@kern-orm/migrations/cli": ["./packages/migrations/src/cli.ts"],
       "@kern-orm/migrations/testing": ["./packages/migrations/src/testing.ts"],
