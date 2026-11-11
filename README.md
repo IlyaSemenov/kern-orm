@@ -24,7 +24,7 @@ See the [documentation](https://ilyasemenov.github.io/kern-orm/).
 npm install kern-orm postgres
 ```
 
-See [Getting Started](https://ilyasemenov.github.io/kern-orm/getting-started) for the supported runtimes, TypeScript, and PostgreSQL versions.
+See [Getting Started](https://ilyasemenov.github.io/kern-orm/orm/getting-started) for the supported runtimes, TypeScript, and PostgreSQL versions.
 
 ## Usage
 

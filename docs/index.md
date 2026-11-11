@@ -8,7 +8,10 @@ hero:
   actions:
     - theme: brand
       text: Get Started
-      link: /getting-started
+      link: /orm/getting-started
+    - theme: alt
+      text: Database without the ORM
+      link: /database/getting-started
     - theme: alt
       text: GitHub
       link: https://github.com/IlyaSemenov/kern-orm
@@ -42,4 +45,4 @@ const forms = await db.form
 // forms: { id: string; name: string; fields: { id: string; label: string }[] }[]
 ```
 
-See [Related Records](./queries/relations) for filtering, nesting, and reusing related records.
+See [Related Records](./orm/queries/relations) for filtering, nesting, and reusing related records.

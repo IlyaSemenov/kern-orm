@@ -3,24 +3,6 @@
 Write each change of your database, such as a new table or column, as a migration of steps that helpers, such as `createTable`, build together with the SQL that undoes them.
 Call `migrate`, such as when your application starts, to bring the database up to date: it applies the new migrations and remembers which ones it has applied.
 
-Install `kern-migrations`:
-
-::: code-group
-
-```sh [npm]
-npm install kern-migrations
-```
-
-```sh [pnpm]
-pnpm add kern-migrations
-```
-
-```sh [bun]
-bun add kern-migrations
-```
-
-:::
-
 ## Write a migration
 
 Put each migration in its own module and export its steps with `defineMigration`, building them with helpers:
@@ -59,7 +41,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
 - Extensions: `createExtension(name, { schema })`.
 
-For a change that no helper covers, write a [step of SQL](#sql-steps), or [a helper of your own](./migration-helpers) to reuse it in several migrations.
+For a change that no helper covers, write a [step of SQL](#sql-steps), or [a helper of your own](./custom-helpers) to reuse it in several migrations.
 
 ### Change a column
 
@@ -113,7 +95,7 @@ Pass `name` for an index of expressions, such as `["lower(email)"]`.
 ### Extensions
 
 `createExtension` creates an extension unless the database has it, and rolling back keeps it, since other schemas may use it.
-Create the extension in a schema of its own and list that schema in `searchPath` of the migrations, so that the migrations find it whatever schema they apply to, such as the schema of each [tenant](./multiple-schemas) or the schema where [`verifyMigrations`](#test-migrations) checks them:
+Create the extension in a schema of its own and list that schema in `searchPath` of the migrations, so that the migrations find it whatever schema they apply to, such as the schema of each [tenant](../orm/multiple-schemas) or the schema where [`verifyMigrations`](#test-migrations) checks them:
 
 ```ts
 createExtension("pg_trgm", { schema: "extensions" })
@@ -177,7 +159,7 @@ export default defineMigration([
 ```
 
 To decode the rows of `query`, pass the types of `kern-orm/db/types` to `select`, `get`, and `pluck`.
-To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](./database-sql) from `kern-orm/db`.
+To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](../database/sql) from `kern-orm/db`.
 
 ## Migrations outside a transaction
 
@@ -196,7 +178,7 @@ Export a step that runs outside a transaction, such as this one, as the only ste
 
 When the build fails, such as of a unique index on duplicate values, fix the cause and call `migrate` again: it drops the index that is not valid, which the failed build leaves, and builds it again.
 
-Inside a transaction, such as the one that [creates a tenant](#tenants), a [test transaction](./testing), or [`verifyMigrations`](#test-migrations), `migrate` builds the index as without `concurrently`, which is quick on the empty tables of a new schema.
+Inside a transaction, such as the one that [creates a tenant](#tenants), a [test transaction](../database/testing), or [`verifyMigrations`](#test-migrations), `migrate` builds the index as without `concurrently`, which is quick on the empty tables of a new schema.
 Migrate existing schemas outside a transaction, such as tenants at their first request when your requests run in transactions: inside one, `migrate` builds the index while it blocks writes to the table.
 
 `concurrently` cannot index a partitioned table, which PostgreSQL indexes concurrently only partition by partition: index it with a [step of your own](#your-own-changes-outside-a-transaction).
@@ -365,7 +347,7 @@ await migrate(database, migrations, { schemaName: "app" })
 
 ## Tenants
 
-With a [PostgreSQL schema per tenant](./multiple-schemas), migrate the `Db` of the tenants: `migrate` applies the migrations to the schema of the current tenant.
+With a [PostgreSQL schema per tenant](../orm/multiple-schemas), migrate the `Db` of the tenants: `migrate` applies the migrations to the schema of the current tenant.
 
 ```ts
 await migrate(tenantDb, tenantMigrations)
@@ -455,7 +437,7 @@ npm run db new add_form_slug
 
 When a command fails, `runMigrationCli` prints the error and sets the exit code of the process to 1 instead of rejecting, so the script closes the database after it in any case.
 
-With a [PostgreSQL schema per tenant](./multiple-schemas), pass the schema of the tenant with `--schema`, since the command line has no current tenant:
+With a [PostgreSQL schema per tenant](../orm/multiple-schemas), pass the schema of the tenant with `--schema`, since the command line has no current tenant:
 
 ```sh
 npm run db -- migrate --schema tenant_acme
@@ -530,7 +512,7 @@ It runs `up` and `down` of a step with [`outsideTransaction`](#migrations-outsid
 `tests` is the directory of your [migration tests](#check-how-a-migration-changes-data).
 
 It rolls back all its changes.
-Call it in a [test transaction](./testing), as any query of a database created with `test: true`.
+Call it in a [test transaction](../database/testing), as any query of a database created with `test: true`.
 Give the test a longer timeout: verifying a long history takes seconds.
 
 With Vitest, pass the migration tests that `import.meta.glob` finds:

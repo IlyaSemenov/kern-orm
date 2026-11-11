@@ -1,9 +1,11 @@
 # Database Errors
 
+<!--@include: ./_without-orm.md-->
+
 To handle a statement that PostgreSQL rejects, such as an insert of a form whose name is taken, check its [condition](https://www.postgresql.org/docs/current/errcodes-appendix.html) with `isQueryError` and compare the name of the violated constraint:
 
 ```ts
-import { isQueryError } from "kern-orm"
+import { isQueryError } from "kern-orm/db"
 
 try {
   await db.form.insert({ name, published: false })
@@ -21,17 +23,17 @@ Such an error is a `QueryError`.
 To check a [SQLSTATE](https://www.postgresql.org/docs/current/errcodes-appendix.html) of your own, such as of `RAISE ... USING ERRCODE` in a function, compare `code` of `QueryError`: `error instanceof QueryError && error.code === "U0001"`.
 The error of your PostgreSQL client is the `cause` of `QueryError`, with the other fields of the error, such as `detail`.
 
-To insert a record only when it does not exist yet, or to update the existing one, use [`onConflict`](./queries/mutations#records-that-already-exist) instead.
+To insert a record only when it does not exist yet, or to update the existing one, use [`onConflict`](../orm/queries/mutations#records-that-already-exist) instead.
 
 A rejected statement aborts its transaction: to continue the transaction after it, run the statement in a [nested transaction](./transactions#nested-transactions).
 
 ## Lost connections
 
 A query rejects with `ConnectionError` when its connection fails, such as when the server restarts or the network breaks, or when the client gives up waiting for the result.
-Whether PostgreSQL ran the statement is unknown then, so retry only a change that can run twice, such as an insert with [`onConflict`](./queries/mutations#records-that-already-exist).
+Whether PostgreSQL ran the statement is unknown then, so retry only a change that can run twice, such as an insert with [`onConflict`](../orm/queries/mutations#records-that-already-exist).
 
 ```ts
-import { ConnectionError } from "kern-orm"
+import { ConnectionError } from "kern-orm/db"
 
 try {
   await db.form.find(formId).update({ published: true })
@@ -54,7 +56,7 @@ When the connection of a transaction fails, `$transaction` rejects with `Transac
 To retry such a transaction, run it again unless the phase is `commit`, where only a transaction that can run twice may run again:
 
 ```ts
-import { TransactionConnectionError } from "kern-orm"
+import { TransactionConnectionError } from "kern-orm/db"
 
 const createSurvey = () =>
   db.$transaction(async () => {

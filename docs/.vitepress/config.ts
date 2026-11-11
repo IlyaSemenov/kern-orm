@@ -1,14 +1,12 @@
 import { defineConfig } from "vitepress"
 
-import kernOrmPackage from "../../packages/orm/package.json"
-
 // The site serves the docs of the last release, Release, at its root and the docs of `main`, Dev, under dev/.
+// The switch names them Release and Development rather than by a version, since the packages of the site have versions of their own.
 const origin = "https://ilyasemenov.github.io"
 const releaseBase = "/kern-orm/"
 const devBase = `${releaseBase}dev/`
 const isDev = process.env.DOCS_TRACK === "dev"
-// The version of kern-orm in the commit of Release: Release builds at that commit, and the workflow passes it to the build of Dev, since `main` can hold a version that is not released yet.
-const releaseLabel = `v${process.env.DOCS_RELEASE_VERSION ?? kernOrmPackage.version}`
+const releaseLabel = "Release"
 const devLabel = "Development"
 
 export default defineConfig({
@@ -20,9 +18,13 @@ export default defineConfig({
   head: isDev ? [["meta", { name: "robots", content: "noindex" }]] : [],
   cleanUrls: true,
   lastUpdated: true,
+  // A file whose name starts with `_` is a part that pages include with `<!--@include: ./_name.md-->`, not a page of its own.
+  srcExclude: ["**/_*.md"],
   themeConfig: {
     nav: [
-      { text: "Docs", link: "/getting-started" },
+      { text: "ORM", link: "/orm/getting-started", activeMatch: "^/orm/" },
+      { text: "Database", link: "/database/getting-started", activeMatch: "^/database/" },
+      { text: "Migrations", link: "/migrations/getting-started", activeMatch: "^/migrations/" },
       {
         text: isDev ? devLabel : releaseLabel,
         // An absolute URL, since the other track is outside `base`, and a target, which makes the router load it as another site.
@@ -33,50 +35,52 @@ export default defineConfig({
       },
     ],
     sidebar: [
-      { text: "Getting Started", link: "/getting-started" },
       {
         text: "ORM",
         items: [
-          { text: "Tables and Schemas", link: "/schemas" },
-          { text: "Types", link: "/types" },
+          { text: "Getting Started", link: "/orm/getting-started" },
+          { text: "Tables and Schemas", link: "/orm/schemas" },
+          { text: "Types", link: "/orm/types" },
           {
             text: "Queries",
-            link: "/queries/",
+            link: "/orm/queries/",
             items: [
-              { text: "Selecting", link: "/queries/selecting" },
-              { text: "Filtering", link: "/queries/filtering" },
-              { text: "Operators", link: "/queries/operators" },
-              { text: "Sorting and Pagination", link: "/queries/sorting" },
-              { text: "Grouping", link: "/queries/grouping" },
-              { text: "Related Records", link: "/queries/relations" },
-              { text: "Expressions", link: "/queries/expressions" },
-              { text: "Inserting, Updating, and Deleting", link: "/queries/mutations" },
-              { text: "Composing Queries", link: "/queries/composing" },
-              { text: "Reusable Queries", link: "/queries/reusable" },
-              { text: "SQL Statements", link: "/queries/sql" },
+              { text: "Selecting", link: "/orm/queries/selecting" },
+              { text: "Filtering", link: "/orm/queries/filtering" },
+              { text: "Operators", link: "/orm/queries/operators" },
+              { text: "Sorting and Pagination", link: "/orm/queries/sorting" },
+              { text: "Grouping", link: "/orm/queries/grouping" },
+              { text: "Related Records", link: "/orm/queries/relations" },
+              { text: "Expressions", link: "/orm/queries/expressions" },
+              { text: "Inserting, Updating, and Deleting", link: "/orm/queries/mutations" },
+              { text: "Composing Queries", link: "/orm/queries/composing" },
+              { text: "Reusable Queries", link: "/orm/queries/reusable" },
+              { text: "SQL Statements", link: "/orm/queries/sql" },
             ],
           },
-          { text: "Singleton Tables", link: "/singleton-tables" },
-          { text: "Multiple Schemas", link: "/multiple-schemas" },
-          { text: "Custom Types", link: "/custom-types" },
+          { text: "Singleton Tables", link: "/orm/singleton-tables" },
+          { text: "Multiple Schemas", link: "/orm/multiple-schemas" },
+          { text: "Custom Types", link: "/orm/custom-types" },
         ],
       },
       {
         text: "Database",
         items: [
-          { text: "Drivers", link: "/drivers" },
-          { text: "SQL Queries and Scripts", link: "/database-sql" },
-          { text: "Transactions", link: "/transactions" },
-          { text: "Database Errors", link: "/errors" },
-          { text: "Testing", link: "/testing" },
-          { text: "Custom Drivers", link: "/custom-drivers" },
+          { text: "Getting Started", link: "/database/getting-started" },
+          { text: "Drivers", link: "/database/drivers" },
+          { text: "SQL Queries and Scripts", link: "/database/sql" },
+          { text: "Transactions", link: "/database/transactions" },
+          { text: "Database Errors", link: "/database/errors" },
+          { text: "Testing", link: "/database/testing" },
+          { text: "Custom Drivers", link: "/database/custom-drivers" },
         ],
       },
       {
         text: "Migrations",
         items: [
-          { text: "Migrations", link: "/migrations" },
-          { text: "Custom Migration Helpers", link: "/migration-helpers" },
+          { text: "Getting Started", link: "/migrations/getting-started" },
+          { text: "Migrations", link: "/migrations/" },
+          { text: "Custom Migration Helpers", link: "/migrations/custom-helpers" },
         ],
       },
     ],

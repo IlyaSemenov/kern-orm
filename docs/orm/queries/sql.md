@@ -14,7 +14,7 @@ It resolves to the number of rows that PostgreSQL reports for the statement, suc
 To require exactly one such row, such as when updating a record by its key, add `take`: it rejects with `NotFoundError` without the row, unless you add `optional`.
 
 Interpolated values become query parameters, [`sql` fragments](./filtering#sql-fragments) stay SQL, a table of `db`, such as `db.form`, becomes its name in the PostgreSQL schema of `db`, and [another query](#queries-in-statements) becomes a subquery.
-The statement runs in the current [transaction](../transactions), like any query.
+The statement runs in the current [transaction](../../database/transactions), like any query.
 
 ## Rows
 
@@ -42,7 +42,7 @@ To get one row, add `take`, and `optional` or `nullable` when the row may be mis
 `take` adds no `LIMIT` to the statement, so it rejects several rows.
 
 kern-orm checks the rows after the statement runs, so a statement that rejects in `take` or while decoding its rows has already made its change.
-To undo the change with the error, run the statement in a [transaction](../transactions).
+To undo the change with the error, run the statement in a [transaction](../../database/transactions).
 
 To get the values of a single column, pass its type to `pluck`, or to `get` for one value:
 
@@ -108,4 +108,4 @@ await db.$script`
 The script runs in the current transaction; outside one, PostgreSQL applies all its statements or none.
 Leave transactions to kern-orm: do not write `BEGIN`, `COMMIT`, or `ROLLBACK` in a script.
 
-In code that has the database but no `Db`, run statements with `database.query` and scripts with `database.script`; see [SQL Queries and Scripts](../database-sql).
+In code that has the database but no `Db`, run statements with `database.query` and scripts with `database.script`; see [SQL Queries and Scripts](../../database/sql).

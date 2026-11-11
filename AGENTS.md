@@ -44,10 +44,10 @@ Do not catalog files or restate information evident from their names and locatio
 
 - Support only Node.js and Bun versions maintained by their projects.
 - Prefer DX over older runtimes: when a newer runtime version enables a simpler or safer API, raise the minimum version instead of working around older ones.
-- Declare the minimum versions in `engines` of every published package and in the install section of `docs/getting-started.md`.
-- Pin the PostgreSQL major version of the CI service and state it in the install section of `docs/getting-started.md`.
+- Declare the minimum versions in `engines` of every published package and in the install section of the Getting Started page of each package, such as `docs/orm/getting-started.md`.
+- Pin the PostgreSQL major version of the CI service and state it in the install section of the Getting Started page of each package.
   When raising it, regenerate `packages/db/src/error-condition-codes.ts` from `src/backend/utils/errcodes.txt` of that version, as its header describes.
-- Support TypeScript 6.0 or newer with `strictNullChecks` in consumer projects, and state it in the install section of `docs/getting-started.md`.
+- Support TypeScript 6.0 or newer with `strictNullChecks` in consumer projects, and state it in the install section of the Getting Started page of each package.
   The package test type-checks its consumer with both the pinned `typescript` and the minimum version, `typescript-6` in `devDependencies` of `kern-orm`, and the `types:ts6` script type-checks the repository with the minimum version.
 - Test both runtimes in CI, at the versions pinned in `mise.toml`, against its PostgreSQL service: the `test` script on Bun, the `test:node` script on Node.js, and the `test:package` script, which also runs the scenarios of `node:test` and Vitest.
 
@@ -146,7 +146,8 @@ Do not catalog files or restate information evident from their names and locatio
 - Write a rule of how users must do something as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
 - State a limitation, something that users cannot do, as a description, such as "A query with `distinct` cannot select related records", rather than as an instruction to avoid it, unless the description loses clarity.
 - In [architecture/](architecture/README.md), state what users must do as a requirement of the contract, such as "must be split" or "requires a key", rather than as a description of what users do, such as "users split".
-- Group the pages of the site in the sidebar by the package they document: ORM, Database, and Migrations.
+- Group the pages of the site in the sidebar by the package they document, ORM, Database, and Migrations, and keep the pages of each group in its directory: `docs/orm/`, `docs/database/`, and `docs/migrations/`, each starting with its Getting Started page.
+- On the pages of the Database group, import the database layer from `kern-orm/db`, its subpaths, and `kern-orm/testing`, never from the root of `kern-orm`, and keep the note of `docs/database/_without-orm.md` at the top of each page but Getting Started.
 - Keep material for authors of extensions, such as custom types and operators, custom drivers, and custom migration helpers, on pages of their own in the group of their package, separate from the guides for using the API.
 - When a change makes an existing statement false, fix that statement rather than add an explanation next to it.
 - Add JSDoc to every exported declaration and to internal helpers whose contract, inputs, output, or failure behavior is not obvious.

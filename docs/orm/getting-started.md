@@ -22,9 +22,9 @@ bun add kern-orm postgres
 
 :::
 
-If your application uses [node-postgres](./drivers#node-postgres), see Drivers.
+If your application uses [node-postgres](../database/drivers#node-postgres), see Drivers.
 
-To create and change tables with migrations, also install `kern-migrations`; see [Migrations](./migrations).
+To create and change tables with migrations, also install `kern-migrations`; see [Migrations](../migrations/getting-started).
 
 kern-orm runs on Node.js 24 or newer and Bun 1.4 or newer.
 Use TypeScript 6.0 or newer, and keep `strict`, or at least `strictNullChecks`, enabled.
@@ -33,7 +33,7 @@ kern-orm is tested on PostgreSQL 18.
 
 ## Define tables
 
-kern-orm queries the tables that already exist in your database and does not create or alter them: create them with SQL, directly or in [migrations](./migrations):
+kern-orm queries the tables that already exist in your database and does not create or alter them: create them with SQL, directly or in [migrations](../migrations/):
 
 ```sql
 CREATE TABLE form (
@@ -105,6 +105,6 @@ const forms = await db.form.where({ published: true }).select("id", "name")
 - [Tables and Schemas](./schemas): keys of tables, schemas, and relations between tables.
 - [Types](./types): column types, nullable columns, and your own types.
 - [Queries](./queries/): select, filter, and sort records, load their related records, and insert, update, and delete them.
-- [Transactions](./transactions): run queries in a transaction without passing it around.
-- [Testing](./testing): run each test in a transaction that rolls back.
+- [Transactions](../database/transactions): run queries in a transaction without passing it around.
+- [Testing](../database/testing): run each test in a transaction that rolls back.
 - [Multiple Schemas](./multiple-schemas): reuse tables across tenant schemas and a shared schema.

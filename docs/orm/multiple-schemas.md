@@ -145,7 +145,7 @@ const fields = await tenantDb.field
 
 A `Db` rejects queries that use tables or relations outside its schema and queries bound to another `Db`, so tenant answers cannot be queried through `saasDb` by mistake.
 
-Both schemas are bound to the same database and share its [transactions](./transactions), so a transaction started through either `Db` also covers the queries of the other.
+Both schemas are bound to the same database and share its [transactions](../database/transactions), so a transaction started through either `Db` also covers the queries of the other.
 
 ## Shared code
 

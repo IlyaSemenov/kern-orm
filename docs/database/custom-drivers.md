@@ -1,11 +1,13 @@
 # Custom Drivers
 
+<!--@include: ./_without-orm.md-->
+
 To run kern-orm on a PostgreSQL client that has no [driver](./drivers), write a function that returns a `Driver` for your client, and pass the driver to `createDatabase`:
 
 ```ts [src/acme-driver.ts]
 import type { AcmeClient, AcmeConnection, AcmeError } from "acme-postgres"
-import type { Driver, DriverResult, SqlStatement } from "kern-orm"
-import { ConnectionError, toDriverError } from "kern-orm"
+import type { Driver, DriverResult, SqlStatement } from "kern-orm/db"
+import { ConnectionError, toDriverError } from "kern-orm/db"
 
 /** Rejects with the error of `promise` as `QueryError` or `ConnectionError`. */
 async function classifyError<T>(promise: Promise<T>): Promise<T> {

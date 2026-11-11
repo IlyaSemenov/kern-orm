@@ -5,7 +5,7 @@ It is the database layer of [kern-orm](https://github.com/IlyaSemenov/kern-orm),
 
 kern-db is in early development, and the API changes between minor versions.
 
-See the [documentation](https://ilyasemenov.github.io/kern-orm/).
+See [Getting Started](https://ilyasemenov.github.io/kern-orm/database/getting-started) in the documentation.
 
 ## Install
 

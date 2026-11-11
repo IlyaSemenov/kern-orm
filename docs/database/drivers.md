@@ -1,5 +1,7 @@
 # Drivers
 
+<!--@include: ./_without-orm.md-->
+
 kern-orm runs queries through a driver for the PostgreSQL client of your application.
 Install your client, and pass the driver for it to `createDatabase`:
 
@@ -31,7 +33,7 @@ bun add kern-orm postgres
 Pass your client to `postgresJsDriver`:
 
 ```ts
-import { createDatabase } from "kern-orm"
+import { createDatabase } from "kern-orm/db"
 import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import postgres from "postgres"
 
@@ -43,7 +45,7 @@ export const database = createDatabase({
 `database.close()` ends the client, so do not call `sql.end()` yourself.
 
 kern-orm reads results as PostgreSQL returns them, so create the client without transforms of the column names or rows of results, such as `postgres.camel`.
-To name the columns of your tables in snake case, use the [naming conventions](./schemas#naming-conventions) of kern-orm instead, and give other code that relies on such a transform a client of its own.
+To name the columns of your tables in snake case, use the [naming conventions](../orm/schemas#naming-conventions) of kern-orm instead, and give other code that relies on such a transform a client of its own.
 
 ## node-postgres
 
@@ -71,7 +73,7 @@ bun add --dev @types/pg
 Pass your pool to `nodePostgresDriver`:
 
 ```ts
-import { createDatabase } from "kern-orm"
+import { createDatabase } from "kern-orm/db"
 import { nodePostgresDriver } from "kern-orm/db/node-postgres"
 import { Pool } from "pg"
 

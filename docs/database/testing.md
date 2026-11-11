@@ -1,5 +1,7 @@
 # Testing
 
+<!--@include: ./_without-orm.md-->
+
 Run each test in a test transaction, which always rolls back, so that tests leave the data in the database unchanged.
 Test transactions need a database created with `test: true`:
 
@@ -94,7 +96,7 @@ describe("forms of an author", () => {
 })
 ```
 
-Put a fixture for all tests, such as one that applies [migrations](./migrations), into a setup module:
+Put a fixture for all tests, such as one that applies [migrations](../migrations/), into a setup module:
 
 ```ts
 // test/setup.ts
@@ -103,7 +105,7 @@ import { migrate } from "kern-migrations"
 useTestFixture(() => migrate(db, migrations))
 ```
 
-Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./database-sql), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.
+Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./sql), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.
 
 Each test runner loads the setup module in its own way:
 
@@ -148,4 +150,4 @@ To limit how long such a query delays the next test, set `statement_timeout` for
 
 ## Test migrations
 
-To check that every migration applies and rolls back, and how migrations change existing rows, see [Test migrations](./migrations#test-migrations).
+To check that every migration applies and rolls back, and how migrations change existing rows, see [Test migrations](../migrations/#test-migrations).

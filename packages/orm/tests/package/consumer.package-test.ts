@@ -273,7 +273,7 @@ beforeAll(async () => {
       include: ["primary-key/*.ts"],
     }),
   )
-  // The weakest options that kern-orm supports, as the install section of docs/getting-started.md states.
+  // The weakest options that kern-orm supports, as the install section of docs/orm/getting-started.md states.
   await writeFile(
     join(ormConsumer, "tsconfig.found-key.json"),
     JSON.stringify({
@@ -382,7 +382,7 @@ describe("manifests", () => {
 
 describe.each([
   ["pinned", [join(root, "node_modules/.bin/tsc")]],
-  // The minimum version that consumers need, as the install section of docs/getting-started.md states.
+  // The minimum version that consumers need, as the install sections of the Getting Started pages of the site state.
   ["minimum", ["node", Bun.resolveSync("typescript-6/lib/tsc.js", import.meta.dir)]],
 ])("TypeScript %s", (_, tsc) => {
   test("emits declarations of a consumer of kern-orm and type-checks their consumer with Node.js module resolution", () => {

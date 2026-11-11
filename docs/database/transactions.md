@@ -1,5 +1,7 @@
 # Transactions
 
+<!--@include: ./_without-orm.md-->
+
 To run queries in a transaction, pass a callback to `$transaction`: the transaction commits when the callback resolves and rolls back when it rejects.
 
 ```ts
@@ -13,7 +15,7 @@ await db.$transaction(async () => {
 ```
 
 Every query in the callback joins the transaction automatically, including queries in called functions.
-The transaction belongs to the database, so it also covers [other schemas](./multiple-schemas) bound to it.
+The transaction belongs to the database, so it also covers [other schemas](../orm/multiple-schemas) bound to it.
 
 A query started from the callback after the transaction has finished fails instead of running outside of it.
 
@@ -96,7 +98,7 @@ The query locks the related record first and its own row after it.
 When another transaction moves the field to another form meanwhile, the query reads the field and the form as they are after the move, and locks that form too, after the field.
 It does not see a form created after it started, so a move to such a form makes it reject with `RequiredRelationError`; run it again then.
 
-A query in a [value](./queries/mutations#inserting) or a [condition](./queries/filtering) locks its rows the same way:
+A query in a [value](../orm/queries/mutations#inserting) or a [condition](../orm/queries/filtering) locks its rows the same way:
 
 ```ts
 await db.field.insert({
@@ -159,7 +161,7 @@ const jobIds = await db.job
 
 A [nested transaction](#nested-transactions) that rolls back releases the locks it took.
 
-A query with [`distinct`](./queries/selecting#distinct-rows), [`distinctOn`](./queries/selecting#first-row-of-each-group), or [`groupBy`](./queries/grouping) cannot lock rows, and aggregates, `exists`, `distinctOn`, and `groupBy` cannot be called on a query that locks them.
+A query with [`distinct`](../orm/queries/selecting#distinct-rows), [`distinctOn`](../orm/queries/selecting#first-row-of-each-group), or [`groupBy`](../orm/queries/grouping) cannot lock rows, and aggregates, `exists`, `distinctOn`, and `groupBy` cannot be called on a query that locks them.
 `update` and `delete` lock the rows they change themselves, so their queries take no lock.
 
 ## Advisory locks
