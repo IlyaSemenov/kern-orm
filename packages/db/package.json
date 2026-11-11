@@ -1,6 +1,6 @@
 {
   "name": "kern-db",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "PostgreSQL database layer with ambient transactions, typed SQL queries, and test transactions",
   "keywords": [
     "database",

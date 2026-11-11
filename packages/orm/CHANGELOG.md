@@ -1,5 +1,29 @@
 # kern-orm
 
+## 0.10.0
+
+### Minor Changes
+
+- 3622f85: Add `db.$pollLock()` and `database.pollLock()`, which wait for an advisory lock in a session.
+- dc9d413: Add `db.$session()` and `database.session()`, which run statements on one connection outside a transaction, with a search path of their own, and `db.$isInTransactionBlock()` and `database.isInTransactionBlock()`, which tell whether a statement runs in a transaction block.
+- 0601b5e: Add `db.$tryLock()` and `database.tryLock()`, which take an advisory lock without waiting, in a transaction or a session, and tell whether they took it.
+- fe27753: Replace `database.bind(schema, options)` with `bindSchema(schema, database, options)`, which also accepts databases created by `createDatabase` from `kern-orm/db`.
+- fe27753: Remove `database.coordinator`; the test helpers of `kern-orm/testing` take the database itself.
+- 26dcd49: Add `createDatabase`, the `Driver` contract, and the errors of drivers and transactions to `kern-orm/db`.
+- 4e48d07: Add `sql`, `identifier`, and `param` to `kern-orm/db`; the template of `database.script` takes their fragments instead of the expressions of `kern-orm`.
+- 9f73ce7: `database.query()` takes the fragments of `kern-orm/db` instead of the expressions of `kern-orm`, and `db.$execute()` and `db.$compile()` no longer take a query of `db.$query`.
+- 9176e59: Add `kern-orm/db`, which exports `defineType` to define a PostgreSQL type without operators and the query builder, and `kern-orm/db/types`, which exports the built-in types without operators; `defineType()` of `kern-orm` creates a type with operators from such a type.
+- c3ad320: Add `defineType(type)`, which copies a type without its operators, such as `defineType(t.text)` to give text other operators.
+- dc048fb: `describeDriverContract` requires a driver to reject the statements of a reserved connection that is lost outside a transaction with `ConnectionError`.
+- 614dfd7: Replace `@kern-orm/postgres-js` and `@kern-orm/node-postgres` with `kern-orm/db/postgres-js` and `kern-orm/db/node-postgres`.
+- 5ddebed: `sql` and `db.$query` reject an object interpolated as a value, which they passed as JSON; pass JSON with `param(t.jsonb, value)`.
+
+### Patch Changes
+
+- c3ad320: Fix a type being accepted where a type of more accepted values is expected, such as `t.text` as a `Type<string, string | number>`.
+- b9a5cae: Fix the declarations of a module that imports only `kern-orm/types`, such as a module of column presets, which failed with TS2883 when it exported a derived type or a column.
+- Updated dependencies: kern-db@0.1.0
+
 ## 0.9.0
 
 ### Minor Changes

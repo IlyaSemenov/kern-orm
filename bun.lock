@@ -51,7 +51,7 @@
     },
     "packages/db": {
       "name": "kern-db",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "@types/pg": "catalog:",
@@ -71,7 +71,7 @@
     },
     "packages/migrations": {
       "name": "kern-migrations",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "devDependencies": {
         "kern-db": "workspace:*",
         "kern-orm": "workspace:*",
@@ -83,7 +83,7 @@
     },
     "packages/orm": {
       "name": "kern-orm",
-      "version": "0.9.0",
+      "version": "0.10.0",
       "dependencies": {
         "kern-db": "^0.1.0",
       },
