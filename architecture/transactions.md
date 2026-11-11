@@ -35,6 +35,9 @@
 - It recognizes an instance of another copy of `kern-db` by a brand of its own, as the [errors of drivers](drivers.md#errors) do, since `instanceof ConnectionError` would recognize the error but not the subclass.
 - A transaction that resolves stays resolved: a statement that the callback did not await, refused by the client with `ConnectionError` without breaking the connection after `COMMIT` was sent, does not stop a `COMMIT` that succeeds.
 - A test transaction, a test fixture, and a nested level do not wrap their errors, so a transaction of code under test, which runs as a savepoint of a test level, rejects with the errors of its statements.
+- `isOutcomeUnknown` classifies an operation's outcome as unknown after a `TransactionConnectionError` of phase `commit`, and after another `ConnectionError`, of a statement outside a transaction.
+  It classifies by the class of the error, so a `ConnectionError` before the statement was sent, such as a failure to acquire a connection, counts as unknown, and `false` does not mean that the operation applied nothing, such as after a `ResultDecodeError`.
+  It classifies the error of a whole operation, not one that the callback of a transaction caught.
 
 ## Joining
 

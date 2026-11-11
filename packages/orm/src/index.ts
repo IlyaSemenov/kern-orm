@@ -110,7 +110,7 @@ export type {
 export { createDatabase } from "kern-db"
 export type { SqlFragment, SqlValue } from "kern-db"
 export type { Connection, Driver, DriverResult, SqlStatement, TextValue } from "kern-db"
-export { TransactionConnectionError } from "kern-db"
+export { isOutcomeUnknown, TransactionConnectionError } from "kern-db"
 export { createStatement } from "kern-db"
 export type { DriverErrorFields } from "kern-db"
 export { ConnectionError, QueryError, toDriverError } from "kern-db"

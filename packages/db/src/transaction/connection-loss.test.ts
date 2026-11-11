@@ -6,7 +6,7 @@ import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import { createStatement } from "../driver"
 import { ConnectionError, QueryError } from "../driver-error"
 
-import { ConnectionWatch, TransactionConnectionError } from "./connection-loss"
+import { ConnectionWatch, isOutcomeUnknown, TransactionConnectionError } from "./connection-loss"
 import { failOn, holdOn } from "./testing"
 
 describe("TransactionConnectionError", () => {
@@ -52,6 +52,41 @@ describe("TransactionConnectionError", () => {
     expect(new TransactionConnectionError("transaction") instanceof RetriedTransactionError).toBe(
       false,
     )
+  })
+})
+
+describe("isOutcomeUnknown", () => {
+  it("is true for a transaction whose connection failed during COMMIT and for another ConnectionError", () => {
+    expect(isOutcomeUnknown(new TransactionConnectionError("commit"))).toBe(true)
+    expect(isOutcomeUnknown(new ConnectionError("lost"))).toBe(true)
+  })
+
+  it("is false for a transaction that was not committed and for another error", () => {
+    expect(isOutcomeUnknown(new TransactionConnectionError("begin"))).toBe(false)
+    expect(isOutcomeUnknown(new TransactionConnectionError("transaction"))).toBe(false)
+    expect(isOutcomeUnknown(new QueryError("rejected", { code: "23505" }))).toBe(false)
+    expect(isOutcomeUnknown(new Error("decode"))).toBe(false)
+    expect(isOutcomeUnknown(undefined)).toBe(false)
+  })
+
+  it("recognizes the errors of another copy of kern-db by their brands", () => {
+    const connectionError = Object.assign(new Error("lost"), {
+      [Symbol.for("kern-db.ConnectionError")]: true,
+    })
+    const committing = Object.assign(new Error("commit"), {
+      [Symbol.for("kern-db.ConnectionError")]: true,
+      [Symbol.for("kern-db.TransactionConnectionError")]: true,
+      phase: "commit",
+    })
+    const rolledBack = Object.assign(new Error("transaction"), {
+      [Symbol.for("kern-db.ConnectionError")]: true,
+      [Symbol.for("kern-db.TransactionConnectionError")]: true,
+      phase: "transaction",
+    })
+
+    expect(isOutcomeUnknown(connectionError)).toBe(true)
+    expect(isOutcomeUnknown(committing)).toBe(true)
+    expect(isOutcomeUnknown(rolledBack)).toBe(false)
   })
 })
 

@@ -88,6 +88,11 @@ try {
 Retry the outermost transaction: a nested transaction rejects with the errors of its statements, while its enclosing transaction rolls back and rejects with `TransactionConnectionError`.
 The error that the transaction rejects with otherwise, such as the error of its callback, is the `cause` of `TransactionConnectionError`.
 
+To tell whether the outcome of a failed statement or transaction is unknown because its connection failed, call `isOutcomeUnknown` with its error.
+It returns `true` after a `ConnectionError` outside a transaction, also one that came before the statement was sent, and after a `TransactionConnectionError` of phase `commit`.
+`false` does not mean that the operation applied nothing: a statement that ran may still reject, such as when its result fails to decode.
+Pass it the error of the outermost transaction rather than one that its callback caught: the transaction rolls back after such an error anyway.
+
 ## Failures to release a connection
 
 To log a failure to release the connection of a transaction or a session, including a failure to release the advisory locks or restore the search path of a session, pass `onReleaseError` to `createDatabase`:

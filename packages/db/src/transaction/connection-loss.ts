@@ -49,6 +49,26 @@ export class TransactionConnectionError extends ConnectionError {
   }
 }
 
+/**
+ * Tells whether the outcome of an operation that rejected with `error` is unknown, since its connection failed.
+ *
+ * Pass it the error that a whole operation rejected with: `execute` or `query` of a database outside a transaction, a statement in a session, or a whole `transaction`.
+ * A `ConnectionError` of a statement caught in the callback of a transaction is not such an error: the transaction rolls back anyway, and its own error tells its outcome.
+ *
+ * - `TransactionConnectionError` of phase `commit` gives `true`, since `COMMIT` may have succeeded.
+ * - `TransactionConnectionError` of another phase gives `false`, since the transaction was not committed.
+ * - Another `ConnectionError` gives `true`, since a statement outside a transaction may have run before its connection failed.
+ * - Any other error gives `false`, such as a `QueryError`, or a `ResultDecodeError` of a statement that has run: `false` does not mean that the operation applied nothing.
+ *
+ * Classification depends only on the error class, so failures before the statement was sent, such as a failure to acquire a connection, also give `true`.
+ */
+export function isOutcomeUnknown(error: unknown): boolean {
+  if (error instanceof TransactionConnectionError) {
+    return error.phase === "commit"
+  }
+  return error instanceof ConnectionError
+}
+
 /** First `ConnectionError` on the connection of a transaction, with the phase of the transaction when it came. */
 interface ConnectionFailure {
   readonly error: unknown
