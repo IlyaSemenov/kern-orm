@@ -4,8 +4,8 @@ import type {
   MigrationHistory,
   MigrationHistoryOptions,
   MigrationLoader,
-} from "@kern-orm/migrations"
-import { defineMigrations } from "@kern-orm/migrations"
+} from "kern-migrations"
+import { defineMigrations } from "kern-migrations"
 
 /** Defines a history of migrations given as values, as modules that export them would. */
 export function defineTestHistory(

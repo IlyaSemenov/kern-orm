@@ -14,6 +14,4 @@ Until 1.0, a new minor version of a package may break its contract, so a publish
 A peer dependency does not ensure one copy of a package in an application.
 Only the errors of drivers and transactions recognize the errors of another copy, by brands of `Symbol.for`; other values that a module of one copy brands, such as codecs and SQL fragments, are not values of another copy.
 
-The published package `@kern-orm/migrations` keeps its range of the whole 0.x series of `kern-orm` until `kern-migrations` replaces it ([backlog](../backlog/database-layer-as-a-package.md)).
-
 Each companion package lists what it relies on, such as [drivers](drivers.md#compatibility) and [migrations](migrations.md#compatibility).

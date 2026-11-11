@@ -1,4 +1,4 @@
-import { defineMigration } from "@kern-orm/migrations"
+import { defineMigration } from "kern-migrations"
 
 export default defineMigration({
   up: "CREATE TABLE form (id integer PRIMARY KEY, name text NOT NULL)",

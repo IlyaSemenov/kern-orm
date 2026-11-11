@@ -96,7 +96,7 @@ const licenseId = await db.license.required().update({ expiresAt }).get("id")
 Create a unique index of `(true)` of the table in its migration, so that the database rejects a second row; `upsert` finds the existing row by it too:
 
 ```ts
-import { createIndex, createTable, defineMigration } from "@kern-orm/migrations"
+import { createIndex, createTable, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   createTable("license", {

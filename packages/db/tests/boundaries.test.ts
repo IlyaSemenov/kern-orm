@@ -1,5 +1,5 @@
-// Checks the boundaries of the workspaces of the repository, also for imports of types: kern-db imports no other package of the repository but the test harness in its tests, a workspace imports another one only by its name, and the other workspaces import kern-db only through its entry points.
-// `paths` of the root `tsconfig.json` resolves every package of the repository in every workspace, so only this check keeps kern-db from importing them.
+// Checks the boundaries of the workspaces of the repository, also for imports of types: kern-db imports no other package of the repository but the test harness in its tests, the production code of kern-migrations imports none but kern-db, a workspace imports another one only by its name, and the other workspaces import kern-db only through its entry points.
+// `paths` of the root `tsconfig.json` resolves every package of the repository in every workspace, so only this check keeps kern-db and kern-migrations from importing them.
 import { expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { dirname, join, relative, resolve, sep } from "node:path"
@@ -113,12 +113,12 @@ function isOtherPackage(specifier: string): boolean {
   return /^(?:kern-orm|kern-migrations|@kern-orm\/[^/]+)(?:\/|$)/.test(specifier)
 }
 
-/** Tells whether `file` of kern-db is a test or a test helper of a module, which may import the test harness; the entry point `src/testing.ts` is neither. */
+/** Tells whether `file` of a package is a test or a test helper, which may import what its production code does not, such as the test harness; an entry point, such as `src/testing.ts`, is neither. */
 function isTestFile(file: string): boolean {
   return (
     /\.(?:test|type-test)\.ts$/.test(file) ||
-    /^packages\/db\/src\/.+\/testing\.ts$/.test(file) ||
-    isInside(file, `${packageDir}/tests`)
+    /^packages\/[^/]+\/src\/.+\/testing\.ts$/.test(file) ||
+    /^packages\/[^/]+\/(?:tests|testing)\//.test(file)
   )
 }
 
@@ -145,6 +145,17 @@ it("kern-db imports no other package of the repository but the test harness in i
       : !specifier.startsWith(".") &&
         isOtherPackage(specifier) &&
         !(specifier.startsWith("@kern-orm/test-harness/") && isTestFile(file)),
+  )
+
+  expect(violations).toEqual([])
+})
+
+it("the production code of kern-migrations imports no package of the repository but kern-db", () => {
+  const files = listSourceFiles(["packages/migrations/src"]).filter(file => !isTestFile(file))
+  // A module named by an expression is a module of the application, such as a migration test that the verification loads.
+  const violations = findViolations(
+    files,
+    (_, specifier) => specifier !== null && isOtherPackage(specifier),
   )
 
   expect(violations).toEqual([])
@@ -213,9 +224,13 @@ it("reads every kind of import", () => {
     "packages/db/src/result",
   )
   expect(isOtherPackage("kern-orm/db")).toBe(true)
-  expect(isOtherPackage("@kern-orm/migrations")).toBe(true)
+  expect(isOtherPackage("kern-migrations/cli")).toBe(true)
+  expect(isOtherPackage("@kern-orm/test-harness/postgres")).toBe(true)
   expect(isOtherPackage("kern-db/types")).toBe(false)
   expect(isOtherPackage("kern-ormish")).toBe(false)
   expect(isTestFile("packages/db/src/transaction/testing.ts")).toBe(true)
   expect(isTestFile("packages/db/src/testing.ts")).toBe(false)
+  expect(isTestFile("packages/migrations/src/helpers/testing.ts")).toBe(true)
+  expect(isTestFile("packages/migrations/testing/postgres.ts")).toBe(true)
+  expect(isTestFile("packages/migrations/src/verification/verify.ts")).toBe(false)
 })

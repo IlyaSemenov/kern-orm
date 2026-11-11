@@ -1,11 +1,11 @@
 // PostgreSQL of the tests of the migrator at `DATABASE_URL`, such as from `.env.test.local`; the tests that need it are skipped without it.
 import { afterAll, beforeAll, describe } from "bun:test"
 
-import type { Connection, Database, Driver, DriverResult, SqlStatement } from "kern-orm"
-import { createDatabase } from "kern-orm"
-import { postgresJsDriver } from "kern-orm/db/postgres-js"
-import type { TestHelpers } from "kern-orm/testing"
-import { createTestHelpers } from "kern-orm/testing"
+import type { Connection, Database, Driver, DriverResult, SqlStatement } from "kern-db"
+import { createDatabase } from "kern-db"
+import { postgresJsDriver } from "kern-db/postgres-js"
+import type { TestHelpers } from "kern-db/testing"
+import { createTestHelpers } from "kern-db/testing"
 import postgres from "postgres"
 
 const { DATABASE_URL } = process.env

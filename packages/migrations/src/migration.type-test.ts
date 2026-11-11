@@ -1,6 +1,23 @@
 import { describe, test } from "bun:test"
 
+import type { Database } from "kern-db"
+import type { DbOf } from "kern-orm"
+import { defineSchema } from "kern-orm"
+
+import type { MigrationDatabase } from "./migration"
 import { defineMigration } from "./migration"
+
+const schema = defineSchema({})
+
+declare const database: Database
+declare const db: DbOf<typeof schema>
+
+describe("MigrationDatabase", () => {
+  test("accepts a Database of kern-db and the database of a Db of kern-orm", () => {
+    database satisfies MigrationDatabase
+    db.$database satisfies MigrationDatabase
+  })
+})
 
 describe("defineMigration", () => {
   test("gives the functions of steps the queries, scripts, and statements of the database without its other members", () => {

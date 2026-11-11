@@ -1,6 +1,6 @@
 // Waiting for concurrent operations in the tests of the migrator, such as for a transaction that waits for a lock.
-import type { Database } from "kern-orm"
-import * as t from "kern-orm/types"
+import type { Database } from "kern-db"
+import * as t from "kern-db/types"
 
 /** Counts the transactions that wait for the advisory lock of `hashtextextended(key, 0)`, such as of key `"tenant"."kern_migration"`, which locks the target in schema `tenant`. */
 export async function countLockWaiters(database: Database, key: string): Promise<number> {

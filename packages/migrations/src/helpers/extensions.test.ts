@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import * as t from "kern-orm/types"
+import * as t from "kern-db/types"
 
 import { countLockWaiters, waitFor } from "../../testing/concurrency"
 import { describePooledPostgres, describePostgres } from "../../testing/postgres"
@@ -9,7 +9,7 @@ import { quoteIdentifier } from "../sql"
 import { createExtension } from "./extensions"
 
 // The key of the lock that createExtension takes.
-const lockKey = "@kern-orm/migrations createExtension"
+const lockKey = "kern-migrations createExtension"
 
 describe("createExtension", () => {
   it("creates an extension unless it exists, locking extensions before the second check, and does nothing on rollback", () => {

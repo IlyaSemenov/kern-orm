@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import type { Database } from "kern-orm"
+import type { Database } from "kern-db"
 import { bindSchema, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 

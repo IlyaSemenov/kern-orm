@@ -1,6 +1,6 @@
-// Uses the entry point of `@kern-orm/migrations` without connecting to a database.
-import type { MigrationTarget } from "@kern-orm/migrations"
-import { defineMigration, defineMigrations, migrate, MigrationError } from "@kern-orm/migrations"
+// Uses the entry point of `kern-migrations` without connecting to a database.
+import type { MigrationTarget } from "kern-migrations"
+import { defineMigration, defineMigrations, migrate, MigrationError } from "kern-migrations"
 
 export const migration = defineMigration({
   up: "CREATE TABLE form (id integer)",

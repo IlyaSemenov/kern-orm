@@ -4,8 +4,8 @@ To build steps that the [helpers](./migrations#helpers) do not cover, such as cr
 Quote names with `quoteIdentifier` and string values with `quoteLiteral`:
 
 ```ts [src/migration-helpers.ts]
-import type { MigrationStep } from "@kern-orm/migrations"
-import { quoteIdentifier, quoteLiteral } from "@kern-orm/migrations"
+import type { MigrationStep } from "kern-migrations"
+import { quoteIdentifier, quoteLiteral } from "kern-migrations"
 
 export function createEnum(name: string, values: readonly string[]): MigrationStep {
   return {
@@ -18,7 +18,7 @@ export function createEnum(name: string, values: readonly string[]): MigrationSt
 Use it in migrations as a built-in helper:
 
 ```ts [src/migrations/0003_create_form_status.ts]
-import { defineMigration } from "@kern-orm/migrations"
+import { defineMigration } from "kern-migrations"
 
 import { createEnum } from "../migration-helpers.ts"
 
@@ -33,7 +33,7 @@ To change what a helper does, add a new helper or option.
 To build a helper that undoes what another one does, pass its step to `invertStep`, which swaps `up` and `down`, also those of [`outsideTransaction`](./migrations#your-own-changes-outside-a-transaction):
 
 ```ts
-import { invertStep } from "@kern-orm/migrations"
+import { invertStep } from "kern-migrations"
 
 export function dropEnum(name: string, values: readonly string[]): MigrationStep {
   return invertStep(createEnum(name, values))
@@ -45,7 +45,7 @@ export function dropEnum(name: string, values: readonly string[]): MigrationStep
 To combine several steps into one, such as adding columns shared by many tables, pass them to `combineSteps`: its `up` runs theirs in order, and its `down` runs theirs in reverse order.
 
 ```ts
-import { addColumn, combineSteps } from "@kern-orm/migrations"
+import { addColumn, combineSteps } from "kern-migrations"
 
 export function addTimestamps(table: string): MigrationStep {
   return combineSteps(

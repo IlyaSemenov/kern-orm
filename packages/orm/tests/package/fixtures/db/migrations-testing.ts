@@ -1,9 +1,9 @@
-// Verifies a history of `@kern-orm/migrations` with the migration tests of its directory, in PostgreSQL at DATABASE_URL; prints the calls of the tests and the error of a rollback that renames the table of a migration rather than dropping it.
+// Verifies a history of `kern-migrations` with the migration tests of its directory, in PostgreSQL at DATABASE_URL; prints the calls of the tests and the error of a rollback that renames the table of a migration rather than dropping it.
 
-import { defineMigrations } from "@kern-orm/migrations"
-import { defineMigrationTest, verifyMigrations } from "@kern-orm/migrations/testing"
-import { createDatabase } from "kern-orm"
-import { postgresJsDriver } from "kern-orm/db/postgres-js"
+import { createDatabase } from "kern-db"
+import { postgresJsDriver } from "kern-db/postgres-js"
+import { defineMigrations } from "kern-migrations"
+import { defineMigrationTest, verifyMigrations } from "kern-migrations/testing"
 import postgres from "postgres"
 
 // The migration tests of `verified-migrations/` record the calls of their callbacks here: importing this module from them would deadlock on its top-level await.

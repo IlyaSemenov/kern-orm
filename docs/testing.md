@@ -98,7 +98,7 @@ Put a fixture for all tests, such as one that applies [migrations](./migrations)
 
 ```ts
 // test/setup.ts
-import { migrate } from "@kern-orm/migrations"
+import { migrate } from "kern-migrations"
 
 useTestFixture(() => migrate(db, migrations))
 ```

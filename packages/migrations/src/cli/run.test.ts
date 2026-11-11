@@ -4,7 +4,8 @@ import { tmpdir } from "node:os"
 import { join, relative } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { bindSchema, createDatabase, defineSchema, defineTable } from "kern-orm"
+import { createDatabase } from "kern-db"
+import { bindSchema, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import { describePostgres } from "../../testing/postgres"

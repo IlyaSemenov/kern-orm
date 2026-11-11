@@ -38,7 +38,7 @@ describe("createMigration", () => {
 
     expect(paths).toEqual([join(directory, "0001_create_form.ts")])
     expect(await readFile(paths[0]!, "utf8"))
-      .toBe(`import { createTable, defineMigration } from "@kern-orm/migrations"
+      .toBe(`import { createTable, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   createTable(/* table */ "", {
@@ -52,7 +52,7 @@ export default defineMigration([
     const [path] = await createMigration(["0001_create_form"], "add_form_slug", getOptions())
 
     expect(await readFile(path!, "utf8"))
-      .toBe(`import { addColumn, defineMigration } from "@kern-orm/migrations"
+      .toBe(`import { addColumn, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   addColumn(/* table */ "", /* column */ "", "text"),
@@ -89,7 +89,7 @@ export default defineMigration([
 
       expect(paths).toEqual([join(directory, "0003_add_form_slug.ts"), listModule.path])
       expect(await readFile(listModule.path, "utf8"))
-        .toBe(`// Written by the new command of @kern-orm/migrations
+        .toBe(`// Written by the new command of kern-migrations
 export default {
   "0001_create_form": () => import("./0001_create_form.ts"),
   "0002_create_user": () => import("./0002_create_user.js"),
@@ -152,7 +152,7 @@ export default {
       await mkdir(directory)
       await writeFile(
         listModule.path,
-        "// Written by the new command of @kern-orm/migrations\r\nexport default {}\r\n",
+        "// Written by the new command of kern-migrations\r\nexport default {}\r\n",
       )
 
       await createMigration([], "create_form", getOptions({ listModule }))
@@ -171,7 +171,7 @@ export default {
       )
 
       await expect(createMigration([], "create_form", getOptions({ listModule }))).rejects.toThrow(
-        `Cannot write the list of migrations to ${listModule.path}: the new command writes only a module that starts with the line "// Written by the new command of @kern-orm/migrations"; add the line at the top of the module to let the command write it`,
+        `Cannot write the list of migrations to ${listModule.path}: the new command writes only a module that starts with the line "// Written by the new command of kern-migrations"; add the line at the top of the module to let the command write it`,
       )
       expect(await readdir(directory)).toEqual(["index.ts"])
     })

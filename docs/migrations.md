@@ -3,20 +3,20 @@
 Write each change of your database, such as a new table or column, as a migration of steps that helpers, such as `createTable`, build together with the SQL that undoes them.
 Call `migrate`, such as when your application starts, to bring the database up to date: it applies the new migrations and remembers which ones it has applied.
 
-Install `@kern-orm/migrations`:
+Install `kern-migrations`:
 
 ::: code-group
 
 ```sh [npm]
-npm install @kern-orm/migrations
+npm install kern-migrations
 ```
 
 ```sh [pnpm]
-pnpm add @kern-orm/migrations
+pnpm add kern-migrations
 ```
 
 ```sh [bun]
-bun add @kern-orm/migrations
+bun add kern-migrations
 ```
 
 :::
@@ -26,7 +26,7 @@ bun add @kern-orm/migrations
 Put each migration in its own module and export its steps with `defineMigration`, building them with helpers:
 
 ```ts [src/migrations/0001_create_form.ts]
-import { createIndex, createTable, defineMigration } from "@kern-orm/migrations"
+import { createIndex, createTable, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   createTable("form", {
@@ -51,7 +51,7 @@ Do not import the tables, custom types, or database of your application into a m
 
 Pass the names of tables, columns, indexes, and constraints without quotes: helpers quote them.
 Pass definitions, conditions, defaults, and the columns of an index as SQL, quoting a name in them where SQL needs it, such as `'"order"'`.
-When you build SQL text from values of your code, quote names with `quoteIdentifier` and strings with `quoteLiteral`, both from `@kern-orm/migrations`.
+When you build SQL text from values of your code, quote names with `quoteIdentifier` and strings with `quoteLiteral`, both from `kern-migrations`.
 
 - Tables: `createTable(table, columns, { constraints })`, `dropTable` with the same arguments, and `renameTable(from, to)`.
 - Columns: `addColumn(table, column, definition)`, `dropColumn` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
@@ -127,7 +127,7 @@ For a change that no helper covers, such as filling a new column, write a step o
 Put it among the helpers of a migration:
 
 ```ts [src/migrations/0003_add_form_slug.ts]
-import { addColumn, changeColumn, createIndex, defineMigration } from "@kern-orm/migrations"
+import { addColumn, changeColumn, createIndex, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   addColumn("form", "slug", "text"),
@@ -154,7 +154,7 @@ When a step needs code, such as to compute values from existing rows, pass a fun
 It receives the database of the migration, whose `query`, `script`, and `execute` run in the transaction of the migration:
 
 ```ts
-import { addColumn, changeColumn, defineMigration } from "@kern-orm/migrations"
+import { addColumn, changeColumn, defineMigration } from "kern-migrations"
 import * as t from "kern-orm/db/types"
 
 const toSlug = (name: string) => name.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")
@@ -184,7 +184,7 @@ To name a table or a column known only at runtime in `query`, such as in a loop 
 To index a big table that your application keeps writing to, pass `concurrently` to `createIndex`: it builds the index with `CREATE INDEX CONCURRENTLY`, which does not block writes, outside a transaction, where PostgreSQL requires it.
 
 ```ts [src/migrations/0007_index_job_run_at.ts]
-import { createIndex, defineMigration } from "@kern-orm/migrations"
+import { createIndex, defineMigration } from "kern-migrations"
 
 export default defineMigration(createIndex("job", ["run_at"], { concurrently: true }))
 ```
@@ -220,8 +220,8 @@ One function does it for both forms, with `CONCURRENTLY` outside a transaction a
 The step has no `outsideTransaction.down`, since PostgreSQL cannot drop the index of a partitioned table concurrently.
 
 ```ts
-import type { MigrationDatabase } from "@kern-orm/migrations"
-import { defineMigration, quoteIdentifier } from "@kern-orm/migrations"
+import type { MigrationDatabase } from "kern-migrations"
+import { defineMigration, quoteIdentifier } from "kern-migrations"
 import * as t from "kern-orm/db/types"
 
 const indexJob = (concurrently: boolean) => async (database: MigrationDatabase) => {
@@ -286,7 +286,7 @@ Pass the migration modules to `defineMigrations`.
 With a bundler that supports `import.meta.glob`, such as Vite, pass its result:
 
 ```ts [src/migrations.ts]
-import { defineMigrations } from "@kern-orm/migrations"
+import { defineMigrations } from "kern-migrations"
 
 export const migrations = defineMigrations(
   import.meta.glob(["./migrations/*.ts", "!./migrations/*.migration-test.ts"]),
@@ -298,7 +298,7 @@ The second pattern leaves out the files of [migration tests](#check-how-a-migrat
 On Node.js and Bun, which lack `import.meta.glob`, let [`new`](#create-a-migration) of the command line write the list of the modules, and pass it to `defineMigrations`:
 
 ```ts [src/migrations.ts]
-import { defineMigrations } from "@kern-orm/migrations"
+import { defineMigrations } from "kern-migrations"
 
 import list from "./migrations/index.ts"
 
@@ -308,7 +308,7 @@ export const migrations = defineMigrations(list)
 Or list the modules by name:
 
 ```ts [src/migrations.ts]
-import { defineMigrations } from "@kern-orm/migrations"
+import { defineMigrations } from "kern-migrations"
 
 export const migrations = defineMigrations({
   "0001_create_form": () => import("./migrations/0001_create_form.ts"),
@@ -334,7 +334,7 @@ Each schema keeps its applied migrations in table `kern_migration`; to name the 
 Call `migrate` with your `Db` and the migrations, such as when the application starts or in a deploy script:
 
 ```ts
-import { migrate } from "@kern-orm/migrations"
+import { migrate } from "kern-migrations"
 
 await migrate(db, migrations)
 ```
@@ -387,7 +387,7 @@ await saasDb.$transaction(async () => {
 To undo the last applied migration, call `rollback`:
 
 ```ts
-import { rollback } from "@kern-orm/migrations"
+import { rollback } from "kern-migrations"
 
 await rollback(db, migrations)
 ```
@@ -397,7 +397,7 @@ Pass `count` to undo several of the last migrations, or `"all"` to undo every mi
 To undo the last applied migration and apply it again, such as after you change it while you write it, call `redo`; it also takes `count`:
 
 ```ts
-import { redo } from "@kern-orm/migrations"
+import { redo } from "kern-migrations"
 
 await redo(db, migrations)
 ```
@@ -415,7 +415,7 @@ Read the migrations recorded as applied with [`getMigrationStatus`](#status), an
 To see which migrations a schema has applied, call `getMigrationStatus`:
 
 ```ts
-import { getMigrationStatus } from "@kern-orm/migrations"
+import { getMigrationStatus } from "kern-migrations"
 
 const { applied, pending, unknown } = await getMigrationStatus(db, migrations)
 ```
@@ -427,7 +427,7 @@ const { applied, pending, unknown } = await getMigrationStatus(db, migrations)
 To apply, roll back, and create migrations from your terminal, write a script that runs the command line on your `Db` with your migrations:
 
 ```ts [src/migrations-cli.ts]
-import { runMigrationCli } from "@kern-orm/migrations/cli"
+import { runMigrationCli } from "kern-migrations/cli"
 
 import { db } from "./db.ts"
 import { migrations } from "./migrations.ts"
@@ -468,7 +468,7 @@ For the migrations of another `Db`, such as of the SaaS schema, write a script o
 `new` creates the module of the next migration in `directory`, such as `src/migrations/0003_add_form_slug.ts`, with a step whose names are blank:
 
 ```ts [src/migrations/0003_add_form_slug.ts]
-import { addColumn, defineMigration } from "@kern-orm/migrations"
+import { addColumn, defineMigration } from "kern-migrations"
 
 export default defineMigration([addColumn(/* table */ "", /* column */ "", "text")])
 ```
@@ -490,7 +490,7 @@ await runMigrationCli(db, migrations, {
 Create the list once, before your first migration, with the line by which `new` recognizes a list that it writes:
 
 ```ts [src/migrations/index.ts]
-// Written by the new command of @kern-orm/migrations
+// Written by the new command of kern-migrations
 export default {}
 ```
 
@@ -506,7 +506,7 @@ To check that every migration applies and rolls back, call `verifyMigrations` wi
 ```ts [src/migrations.test.ts]
 import { test } from "bun:test"
 
-import { verifyMigrations } from "@kern-orm/migrations/testing"
+import { verifyMigrations } from "kern-migrations/testing"
 
 import { testTransaction } from "../test/helpers.ts"
 import { db } from "./db.ts"
@@ -555,7 +555,7 @@ To check how a migration changes existing rows, write a migration test beside it
 ```ts [src/migrations/0003_add_form_slug.migration-test.ts]
 import { expect } from "bun:test"
 
-import { defineMigrationTest } from "@kern-orm/migrations/testing"
+import { defineMigrationTest } from "kern-migrations/testing"
 import * as t from "kern-orm/db/types"
 
 export default defineMigrationTest("fills slugs from names", {

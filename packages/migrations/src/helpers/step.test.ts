@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import * as t from "kern-orm/types"
+import * as t from "kern-db/types"
 
 import { describePostgres } from "../../testing/postgres"
 import type { MigrationChange, MigrationDatabase } from "../migration"

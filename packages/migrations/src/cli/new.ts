@@ -29,7 +29,7 @@ interface MigrationModule {
 }
 
 /** First line of the list module, by which `new` recognizes a module that it may write. */
-const listModuleHeader = "// Written by the new command of @kern-orm/migrations"
+const listModuleHeader = "// Written by the new command of kern-migrations"
 
 /**
  * Text of a new migration module: `createTable` for the first migration and `addColumn` for a later one.
@@ -38,7 +38,7 @@ const listModuleHeader = "// Written by the new command of @kern-orm/migrations"
  */
 export function getDefaultTemplate(_key: string, isFirst: boolean): string {
   return isFirst
-    ? `import { createTable, defineMigration } from "@kern-orm/migrations"
+    ? `import { createTable, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   createTable(/* table */ "", {
@@ -46,7 +46,7 @@ export default defineMigration([
   }),
 ])
 `
-    : `import { addColumn, defineMigration } from "@kern-orm/migrations"
+    : `import { addColumn, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   addColumn(/* table */ "", /* column */ "", "text"),

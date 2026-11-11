@@ -1,5 +1,5 @@
 // Structure of a PostgreSQL schema as lines of text, which the verification compares before a migration and after its rollback.
-import type { Database } from "kern-orm/db"
+import type { Database } from "kern-db"
 
 /**
  * SQL of the items of ACL `acl` in the order of their bytes, such as `{=X/app,app=X/app}`, so that the same privileges match whatever the order of their grants.

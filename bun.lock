@@ -70,14 +70,15 @@
       ],
     },
     "packages/migrations": {
-      "name": "@kern-orm/migrations",
-      "version": "0.3.1",
+      "name": "kern-migrations",
+      "version": "0.0.0",
       "devDependencies": {
+        "kern-db": "workspace:*",
         "kern-orm": "workspace:*",
         "postgres": "catalog:",
       },
       "peerDependencies": {
-        "kern-orm": ">=0.10.0 <1",
+        "kern-db": "^0.1.0",
       },
     },
     "packages/orm": {
@@ -319,8 +320,6 @@
     "@kern-orm/benchmarks": ["@kern-orm/benchmarks@workspace:benchmarks"],
 
     "@kern-orm/example-forms": ["@kern-orm/example-forms@workspace:examples/forms"],
-
-    "@kern-orm/migrations": ["@kern-orm/migrations@workspace:packages/migrations"],
 
     "@kern-orm/test-harness": ["@kern-orm/test-harness@workspace:testing"],
 
@@ -879,6 +878,8 @@
     "jsonstream-next": ["jsonstream-next@3.0.0", "", { "dependencies": { "jsonparse": "^1.2.0", "through2": "^4.0.2" }, "bin": { "jsonstream-next": "bin.js" } }, "sha512-aAi6oPhdt7BKyQn1SrIIGZBt0ukKuOUE1qV6kJ3GgioSOYzsRc8z9Hfr1BVmacA/jLe9nARfmgMGgn68BqIAgg=="],
 
     "kern-db": ["kern-db@workspace:packages/db"],
+
+    "kern-migrations": ["kern-migrations@workspace:packages/migrations"],
 
     "kern-orm": ["kern-orm@workspace:packages/orm"],
 

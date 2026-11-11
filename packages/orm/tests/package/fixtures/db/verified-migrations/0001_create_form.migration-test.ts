@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 
-import { defineMigrationTest } from "@kern-orm/migrations/testing"
-import * as t from "kern-orm/types"
+import * as t from "kern-db/types"
+import { defineMigrationTest } from "kern-migrations/testing"
 
 const { migrationTestCalls: calls } = globalThis as unknown as { migrationTestCalls: string[] }
 

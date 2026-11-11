@@ -30,7 +30,7 @@ export function createExtension(name: string, options: ExtensionOptions = {}): M
   const body = `
 BEGIN
   IF NOT ${exists} THEN
-    PERFORM pg_advisory_xact_lock(hashtextextended('@kern-orm/migrations createExtension', 0));
+    PERFORM pg_advisory_xact_lock(hashtextextended('kern-migrations createExtension', 0));
     IF NOT ${exists} THEN${createSchema}
       CREATE EXTENSION ${quoteIdentifier(name)}${schema};
     END IF;

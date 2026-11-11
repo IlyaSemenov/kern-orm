@@ -24,7 +24,7 @@ bun add kern-orm postgres
 
 If your application uses [node-postgres](./drivers#node-postgres), see Drivers.
 
-To create and change tables with migrations, also install `@kern-orm/migrations`; see [Migrations](./migrations).
+To create and change tables with migrations, also install `kern-migrations`; see [Migrations](./migrations).
 
 kern-orm runs on Node.js 24 or newer and Bun 1.4 or newer.
 Use TypeScript 6.0 or newer, and keep `strict`, or at least `strictNullChecks`, enabled.

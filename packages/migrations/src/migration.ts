@@ -1,4 +1,4 @@
-import type { Database } from "kern-orm/db"
+import type { Database } from "kern-db"
 
 import type { MigrationDirection } from "./error"
 import { getErrorMessage, MigrationError } from "./error"
@@ -6,7 +6,7 @@ import { getErrorMessage, MigrationError } from "./error"
 /**
  * Database of a migration: its queries, scripts, and statements run in the transaction of the migration, or each in a transaction of its own for a change outside a transaction, and their unqualified names resolve in the target schema.
  *
- * `execute` returns the values of a statement as text, such as for a helper of a package that reads the catalog without the types of `kern-orm`.
+ * `execute` returns the values of a statement as text, such as for a helper of a package that reads the catalog without codecs.
  * It lacks the other members of a `Database`, such as `close`, which a migration must not use.
  */
 export type MigrationDatabase = Pick<Database, "query" | "script" | "execute">

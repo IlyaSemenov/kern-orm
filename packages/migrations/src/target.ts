@@ -1,4 +1,4 @@
-import type { Database, DriverResult, SqlStatement } from "kern-orm/db"
+import type { Database, DriverResult, SqlStatement } from "kern-db"
 
 import type { MigrationHistory } from "./history"
 import { compareMigrationNumbers, getMigrationNumber } from "./history"
@@ -179,7 +179,7 @@ function compareKeys(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-/** Executes a statement of the migrator; `kern-orm` gives its values as text, which needs none of its types. */
+/** Executes a statement of the migrator; `execute` gives its values as text, which the migrator decodes without codecs, since it imports only types of `kern-db`. */
 function execute(
   database: Database,
   text: string,

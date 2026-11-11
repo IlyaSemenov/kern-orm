@@ -1,9 +1,9 @@
-// Script of the command line of `@kern-orm/migrations`, as a project writes it, without connecting to a database: its history comes from the list module that `new` writes, which starts as the empty list of `cli-migrations/index.ts`; it prints the keys of the history and the errors of loading them.
+// Script of the command line of `kern-migrations`, as a project writes it, without connecting to a database: its history comes from the list module that `new` writes, which starts as the empty list of `cli-migrations/index.ts`; it prints the keys of the history and the errors of loading them.
 import { join } from "node:path"
 
-import { defineMigrations } from "@kern-orm/migrations"
-import { runMigrationCli } from "@kern-orm/migrations/cli"
-import { createDatabase } from "kern-orm"
+import { createDatabase } from "kern-db"
+import { defineMigrations } from "kern-migrations"
+import { runMigrationCli } from "kern-migrations/cli"
 
 import list from "./cli-migrations/index.ts"
 

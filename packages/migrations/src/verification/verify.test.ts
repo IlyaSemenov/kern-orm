@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test"
 
-import type { Database } from "kern-orm"
+import type { Database } from "kern-db"
+import * as t from "kern-db/types"
 import { bindSchema, defineSchema } from "kern-orm"
-import * as t from "kern-orm/types"
 
 import { defineTestHistory } from "../../testing/history"
 import { describePostgres } from "../../testing/postgres"

@@ -64,12 +64,25 @@ const served = new Map<string, { manifest: Manifest; tarball: string; integrity:
 let registry: ReturnType<typeof Bun.serve>
 /** Consumer of `kern-orm`, which does not require `kern-db` itself, and of the migrator. */
 let ormConsumer: string
-/** Consumer of `kern-db` alone, without `kern-orm` and without `pg` installed. */
+/** Consumer of `kern-db` and of the migrator, without `kern-orm` and without `pg` installed. */
 let dbConsumer: string
 
 /** Returns the directory of a packed package of the repository extracted in `work`. */
 function getPackedDir(name: string): string {
   return join(work, "packages", name)
+}
+
+/** Returns the modules that the files of `dist/` of the packed package `name` import, also in their declarations. */
+async function readPackedImports(name: string): Promise<{ file: string; specifier: string }[]> {
+  const dir = join(getPackedDir(name), "dist")
+  const imports: { file: string; specifier: string }[] = []
+  for (const file of await readdir(dir)) {
+    const code = await readFile(join(dir, file), "utf8")
+    for (const [, specifier] of code.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
+      imports.push({ file, specifier: specifier! })
+    }
+  }
+  return imports
 }
 
 /** Packs the package of directory `dir` into `work` without running its lifecycle scripts, and returns the path of the tarball. */
@@ -229,14 +242,14 @@ beforeAll(async () => {
   await serve(await Bun.file(join(postgresDir, "package.json")).json(), pack(postgresDir))
   ormConsumer = await createConsumer(
     "orm",
-    ["kern-orm", "@kern-orm/migrations"],
+    ["kern-orm", "kern-migrations"],
     // The client of the scenario of node-postgres, whose dependencies the registry does not serve.
     [
       { path: "packages/db/node_modules/pg", name: "pg" },
       { path: "packages/db/node_modules/@types/pg", name: "@types/pg" },
     ],
   )
-  dbConsumer = await createConsumer("db", ["kern-db"], [])
+  dbConsumer = await createConsumer("db", ["kern-db", "kern-migrations"], [])
   await writeFile(
     join(ormConsumer, "tsconfig.type-tests.json"),
     JSON.stringify({
@@ -326,33 +339,44 @@ describe("manifests", () => {
 
     expect(unsatisfied).toEqual([])
     expect(required.toSorted()).toEqual([
-      "@kern-orm/migrations peerDependencies kern-orm",
+      "kern-migrations peerDependencies kern-db",
       "kern-orm dependencies kern-db",
     ])
   })
 
-  test("give kern-db no dependency on kern-orm, also in its code and declarations", async () => {
-    const isOrm = (specifier: string) => /^(?:kern-orm|@kern-orm\/[^/]+)(?:\/|$)/.test(specifier)
-    const manifest = packed.get("kern-db")!
-    const references: string[] = []
-    for (const field of dependencyFields) {
-      for (const dependency of Object.keys(manifest[field] ?? {})) {
-        if (isOrm(dependency)) {
-          references.push(`${field} ${dependency}`)
+  test.each(["kern-db", "kern-migrations"])(
+    "give %s no dependency on kern-orm, also in its code and declarations",
+    async name => {
+      const isOrm = (specifier: string) => /^(?:kern-orm|@kern-orm\/[^/]+)(?:\/|$)/.test(specifier)
+      const manifest = packed.get(name)!
+      const references: string[] = []
+      for (const field of dependencyFields) {
+        for (const dependency of Object.keys(manifest[field] ?? {})) {
+          if (isOrm(dependency)) {
+            references.push(`${field} ${dependency}`)
+          }
         }
       }
-    }
-    const dir = getPackedDir("kern-db")
-    for (const file of await readdir(join(dir, "dist"))) {
-      const code = await readFile(join(dir, "dist", file), "utf8")
-      for (const [, specifier] of code.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
-        if (isOrm(specifier!)) {
+      for (const { file, specifier } of await readPackedImports(name)) {
+        if (isOrm(specifier)) {
           references.push(`${file}: ${specifier}`)
         }
       }
-    }
 
-    expect(references).toEqual([])
+      expect(references).toEqual([])
+    },
+  )
+
+  test("give kern-migrations no import of kern-db in its code, whose declarations alone import it", async () => {
+    const imports = await readPackedImports("kern-migrations")
+    const isDb = (specifier: string) => /^kern-db(?:\/|$)/.test(specifier)
+
+    expect(
+      imports.filter(({ file, specifier }) => !file.endsWith(".d.mts") && isDb(specifier)),
+    ).toEqual([])
+    expect(imports.some(({ file, specifier }) => file.endsWith(".d.mts") && isDb(specifier))).toBe(
+      true,
+    )
   })
 })
 
@@ -367,7 +391,7 @@ describe.each([
     run([...tsc, "-p", "tsconfig.type-tests.json"], ormConsumer)
   }, 60_000)
 
-  test("emits declarations of a consumer of kern-db without kern-orm and pg and checks them with the declarations of kern-db", () => {
+  test("emits declarations of a consumer of kern-db and the migrator without kern-orm and pg and checks them with the declarations of the packages", () => {
     run([...tsc, "-p", dbConsumer], dbConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], dbConsumer)
   }, 60_000)
@@ -447,57 +471,13 @@ describe.each(["node", "bun"])("%s", runtime => {
       })
     })
 
-    test("runs a consumer of the migrator", () => {
-      expect(JSON.parse(run([runtime, "migrations.ts"], ormConsumer))).toEqual({
-        keys: ["0001_create_form", "0002_drop_form"],
-        steps: [{ up: "CREATE TABLE form (id integer)", down: "DROP TABLE form" }],
-        loadError: {
-          name: "MigrationError",
-          key: "0002_drop_form",
-          message:
-            "Migration 0002_drop_form must export a step or a non-empty array of steps as its default export",
-        },
-      })
-    })
-
-    test("runs the command line of the migrator from a script whose migrations come from the list that new writes", async () => {
-      // Each runtime starts from the empty list of the fixtures, as a project creates it before its first migration.
-      await rm(join(ormConsumer, "cli-migrations"), { recursive: true, force: true })
-      await cp(join(fixtures, "orm/cli-migrations"), join(ormConsumer, "cli-migrations"), {
-        recursive: true,
-      })
-      const runCli = (...args: string[]) =>
-        run([runtime, "migrations-cli.ts", ...args], ormConsumer)
-
-      expect(runCli("new", "create_form")).toBe(
-        `Created cli-migrations/0001_create_form.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({ keys: [], loadErrors: [] })}\n`,
-      )
-      expect(runCli("new", "create_user")).toBe(
-        `Created cli-migrations/0002_create_user.ts\nWrote cli-migrations/index.ts\n${JSON.stringify(
-          {
-            keys: ["0001_create_form"],
-            // The template of a new migration fails to load until its blank names are filled in.
-            loadErrors: ["Cannot load migration 0001_create_form: Cannot quote an empty name"],
-          },
-        )}\n`,
-      )
-      const unknown = Bun.spawnSync({
-        cmd: [runtime, "migrations-cli.ts", "unknown"],
-        cwd: ormConsumer,
-      })
-      expect({ exitCode: unknown.exitCode, stderr: unknown.stderr.toString() }).toEqual({
-        exitCode: 1,
-        stderr: "Unknown command unknown\nRun with --help to list the commands.\n",
-      })
-    })
-
     test.skipIf(!process.env.DATABASE_URL)(
-      "verifies a history with the migration tests of its directory in PostgreSQL",
+      "migrates the Db of its schema in one transaction with queries of the ORM in PostgreSQL",
       () => {
-        expect(JSON.parse(run([runtime, "migrations-testing.ts"], ormConsumer))).toEqual({
-          calls: ["assertUp", "assertDown"],
-          failure:
-            "Rolling back migration 0001_create_form does not restore the structure of the schema (- before the migration, + after its rollback):\n  + column survey.id integer\n  + table survey",
+        expect(JSON.parse(run([runtime, "migration-transaction.ts"], ormConsumer))).toEqual({
+          applied: ["0001_create_form"],
+          names: ["Survey"],
+          schemaExists: false,
         })
       },
     )
@@ -536,6 +516,60 @@ describe.each(["node", "bun"])("%s", runtime => {
         expect(JSON.parse(run([runtime, "db-postgres.ts"], dbConsumer))).toEqual({
           sum: 2,
           settings: { tags: ["poll"] },
+        })
+      },
+    )
+
+    test("runs a consumer of the migrator", () => {
+      expect(JSON.parse(run([runtime, "migrations.ts"], dbConsumer))).toEqual({
+        keys: ["0001_create_form", "0002_drop_form"],
+        steps: [{ up: "CREATE TABLE form (id integer)", down: "DROP TABLE form" }],
+        loadError: {
+          name: "MigrationError",
+          key: "0002_drop_form",
+          message:
+            "Migration 0002_drop_form must export a step or a non-empty array of steps as its default export",
+        },
+      })
+    })
+
+    test("runs the command line of the migrator from a script whose migrations come from the list that new writes", async () => {
+      // Each runtime starts from the empty list of the fixtures, as a project creates it before its first migration.
+      await rm(join(dbConsumer, "cli-migrations"), { recursive: true, force: true })
+      await cp(join(fixtures, "db/cli-migrations"), join(dbConsumer, "cli-migrations"), {
+        recursive: true,
+      })
+      const runCli = (...args: string[]) => run([runtime, "migrations-cli.ts", ...args], dbConsumer)
+
+      expect(runCli("new", "create_form")).toBe(
+        `Created cli-migrations/0001_create_form.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({ keys: [], loadErrors: [] })}\n`,
+      )
+      expect(runCli("new", "create_user")).toBe(
+        `Created cli-migrations/0002_create_user.ts\nWrote cli-migrations/index.ts\n${JSON.stringify(
+          {
+            keys: ["0001_create_form"],
+            // The template of a new migration fails to load until its blank names are filled in.
+            loadErrors: ["Cannot load migration 0001_create_form: Cannot quote an empty name"],
+          },
+        )}\n`,
+      )
+      const unknown = Bun.spawnSync({
+        cmd: [runtime, "migrations-cli.ts", "unknown"],
+        cwd: dbConsumer,
+      })
+      expect({ exitCode: unknown.exitCode, stderr: unknown.stderr.toString() }).toEqual({
+        exitCode: 1,
+        stderr: "Unknown command unknown\nRun with --help to list the commands.\n",
+      })
+    })
+
+    test.skipIf(!process.env.DATABASE_URL)(
+      "verifies a history with the migration tests of its directory in PostgreSQL",
+      () => {
+        expect(JSON.parse(run([runtime, "migrations-testing.ts"], dbConsumer))).toEqual({
+          calls: ["assertUp", "assertDown"],
+          failure:
+            "Rolling back migration 0001_create_form does not restore the structure of the schema (- before the migration, + after its rollback):\n  + column survey.id integer\n  + table survey",
         })
       },
     )
@@ -746,8 +780,8 @@ describe("test runners", () => {
 
     test("Vitest verifies a history with the migration tests that import.meta.glob finds", () => {
       run(
-        ["node", join(ormConsumer, "node_modules/vitest/vitest.mjs"), "run"],
-        join(ormConsumer, "runners/vitest-migrations"),
+        ["node", join(dbConsumer, "node_modules/vitest/vitest.mjs"), "run"],
+        join(dbConsumer, "runners/vitest-migrations"),
       )
     }, 60_000)
 

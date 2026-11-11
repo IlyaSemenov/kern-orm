@@ -1,5 +1,5 @@
-import { defineMigrationTest } from "@kern-orm/migrations/testing"
-import * as t from "kern-orm/types"
+import * as t from "kern-db/types"
+import { defineMigrationTest } from "kern-migrations/testing"
 import { expect } from "vitest"
 
 export default defineMigrationTest("stores forms", {

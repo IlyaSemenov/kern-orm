@@ -1,17 +1,19 @@
 # Migrations
 
-- **Migrator** (`packages/migrations/`): `@kern-orm/migrations` applies and rolls back histories of migrations.
-  It is an official but replaceable migrator: `kern-orm` knows nothing of migrations, and another package must be able to implement migrations, their verification, and a command line with the public API of `kern-orm` alone.
+- **Migrator** (`packages/migrations/`): `kern-migrations` applies and rolls back histories of migrations.
+  It is an official but replaceable migrator: `kern-db` and `kern-orm` know nothing of migrations, and another package must be able to implement migrations, their verification, and a command line with the public API of `kern-db` alone.
   It leaves to the application generating migrations from tables and tables from the database, column types of migrations, commands that create, drop, or reset a database or rename migrations, callbacks around migrating, and a command that verifies a history ([decision](../decisions/migrations/migrator-scope.md)).
-- A need of the migrator that the public API of `kern-orm` does not cover becomes a general capability of `kern-orm`, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
-  The migrator imports only types from `kern-orm`.
-- The migrator runs everything through the `Database` of its target: transactions with `transaction`, sessions with `session`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-orm`.
+- A need of the migrator that the public API of `kern-db` and `kern-orm` does not cover becomes a general capability of their package, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
+- The migrator requires `kern-db` by a peer dependency and imports only types from it, so that a copy of `kern-db` other than the one of the database of the application cannot change what the migrator does.
+  It imports nothing of `kern-orm`, also in types, and takes a `Db` by its members `$database` and `$schemaName`.
+  `packages/db/tests/boundaries.test.ts` checks the imports of its sources, and the package test those of its built code.
+- The migrator runs everything through the `Database` of its target: transactions with `transaction`, sessions with `session`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without codecs, which are values of `kern-db`.
 - The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
-  The entry point `@kern-orm/migrations/cli` holds the [command line](#command-line), and `@kern-orm/migrations/testing` the [verification](#verification), which import `node:*` modules.
+  The entry point `kern-migrations/cli` holds the [command line](#command-line), and `kern-migrations/testing` the [verification](#verification), which import `node:*` modules.
 
 ## Compatibility
 
-The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `session`, `isInTransactionBlock`, `lock`, `pollLock`, and `close` of the `Database` of `kern-orm/db`, `$database` and `$schemaName` of a `Db`, and the types of their options and results that it uses, such as the `searchPath` option of transactions and sessions and the text values of `execute`; it imports them only as types of `kern-orm/db`, so that a `Db` fits a target structurally.
+The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `session`, `isInTransactionBlock`, `lock`, `pollLock`, and `close` of the `Database` of `kern-db`, `$database` and `$schemaName` of a `Db` of `kern-orm`, and the types of their options and results that it uses, such as the `searchPath` option of transactions and sessions and the text values of `execute`; it imports them only as types of `kern-db`, so that a `Db` fits a target structurally.
 
 ## Migrations
 
@@ -24,7 +26,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
 - The database of a migration is `Pick<Database, "query" | "script" | "execute">` of the target: its statements run in the transaction of the migration, or, for a change outside a transaction, each in a transaction of its own on the connection of the session, and its unqualified names resolve in the target schema through the search path.
   It lacks the other members of `Database`, such as `close`, which a migration must not use.
-  Its `query` and `script` are of the [database layer](README.md#layers): their templates take the SQL fragments of `kern-orm/db`, and `query` decodes rows by codecs, such as of `kern-orm/db/types`.
+  Its `query` and `script` are of the [database layer](README.md#layers): their templates take the SQL fragments of `kern-db`, and `query` decodes rows by codecs, such as of `kern-db/types`.
 
 ### Changes outside a transaction
 
@@ -51,7 +53,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 
 ## Targets
 
-- A target is a database and a PostgreSQL schema: a `Db`, which gives both, or a `Database`, so that a project that queries the database with another library can use kern-orm only to run its migrations.
+- A target is a database and a PostgreSQL schema: a `Db` of `kern-orm`, which gives both, or a `Database` of `kern-db`, so that a project without the ORM, such as one that queries the database with `kern-db` alone, runs its migrations.
   A target is typed by the members `$database` and `$schemaName` of a `Db`, so that checking a `Db` against it compares no queries.
 - The `schemaName` option of a call overrides the PostgreSQL schema of the target, such as the schema of a tenant that is being created, which no context names yet.
 - A call resolves the PostgreSQL schema once, at its start, calling the function of `schemaName` of a `Db` at most once; without one, the target is `current_schema()`, and a call rejects when it is `NULL`.
@@ -107,7 +109,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - The SQL that a helper builds never changes: applied migrations call the same helper on new targets, and a change of its SQL would change what they do there.
   A new behavior requires a new helper or option; the helpers of a project must follow the same rule.
 - Helpers quote the names they take as arguments or keys and never qualify them with a schema, which the search path of the migration gives.
-  They quote with `quoteIdentifier`, since a step is SQL text, which a fragment of `identifier` from `kern-orm` is not.
+  They quote with `quoteIdentifier`, since a step is SQL text, which a fragment of `identifier` from `kern-db` is not.
   They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
 - They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
   The changes outside a transaction of `concurrently` check the catalog instead, since they must be safe to run again, so the `up` and `down` that a transaction runs catch such a mismatch.
@@ -131,7 +133,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - They reject a name that finds another relation, such as an index of another table, also in an earlier schema of the search path, where it hides the index of the table, before they change anything: building would create an index that dropping cannot find, and dropping would leave the index while its migration is recorded as rolled back.
   - Building does nothing when the table has a valid index of the name, which an attempt whose record of the migration failed has built ([decision](../decisions/migrations/valid-index-counts-as-built.md)), and drops an index of the name that is not valid before building it.
   - Dropping does nothing when the name finds nothing.
-  - They check the catalog with one statement of `execute`, which returns the state of the index as text, so that they need no types of `kern-orm` to decode it.
+  - They check the catalog with one statement of `execute`, which returns the state of the index as text, so that they need no codecs to decode it.
   - A partitioned table requires a step of its own: PostgreSQL rejects `CREATE INDEX CONCURRENTLY` of a partitioned table and `DROP INDEX CONCURRENTLY` of its index before they change anything ([decision](../decisions/migrations/concurrent-index-of-partitioned-table.md)).
 - `createExtension` has no `down`, since an extension belongs to the whole database, such as to every tenant.
   - It checks `pg_extension` in a `DO` block rather than running `CREATE EXTENSION IF NOT EXISTS`, which sends a notice of an existing extension that postgres.js logs, at every new tenant of a history that creates one.
