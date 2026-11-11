@@ -52,4 +52,4 @@ Module paths are relative to `packages/kern-orm/src/`.
 - [Testing](testing.md): `database/testing.ts` and `database/transaction/fixture-stack.ts`.
 - [Drivers](drivers.md): `database/driver.ts`, `database/driver-error.ts`, `database/error-condition.ts`, `database/error-condition-codes.ts`, `database/driver-contract.ts`, `packages/postgres-js/` and `packages/node-postgres/`.
 - [Migrations](migrations.md): `packages/migrations/`.
-- [Package compatibility](compatibility.md): the peer dependency of companion packages on `kern-orm`.
+- [Package compatibility](compatibility.md): the ranges by which the packages of the repository depend on each other.

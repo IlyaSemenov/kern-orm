@@ -103,3 +103,7 @@ The SQL that loads nested queries and relations.
 - [Polling for the lock of a target outside a transaction](migrations/polling-for-the-lock.md): rather than waiting in `pg_advisory_lock` or rejecting.
 - [A valid index of the name counts as built](migrations/valid-index-counts-as-built.md): `createIndex` with `concurrently` completes a migration whose record failed, rather than failing on the index, keeping it with `IF NOT EXISTS`, or building it again.
 - [A partitioned table indexed by a step of its own](migrations/concurrent-index-of-partitioned-table.md): `concurrently` leaves PostgreSQL to reject a partitioned table, rather than indexing each partition or building without `CONCURRENTLY`.
+
+## Packages
+
+- [The database layer as the package `kern-db`](packages/database-package.md): a package of one repository with the drivers as its subpaths, a regular dependency of `kern-orm`, a peer dependency of the migrator, and ranges of one minor line.
