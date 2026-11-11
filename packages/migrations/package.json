@@ -40,6 +40,7 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
+    "@kern-orm/test-harness": "workspace:*",
     "kern-db": "workspace:*",
     "kern-orm": "workspace:*",
     "postgres": "catalog:"

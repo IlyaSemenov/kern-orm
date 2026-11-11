@@ -22,6 +22,7 @@
       "kern-orm/db/node-postgres": ["./packages/orm/src/db/node-postgres.ts"],
       "kern-orm/db/postgres-js": ["./packages/orm/src/db/postgres-js.ts"],
       "kern-orm/db/types": ["./packages/orm/src/db/types.ts"],
+      "@kern-orm/test-harness/errors": ["./testing/errors.ts"],
       "@kern-orm/test-harness/postgres": ["./testing/postgres.ts"],
       "@kern-orm/test-harness/recording-driver": ["./testing/recording-driver.ts"]
     }

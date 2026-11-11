@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import type { DriverResult } from "./driver"
 import type { FlatResultPlan, ResultRows } from "./result"
 import {
@@ -22,7 +24,7 @@ describe("only row", () => {
     expect(takeOnlyRow(createMode("one"), [["1"]])).toEqual(["1"])
     expect(takeOnlyRow(createMode("nullable"), [])).toBeUndefined()
     expect(takeOnlyRow(createMode("optional"), [])).toBeUndefined()
-    expect(() => takeOnlyRow(createMode("one"), [])).toThrow(
+    expect(getThrownError(() => takeOnlyRow(createMode("one"), []))).toEqual(
       new NotFoundError("Query returned no rows"),
     )
   })
@@ -63,16 +65,6 @@ describe("flat results", () => {
     return { fields, rows, value: false }
   }
 
-  /** Returns the error that `decode` throws, or `undefined` when it returns. */
-  function captureError(decode: () => unknown): unknown {
-    try {
-      decode()
-    } catch (error) {
-      return error
-    }
-    return undefined
-  }
-
   it("read the fields of records from the result columns of their keys, keeping NULL as null and ignoring other columns", () => {
     const rows = [
       ["Draft", "x", "1"],
@@ -94,7 +86,7 @@ describe("flat results", () => {
   })
 
   it("reject without a column of a field or with it twice", () => {
-    const missing = captureError(() =>
+    const missing = getThrownError(() =>
       decodeFlatResult(createRecordsPlan(), createDriverResult(0, [], ["id", "name"])),
     )
 
@@ -158,7 +150,7 @@ describe("flat results", () => {
       value: false,
     }
     const columns = ["id", "location"]
-    const many = captureError(() =>
+    const many = getThrownError(() =>
       decodeFlatResult(
         plan,
         createDriverResult(
@@ -171,7 +163,7 @@ describe("flat results", () => {
         ),
       ),
     )
-    const one = captureError(() =>
+    const one = getThrownError(() =>
       decodeFlatResult({ ...plan, rows: "one" }, createDriverResult(1, [["1", "(1,2)"]], columns)),
     )
 
@@ -200,7 +192,7 @@ describe("flat results", () => {
       [createRecordsPlan(), [["1", "Draft"]], ["id", "title", "note"]],
     ] as const) {
       expect(
-        captureError(() => decodeFlatResult(plan, createDriverResult(1, rows, columns))),
+        getThrownError(() => decodeFlatResult(plan, createDriverResult(1, rows, columns))),
       ).toMatchObject({
         message: `Driver returned a row of ${rows[0].length} values for ${columns.length} columns`,
         path: undefined,
@@ -214,9 +206,9 @@ describe("flat results", () => {
     expect(decodeFlatResult(plan, createDriverResult(3))).toBe(3)
     expect(decodeFlatResult({ ...plan, rows: "one" }, createDriverResult(1))).toBe(1)
     expect(decodeFlatResult({ ...plan, rows: "optional" }, createDriverResult(0))).toBe(0)
-    expect(() => decodeFlatResult({ ...plan, rows: "one" }, createDriverResult(0))).toThrow(
-      new NotFoundError("Query reported no rows"),
-    )
+    expect(
+      getThrownError(() => decodeFlatResult({ ...plan, rows: "one" }, createDriverResult(0))),
+    ).toEqual(new NotFoundError("Query reported no rows"))
     expect(() => decodeFlatResult({ ...plan, rows: "nullable" }, createDriverResult(2))).toThrow(
       "Query of one row reported 2 rows",
     )

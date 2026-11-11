@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
 import { describePostgres } from "@kern-orm/test-harness/postgres"
 
 import type { TextValue } from "../driver"
@@ -45,8 +46,8 @@ describe("encodeParameter", () => {
       [Symbol("value"), "a symbol"],
     ] as const) {
       const error = new TypeError(`${takes}, not ${kind}; pass JSON or an array with param()`)
-      expect(() => assertUntypedValue(value)).toThrow(error)
-      expect(() => encodeParameter(value, undefined)).toThrow(error)
+      expect(getThrownError(() => assertUntypedValue(value))).toEqual(error)
+      expect(getThrownError(() => encodeParameter(value, undefined))).toEqual(error)
     }
   })
 
@@ -54,8 +55,8 @@ describe("encodeParameter", () => {
     const type = { encode: () => "encoded" } as never
 
     const error = new TypeError("Query parameter is undefined; use null for NULL")
-    expect(() => assertUntypedValue(undefined)).toThrow(error)
-    expect(() => encodeParameter(undefined, undefined)).toThrow(error)
+    expect(getThrownError(() => assertUntypedValue(undefined))).toEqual(error)
+    expect(getThrownError(() => encodeParameter(undefined, undefined))).toEqual(error)
     expect(() => encodeParameter(undefined, type)).toThrow("Query parameter is undefined")
   })
 })

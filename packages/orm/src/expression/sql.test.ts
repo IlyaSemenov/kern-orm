@@ -1,5 +1,6 @@
 import { expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import {
   createDatabase,
@@ -111,7 +112,7 @@ it("rejects a value that a parameter does not take without a type when the templ
     [[1, 2], "an array"],
     [() => 1, "a function"],
   ] as const) {
-    expect(() => sql`SELECT ${value}`).toThrow(
+    expect(getThrownError(() => sql`SELECT ${value}`)).toEqual(
       new TypeError(`${takes}, not ${kind}; pass JSON or an array with param()`),
     )
   }

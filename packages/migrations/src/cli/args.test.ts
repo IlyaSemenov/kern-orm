@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import type { CliCommand } from "./args"
 import { CliUsageError, parseCliArgs } from "./args"
 
@@ -96,7 +98,7 @@ describe("parseCliArgs", () => {
       "--schema requires the name of a PostgreSQL schema",
     ],
   ])("rejects %s", (_, args, message) => {
-    expect(() => parseCliArgs(args)).toThrow(new CliUsageError(message))
+    expect(getThrownError(() => parseCliArgs(args))).toEqual(new CliUsageError(message))
   })
 
   it.each([

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
 import type { Driver } from "kern-db"
 import { createDatabase } from "kern-db"
 import { bindSchema, defineSchema } from "kern-orm"
@@ -56,11 +57,10 @@ describe("getTargetDatabase", () => {
   })
 
   it("throws TypeError for a value that is not a target", () => {
-    const get = () => getTargetDatabase({} as never)
-
-    expect(get).toThrow(TypeError)
-    expect(get).toThrow(
-      "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+    expect(getThrownError(() => getTargetDatabase({} as never))).toEqual(
+      new TypeError(
+        "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+      ),
     )
   })
 })
@@ -73,18 +73,16 @@ describe("checkTargetArguments", () => {
   })
 
   it("throws TypeError for a value that is not a target before checking the options", () => {
-    const check = () => checkTargetArguments({}, { schemaName: "" })
-
-    expect(check).toThrow(TypeError)
-    expect(check).toThrow(
-      "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+    expect(getThrownError(() => checkTargetArguments({}, { schemaName: "" }))).toEqual(
+      new TypeError(
+        "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+      ),
     )
   })
 
   it.each([5, null, ""])("throws TypeError for schemaName %p", schemaName => {
-    const check = () => checkTargetArguments(database, { schemaName: schemaName as never })
-
-    expect(check).toThrow(TypeError)
-    expect(check).toThrow("schemaName must be a string that is not empty")
+    expect(
+      getThrownError(() => checkTargetArguments(database, { schemaName: schemaName as never })),
+    ).toEqual(new TypeError("schemaName must be a string that is not empty"))
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
 import type { DriverResult, ResultRows } from "kern-db"
 import { NotFoundError, ResultDecodeError } from "kern-db"
 import type { ResultMode } from "kern-db/builder"
@@ -17,16 +18,6 @@ const fields: ResultField[] = [
 /** Plan of a query of all rows as records. */
 function createRecordsPlan(fields: readonly ResultField[]): ResultPlan {
   return { fields, rows: "many", value: false }
-}
-
-/** Returns the error that `decode` throws, or `undefined` when it returns. */
-function captureError(decode: () => unknown): unknown {
-  try {
-    decode()
-  } catch (error) {
-    return error
-  }
-  return undefined
 }
 
 describe("records", () => {
@@ -111,7 +102,7 @@ describe("records", () => {
       },
     })
 
-    const rejection = captureError(() =>
+    const rejection = getThrownError(() =>
       decodeResult(createRecordsPlan([...fields, { key: "location", type: point }]), [
         ["1", "Draft", null],
         ["2", "Final", "(1,2)"],
@@ -135,7 +126,7 @@ describe("records", () => {
     })
 
     expect(
-      captureError(() =>
+      getThrownError(() =>
         decodeResult(createRecordsPlan([{ key: "location", type: point }]), [["(1,2)"]]),
       ),
     ).toMatchObject({
@@ -206,7 +197,7 @@ describe("one row", () => {
     })
 
     expect(
-      captureError(() =>
+      getThrownError(() =>
         decodeResult({ ...value, fields: [{ key: "location", type: point }] }, [["(1,2)"]]),
       ),
     ).toMatchObject({
@@ -274,10 +265,10 @@ describe("nested rows", () => {
       nestedField("options", [form], "many"),
     ])
 
-    const notFound = captureError(() =>
+    const notFound = getThrownError(() =>
       decodeResult(plan, [['[["Name", ["Survey"]], ["Email", null]]', "[]"]]),
     )
-    const brokenRelation = captureError(() =>
+    const brokenRelation = getThrownError(() =>
       decodeResult(plan, [["[]", '[[["Survey"]], [null]]']]),
     )
 
@@ -344,7 +335,7 @@ describe("nested rows", () => {
       ),
     ])
 
-    const rejection = captureError(() =>
+    const rejection = getThrownError(() =>
       decodeResult(plan, [['[["Name", []], ["Email", [["(1,2)"]]]]']]),
     )
 
@@ -434,9 +425,11 @@ describe("conversion", () => {
   })
 
   it("rejects a missing row of rows one before it converts", () => {
-    expect(() =>
-      decodeResult(createValuePlan("one", { map: failOnCall, transform: failOnCall }), []),
-    ).toThrow(new NotFoundError("Query returned no rows"))
+    expect(
+      getThrownError(() =>
+        decodeResult(createValuePlan("one", { map: failOnCall, transform: failOnCall }), []),
+      ),
+    ).toEqual(new NotFoundError("Query returned no rows"))
   })
 
   it("converts nested rows, whose missing row it tells by their JSON", () => {
@@ -476,7 +469,7 @@ describe("conversion", () => {
 
     /** Returns the `ResultDecodeError` that decoding by `plan` rejects with, checking its cause. */
     function captureDecodeError(plan: ResultPlan, rows: readonly (readonly string[])[]) {
-      const error = captureError(() => decodeResult(plan, rows)) as ResultDecodeError
+      const error = getThrownError(() => decodeResult(plan, rows)) as ResultDecodeError
       expect(error).toBeInstanceOf(ResultDecodeError)
       expect(error.cause).toBe(failure)
       return error
@@ -536,7 +529,7 @@ describe("conversion", () => {
     })
 
     it("does not describe a thrown value other than an Error", () => {
-      const error = captureError(() =>
+      const error = getThrownError(() =>
         decodeResult(
           createValuePlan("one", {
             map: () => {

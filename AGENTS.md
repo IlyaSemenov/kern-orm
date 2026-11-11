@@ -202,6 +202,8 @@ Describe the user-visible change.
   - Import the test API from `bun:test` and use only what Vitest also has, apart from the matchers that `vitest.setup.ts` takes from `jest-extended`, such as `toStartWith`.
     Register there by name any other matcher of `jest-extended` that a test needs, rather than all of them: some, such as `toBeOneOf` and `toBeNaN`, differ from those of Vitest.
   - Do not use the test context of Vitest, such as its `signal`: `bun:test` passes a `done` callback to a test function that declares a parameter.
+  - Check an error with `toEqual(new X(message))`, which compares its class and fields in both runners: `rejects.toEqual` for a promise, and `getThrownError` of `@kern-orm/test-harness/errors` for a callback that throws.
+    `toThrow(new X(message))` of Bun compares only the message.
   - In Bun 1.4.4, `await expect(promise).rejects` ignores the timeout of the test, so a regression that leaves the promise pending hangs `bun test`; the `test:node` script fails such a test at its timeout instead.
 - Test how the test helpers work with a test runner, such as with its timeouts, hooks, and abort signal, by running the runner in a subprocess with a timeout and checking the outcome of each test and the recorded statements: `bun:test` in `packages/db/tests/test-runner.test.ts`, and `node:test` and Vitest against the packed packages in the package test.
 - Test SQL generation and transaction routing without a database through the recording driver of `testing/recording-driver.ts`.

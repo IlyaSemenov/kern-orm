@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import { MigrationError } from "./error"
 import { toMigrationSteps } from "./migration"
 
@@ -32,7 +34,7 @@ describe("toMigrationSteps", () => {
     ["a string", "CREATE TABLE form (id integer)"],
     ["an empty array", []],
   ])("rejects %s", (_, value) => {
-    expect(() => toMigrationSteps("0001_form", value, requirement)).toThrow(
+    expect(getThrownError(() => toMigrationSteps("0001_form", value, requirement))).toEqual(
       new MigrationError("Migration 0001_form must be a step or a non-empty array of steps", {
         key: "0001_form",
       }),
@@ -40,7 +42,7 @@ describe("toMigrationSteps", () => {
   })
 
   it("rejects a step with a misspelled down, which would do nothing on rollback", () => {
-    const error = getError(() =>
+    const error = getThrownError(() =>
       toMigrationSteps(
         "0001_form",
         [{ up: "SELECT 1" }, { up: "SELECT 2", donw: "SELECT 3" }],
@@ -98,7 +100,7 @@ describe("toMigrationSteps", () => {
   })
 
   it("rejects a step with outsideTransaction beside other steps, since a migration records no progress of its steps", () => {
-    const error = getError(() =>
+    const error = getThrownError(() =>
       toMigrationSteps(
         "0002_index_form",
         [
@@ -136,13 +138,3 @@ describe("toMigrationSteps", () => {
     )
   })
 })
-
-/** Returns the error that `callback` throws. */
-function getError(callback: () => unknown): unknown {
-  try {
-    callback()
-  } catch (error) {
-    return error
-  }
-  throw new Error("Expected an error")
-}

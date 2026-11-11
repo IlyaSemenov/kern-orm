@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import { MigrationError } from "./error"
 import { defineMigrations } from "./history"
 import type { MigrationStep } from "./migration"
@@ -74,9 +76,11 @@ describe("defineMigrations", () => {
     ["a string", "CREATE TABLE form (id integer)"],
     ["an empty array", []],
   ])("rejects %s as a migration when it is called", (_, value) => {
-    expect(() =>
-      defineMigrations({ "0001_create_form": value as unknown as MigrationStep }),
-    ).toThrow(
+    expect(
+      getThrownError(() =>
+        defineMigrations({ "0001_create_form": value as unknown as MigrationStep }),
+      ),
+    ).toEqual(
       new MigrationError(
         "Migration 0001_create_form must be the loader of its module, a step, or a non-empty array of steps",
         { key: "0001_create_form" },
@@ -85,14 +89,16 @@ describe("defineMigrations", () => {
   })
 
   it("rejects a migration with a problem of a step when it is called, rather than when it is applied", () => {
-    expect(() =>
-      defineMigrations({
-        "0001_create_form": {
-          up: "CREATE TABLE form (id integer)",
-          donw: "DROP TABLE form",
-        } as MigrationStep,
-      }),
-    ).toThrow(
+    expect(
+      getThrownError(() =>
+        defineMigrations({
+          "0001_create_form": {
+            up: "CREATE TABLE form (id integer)",
+            donw: "DROP TABLE form",
+          } as MigrationStep,
+        }),
+      ),
+    ).toEqual(
       new MigrationError("Step 1 of migration 0001_create_form has unknown property donw", {
         key: "0001_create_form",
         step: 1,
