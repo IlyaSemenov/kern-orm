@@ -5,28 +5,39 @@ For example, a form builder package can ship migrations for its tables `form` an
 
 ## Define the migrations
 
-Pass the migrations directly to `defineMigrations`, and give the package its own table of applied migrations:
+Put each migration in its own module, as in an application:
+
+```ts [src/migrations/0001_create_form.ts]
+import { createTable, defineMigration } from "kern-migrations"
+
+export default defineMigration([
+  createTable("form", {
+    id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
+    name: "text NOT NULL",
+  }),
+  createTable("form_field", {
+    id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
+    form_id: "uuid NOT NULL REFERENCES form",
+    label: "text NOT NULL",
+  }),
+])
+```
+
+List the modules by name in `defineMigrations`, and give the package its own table of applied migrations:
 
 ```ts [src/migrations.ts]
-import { createTable, defineMigrations } from "kern-migrations"
+import { defineMigrations } from "kern-migrations"
 
 export const formMigrations = defineMigrations(
   {
-    "0001_create_form": [
-      createTable("form", {
-        id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
-        name: "text NOT NULL",
-      }),
-      createTable("form_field", {
-        id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
-        form_id: "uuid NOT NULL REFERENCES form",
-        label: "text NOT NULL",
-      }),
-    ],
+    "0001_create_form": () => import("./migrations/0001_create_form.ts"),
+    "0002_add_form_field_position": () => import("./migrations/0002_add_form_field_position.ts"),
   },
   { tableName: "form_builder_migration" },
 )
 ```
+
+A bundler of packages, such as tsdown, puts each module into a chunk of its own, which loads only when its migration applies or rolls back.
 
 The package and the application record their applied migrations in separate tables of each schema, so number the migrations of the package from `0001`, independently of the application.
 

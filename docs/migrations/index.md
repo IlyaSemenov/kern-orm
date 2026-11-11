@@ -303,7 +303,7 @@ export const migrations = defineMigrations({
 
 A module loads only when its migration applies or rolls back.
 
-To ship migrations with a package, pass the migrations themselves, as [Migrations in a Package](./package-migrations) shows.
+To ship migrations with a package, list them by name, as [Migrations in a Package](./package-migrations) shows.
 
 When migrations use objects of other PostgreSQL schemas without naming the schema, such as functions of extensions installed in schema `extensions`, list those schemas in `searchPath`:
 
