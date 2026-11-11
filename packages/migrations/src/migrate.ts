@@ -13,6 +13,7 @@ import {
 import type {
   MigrationTarget,
   MigrationTargetOptions,
+  OpenedTarget,
   ResolvedTarget,
   TargetVersions,
 } from "./target"
@@ -61,6 +62,7 @@ export interface MigrationStatus {
  * Inside a transaction, it runs in a nested transaction, so that the migrations commit or roll back with the enclosing one, and every migration runs in it.
  * A target that is up to date costs two statements outside a transaction; otherwise, it locks the target, so that processes that migrate it at once apply each migration once.
  * It rejects when the target has applied a migration that the history lacks before its last migration, or a migration after a pending one; applied migrations after the last one, such as of a newer version of the application, are allowed.
+ * In a transaction at `repeatable read` or `serializable`, it rejects when it has migrations to apply, before it locks the target, since the snapshot of the transaction misses the migrations that another process applies meanwhile.
  */
 export async function migrate(
   target: MigrationTarget,
@@ -73,7 +75,7 @@ export async function migrate(
   if (getPendingKeys(history, opened.target, opened.versions).length === 0) {
     return []
   }
-  return await runLocked(opened.target, history, versions => {
+  return await runLocked(opened, history, "migrate", versions => {
     const keys = getPendingKeys(history, opened.target, versions).slice(0, count)
     return { keys, runs: keys.map(key => ({ key, direction: "up" })) }
   })
@@ -84,6 +86,7 @@ export async function migrate(
  *
  * It rolls them back in one transaction, unless a migration runs outside a transaction, as `migrate` applies them.
  * It rejects when the target has applied a migration that the history lacks, since it cannot roll it back.
+ * In a transaction at `repeatable read` or `serializable`, it rejects when the target has applied migrations, before it locks the target.
  */
 export async function rollback(
   target: MigrationTarget,
@@ -96,7 +99,7 @@ export async function rollback(
   if (opened.versions.applied.length === 0) {
     return []
   }
-  return await runLocked(opened.target, history, versions => {
+  return await runLocked(opened, history, "roll back the migrations of", versions => {
     checkAppliedKeys(history, opened.target, versions, "roll back the migrations of")
     const keys = getLastKeys(versions, count).reverse()
     return { keys, runs: keys.map(key => ({ key, direction: "down" })) }
@@ -108,6 +111,7 @@ export async function rollback(
  *
  * It runs them in one transaction, unless a migration runs outside a transaction, as `migrate` applies them.
  * It rejects when the target has applied a migration that the history lacks, since it cannot roll it back.
+ * In a transaction at `repeatable read` or `serializable`, it rejects when the target has applied migrations, before it locks the target.
  */
 export async function redo(
   target: MigrationTarget,
@@ -120,7 +124,7 @@ export async function redo(
   if (opened.versions.applied.length === 0) {
     return []
   }
-  return await runLocked(opened.target, history, versions => {
+  return await runLocked(opened, history, "redo the migrations of", versions => {
     checkAppliedKeys(history, opened.target, versions, "redo the migrations of")
     const keys = getLastKeys(versions, count)
     const runs: PlannedRun[] = []
@@ -227,20 +231,28 @@ function checkAppliedKeys(
 }
 
 /**
- * Locks `target`, reads its versions again, loads the migrations that `plan` chooses from them, runs them, and resolves to the keys of the plan.
+ * Locks the target of `opened`, reads its versions again, loads the migrations that `plan` chooses from them, runs them, and resolves to the keys of the plan.
  *
  * The lock belongs to the qualified name of the table of versions, so that different targets and histories of one target migrate at once.
  * In a transaction block, such as of an enclosing transaction or a test, it runs every migration in a nested transaction that locks the target, with the search path of the migrations.
  * Outside one, it runs them in a session with that search path, which polls for the lock, since a transaction that waits for it would keep a snapshot, which `CREATE INDEX CONCURRENTLY` of the session that holds the lock waits for.
  * It decides which migrations run outside a transaction only from the steps that it loads under the lock, since another process may change the applied migrations before the lock.
+ * `action` names the call in its errors, such as `roll back the migrations of`.
  */
 async function runLocked(
-  target: ResolvedTarget,
+  opened: OpenedTarget,
   history: MigrationHistory,
+  action: string,
   plan: (versions: TargetVersions) => CallPlan,
 ): Promise<string[]> {
+  const { target } = opened
   const { database } = target
   const inTransaction = database.isInTransactionBlock()
+  if (inTransaction && snapshotIsolationLevels.has(opened.isolation)) {
+    throw new Error(
+      `Cannot ${action} schema "${target.schemaName}" in a transaction at isolation level ${opened.isolation}, whose snapshot misses the migrations that another process applies or rolls back meanwhile; run the call outside a transaction or in a transaction at read committed`,
+    )
+  }
   const run = async () => {
     await (inTransaction ? database.lock(target.table) : database.pollLock(target.table))
     const versions = await readVersions(target)
@@ -256,6 +268,13 @@ async function runLocked(
     ? await database.transaction(run, options)
     : await database.session(run, options)
 }
+
+/**
+ * Isolation levels whose transaction reads from one snapshot, which misses what other transactions commit after it.
+ *
+ * A call in a transaction block reads the versions under the lock from that snapshot, so it would apply again the migrations that another process has applied meanwhile, or roll back others than the last ones.
+ */
+const snapshotIsolationLevels: ReadonlySet<string> = new Set(["repeatable read", "serializable"])
 
 /**
  * Options of the transactions of a call in a session, whatever the default isolation level of the database.

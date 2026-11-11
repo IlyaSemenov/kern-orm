@@ -102,6 +102,7 @@ The SQL that loads nested queries and relations.
 - [Changes in a transaction beside those outside one](migrations/transactional-form.md): a step keeps `up` and `down` for a transaction block, rather than a call there rejecting the migration.
 - [One step outside a transaction without records of progress](migrations/outside-transaction-step.md): a change that is safe to run again, rather than several steps or a record of the steps done.
 - [Polling for the lock of a target outside a transaction](migrations/polling-for-the-lock.md): rather than waiting in `pg_advisory_lock` or rejecting.
+- [Rejecting a call in a transaction at a stricter isolation level](migrations/strict-isolation-in-a-transaction.md): when it has migrations to run, rather than running from the snapshot, detecting a change since it, or rejecting also a target that is up to date.
 - [A valid index of the name counts as built](migrations/valid-index-counts-as-built.md): `createIndex` with `concurrently` completes a migration whose record failed, rather than failing on the index, keeping it with `IF NOT EXISTS`, or building it again.
 - [A partitioned table indexed by a step of its own](migrations/concurrent-index-of-partitioned-table.md): `concurrently` leaves PostgreSQL to reject a partitioned table, rather than indexing each partition or building without `CONCURRENTLY`.
 

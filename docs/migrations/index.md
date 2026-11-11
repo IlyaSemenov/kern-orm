@@ -366,6 +366,10 @@ await saasDb.$transaction(async () => {
 })
 ```
 
+Run such a transaction at `read committed`, the default of PostgreSQL.
+A transaction at `repeatable read` or `serializable` does not see the migrations that another process applies meanwhile, so `migrate` rejects in it when it has migrations to apply.
+On a database whose transactions default to another level, pass `isolation: "read committed"` to the transaction.
+
 ## Roll back
 
 To undo the last applied migration, call `rollback`:

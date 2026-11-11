@@ -47,6 +47,14 @@ export interface TargetVersions {
   readonly applied: readonly string[]
 }
 
+/** Target as the first read of a call found it. */
+export interface OpenedTarget {
+  readonly target: ResolvedTarget
+  readonly versions: TargetVersions
+  /** Isolation level of the transaction of the first read, such as `serializable`: of the enclosing transaction in a transaction block, and the default of the database outside one. */
+  readonly isolation: string
+}
+
 /**
  * Resolves the PostgreSQL schema of `target` and reads its versions, outside a transaction of its own.
  *
@@ -56,7 +64,7 @@ export async function openTarget(
   target: MigrationTarget,
   history: MigrationHistory,
   options: MigrationTargetOptions,
-): Promise<{ target: ResolvedTarget; versions: TargetVersions }> {
+): Promise<OpenedTarget> {
   const isDb = isMigrationTargetDb(target)
   const database = isDb ? target.$database : target
   // The function of `schemaName` of a Db is called once, so that the call keeps one schema.
@@ -69,7 +77,11 @@ export async function openTarget(
     table: `${quoteIdentifier(state.schemaName)}.${quoteIdentifier(history.tableName)}`,
     searchPath: [state.schemaName, ...history.searchPath],
   }
-  return { target: resolved, versions: await readApplied(resolved, state) }
+  return {
+    target: resolved,
+    versions: await readApplied(resolved, state),
+    isolation: state.isolation,
+  }
 }
 
 /** Reads the versions of a resolved target again, such as after locking it. */
@@ -124,15 +136,16 @@ export async function deleteVersion(target: ResolvedTarget, key: string): Promis
   await execute(target.database, `DELETE FROM ${target.table} WHERE key = $1`, [key])
 }
 
-/** Existence of the target schema and its table of versions. */
+/** Existence of the target schema and its table of versions, and the isolation level of the transaction that read it. */
 interface TargetState {
   readonly schemaName: string
   readonly schemaExists: boolean
   readonly tableExists: boolean
+  readonly isolation: string
 }
 
 /**
- * Resolves `schemaName`, or `current_schema()` when it is `null`, and checks that the schema and its table of versions exist, in one statement.
+ * Resolves `schemaName`, or `current_schema()` when it is `null`, checks that the schema and its table of versions exist, and reads the isolation level of the transaction, in one statement.
  *
  * It reads `pg_catalog` rather than calling `to_regclass`, whose lookups in the catalog cache of the connection miss a schema that another transaction committed while this one waited for the lock of the target.
  * It rejects a schema or table name longer than `max_identifier_length` bytes, which PostgreSQL would truncate, so that the check never misses a schema or a table that the migrator created.
@@ -144,10 +157,11 @@ async function readState(
 ): Promise<TargetState> {
   const { rows } = await execute(
     database,
-    `SELECT target.name, namespace.oid IS NOT NULL, EXISTS (SELECT FROM pg_catalog.pg_class WHERE relnamespace = namespace.oid AND relname = $2::text), current_setting('max_identifier_length'), octet_length(target.name), octet_length($2::text) FROM (SELECT coalesce($1::text, current_schema()) AS name) AS target LEFT JOIN pg_catalog.pg_namespace AS namespace ON namespace.nspname = target.name`,
+    `SELECT target.name, namespace.oid IS NOT NULL, EXISTS (SELECT FROM pg_catalog.pg_class WHERE relnamespace = namespace.oid AND relname = $2::text), current_setting('max_identifier_length'), octet_length(target.name), octet_length($2::text), current_setting('transaction_isolation') FROM (SELECT coalesce($1::text, current_schema()) AS name) AS target LEFT JOIN pg_catalog.pg_namespace AS namespace ON namespace.nspname = target.name`,
     [schemaName, tableName],
   )
-  const [name, schemaExists, tableExists, maxLength, schemaLength, tableLength] = rows[0]!
+  const [name, schemaExists, tableExists, maxLength, schemaLength, tableLength, isolation] =
+    rows[0]!
   if (name === null || name === undefined) {
     throw new Error(
       "Cannot resolve the target schema: current_schema() is NULL, since no schema of the search path exists; pass schemaName",
@@ -164,7 +178,12 @@ async function readState(
       )
     }
   }
-  return { schemaName: name, schemaExists: schemaExists === "t", tableExists: tableExists === "t" }
+  return {
+    schemaName: name,
+    schemaExists: schemaExists === "t",
+    tableExists: tableExists === "t",
+    isolation: isolation!,
+  }
 }
 
 /** Reads the applied keys of a target whose table of versions `state` found. */

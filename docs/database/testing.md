@@ -111,6 +111,8 @@ import { migrate } from "kern-migrations"
 useTestFixture(() => migrate(database, migrations))
 ```
 
+On a database whose transactions default to `repeatable read` or `serializable`, pass `{ isolation: "read committed" }` to such a fixture: `migrate` rejects in a transaction at a stricter level when it has migrations to apply.
+
 Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./sql#scripts), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.
 
 Each test runner loads the setup module in its own way:

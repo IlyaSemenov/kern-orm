@@ -878,6 +878,50 @@ describePooledPostgres(
       })
     })
 
+    it("rejects a call that has migrations to run in a transaction at repeatable read or serializable before locking the target, and resolves to none without them", async () => {
+      await runScenario(async () => {
+        let error: unknown
+        const statements = await recordStatements(async () => {
+          error = await database
+            .transaction(() => migrate(db, history, target), { isolation: "serializable" })
+            .catch((error: unknown) => (error as Error).message)
+        })
+        await migrate(db, history, target)
+        // A call that rejects leaves the enclosing transaction usable.
+        const calls = await database.transaction(
+          async () => ({
+            migrate: await migrate(db, history, target),
+            rollback: await rollback(db, history, target).catch(
+              (error: unknown) => (error as Error).message,
+            ),
+            redo: await redo(db, history, target).catch(
+              (error: unknown) => (error as Error).message,
+            ),
+          }),
+          { isolation: "repeatable read" },
+        )
+
+        expect(error).toBe(
+          'Cannot migrate schema "migrations_pool_1" in a transaction at isolation level serializable, whose snapshot misses the migrations that another process applies or rolls back meanwhile; run the call outside a transaction or in a transaction at read committed',
+        )
+        expect(nameStatements(statements)).toEqual([
+          "BEGIN ISOLATION LEVEL SERIALIZABLE",
+          "read target",
+          "ROLLBACK",
+        ])
+        expect(calls).toEqual({
+          migrate: [],
+          rollback: expect.stringContaining(
+            'Cannot roll back the migrations of schema "migrations_pool_1" in a transaction at isolation level repeatable read,',
+          ),
+          redo: expect.stringContaining(
+            'Cannot redo the migrations of schema "migrations_pool_1" in a transaction at isolation level repeatable read,',
+          ),
+        })
+        expect((await getMigrationStatus(db, history, target)).pending).toEqual([])
+      })
+    })
+
     it("rejects in a session, whose lock would last until the session ends, before changing anything", async () => {
       await runScenario(async () => {
         await expect(database.session(() => migrate(db, history, target))).rejects.toThrow(
@@ -1259,6 +1303,30 @@ describePooledPostgres(
               ["0001_create_hstore"],
             ])
           })
+        })
+
+        it("rejects a call in a transaction while another process migrates the target, before waiting for the lock", async () => {
+          const runs = { count: 0 }
+          const [holder, waiter] = strict
+
+          await runScenario(async ({ gate, openGate, start }) => {
+            const waiting = defineMigrations({
+              "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
+            })
+            const held = start(migrate(holder!.database, waiting, target))
+            await waitFor(async () => runs.count === 1)
+            const { database: other } = waiter!
+
+            await expect(
+              settleWithin(other.transaction(() => migrate(other, waiting, target))),
+            ).rejects.toThrow(
+              'Cannot migrate schema "migrations_pool_1" in a transaction at isolation level serializable',
+            )
+            openGate()
+            expect(await held).toEqual(["0001_create_form"])
+          })
+
+          expect(runs.count).toBe(1)
         })
       })
     })

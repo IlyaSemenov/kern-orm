@@ -83,6 +83,11 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - A call inside a session outside its transactions rejects, since `session` rejects there; the migrator does not join that session, whose lock would last until the session ends, such as for the whole life of a worker.
 - Outside a transaction block, the first read runs on the pool, and the read under the lock in the session outside its transactions, each statement in a transaction of its own with a new snapshot, so that both see what other processes have committed, whatever the default isolation level of the database.
 - The transactions of a call in a session run at `READ COMMITTED`, whatever the default isolation level of the database, since creating the target schema and `createExtension` check again under a lock what another transaction has committed meanwhile, which the snapshot of a transaction at `REPEATABLE READ` or `SERIALIZABLE` misses.
+- In a transaction block, the first read and the read under the lock come from the snapshots of the transaction, whose isolation level the call keeps:
+  - At `REPEATABLE READ` or `SERIALIZABLE`, a call that has migrations to run rejects before it locks the target, since the read under the lock would come from the snapshot of the transaction, which misses the migrations that another process has applied or rolled back since ([decision](../decisions/migrations/strict-isolation-in-a-transaction.md)).
+    It covers a test transaction and the seed of a test fixture, which run at the isolation level of their options, so on a database whose transactions default to a stricter level, a test that migrates requires `isolation: "read committed"` of its test transaction or fixture.
+  - A call that finds nothing to run resolves to none at any isolation level, as the transaction sees the target.
+  - The statement of the first read gives the isolation level of the transaction, so that the check costs no statement of its own.
 - Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction.
   In a session, it creates them in the transaction of the first migrations, so that a call that fails there changes nothing, or before a first migration outside a transaction, in a transaction of their own.
   Creating only what is missing keeps PostgreSQL from sending a notice of an existing schema, which postgres.js logs by default.
@@ -193,6 +198,8 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - The temporary schema is `kern_verify_` with 12 random hexadecimal digits, so that verifications in parallel test processes do not wait for each other on the unique index of `pg_namespace`.
   - Its search path is the temporary schema followed by the schemas of the history, as `migrate` gives a target.
   - In the transaction, every step runs its `up` and `down`, so the [changes outside a transaction](#changes-outside-a-transaction) go unchecked.
+  - It runs at the isolation level of the enclosing transaction, or at the default of the database in a transaction of its own, since no other process changes its temporary schema.
+    At `REPEATABLE READ` or `SERIALIZABLE`, `createExtension` of a migration fails when another transaction creates the extension and commits while the verification waits for the lock of extensions.
 - Before any statement, it rejects a history without migrations, which more likely comes from a pattern that matches no file than from a project without migrations, loads the migration tests, rejecting a file of tests that matches no migration, and loads every migration.
 - It verifies the migrations in the order of the history, each on the schema that the migrations before it leave:
   1. It applies the migration and describes the structure of the schema.
@@ -220,7 +227,3 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - The tests of a migration run in the order of the names of their files, and of the tests in a file.
   - It imports the files of a directory by their `file:` URLs with the loader of the runtime, such as of Node.js or Bun; under Vitest, the loaders of `import.meta.glob` let Vite transform the files as it transforms test files, such as with the aliases of its configuration.
   - The suffix `.migration-test` keeps the default patterns of `bun test` and Vitest from running such a file as a test file; `node --test` without patterns runs it as a file without tests.
-
-## Open questions
-
-- Isolation: reading the versions again after the lock sees the commit of another process only under `READ COMMITTED`, so decide what `migrate` does in a transaction of a stricter isolation level.
