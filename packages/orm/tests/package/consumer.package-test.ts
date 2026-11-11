@@ -430,18 +430,6 @@ describe("manifests", () => {
       expect(references).toEqual([])
     },
   )
-
-  test("give kern-migrations no import of kern-db in its code, whose declarations alone import it", async () => {
-    const imports = await readPackedImports("kern-migrations")
-    const isDb = (specifier: string) => /^kern-db(?:\/|$)/.test(specifier)
-
-    expect(
-      imports.filter(({ file, specifier }) => !file.endsWith(".d.mts") && isDb(specifier)),
-    ).toEqual([])
-    expect(imports.some(({ file, specifier }) => file.endsWith(".d.mts") && isDb(specifier))).toBe(
-      true,
-    )
-  })
 })
 
 describe.each([

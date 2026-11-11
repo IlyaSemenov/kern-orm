@@ -8,7 +8,7 @@ import { getErrorMessage } from "../error"
 import type { MigrationHistory } from "../history"
 import { getMigrationStatus, migrate, redo, rollback } from "../migrate"
 import type { MigrationTarget } from "../target"
-import { isMigrationTargetDb } from "../target"
+import { getTargetDatabase, isMigrationTargetDb } from "../target"
 
 import { CliUsageError, parseCliArgs, usage } from "./args"
 import type { MigrationListModuleOptions } from "./new"
@@ -35,8 +35,8 @@ export interface CliOutput {
 /**
  * Runs the command of the arguments of the process on `target` with the migrations of `history`, such as `migrate` or `rollback 2`, and prints its result.
  *
- * It never rejects: it prints an error to stderr and sets `process.exitCode` to 1, so that the script closes the database after it.
- * It does not close the database, which belongs to the script.
+ * It never rejects: it prints an error to stderr and sets `process.exitCode` to 1, so that the script closes its database or driver after it.
+ * It does not close the database or the driver of `target`, which belong to the script.
  */
 export async function runMigrationCli(
   target: MigrationTarget,
@@ -144,10 +144,10 @@ function resolveTarget(
   target: MigrationTarget,
   schemaName: string | undefined,
 ): { database: Database; schemaName: string | undefined } {
+  const database = getTargetDatabase(target)
   if (!isMigrationTargetDb(target)) {
-    return { database: target, schemaName }
+    return { database, schemaName }
   }
-  const database = target.$database
   if (schemaName !== undefined) {
     return { database, schemaName }
   }

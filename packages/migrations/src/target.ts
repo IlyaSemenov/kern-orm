@@ -1,4 +1,5 @@
-import type { Database, DriverResult, SqlStatement } from "kern-db"
+import type { Database, Driver, DriverResult, SqlStatement } from "kern-db"
+import { createDatabase, isDriver } from "kern-db"
 
 import type { MigrationHistory } from "./history"
 import { compareMigrationNumbers, getMigrationNumber } from "./history"
@@ -7,9 +8,10 @@ import { quoteDollar, quoteIdentifier, quoteLiteral } from "./sql"
 /**
  * Target of migrations: a database and a PostgreSQL schema, the target schema.
  *
- * A `Db` gives its database and its PostgreSQL schema; a `Database`, or a `Db` bound without `schemaName`, targets `current_schema()`.
+ * A `Db` gives its database and its PostgreSQL schema; a `Database`, a `Driver`, or a `Db` bound without `schemaName`, targets `current_schema()`.
+ * A call on a driver runs on a database that it creates over the driver, outside the transactions of any database of the application.
  */
-export type MigrationTarget = Database | MigrationTargetDb
+export type MigrationTarget = Database | Driver | MigrationTargetDb
 
 /** `Db` as a target of migrations; every `Db` fits it. */
 export interface MigrationTargetDb {
@@ -17,9 +19,21 @@ export interface MigrationTargetDb {
   readonly $schemaName: string | undefined
 }
 
-/** Checks whether `target` is a `Db` rather than a `Database`. */
+/** Checks whether `target` is a `Db` rather than a `Database` or a `Driver`. */
 export function isMigrationTargetDb(target: MigrationTarget): target is MigrationTargetDb {
   return "$database" in target
+}
+
+/**
+ * Returns the database of `target`: of a `Db`, a `Database` itself, or a new database over a `Driver`.
+ *
+ * The database over a driver is never closed, since closing it would close the driver, which belongs to the application.
+ */
+export function getTargetDatabase(target: MigrationTarget): Database {
+  if (isMigrationTargetDb(target)) {
+    return target.$database
+  }
+  return isDriver(target) ? createDatabase({ driver: target }) : target
 }
 
 /** Options of a call on a target. */
@@ -66,7 +80,7 @@ export async function openTarget(
   options: MigrationTargetOptions,
 ): Promise<OpenedTarget> {
   const isDb = isMigrationTargetDb(target)
-  const database = isDb ? target.$database : target
+  const database = getTargetDatabase(target)
   // The function of `schemaName` of a Db is called once, so that the call keeps one schema.
   const schemaName = options.schemaName ?? (isDb ? target.$schemaName : undefined)
   const state = await readState(database, schemaName ?? null, history.tableName)
@@ -210,7 +224,7 @@ function compareKeys(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-/** Executes a statement of the migrator; `execute` gives its values as text, which the migrator decodes without the types of `kern-db/types`, since it imports nothing of `kern-db` at runtime. */
+/** Executes a statement of the migrator; `execute` gives its values as text, which the migrator decodes without the types of `kern-db/types`. */
 function execute(
   database: Database,
   text: string,

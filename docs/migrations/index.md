@@ -350,6 +350,9 @@ To apply them to another schema, pass it as `schemaName`:
 await migrate(database, migrations, { schemaName: "app" })
 ```
 
+With only a driver, pass the driver: `migrate` runs on a database of its own over it, outside the transactions of your databases, and leaves the driver open.
+To apply migrations in a transaction, such as a [test transaction](../database/testing), pass the database of the transaction instead.
+
 ## Tenants
 
 With a [PostgreSQL schema per tenant](../orm/multiple-schemas), migrate the `Db` of the tenants: `migrate` applies the migrations to the schema of the current tenant.

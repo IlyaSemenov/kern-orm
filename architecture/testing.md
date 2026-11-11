@@ -21,7 +21,7 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
 - The consumer of `kern-db` includes a query builder of another author, which compiles fragments of the layer with `kern-db/builder` alone.
 - The consumers emit the declarations of modules that export values, under both versions of TypeScript, also of a module that imports only `kern-orm/types`, `kern-orm/db/types`, or `kern-db/types`, in a program of its own, since a module of another entry point in the program would name the types that the entry point fails to export.
 - A third consumer of `kern-orm`, which npm installs with `--install-strategy=nested`, cannot resolve `kern-db`, as in a strict layout such as of pnpm, so its declarations name the types of `kern-db` only through the entry points of `kern-orm`, also from a module that imports only its root.
-- The built code of `kern-migrations` imports nothing of `kern-db`, which only its declarations import, and a bundled consumer of `kern-db` includes no module but its own and those of `kern-db`.
+- A bundled consumer of `kern-db` includes no module but its own and those of `kern-db`.
 
 ## Test transactions
 

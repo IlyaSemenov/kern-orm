@@ -4,16 +4,15 @@
   It is an official but replaceable migrator: `kern-db` and `kern-orm` know nothing of migrations, and another package must be able to implement migrations, their verification, and a command line with the public API of `kern-db` alone.
   It leaves to the application generating migrations from tables and tables from the database, column types of migrations, commands that create, drop, or reset a database or rename migrations, callbacks around migrating, and a command that verifies a history ([decision](../decisions/migrations/migrator-scope.md)).
 - A need of the migrator that the public API of `kern-db` and `kern-orm` does not cover becomes a general capability of their package, never access to its internals, such as `$database` and `$schemaName` of a `Db` ([schemas](schemas.md)) and the search path of a transaction level ([transactions](transactions.md#settings)).
-- The migrator requires `kern-db` by a peer dependency and imports only types from it, so that a copy of `kern-db` other than the one of the database of the application cannot change what the migrator does.
-  It imports nothing of `kern-orm`, also in types, and takes a `Db` by its members `$database` and `$schemaName`.
-  `packages/db/tests/boundaries.test.ts` checks the imports of its sources, and the package test those of its built code.
-- The migrator runs everything through the `Database` of its target: transactions with `transaction`, sessions with `session`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-db/types`, which it would import at runtime.
+- The migrator requires `kern-db` by a peer dependency.
+  It imports nothing of `kern-orm`, also in types, and takes a `Db` by its members `$database` and `$schemaName`; `packages/db/tests/boundaries.test.ts` checks the imports of its sources.
+- The migrator runs everything through the `Database` of its target: transactions with `transaction`, sessions with `session`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-db/types`, which a database of another copy of `kern-db` does not take.
 - The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
   The entry point `kern-migrations/cli` holds the [command line](#command-line), and `kern-migrations/testing` the [verification](#verification), which import `node:*` modules.
 
 ## Compatibility
 
-The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `session`, `isInTransactionBlock`, `lock`, `pollLock`, and `close` of the `Database` of `kern-db`, `$database` and `$schemaName` of a `Db` of `kern-orm`, and the types of their options and results that it uses, such as the `searchPath` option of transactions and sessions and the text values of `execute`; it imports them only as types of `kern-db`, so that a `Db` fits a target structurally.
+The migrator follows the [contract of package compatibility](compatibility.md), and relies on `execute`, `query`, `script`, `transaction`, `session`, `isInTransactionBlock`, `lock`, `pollLock`, and `close` of the `Database` of `kern-db`, `$database` and `$schemaName` of a `Db` of `kern-orm`, `createDatabase` and `isDriver` of `kern-db`, and the types of their options and results that it uses, such as the `searchPath` option of transactions and sessions and the text values of `execute`.
 
 ## Migrations
 
@@ -59,6 +58,9 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 
 - A target is a database and a PostgreSQL schema: a `Db` of `kern-orm`, which gives both, or a `Database` of `kern-db`, so that a project without the ORM, such as one that queries the database with `kern-db` alone, runs its migrations.
   A target is typed by the members `$database` and `$schemaName` of a `Db`, so that checking a `Db` against it compares no queries.
+- A target may be a `Driver` of `kern-db` instead, such as of a package that takes the driver of the application, which has no `Database` of its own to pass.
+  A call creates a database over the driver and never closes it, since closing a database closes its driver, which belongs to the application; its statements run outside the transactions of any database of the application.
+  The database belongs to the copy of `kern-db` of the migrator, so a migration of such a target that uses types or SQL fragments in its queries requires the application to share that copy: a database rejects those of another copy.
 - The `schemaName` option of a call overrides the PostgreSQL schema of the target, such as the schema of a tenant that is being created, which no context names yet.
 - A call resolves the PostgreSQL schema once, at its start, calling the function of `schemaName` of a `Db` at most once; without one, the target is `current_schema()`, and a call rejects when it is `NULL`.
 
@@ -176,8 +178,8 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - `runMigrationCli(target, history, options)` runs the command of the arguments of the process, or of `args`, on a target: `migrate [count]`, `rollback [count | all]`, `redo [count]`, `status`, and `new <name>`, named as the functions they call.
 - It is a function that a script of the project calls, so that the project runs it with its own runtime and module resolution, such as path aliases, rather than a binary that loads the configuration of the project.
   A project adds commands of its own by handling its arguments before the call and passing the rest in `args`.
-- It does not close the database: the script that created the database owns it.
-  It never rejects: it prints an error to stderr and sets `process.exitCode` to 1, so that the script closes the database after it.
+- It does not close the database or the driver of the target: the script that created them owns them.
+  It never rejects: it prints an error to stderr and sets `process.exitCode` to 1, so that the script closes them after it.
   - A usage error prints its message with a hint to `--help`; arguments without a command print the usage to stderr.
   - An error of a command prints whole with `console.error`, with its stack, `cause`, and the fields of a PostgreSQL error, such as `detail`.
 - `--schema` sets the PostgreSQL schema of the target.
@@ -200,7 +202,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 
 ## Verification
 
-- `verifyMigrations(target, history, options)` (`src/verification/`) checks a history in a temporary schema of the database of its target, whose schema it ignores, in a transaction that always rolls back, nested in the enclosing one, such as a test transaction.
+- `verifyMigrations(target, history, options)` (`src/verification/`) checks a history in a temporary schema of the database of its target, whose schema it ignores, in a transaction that always rolls back, nested in the enclosing transaction of a `Database` or a `Db`, such as a test transaction; on a `Driver`, it runs in a transaction of its own.
   - The temporary schema is `kern_verify_` with 12 random hexadecimal digits, so that verifications in parallel test processes do not wait for each other on the unique index of `pg_namespace`.
   - Its search path is the temporary schema followed by the schemas of the history, as `migrate` gives a target.
   - In the transaction, every step runs its `up` and `down`, so the [changes outside a transaction](#changes-outside-a-transaction) go unchecked.

@@ -41,7 +41,7 @@ Module paths are relative to the `src/` directory of their package: `packages/db
   It has no `Database` of its own: the root of `kern-orm` exports `createDatabase` of the layer, `bindSchema` of `execution/db.ts` binds a schema to a `Database` of the layer, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
   `kern-orm/db`, `kern-orm/db/types`, `kern-orm/db/postgres-js`, `kern-orm/db/node-postgres`, and `kern-orm/testing` re-export the entry points of `kern-db`, so that an application of the ORM does not require `kern-db` itself.
   Its build imports `kern-db` rather than bundling it, so that the values of the layer, such as types, are those of the one `kern-db` of the application.
-- The migrator, the package `kern-migrations` (`packages/migrations/`), uses only types of `kern-db` and nothing of `kern-orm`, and takes a `Db` by its members, as [migrations](migrations.md) describe.
+- The migrator, the package `kern-migrations` (`packages/migrations/`), uses `kern-db` and nothing of `kern-orm`, and takes a `Db` by its members, as [migrations](migrations.md) describe.
 
 ## Map
 

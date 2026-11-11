@@ -707,7 +707,7 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
 
 describePooledPostgres(
   "outside a transaction",
-  ({ database, recordStatements, failStatement, connect }) => {
+  ({ database, driver, recordStatements, failStatement, connect }) => {
     const db = bindSchema(schema, database)
     const target = { schemaName: "migrations_pool_1" }
     const history = defineMigrations({
@@ -758,6 +758,36 @@ describePooledPostgres(
         await database.script(sql)
       }
     }
+
+    it("migrates a Driver on a database of its own, outside the transaction of the database of the application, and leaves the driver open", async () => {
+      const rolledBack = new Error("rolled back")
+      let result = {}
+      await runScenario(async () => {
+        let migrated: string[] = []
+        await expect(
+          database.transaction(async () => {
+            migrated = await migrate(driver, history, target)
+            throw rolledBack
+          }),
+        ).rejects.toBe(rolledBack)
+        result = {
+          migrated,
+          status: await getMigrationStatus(driver, history, target),
+          tables: await listTables(database, "migrations_pool_1"),
+        }
+      })
+
+      expect(result).toEqual({
+        migrated: ["0001_create_form", "0002_index_form", "0003_create_user"],
+        status: {
+          schemaName: "migrations_pool_1",
+          applied: ["0001_create_form", "0002_index_form", "0003_create_user"],
+          pending: [],
+          unknown: [],
+        },
+        tables: ["app_user", "form", "kern_migration"],
+      })
+    })
 
     it("runs a migration with outsideTransaction alone in a session after the migrations before it commit, and records it after it", async () => {
       let statements: string[] = []

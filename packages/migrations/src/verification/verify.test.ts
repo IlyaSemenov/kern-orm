@@ -29,7 +29,7 @@ const countTemporarySchemas = (database: Database) =>
     t.integer,
   )
 
-describePostgres("verifyMigrations", ({ database, testTransaction, recordStatements }) => {
+describePostgres("verifyMigrations", ({ database, driver, testTransaction, recordStatements }) => {
   it("applies, rolls back, and applies again each migration in a temporary schema in a nested transaction that rolls back", async () => {
     const calls: string[] = []
     const record = (call: string) => async (database: MigrationDatabase) => {
@@ -82,6 +82,31 @@ describePostgres("verifyMigrations", ({ database, testTransaction, recordStateme
     await testTransaction(() => verifyMigrations(db, history))
 
     expect(searchPath).toMatch(/^"kern_verify_[0-9a-f]{12}", "extensions"$/)
+  })
+
+  it("verifies on a Driver in a transaction of its own that rolls back, also when it fails, and leaves the driver open", async () => {
+    const applied: string[] = []
+    const passing = defineMigrations({
+      "0001_create_form": [
+        createForm,
+        {
+          up: async () => {
+            applied.push("0001_create_form")
+          },
+        },
+      ],
+    })
+    const failing = defineMigrations({
+      "0001_create_form": createForm,
+      "0002_fail": { up: "SELECT 1", down: "DROP TABLE missing_form" },
+    })
+
+    await verifyMigrations(driver, passing)
+    const error = await verifyMigrations(driver, failing).catch((error: unknown) => error)
+
+    expect(applied).toEqual(["0001_create_form", "0001_create_form"])
+    expect(error).toMatchObject({ key: "0002_fail", direction: "down" })
+    expect(await testTransaction(async () => await countTemporarySchemas(database))).toBe(0)
   })
 
   it("verifies a step with outsideTransaction by its up and down", async () => {

@@ -61,7 +61,7 @@ async function run(
   return { exitCode, log, errors }
 }
 
-describePostgres("runCli", ({ database, testTransaction, recordStatements }) => {
+describePostgres("runCli", ({ database, driver, testTransaction, recordStatements }) => {
   const db = bindSchema(schema, database, { schemaName: "migrations_cli" })
 
   it("migrates, rolls back, and redoes migrations, and prints their keys", async () => {
@@ -123,6 +123,33 @@ describePostgres("runCli", ({ database, testTransaction, recordStatements }) => 
       'Migrations of schema "migrations_cli_2":',
       "  applied  0001_create_form",
       "  applied  0002_create_user",
+    ])
+  })
+
+  it("runs a command on a Driver, and leaves the driver open", async () => {
+    const args = ["--schema", "migrations_cli_driver"]
+    let runs: CliRun[] = []
+    try {
+      runs = [
+        await run(driver, ["migrate", ...args]),
+        await run(driver, ["status", ...args]),
+        await run(driver, ["rollback", "all", ...args]),
+      ]
+    } finally {
+      await driver.executeScript("DROP SCHEMA IF EXISTS migrations_cli_driver CASCADE")
+    }
+
+    expect(runs.map(({ exitCode, log }) => ({ exitCode, log }))).toEqual([
+      { exitCode: 0, log: ["Applied 0001_create_form", "Applied 0002_create_user"] },
+      {
+        exitCode: 0,
+        log: [
+          'Migrations of schema "migrations_cli_driver":',
+          "  applied  0001_create_form",
+          "  applied  0002_create_user",
+        ],
+      },
+      { exitCode: 0, log: ["Rolled back 0002_create_user", "Rolled back 0001_create_form"] },
     ])
   })
 

@@ -66,7 +66,7 @@ Nor could they change freely: `kern-orm` accepts every patch of the minor line o
 The ORM does not work without the layer, so every application would install and update both packages for the common case of the ORM alone.
 A regular dependency installs `kern-db` with `kern-orm`, and a package manager shares one copy with an application that requires a version in the same range.
 
-The migrator takes the database of the application, so it requires `kern-db` as a peer dependency, and its database is the one that the application created.
+The migrator takes the database or the driver of the application, so it requires `kern-db` as a peer dependency, and its database is the one that the application created or one over the driver of the application.
 
 A peer dependency does not ensure one copy: an application that requires another minor version of `kern-db` gets two.
 Values that a module of one copy brands, such as types and SQL fragments, are not values of another copy, and only the errors of drivers and transactions and `isDatabase` recognize another copy, by their brands of `Symbol.for`.

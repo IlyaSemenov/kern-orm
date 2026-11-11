@@ -7,7 +7,7 @@ import type { MigrationDatabase, MigrationStep } from "../migration"
 import { runMigrationSteps, toMigrationDatabase } from "../migration"
 import { quoteIdentifier } from "../sql"
 import type { MigrationTarget } from "../target"
-import { isMigrationTargetDb } from "../target"
+import { getTargetDatabase } from "../target"
 
 import type { MigrationTest, MigrationTestCallback } from "./migration-test"
 import { describeSchema } from "./structure"
@@ -43,7 +43,7 @@ interface VerifiedMigration {
 }
 
 /**
- * Verifies the migrations of `history` in a temporary schema of the database of `target`, in a transaction that rolls back, nested in the enclosing one, such as a test transaction.
+ * Verifies the migrations of `history` in a temporary schema of the database of `target`, in a transaction that rolls back, nested in the enclosing transaction of a `Database` or a `Db`, such as a test transaction; a `Driver` runs it in a transaction of its own.
  *
  * In the order of the history, it applies each migration, and then rolls it back, checks that the structure of the schema is the same as before the migration, runs the migration tests of the migration, and applies it again.
  * It rejects at the first failure with an error that names the migration, and the migration test and its stage for an error of a test.
@@ -64,7 +64,7 @@ export async function verifyMigrations(
   for (const key of history.keys) {
     migrations.push({ key, steps: await history.load(key), testFiles: testFiles?.get(key) ?? [] })
   }
-  const database = isMigrationTargetDb(target) ? target.$database : target
+  const database = getTargetDatabase(target)
   const schemaName = createSchemaName()
   await runRolledBack(
     database,

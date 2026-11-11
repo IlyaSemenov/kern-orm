@@ -21,6 +21,8 @@ const { DATABASE_URL } = process.env
 export interface PostgresContext {
   /** Database of the block, closed after it. */
   readonly database: Database
+  /** Driver of the database of the block. */
+  readonly driver: Driver
   /** Runs `callback` and returns the texts of the statements and scripts that the database executed meanwhile, in order. */
   recordStatements(callback: () => Promise<unknown>): Promise<string[]>
   /** Messages of the notices that PostgreSQL has sent to the database of the block, such as of `CREATE SCHEMA IF NOT EXISTS` of an existing schema. */
@@ -107,6 +109,7 @@ function connect(test: boolean, isolation?: IsolationLevel): PostgresContext {
   afterAll(() => database.close())
   return {
     database,
+    driver,
     notices,
     async recordStatements(callback) {
       const recorded: string[] = []

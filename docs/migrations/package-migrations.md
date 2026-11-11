@@ -53,4 +53,17 @@ To keep them in a schema of their own, pass it as `schemaName`:
 await migrate(db, formMigrations, { schemaName: "form_builder" })
 ```
 
+When your package takes the driver of the application rather than its database, pass the driver to `migrate`, which runs on a database of its own over the driver and leaves the driver open:
+
+```ts [src/migrate.ts]
+import type { Driver } from "kern-db"
+import { migrate } from "kern-migrations"
+
+import { formMigrations } from "./migrations"
+
+export async function migrateFormBuilder(driver: Driver) {
+  await migrate(driver, formMigrations, { schemaName: "form_builder" })
+}
+```
+
 With a [PostgreSQL schema per tenant](./#tenants), apply the migrations of the package to the schema of each tenant, beside the migrations of the tenant.
