@@ -1,5 +1,17 @@
 # kern-migrations
 
+## 0.2.0
+
+### Minor Changes
+
+- cb2e453: `migrate`, `rollback`, and `redo` reject in a transaction at `repeatable read` or `serializable` when they have migrations to run.
+- 88ca2bf: `defineMigrations` accepts migrations directly, beside the loaders of their modules.
+
+### Patch Changes
+
+- 9ba1c07: Fix `migrate` failing with a duplicate key of `pg_namespace` when histories with different `tableName` create the same missing schema at once.
+- 9be8828: Fix `migrate` failing on an extension of `createExtension` that another process has just created.
+
 ## 0.1.0
 
 ### Minor Changes

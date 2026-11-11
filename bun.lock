@@ -71,7 +71,7 @@
     },
     "packages/migrations": {
       "name": "kern-migrations",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "devDependencies": {
         "kern-db": "workspace:*",
         "kern-orm": "workspace:*",
