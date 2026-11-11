@@ -1,5 +1,9 @@
 # Types
 
+::: info Using the ORM?
+See [Types of the ORM](../orm/types): this page describes kern-db without the ORM.
+:::
+
 Pass a type from `kern-db/types` to `select`, `get`, or `pluck` to decode the values of a column, and to `param` to pass a value as a parameter: the type sets the PostgreSQL type and the JavaScript values that statements return and accept.
 
 ```ts

@@ -1,5 +1,9 @@
 # Transactions
 
+::: info Using the ORM?
+See [Transactions of the ORM](../orm/transactions): this page describes kern-db without the ORM.
+:::
+
 To run statements in a transaction, pass a callback to `database.transaction`: the transaction commits when the callback resolves and rolls back when it rejects.
 
 ```ts

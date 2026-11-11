@@ -1,5 +1,9 @@
 # SQL Queries and Scripts
 
+::: info Using the ORM?
+See [SQL Statements of the ORM](../orm/queries/sql): this page describes kern-db without the ORM.
+:::
+
 Write a statement with the `database.query` template and await it:
 
 ```ts

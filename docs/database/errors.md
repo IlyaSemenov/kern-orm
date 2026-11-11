@@ -1,5 +1,9 @@
 # Errors
 
+::: info Using the ORM?
+See [Errors of the ORM](../orm/errors): this page describes kern-db without the ORM.
+:::
+
 To handle a statement that PostgreSQL rejects, such as an insert of a form whose name is taken, check its [condition](https://www.postgresql.org/docs/current/errcodes-appendix.html) with `isQueryError` and compare the name of the violated constraint:
 
 ```ts

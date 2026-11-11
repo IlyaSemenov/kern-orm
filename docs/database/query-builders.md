@@ -1,6 +1,6 @@
 # Building Query Builders
 
-::: info
+::: info For library authors
 This page is for authors of libraries that compile SQL on top of kern-db, such as a query builder or an ORM.
 To run SQL statements in an application, use [`database.query`](./sql), and to query tables with results typed from their definitions, use the [ORM](../orm/getting-started).
 :::

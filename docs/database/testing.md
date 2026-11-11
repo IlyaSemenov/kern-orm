@@ -1,5 +1,9 @@
 # Testing
 
+::: info Using the ORM?
+See [Testing of the ORM](../orm/testing): this page describes kern-db without the ORM.
+:::
+
 Run each test in a test transaction, which always rolls back, so that tests leave the data in the database unchanged.
 Test transactions need a database created with `test: true`:
 

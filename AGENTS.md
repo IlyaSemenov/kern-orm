@@ -150,6 +150,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Group the pages of the site in the sidebar by the package they document, ORM, Database, and Migrations, and keep the pages of each group in its directory: `docs/orm/`, `docs/database/`, and `docs/migrations/`, each starting with its Getting Started page.
 - Write the pages of the ORM group for an application of kern-orm, with a `Db` and imports from `kern-orm` and its subpaths, and the pages of the Database group for code without the ORM, with a `database` and imports from `kern-db` and its subpaths.
 - Document types, transactions, test helpers, and errors, which both packages give, on a page of each group with examples of its own API, and update both pages with a change of what they share; document drivers and custom drivers in the Database group alone.
+- Open a page of the Database group that has a counterpart in the ORM group, such as Transactions, with an `info` box titled `Using the ORM?` that links the counterpart; give every `info` box a title of its own, since VitePress titles it `INFO` otherwise.
 - Keep material for authors of extensions, such as custom types and operators, custom drivers, and custom migration helpers, on pages of their own in the group of their package, separate from the guides for using the API.
 - When a change makes an existing statement false, fix that statement rather than add an explanation next to it.
 - Add JSDoc to every exported declaration and to internal helpers whose contract, inputs, output, or failure behavior is not obvious.
