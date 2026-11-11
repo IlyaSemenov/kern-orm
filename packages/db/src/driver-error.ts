@@ -62,14 +62,21 @@ export class QueryError extends Error {
 /**
  * Error of a statement or connection that failed for another reason than PostgreSQL rejecting a statement, such as a lost connection, a timeout of the client, or a closed driver.
  *
- * The statement may have run or not, and its connection may be lost or in an unknown state of its transaction.
+ * Unless `unsent` is `true`, the statement may have run or not, and its connection may be lost or in an unknown state of its transaction.
  */
 export class ConnectionError extends Error {
   // A string rather than its literal, so that a subclass, such as `TransactionConnectionError`, names itself.
   override readonly name: string = "ConnectionError"
+  /**
+   * Whether the statement was certainly not sent to the server, such as when the driver was closed or could not get a connection.
+   *
+   * `false` means that the statement may have been sent.
+   */
+  readonly unsent: boolean
 
-  constructor(message: string, options?: { cause?: unknown }) {
+  constructor(message: string, options?: { cause?: unknown; unsent?: boolean | undefined }) {
     super(message, options)
+    this.unsent = options?.unsent ?? false
     setBrand(this, connectionErrorBrand)
   }
 
@@ -82,7 +89,7 @@ export class ConnectionError extends Error {
   }
 }
 
-/** Fields of the PostgreSQL error that an error of a client carries, by which `toDriverError` classifies it. */
+/** Fields of the PostgreSQL error that an error of a client carries, by which `toDriverError` classifies it, and whether the driver knows that the statement was not sent. */
 export interface DriverErrorFields {
   /**
    * Severity of the error, such as `ERROR` or `FATAL`.
@@ -94,6 +101,12 @@ export interface DriverErrorFields {
   readonly code?: unknown
   /** Name of the constraint that the statement violated. */
   readonly constraint?: unknown
+  /**
+   * Whether the statement was certainly not sent to the server, such as after a failure to get a connection, which `unsent` of a `ConnectionError` keeps.
+   *
+   * Leave it unset when the statement may have been sent.
+   */
+  readonly unsent?: boolean | undefined
 }
 
 /** SQLSTATE of five digits or uppercase letters; clients also give codes of their own, such as `ECONNRESET` or `CONNECTION_CLOSED`. */
@@ -118,7 +131,7 @@ function isSessionEnding(severity: string, code: string): boolean {
  * Classifies an error of a client as `QueryError` or `ConnectionError`, by the fields of the PostgreSQL error it carries, for a driver to reject with.
  *
  * An error that kern-db has already classified returns as it is.
- * An error without a severity or a SQLSTATE, such as of a client that lost its connection, is a `ConnectionError`, and so is one of severity `FATAL` or `PANIC`, which ends the session.
+ * An error without a severity or a SQLSTATE, such as of a client that lost its connection, is a `ConnectionError`, and so is one of severity `FATAL` or `PANIC`, which ends the session; it gets `unsent` of `fields`.
  * An error of severity `ERROR` is a `QueryError`.
  * With a translated severity, the SQLSTATE tells an error that ends the session, so a few errors of other codes that end it give `QueryError`.
  */
@@ -130,13 +143,15 @@ export function toDriverError(
     return error
   }
   const message = error instanceof Error ? error.message : String(error)
-  const { severity, code, constraint } = fields ?? {}
+  const { severity, code, constraint, unsent } = fields ?? {}
   // Every error of the server has a severity, which errors of the client lack, though some of them have a code of five characters, such as `EPIPE`.
-  if (typeof severity !== "string" || typeof code !== "string" || !sqlState.test(code)) {
-    return new ConnectionError(message, { cause: error })
-  }
-  if (isSessionEnding(severity, code)) {
-    return new ConnectionError(message, { cause: error })
+  if (
+    typeof severity !== "string" ||
+    typeof code !== "string" ||
+    !sqlState.test(code) ||
+    isSessionEnding(severity, code)
+  ) {
+    return new ConnectionError(message, { cause: error, unsent })
   }
   return new QueryError(message, {
     code,

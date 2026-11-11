@@ -24,7 +24,11 @@ describe("TransactionConnectionError", () => {
   })
 
   it("keeps its brands out of the enumerable fields", () => {
-    expect(Object.keys(new TransactionConnectionError("begin"))).toEqual(["name", "phase"])
+    expect(Object.keys(new TransactionConnectionError("begin"))).toEqual([
+      "name",
+      "unsent",
+      "phase",
+    ])
   })
 
   it("recognizes an error of another copy of kern-db by its own brand", () => {
@@ -61,6 +65,10 @@ describe("isOutcomeUnknown", () => {
     expect(isOutcomeUnknown(new ConnectionError("lost"))).toBe(true)
   })
 
+  it("is false for a ConnectionError of a statement that was not sent", () => {
+    expect(isOutcomeUnknown(new ConnectionError("closed", { unsent: true }))).toBe(false)
+  })
+
   it("is false for a transaction that was not committed and for another error", () => {
     expect(isOutcomeUnknown(new TransactionConnectionError("begin"))).toBe(false)
     expect(isOutcomeUnknown(new TransactionConnectionError("transaction"))).toBe(false)
@@ -73,6 +81,10 @@ describe("isOutcomeUnknown", () => {
     const connectionError = Object.assign(new Error("lost"), {
       [Symbol.for("kern-db.ConnectionError")]: true,
     })
+    const unsent = Object.assign(new Error("closed"), {
+      [Symbol.for("kern-db.ConnectionError")]: true,
+      unsent: true,
+    })
     const committing = Object.assign(new Error("commit"), {
       [Symbol.for("kern-db.ConnectionError")]: true,
       [Symbol.for("kern-db.TransactionConnectionError")]: true,
@@ -84,7 +96,9 @@ describe("isOutcomeUnknown", () => {
       phase: "transaction",
     })
 
+    // An error of a copy without `unsent` may have been sent.
     expect(isOutcomeUnknown(connectionError)).toBe(true)
+    expect(isOutcomeUnknown(unsent)).toBe(false)
     expect(isOutcomeUnknown(committing)).toBe(true)
     expect(isOutcomeUnknown(rolledBack)).toBe(false)
   })

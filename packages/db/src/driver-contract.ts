@@ -19,6 +19,8 @@ export interface DriverContractOptions {
   createDriver(options: { max: number }): Driver
   /** Creates a driver over a new client of the test database whose parsers of result values throw; for a client without parsers, the same as `createDriver`. */
   createDriverWithFailingParsers(): Driver
+  /** Creates a driver over a new client of an address where no server accepts connections, such as a closed port of the local host, which refuses them at once. */
+  createUnreachableDriver(): Driver
 }
 
 /**
@@ -44,6 +46,15 @@ function createStatementRunners(target: Pick<Connection, "execute">) {
   }
 }
 
+/** Asserts that `promise` rejects with a `ConnectionError` of a statement that the driver did not send. */
+async function assertRejectsUnsent(promise: Promise<unknown>): Promise<void> {
+  await assert.rejects(promise, (error: unknown) => {
+    assert.ok(error instanceof ConnectionError, `Expected ConnectionError, got ${String(error)}`)
+    assert.equal(error.unsent, true, `Expected unsent ConnectionError, got ${String(error)}`)
+    return true
+  })
+}
+
 /** Creates the condition that each column named by a key of `types` equals the value of the key in `values`, as a parameter of its type. */
 function equalsEach(
   types: Readonly<Record<string, AnyType>>,
@@ -65,7 +76,7 @@ export function describeDriverContract(
   options: DriverContractOptions,
   runner: DriverContractRunner,
 ): void {
-  const { createDriver, createDriverWithFailingParsers } = options
+  const { createDriver, createDriverWithFailingParsers, createUnreachableDriver } = options
   const { describe, it, before, after } = runner
 
   describe("driver contract", () => {
@@ -543,6 +554,34 @@ export function describeDriverContract(
       }
     })
 
+    it("rejects a statement whose connection is lost while it runs with unsent false", async () => {
+      const own = createDriver({ max: 1 })
+      try {
+        // The backend exits while the statement runs, after PostgreSQL has received it.
+        const error = await own
+          .execute(createStatement("SELECT pg_terminate_backend(pg_backend_pid())"))
+          .catch((error: unknown) => error)
+        assert.ok(
+          error instanceof ConnectionError,
+          `Expected ConnectionError, got ${String(error)}`,
+        )
+        assert.equal(error.unsent, false)
+      } finally {
+        await own.close()
+      }
+    })
+
+    it("rejects a statement, a script, and a connection without a server with unsent ConnectionError", async () => {
+      const unreachable = createUnreachableDriver()
+      try {
+        await assertRejectsUnsent(unreachable.execute(createStatement("SELECT 1")))
+        await assertRejectsUnsent(unreachable.executeScript("SELECT 1"))
+        await assertRejectsUnsent(unreachable.acquire())
+      } finally {
+        await unreachable.close()
+      }
+    })
+
     it("replaces an idle connection whose backend exited", async () => {
       const own = createDriver({ max: 2 })
       const held: Connection[] = []
@@ -691,7 +730,7 @@ export function describeDriverContract(
         assert.deepEqual(settled, ["query", "database"])
       })
 
-      it("rejects a statement, a script, and a connection requested right after it starts with ConnectionError", async () => {
+      it("rejects a statement, a script, and a connection requested right after it starts with unsent ConnectionError", async () => {
         // The held connection of a client with one connection keeps the closing going, so a statement the driver lets through waits for it.
         const driver = createDriver({ max: 1 })
         const held = await driver.acquire()
@@ -700,9 +739,9 @@ export function describeDriverContract(
         // Requested at once: a client may still run a statement sent before it starts closing its pool.
         const acquiring = driver.acquire()
         const rejections = [
-          assert.rejects(driver.execute(createStatement("SELECT 1")), ConnectionError),
-          assert.rejects(driver.executeScript("SELECT 1"), ConnectionError),
-          assert.rejects(acquiring, ConnectionError),
+          assertRejectsUnsent(driver.execute(createStatement("SELECT 1"))),
+          assertRejectsUnsent(driver.executeScript("SELECT 1")),
+          assertRejectsUnsent(acquiring),
         ]
         // A connection handed out by mistake is released, so that closing ends and the test fails instead of hanging.
         acquiring.then(connection => connection.release()).catch(() => {})

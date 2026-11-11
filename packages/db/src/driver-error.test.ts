@@ -22,6 +22,11 @@ describe("QueryError and ConnectionError", () => {
     expect(connectionError).toMatchObject({ name: "ConnectionError", cause })
   })
 
+  it("have unsent of false unless it is given", () => {
+    expect(new ConnectionError("lost").unsent).toBe(false)
+    expect(new ConnectionError("closed", { unsent: true }).unsent).toBe(true)
+  })
+
   it("have no cause unless it is given", () => {
     expect("cause" in new QueryError("rejected", { code: "22012" })).toBe(false)
     expect("cause" in new ConnectionError("lost")).toBe(false)
@@ -33,7 +38,7 @@ describe("QueryError and ConnectionError", () => {
       "code",
       "constraint",
     ])
-    expect(Object.keys(new ConnectionError("lost"))).toEqual(["name"])
+    expect(Object.keys(new ConnectionError("lost"))).toEqual(["name", "unsent"])
   })
 
   it("recognize an error of another copy of kern-db by its brand", () => {
@@ -142,6 +147,20 @@ describe("toDriverError", () => {
 
   it("gives ConnectionError of an error without fields", () => {
     expect(toDriverError(serverError)).toBeInstanceOf(ConnectionError)
+  })
+
+  it("gives ConnectionError the unsent of the fields", () => {
+    expect(toDriverError(serverError)).toMatchObject({ unsent: false })
+    expect(toDriverError(serverError, { unsent: true })).toMatchObject({ unsent: true })
+    expect(toDriverError(serverError, { severity: "FATAL", code: "3D000", unsent: true })).toEqual(
+      new ConnectionError("server", { cause: serverError, unsent: true }),
+    )
+  })
+
+  it("ignores the unsent of the fields of a QueryError", () => {
+    expect(
+      toDriverError(serverError, { severity: "ERROR", code: "23505", unsent: true }),
+    ).toBeInstanceOf(QueryError)
   })
 
   it("takes the message of a thrown value that is not an Error from its text", () => {

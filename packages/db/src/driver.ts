@@ -30,6 +30,7 @@ export interface DriverResult {
  *
  * A driver sends parameters as text without a declared type, so that the statement text alone determines their types, and returns values as text without parsing them.
  * It rejects with `QueryError` a statement or script that PostgreSQL rejected, whose connection stays usable, and with `ConnectionError` any other failure of a statement, a script, or a connection.
+ * The driver sets `unsent` of a `ConnectionError` to `true` when it knows that the statement or script was not sent, such as after a failure to get a connection, and only then.
  */
 export interface Driver {
   /**
@@ -46,12 +47,16 @@ export interface Driver {
    * Either way, no transaction stays open on the pool.
    */
   executeScript(text: string): Promise<void>
-  /** Reserves a dedicated connection, such as for a transaction or a session. */
+  /**
+   * Reserves a dedicated connection, such as for a transaction or a session.
+   *
+   * It rejects a failure to get a connection with `ConnectionError` whose `unsent` is `true`.
+   */
   acquire(): Promise<Connection>
   /**
    * Closes the connections once the statements on the pool and the transactions and sessions on reserved connections end.
    *
-   * From the call, it rejects a new statement or script on the pool and a new connection with `ConnectionError`.
+   * From the call, it rejects a new statement or script on the pool and a new connection with `ConnectionError` whose `unsent` is `true`.
    */
   close(): Promise<void>
 }

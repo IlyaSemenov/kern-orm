@@ -128,10 +128,14 @@ export function nodePostgresDriver(pool: Pool): Driver {
     }
   }
 
-  /** Gets a client from the pool for `operation`, which names it in the error once closing starts. */
+  /**
+   * Gets a client from the pool for `operation`, which names it in the error once closing starts.
+   *
+   * Its errors have `unsent`: the statement waits for the client, so nothing is sent before it.
+   */
   async function checkOut(operation: string): Promise<PoolClient> {
     if (closing) {
-      throw new ConnectionError(`Cannot ${operation}: the driver is closed`)
+      throw new ConnectionError(`Cannot ${operation}: the driver is closed`, { unsent: true })
     }
     checkouts++
     try {
@@ -139,13 +143,13 @@ export function nodePostgresDriver(pool: Pool): Driver {
       const unsupported = getUnsupportedClientReason(client)
       if (unsupported) {
         client.release()
-        throw new ConnectionError(unsupported)
+        throw new ConnectionError(unsupported, { unsent: true })
       }
       return client
     } catch (error) {
       endCheckout()
       // A failure to get a connection leaves no connection to use, whatever its fields, such as a translated `FATAL` of a server that rejects connecting.
-      throw toDriverError(error)
+      throw toDriverError(error, { unsent: true })
     }
   }
 

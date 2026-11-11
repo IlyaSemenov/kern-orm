@@ -29,6 +29,7 @@ A rejected statement aborts its transaction: to continue the transaction after i
 
 A query rejects with `ConnectionError` when its connection fails, such as when the server restarts or the network breaks, or when the client gives up waiting for the result.
 Whether PostgreSQL ran the statement is unknown then, so retry only a change that can run twice, such as an insert with [`onConflict`](./queries/mutations#records-that-already-exist).
+When `unsent` of the error is `true`, such as when no connection could be opened, the query was not sent, and you can run it again whatever it changes.
 
 ```ts
 import { ConnectionError } from "kern-orm"
@@ -78,7 +79,8 @@ Retry the outermost transaction: a nested transaction rejects with the errors of
 The error that the transaction rejects with otherwise, such as the error of its callback, is the `cause` of `TransactionConnectionError`.
 
 To tell whether the outcome of a failed query or transaction is unknown because its connection failed, call `isOutcomeUnknown` with its error.
-It returns `true` after a `ConnectionError` outside a transaction, also one that came before the query was sent, and after a `TransactionConnectionError` of phase `commit`.
+It returns `true` after a `ConnectionError` outside a transaction, and after a `TransactionConnectionError` of phase `commit`.
+It returns `false` after a `ConnectionError` whose `unsent` is `true`.
 `false` does not mean that the operation applied nothing: a query that ran may still reject, such as when its result fails to decode.
 Pass it the error of the outermost transaction rather than one that its callback caught: the transaction rolls back after such an error anyway.
 

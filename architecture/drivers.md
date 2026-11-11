@@ -7,6 +7,7 @@
   It also executes a script of several statements without parameters, which a statement with parameters cannot hold, since PostgreSQL takes several statements only in a query of its simple protocol; it ignores the results of a script.
   A connection runs its statements and scripts one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
   It rejects a statement or script with the [errors](#errors) of `driver-error.ts`: with `QueryError` when PostgreSQL rejected it, and the connection stays usable, and with `ConnectionError` after any other failure, after which the connection may be lost or in an unknown state of its transaction.
+  It sets `unsent` of a `ConnectionError` only when it knows that the statement was not sent: after a failure to get a connection, after closing, and after a refusal of its client before sending.
   A reserved connection that is lost rejects every later statement on it with `ConnectionError`, also outside a transaction, so that no statement of a transaction runs outside it on a new connection, and none of a [session](transactions.md#sessions) without its settings.
   It rejects a statement or script on the pool that leaves its connection in a transaction, such as `BEGIN`, with `ConnectionError`.
   A script whose statement PostgreSQL rejected in that transaction may reject with that `QueryError` instead.
@@ -26,10 +27,12 @@
 
 - Each class recognizes an instance of another copy of `kern-db` by a brand of `Symbol.for`, which its constructor sets as a property that is not enumerable, and which `Symbol.hasInstance` of the class checks; a subclass checks the prototype chain ([decision](../decisions/drivers/error-recognition.md)).
   The declarations of the classes do not name the brand.
-- A driver rejects with them a statement, a script, and a failure to get a connection, which is a `ConnectionError` whatever its fields, such as a translated `FATAL` of a missing database.
+- A driver rejects with them a statement, a script, and a failure to get a connection, which is a `ConnectionError` whose `unsent` is `true` whatever its fields, such as a translated `FATAL` of a missing database.
   The coordinator passes them as they are, directly, as the `error` or `suppressed` of a `SuppressedError`, or as the `cause` of the [`TransactionConnectionError`](transactions.md#connection-failures) of a transaction whose connection failed; its other errors are plain errors.
+- `unsent` of `ConnectionError` is a plain field rather than a subclass, so that a `TransactionConnectionError` of phase `begin` stays a `TransactionConnectionError`, and an error of another copy of `kern-db` without it reads as possibly sent.
 - `toDriverError` classifies an error of a client by the fields of the PostgreSQL error it carries, for the drivers of kern-db and custom drivers:
   - an error that is already classified, also by another copy of `kern-db`, returns as it is;
+  - a `ConnectionError` gets `unsent` of the fields, which the caller passes when it knows that the statement was not sent, and a `QueryError` ignores it;
   - an error without a severity is a `ConnectionError`: every error of the server has one, and an error of a client may have a code of five letters, such as `EPIPE`;
   - an error without a SQLSTATE of five digits or uppercase letters is a `ConnectionError`;
   - severity `ERROR` gives `QueryError`, and `FATAL` and `PANIC` give `ConnectionError`;
@@ -58,12 +61,15 @@ A custom driver relies on the contract of `driver.ts`, and on `QueryError`, `Con
   The tests of the drivers of kern-db run it with `bun:test` and Vitest from the sources, and the package test with `node:test` against the packed packages.
 - It has no check of `DATABASE_URL`: the caller declares it in a block that skips it, in the way of its test runner.
 - It runs on the `Database` of the database layer, with its queries of SQL text, types, and test helpers, and creates its tables as temporary tables or in test transactions, without tables of the ORM.
+- It checks `unsent` of a statement, a script, and a connection after closing and of a driver of `createUnreachableDriver`, whose client cannot connect, and `unsent: false` for a statement whose connection is lost while it runs.
 
 ## postgres.js
 
 `kern-db/postgres-js` requires postgres.js 4 and leaves to it the release contract and waiting for the outstanding work when closing:
 
 - It classifies errors by `severity`, which postgres.js gives in English, rather than `severity_local`, and by `constraint_name`.
+- It sets `unsent` of a statement on the pool by the code of its error, since postgres.js opens the connections of its pool by itself: of the codes that postgres.js 4 gives only before it sends a statement, of a failure to open a connection, of a timeout of the queue of the pool, of an ended client, and of a statement that it refuses to build.
+  `CONNECTION_CLOSED` and `CONNECTION_DESTROYED` are not among them, since postgres.js gives them both to a statement that waits for a connection and to one that it sent, nor is a SQLSTATE of the server, also of a failed start, such as `3D000`: a sent statement gets its own `FATAL` error, which a function can raise with any code.
 - It leaves the release to postgres.js, which returns a released connection to the pool once its statements complete and only when `ReadyForQuery` reports it idle, and closes one left in a transaction.
   postgres.js has closed a lost connection, and settles every other failed statement, such as one that it refuses to send, at the `ReadyForQuery` that follows it, so the status it reads is current.
 - It leaves a statement on the pool that leaves a transaction open to postgres.js, which rejects it with `UNSAFE_TRANSACTION`, a `ConnectionError`, and rolls the transaction back, with the statements sent on the connection after it.
@@ -99,6 +105,7 @@ It rejects a client that cannot give values as text with `ConnectionError` whene
   The pool emits these events while its own listener of the client is in place, so a client has no moment without a listener, also while the pool verifies it and when the messages that open a connection and report its failure come in one read.
   The pool has already removed an idle connection that breaks, and the next query on a held client rejects, so the listeners do nothing.
 - Closing it rejects a new statement or connection at once and calls `pool.end()` once every statement on the pool and reserved connection has returned, including those waiting for a connection: `pool.end()` never serves the `pool.connect()` calls waiting for one.
+- It gets a client before it sends a statement on the pool, so every failure to get one, including of a client that it rejects, sets `unsent` to `true`.
 
 It sends statements and reads results as follows:
 

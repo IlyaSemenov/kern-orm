@@ -34,6 +34,8 @@ describe.skipIf(!DATABASE_URL)("nodePostgresDriver", () => {
             },
           }),
         ),
+      // Port 1 of the local host refuses connections.
+      createUnreachableDriver: () => nodePostgresDriver(new Pool({ host: "127.0.0.1", port: 1 })),
     },
     { describe, it, before: beforeAll, after: afterAll },
   )

@@ -6,6 +6,35 @@ import { ConnectionError, toDriverError } from "../driver-error"
 /** OID of the PostgreSQL `unknown` pseudo-type; postgres.js sends such parameters as they are, and PostgreSQL infers their types. */
 const unknownType = 705
 
+/**
+ * Codes of the errors that postgres.js 4 gives a statement only before it sends the statement.
+ *
+ * A statement on the pool waits for a connection that has started, and postgres.js rejects the waiting statements with the error of a failed start.
+ * The list has no code that a statement that postgres.js sent can also get:
+ *
+ * - `CONNECTION_CLOSED` and `CONNECTION_DESTROYED`, which a statement gets when its connection fails;
+ * - a SQLSTATE of the server, even of a failed start, such as `3D000` of a missing database: a sent statement gets its own `FATAL` error, and a function can raise one of any code, such as with `plpy.fatal` of PL/Python.
+ */
+const unsentCodes: ReadonlySet<unknown> = /* @__PURE__ */ new Set([
+  // A statement that the pool rejects before it gets a connection.
+  "QUEUE_TIMEOUT",
+  "CONNECTION_ENDED",
+  // A statement that postgres.js refuses to build.
+  "MAX_PARAMETERS_EXCEEDED",
+  // Failures of the client to open a connection: of the socket and of the start of the session.
+  "ECONNREFUSED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "CONNECT_TIMEOUT",
+  "SSL_NOT_SUPPORTED",
+  "AUTHENTICATION_INCOMPLETE",
+  "AUTH_TYPE_NOT_IMPLEMENTED",
+  "SASL_MECHANISM_NOT_SUPPORTED",
+  "SASL_NONCE_MISMATCH",
+  "SASL_SIGNATURE_MISMATCH",
+  "CHANNEL_BINDING_REQUIRED",
+])
+
 /** Classifies an error of a statement of postgres.js, which gives the severity in English as `severity`, and the constraint as `constraint_name`. */
 function toPostgresJsError(error: unknown) {
   const fields = (error ?? {}) as { severity?: unknown; code?: unknown; constraint_name?: unknown }
@@ -13,6 +42,7 @@ function toPostgresJsError(error: unknown) {
     severity: fields.severity,
     code: fields.code,
     constraint: fields.constraint_name,
+    unsent: unsentCodes.has(fields.code),
   })
 }
 
@@ -74,7 +104,7 @@ export function postgresJsDriver(sql: Sql): Driver {
    */
   function assertOpen(operation: string): void {
     if (closing) {
-      throw new ConnectionError(`Cannot ${operation}: the driver is closed`)
+      throw new ConnectionError(`Cannot ${operation}: the driver is closed`, { unsent: true })
     }
   }
 
@@ -94,7 +124,7 @@ export function postgresJsDriver(sql: Sql): Driver {
         connection = await sql.reserve()
       } catch (error) {
         // A failure to get a connection leaves no connection to use, whatever its fields, such as of a server that rejects connecting.
-        throw toDriverError(error)
+        throw toDriverError(error, { unsent: true })
       }
       return {
         execute: statement => execute(connection, statement),

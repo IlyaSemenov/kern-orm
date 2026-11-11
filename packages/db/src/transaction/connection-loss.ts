@@ -57,16 +57,16 @@ export class TransactionConnectionError extends ConnectionError {
  *
  * - `TransactionConnectionError` of phase `commit` gives `true`, since `COMMIT` may have succeeded.
  * - `TransactionConnectionError` of another phase gives `false`, since the transaction was not committed.
+ * - A `ConnectionError` whose `unsent` is `true`, such as after a failure to get a connection or of a closed driver, gives `false`, since the statement was not sent.
  * - Another `ConnectionError` gives `true`, since a statement outside a transaction may have run before its connection failed.
  * - Any other error gives `false`, such as a `QueryError`, or a `ResultDecodeError` of a statement that has run: `false` does not mean that the operation applied nothing.
- *
- * Classification depends only on the error class, so failures before the statement was sent, such as a failure to acquire a connection, also give `true`.
  */
 export function isOutcomeUnknown(error: unknown): boolean {
   if (error instanceof TransactionConnectionError) {
     return error.phase === "commit"
   }
-  return error instanceof ConnectionError
+  // A `ConnectionError` of a copy of kern-db without `unsent` may have been sent.
+  return error instanceof ConnectionError && error.unsent !== true
 }
 
 /** First `ConnectionError` on the connection of a transaction, with the phase of the transaction when it came. */

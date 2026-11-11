@@ -27,6 +27,8 @@ describeDriverContract(
           },
         }),
       ),
+    // Port 1 of the local host refuses connections.
+    createUnreachableDriver: () => postgresJsDriver(postgres({ host: "127.0.0.1", port: 1 })),
   },
   { describe, it, before, after },
 )

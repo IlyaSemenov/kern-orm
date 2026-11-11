@@ -41,7 +41,7 @@ export function acmeDriver(client: AcmeClient): Driver {
     executeScript: text => classifyError(client.simpleQuery(text)),
     async acquire() {
       const connection = await client.reserve().catch((error: unknown) => {
-        throw toDriverError(error)
+        throw toDriverError(error, { unsent: true })
       })
       // The last statement sent, and whether a statement failed with ConnectionError, after which it may still run, or the connection may be lost.
       let last: Promise<void> = Promise.resolve()
@@ -80,14 +80,15 @@ Follow these rules in the driver:
 - Run the statements and scripts of a reserved connection one at a time in the order of calls.
 - Reject a statement or script with `QueryError` when PostgreSQL rejected it, and with `ConnectionError` after any other failure, by passing the error of your client and the fields of its PostgreSQL error to `toDriverError`.
   Pass the severity in English when your client gives it beside the translated one.
-- Reject a failure to get a connection with `ConnectionError`, by passing the error to `toDriverError` without the fields.
+- Reject a failure to get a connection with `ConnectionError` whose `unsent` is `true`, by passing the error to `toDriverError` with `{ unsent: true }`.
+  Pass `unsent: true` also for a statement or script whenever your client tells that it did not send it, such as when it could not open a connection for it, and only then.
 - Reject every statement on a reserved connection after the connection is lost, rather than send it on a new connection.
 - Replace an idle connection whose backend exited, such as after a restart of the server, for the next statement once your client has read that the connection closed.
 - Reject a statement or script on the pool that leaves its connection in a transaction, such as `BEGIN`, with `ConnectionError`, and close the connection or roll the transaction back.
   A script whose statement PostgreSQL rejected in that transaction may reject with that `QueryError` instead.
 - In `release`, wait for the statements sent on the connection, and return it to the pool only when it is outside a transaction and no statement on it failed with `ConnectionError`; otherwise close it.
   Read the status of the transaction that PostgreSQL reported in `ReadyForQuery` after the last statement, also when PostgreSQL rejected that statement.
-- In `close`, reject new statements and scripts on the pool and new connections at once with `ConnectionError`, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
+- In `close`, reject new statements and scripts on the pool and new connections at once with `ConnectionError` whose `unsent` is `true`, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
 
 ## Test the driver
 
@@ -111,6 +112,8 @@ describeDriverContract(
           },
         }),
       ),
+    // Port 1 of the local host refuses connections.
+    createUnreachableDriver: () => acmeDriver(createAcmeClient("postgres://127.0.0.1:1/postgres")),
   },
   { describe, it, before, after },
 )
