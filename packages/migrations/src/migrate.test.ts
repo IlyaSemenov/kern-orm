@@ -8,6 +8,7 @@ import { countLockWaiters, settleWithin, waitFor } from "../testing/concurrency"
 import { describePooledPostgres, describePostgres } from "../testing/postgres"
 
 import { MigrationError } from "./error"
+import { createExtension } from "./helpers/extensions"
 import { defineMigrations } from "./history"
 import { getMigrationStatus, migrate, redo, rollback } from "./migrate"
 import type { MigrationDatabase } from "./migration"
@@ -744,7 +745,7 @@ describePooledPostgres(
         // Keeps PostgreSQL from sending a notice of each table that the drop cascades to.
         await database.script(`
           SET LOCAL client_min_messages = warning;
-          DROP SCHEMA IF EXISTS migrations_pool_1, migrations_pool_2 CASCADE;
+          DROP SCHEMA IF EXISTS migrations_pool_1, migrations_pool_2, migrations_pool_extensions CASCADE;
         `)
       }
     }
@@ -770,7 +771,7 @@ describePooledPostgres(
         "set search path",
         "try lock",
         "read target",
-        "BEGIN",
+        "BEGIN ISOLATION LEVEL READ COMMITTED",
         "create schema",
         "create table of versions",
         createForm.up,
@@ -778,7 +779,7 @@ describePooledPostgres(
         "COMMIT",
         indexForm.outsideTransaction.up,
         "insert version",
-        "BEGIN",
+        "BEGIN ISOLATION LEVEL READ COMMITTED",
         createUser.up,
         "insert version",
         "COMMIT",
@@ -800,8 +801,10 @@ describePooledPostgres(
       })
 
       expect(listChanges(statements)).toEqual([
+        "BEGIN ISOLATION LEVEL READ COMMITTED",
         "create schema",
         "create table of versions",
+        "COMMIT",
         createForm.up,
         "insert version",
       ])
@@ -833,13 +836,13 @@ describePooledPostgres(
           ["0003_create_user", "0002_index_form"],
         ])
         expect(listChanges(statements)).toEqual([
-          "BEGIN",
+          "BEGIN ISOLATION LEVEL READ COMMITTED",
           createUser.down,
           "delete version",
           "COMMIT",
           indexForm.outsideTransaction.down,
           "delete version",
-          "BEGIN",
+          "BEGIN ISOLATION LEVEL READ COMMITTED",
           createForm.down,
           "delete version",
           createForm.up,
@@ -847,11 +850,11 @@ describePooledPostgres(
           "COMMIT",
           indexForm.outsideTransaction.up,
           "insert version",
-          "BEGIN",
+          "BEGIN ISOLATION LEVEL READ COMMITTED",
           createUser.up,
           "insert version",
           "COMMIT",
-          "BEGIN",
+          "BEGIN ISOLATION LEVEL READ COMMITTED",
           createUser.down,
           "delete version",
           "COMMIT",
@@ -1183,17 +1186,79 @@ describePooledPostgres(
           expect(await rolledBack).toEqual(["0002_index_form", "0001_create_form"])
           expect(keys).toEqual(["0001_create_form", "0002_index_form", "0003_create_user"])
           expect(listChanges(statements)).toEqual([
-            "BEGIN",
+            "BEGIN ISOLATION LEVEL READ COMMITTED",
             createForm.up,
             "insert version",
             "COMMIT",
             indexForm.outsideTransaction.up,
             "insert version",
-            "BEGIN",
+            "BEGIN ISOLATION LEVEL READ COMMITTED",
             createUser.up,
             "insert version",
             "COMMIT",
           ])
+        })
+      })
+
+      describe("on databases whose transactions default to serializable", () => {
+        const strict = [
+          connect({ isolation: "serializable" }),
+          connect({ isolation: "serializable" }),
+        ]
+
+        it("applies each migration once when two processes migrate a target at once", async () => {
+          const runs = { count: 0 }
+          const [holder, waiter] = strict
+
+          await runScenario(async ({ gate, openGate, start }) => {
+            const waiting = defineMigrations({
+              "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
+              "0002_create_user": createUser,
+            })
+            const held = start(migrate(holder!.database, waiting, target))
+            await waitFor(async () => runs.count === 1)
+            const refused = waitForRefusedLocks(waiter!)
+            const waited = start(migrate(waiter!.database, waiting, target))
+            await refused
+            openGate()
+
+            expect([await held, await waited]).toEqual([
+              ["0001_create_form", "0002_create_user"],
+              [],
+            ])
+          })
+
+          expect(runs.count).toBe(1)
+        })
+
+        it("creates a missing extension once when processes migrate different targets at once", async () => {
+          const runs = { count: 0 }
+          const [holder, waiter] = strict
+
+          await runScenario(async ({ gate, openGate, start }) => {
+            const extension = createExtension("hstore", { schema: "migrations_pool_extensions" })
+            const waiting = defineMigrations({
+              "0001_create_hstore": [extension, { up: waitBefore(createForm.up, gate, runs) }],
+            })
+            // It creates the extension in the transaction of its migration, which waits for the gate.
+            const held = start(migrate(holder!.database, waiting, target))
+            await waitFor(async () => runs.count === 1)
+            const waited = start(
+              migrate(waiter!.database, defineMigrations({ "0001_create_hstore": extension }), {
+                schemaName: "migrations_pool_2",
+              }),
+            )
+            await waitFor(
+              async () =>
+                (await countLockWaiters(database, "kern-migrations createExtension")) === 1,
+            )
+            openGate()
+
+            expect([await held, await waited]).toEqual([
+              ["0001_create_hstore"],
+              ["0001_create_hstore"],
+            ])
+          })
         })
       })
     })

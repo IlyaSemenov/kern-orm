@@ -1,3 +1,5 @@
+import type { TransactionOptions } from "kern-db"
+
 import type { MigrationDirection } from "./error"
 import type { MigrationHistory } from "./history"
 import { getMigrationNumber } from "./history"
@@ -255,6 +257,13 @@ async function runLocked(
     : await database.session(run, options)
 }
 
+/**
+ * Options of the transactions of a call in a session, whatever the default isolation level of the database.
+ *
+ * Creating the target schema and `createExtension` check again under a lock what another transaction has committed meanwhile, which a transaction at `read committed` sees, since each statement takes a new snapshot there.
+ */
+const sessionTransactionOptions: TransactionOptions = { isolation: "read committed" }
+
 /** Runs `runs` in order in the transaction of a call, creating the schema and the table of versions that `versions` lacks before them. */
 async function runInTransaction(
   target: ResolvedTarget,
@@ -271,6 +280,8 @@ async function runInTransaction(
 /**
  * Runs `runs` in order in the session of a call: a migration that has a change of its direction outside a transaction runs it alone and is recorded after it in a statement of its own, and each sequence of other migrations between such migrations runs in one transaction.
  *
+ * Before a first migration outside a transaction, it creates the schema and the table of versions in a transaction of their own.
+ *
  * The migrations before a failure stay committed, and a migration whose change fails outside a transaction keeps its record, so that `migrate` runs its `up` again, and `rollback` its `down`.
  */
 async function runInSession(
@@ -284,7 +295,10 @@ async function runInSession(
     const change = getOutsideTransactionChange(run.steps, run.direction)
     if (change !== undefined) {
       if (start === 0) {
-        await createVersionsTable(target, versions)
+        await target.database.transaction(
+          () => createVersionsTable(target, versions),
+          sessionTransactionOptions,
+        )
       }
       await runOutsideTransaction(
         toMigrationDatabase(target.database),
@@ -311,7 +325,7 @@ async function runInSession(
         await createVersionsTable(target, versions)
       }
       await runMigrations(target, batch)
-    })
+    }, sessionTransactionOptions)
     start = end
   }
 }

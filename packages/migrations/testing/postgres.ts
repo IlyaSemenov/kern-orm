@@ -1,7 +1,14 @@
 // PostgreSQL of the tests of the migrator at `DATABASE_URL`, such as from `.env.test.local`; the tests that need it are skipped without it.
 import { afterAll, beforeAll, describe } from "bun:test"
 
-import type { Connection, Database, Driver, DriverResult, SqlStatement } from "kern-db"
+import type {
+  Connection,
+  Database,
+  Driver,
+  DriverResult,
+  IsolationLevel,
+  SqlStatement,
+} from "kern-db"
 import { createDatabase } from "kern-db"
 import { postgresJsDriver } from "kern-db/postgres-js"
 import type { TestHelpers } from "kern-db/testing"
@@ -29,8 +36,12 @@ export interface PostgresTestContext extends PostgresContext, TestHelpers {}
 
 /** Database of a `describePooledPostgres` block, created without `test: true`. */
 export interface PooledPostgresContext extends PostgresContext {
-  /** Creates another database at `DATABASE_URL`, closed after the block, such as of another process that migrates at once; call it in the body of the block. */
-  connect(): PostgresContext
+  /**
+   * Creates another database at `DATABASE_URL`, closed after the block, such as of another process that migrates at once; call it in the body of the block.
+   *
+   * `isolation` sets `default_transaction_isolation` of its connections, such as `serializable`.
+   */
+  connect(options?: { isolation?: IsolationLevel }): PostgresContext
 }
 
 /**
@@ -58,12 +69,12 @@ export function describePooledPostgres(
   body: (context: PooledPostgresContext) => void,
 ): void {
   describe.skipIf(!DATABASE_URL)(name, () => {
-    body({ ...connect(false), connect: () => connect(false) })
+    body({ ...connect(false), connect: options => connect(false, options?.isolation) })
   })
 }
 
-/** Creates a database at `DATABASE_URL`, closed after the enclosing block, that records its statements and notices. */
-function connect(test: boolean): PostgresContext {
+/** Creates a database at `DATABASE_URL`, closed after the enclosing block, that records its statements and notices, with `isolation` as the default isolation level of its connections. */
+function connect(test: boolean, isolation?: IsolationLevel): PostgresContext {
   const notices: string[] = []
   let statements: string[] | undefined
   let refusedLocks = 0
@@ -72,6 +83,7 @@ function connect(test: boolean): PostgresContext {
     postgresJsDriver(
       postgres(DATABASE_URL!, {
         onnotice: notice => notices.push(String(notice.message)),
+        ...(isolation && { connection: { default_transaction_isolation: isolation } }),
       }),
     ),
     {
