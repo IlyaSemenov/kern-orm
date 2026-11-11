@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { defineCodec, isCodec } from "kern-db"
+import { defineType as defineDbType, isType as isDbType } from "kern-db"
 
 import { orderingOperators } from "../expression/operators/ordering"
 import { sql } from "../expression/sql"
@@ -8,10 +8,10 @@ import { sql } from "../expression/sql"
 import { timestamptz } from "./builtins/datetime"
 import { numeric } from "./builtins/numeric"
 import { text, varchar } from "./builtins/text"
-import { defineType, describeRejectedCodec, isType } from "./type"
+import { defineType, describeRejectedDbType, isType } from "./type"
 
 describe("defineType", () => {
-  const vectorCodec = defineCodec({ sqlType: "vector" })
+  const dbVector = defineDbType({ sqlType: "vector" })
     .transform({
       decode: text => JSON.parse(text) as number[],
       encode: (value: number[]) => JSON.stringify(value),
@@ -28,8 +28,8 @@ describe("defineType", () => {
     expect(ltree.operators).toEqual({})
   })
 
-  it("defines a type from a codec, with its values and type parameters", () => {
-    const vector = defineType(vectorCodec)
+  it("defines a type from a type of kern-db, with its values and type parameters", () => {
+    const vector = defineType(dbVector)
 
     expect(vector.sqlType).toBe("vector")
     expect(vector.with(1536).sqlType).toBe("vector(1536)")
@@ -52,49 +52,49 @@ describe("defineType", () => {
     expect(isType(plain.with(10, 2))).toBe(true)
   })
 
-  it("defines a type that encodes and decodes by the functions of its codec", () => {
-    const vector = defineType(vectorCodec).withOperators(orderingOperators)
+  it("defines a type that encodes and decodes by the functions of its type of kern-db", () => {
+    const vector = defineType(dbVector).withOperators(orderingOperators)
 
-    expect(vector.encode).toBe(vectorCodec.encode)
-    expect(vector.decode).toBe(vectorCodec.decode)
-    expect(vector.nullable().with(3).decode).toBe(vectorCodec.decode)
+    expect(vector.encode).toBe(dbVector.encode)
+    expect(vector.decode).toBe(dbVector.decode)
+    expect(vector.nullable().with(3).decode).toBe(dbVector.decode)
   })
 
-  it("defines a type that is a codec, unlike a column of it", () => {
-    const vector = defineType(vectorCodec)
+  it("defines a type that is a type of kern-db, unlike a column of it", () => {
+    const vector = defineType(dbVector)
 
-    expect(isCodec(vector)).toBe(true)
-    expect(isCodec(vector.withOperators(orderingOperators).with(3).nullable())).toBe(true)
-    expect(isCodec(vector.columnName("embedding"))).toBe(false)
+    expect(isDbType(vector)).toBe(true)
+    expect(isDbType(vector.withOperators(orderingOperators).with(3).nullable())).toBe(true)
+    expect(isDbType(vector.columnName("embedding"))).toBe(false)
   })
 
   it("defines a type that cannot be changed", () => {
-    expect(Object.isFrozen(defineType(vectorCodec))).toBe(true)
-    expect(Object.isFrozen(defineType(vectorCodec).nullable())).toBe(true)
+    expect(Object.isFrozen(defineType(dbVector))).toBe(true)
+    expect(Object.isFrozen(defineType(dbVector).nullable())).toBe(true)
   })
 })
 
 describe("isType", () => {
-  it("takes a type, and neither a codec without operators nor a column", () => {
-    const codec = defineCodec({ sqlType: "ltree" })
+  it("takes a type, and neither a type of kern-db without operators nor a column", () => {
+    const dbType = defineDbType({ sqlType: "ltree" })
 
-    expect(isType(defineType(codec))).toBe(true)
-    expect(isType(codec)).toBe(false)
-    expect(isType(defineType(codec).unique())).toBe(false)
-    // @ts-expect-error A codec is not a type.
-    expect(() => sql(codec)).toThrow("sql() accepts a type")
+    expect(isType(defineType(dbType))).toBe(true)
+    expect(isType(dbType)).toBe(false)
+    expect(isType(defineType(dbType).unique())).toBe(false)
+    // @ts-expect-error A type of kern-db is not a type of kern-orm.
+    expect(() => sql(dbType)).toThrow("sql() accepts a type")
   })
 })
 
-describe("describeRejectedCodec", () => {
-  it("hints defineType for a codec, and describes no value that is not a codec", () => {
-    const codec = defineCodec({ sqlType: "ltree" })
+describe("describeRejectedDbType", () => {
+  it("hints defineType for a type of kern-db, and describes no value that is not a type of kern-db", () => {
+    const dbType = defineDbType({ sqlType: "ltree" })
 
-    expect(describeRejectedCodec(codec)).toBe(
-      "a codec without operators; create a type from it with defineType(codec)",
+    expect(describeRejectedDbType(dbType)).toBe(
+      "a type of kern-db, which has no operators; take a built-in type from kern-orm/types, or create a type from it with defineType() of kern-orm",
     )
-    expect(describeRejectedCodec(defineType(codec).unique())).toBeUndefined()
-    expect(describeRejectedCodec("ltree")).toBeUndefined()
+    expect(describeRejectedDbType(defineType(dbType).unique())).toBeUndefined()
+    expect(describeRejectedDbType("ltree")).toBeUndefined()
   })
 })
 

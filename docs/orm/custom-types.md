@@ -134,32 +134,21 @@ await db.event.where(event => event.day.between("2026-01-01", "2026-01-31")).sel
 `ComparisonSignature`, `InSignature`, and `PatternSignature` are the signatures of the built-in operators, such as `lt`, `in`, and `like`.
 The second type argument of `defineGenericOperator` restricts the types it can be added to, such as `AnyExpression<string | null>` for the types of strings.
 
-## Codecs
+## Types defined without the ORM
 
-To define how the values of a PostgreSQL type convert in a module that does not use the query builder, such as a package of a PostgreSQL extension, define a codec with `defineCodec` from `kern-orm/db`.
-It takes the options of `defineType` and has the same `transform`, `nullable`, `of`, and `withParameters`, but no operators:
-
-```ts
-import { defineCodec } from "kern-orm/db"
-
-export const vectorCodec = defineCodec({ sqlType: "vector" })
-  .transform({
-    decode: text => JSON.parse(text) as number[],
-    encode: (value: number[]) => JSON.stringify(value),
-  })
-  .withParameters((dimensions: number) => `vector(${dimensions})`)
-```
-
-Pass the codec to `defineType` to create a type from it, and add its operators with `withOperators`:
+To give operators to a type defined without the ORM, such as in a package of a PostgreSQL extension that works with kern-db alone, pass it to `defineType` of `kern-orm` and add its operators with `withOperators`:
 
 ```ts
 import { defineTable, defineType, equalityOperators } from "kern-orm"
 
-const vector = defineType(vectorCodec).withOperators(equalityOperators)
+import { vector as dbVector } from "./db-types"
+
+const vector = defineType(dbVector).withOperators(equalityOperators)
 
 export const document = defineTable("document", {
   embedding: vector.with(1536),
 })
 ```
 
-`kern-orm/db/types` exports the codecs of the built-in types under the names of `kern-orm/types`, such as `uuid` and `array`.
+A type defined without the ORM has the same `transform`, `nullable`, `of`, and `withParameters`, but no operators; to define one, use `defineType` of `kern-orm/db`, as [Types](../database/types#custom-types) of kern-db describes.
+`kern-orm/db/types` exports such types for the built-in types, under the names of `kern-orm/types`.

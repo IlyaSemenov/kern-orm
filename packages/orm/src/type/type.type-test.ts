@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import type { Codec } from "kern-db"
-import { defineCodec } from "kern-db"
+import type { Type as DbType } from "kern-db"
+import { defineType as defineDbType } from "kern-db"
 
 import type { NoOperators } from "../expression/operators/definitions"
 import { orderingOperators } from "../expression/operators/ordering"
@@ -16,7 +16,7 @@ import type { Type, TypeInput, TypeOutput } from "./type"
 import { defineType } from "./type"
 
 describe("defineType", () => {
-  const vectorCodec = defineCodec({ sqlType: "vector" })
+  const dbVector = defineDbType({ sqlType: "vector" })
     .transform({
       decode: text => JSON.parse(text) as number[],
       encode: (value: number[]) => JSON.stringify(value),
@@ -27,21 +27,21 @@ describe("defineType", () => {
     expectTypeOf(defineType({ sqlType: "ltree" })).toEqualTypeOf<Type<string>>()
   })
 
-  test("keeps the values and the type parameters of a codec", () => {
-    const vector = defineType(vectorCodec)
+  test("keeps the values and the type parameters of a type of kern-db", () => {
+    const vector = defineType(dbVector)
     expectTypeOf(vector).toEqualTypeOf<
       Type<number[], number[], NoOperators, [dimensions: number]>
     >()
     expectTypeOf(vector.with(1536)).toEqualTypeOf(vector)
-    // @ts-expect-error Type parameters are typed by the codec.
+    // @ts-expect-error Type parameters are typed by the type of kern-db.
     vector.with("1536")
 
-    const nullable = defineType(vectorCodec.nullable())
+    const nullable = defineType(dbVector.nullable())
     expectTypeOf<TypeInput<typeof nullable>>().toEqualTypeOf<number[] | null>()
 
-    const ltree = defineType(defineCodec({ sqlType: "ltree" }))
+    const ltree = defineType(defineDbType({ sqlType: "ltree" }))
     expectTypeOf(ltree).toEqualTypeOf<Type<string>>()
-    // @ts-expect-error Only a codec with PostgreSQL type parameters gives a type `with`.
+    // @ts-expect-error Only a type of kern-db with PostgreSQL type parameters gives a type `with`.
     ltree.with(1)
   })
 
@@ -62,14 +62,14 @@ describe("defineType", () => {
     expectTypeOf(defineType(t.integer)).toEqualTypeOf<Type<number>>()
   })
 
-  test("rejects a codec typed by its contract alone, which derives no codecs", () => {
-    const contract: Codec<number[]> = vectorCodec
-    // @ts-expect-error The contract of a codec is neither a derivable codec nor options.
+  test("rejects a type of kern-db typed by its contract alone, which derives no types", () => {
+    const contract: DbType<number[]> = dbVector
+    // @ts-expect-error The contract of a type of kern-db is neither a derivable type nor options.
     defineType(contract)
   })
 
   test("defines a type that takes operators and makes columns", () => {
-    const vector = defineType(vectorCodec).withOperators(orderingOperators)
+    const vector = defineType(dbVector).withOperators(orderingOperators)
     const document = defineTable("document", {
       id: t.uuid.primaryKey(),
       embedding: vector.with(1536),
@@ -78,36 +78,36 @@ describe("defineType", () => {
     expectTypeOf<Selectable<typeof document>["embedding"]>().toEqualTypeOf<number[]>()
   })
 
-  test("is required for a codec to be a type", () => {
-    // @ts-expect-error A codec is not a type.
-    sql(vectorCodec)
-    // @ts-expect-error A codec is not a type.
-    param(vectorCodec, [1, 2])
+  test("is required for a type of kern-db to be a type of kern-orm", () => {
+    // @ts-expect-error A type of kern-db is not a type of kern-orm.
+    sql(dbVector)
+    // @ts-expect-error A type of kern-db is not a type of kern-orm.
+    param(dbVector, [1, 2])
     defineTable("document", {
-      // @ts-expect-error A codec is not a type.
-      embedding: vectorCodec,
+      // @ts-expect-error A type of kern-db is not a type of kern-orm.
+      embedding: dbVector,
     })
   })
 })
 
-describe("Codec", () => {
-  test("rejects a type passed as options to defineCodec", () => {
-    // @ts-expect-error A type is a codec already.
-    defineCodec(t.bigint)
+describe("Type of kern-db", () => {
+  test("rejects a type passed as options to defineType of kern-db", () => {
+    // @ts-expect-error A type of kern-orm is a type of kern-db already.
+    defineDbType(t.bigint)
   })
 
   test("is the contract of a type, whatever its operators and type parameters", () => {
-    expectTypeOf(t.uuid).toExtend<Codec<string>>()
-    expectTypeOf(t.timestamptz.nullable()).toExtend<Codec<string | null, string | Date | null>>()
-    expectTypeOf(t.numeric.with(10, 2)).toExtend<Codec<string, string | number | bigint>>()
+    expectTypeOf(t.uuid).toExtend<DbType<string>>()
+    expectTypeOf(t.timestamptz.nullable()).toExtend<DbType<string | null, string | Date | null>>()
+    expectTypeOf(t.numeric.with(10, 2)).toExtend<DbType<string, string | number | bigint>>()
   })
 
   test("reads the values of a type passed as the contract", () => {
     function encodeAndDecode<Output, Input>(
-      codec: Codec<Output, Input>,
+      dbType: DbType<Output, Input>,
       value: NonNullable<Input>,
     ) {
-      return codec.decode(codec.encode(value))
+      return dbType.decode(dbType.encode(value))
     }
 
     expectTypeOf(encodeAndDecode(t.timestamptz, new Date())).toEqualTypeOf<string>()
@@ -117,9 +117,9 @@ describe("Codec", () => {
   })
 
   test("is not the contract of a column", () => {
-    // @ts-expect-error A column is not a codec.
-    const codec: Codec<string> = t.uuid.primaryKey()
-    void codec
+    // @ts-expect-error A column is not a type of kern-db.
+    const dbType: DbType<string> = t.uuid.primaryKey()
+    void dbType
   })
 
   test("rejects a type whose encoder accepts fewer values", () => {

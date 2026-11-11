@@ -11,18 +11,18 @@ import {
   or,
   orderingOperators,
 } from "kern-orm"
-import { defineCodec, identifier, param } from "kern-orm/db"
+import { defineType as defineDbType, identifier, param } from "kern-orm/db"
 import { postgresJsDriver } from "kern-orm/db/postgres-js"
-import * as codecs from "kern-orm/db/types"
+import * as dbTypes from "kern-orm/db/types"
 import type { TestFixture } from "kern-orm/testing"
 import { createTestHelpers } from "kern-orm/testing"
 import * as t from "kern-orm/types"
 import postgres from "postgres"
 
 const form = defineTable("form", {
-  id: defineType(codecs.uuid).withOperators(orderingOperators),
+  id: defineType(dbTypes.uuid).withOperators(orderingOperators),
   name: t.text,
-  path: defineType(defineCodec({ sqlType: "ltree" })).withOperators(equalityOperators),
+  path: defineType(defineDbType({ sqlType: "ltree" })).withOperators(equalityOperators),
 })
 
 const driver = postgresJsDriver(postgres())
@@ -36,7 +36,7 @@ const page = db.$select({
 })
 
 // The fragments of `kern-orm/db`, which a template of `kern-orm` interpolates.
-const formId = param(codecs.uuid, "form-id")
+const formId = param(dbTypes.uuid, "form-id")
 const statement = db.$query`DELETE FROM ${identifier("app", "form")} WHERE id = ${formId}`
 
 // The hooks never run, so the fixture never opens.

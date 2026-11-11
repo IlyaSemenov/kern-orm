@@ -1,14 +1,14 @@
-// Parameters of statements: the values that a parameter takes without a codec, their PostgreSQL text representations, and the numbering of the parameters of a statement.
+// Parameters of statements: the values that a parameter takes without a type, their PostgreSQL text representations, and the numbering of the parameters of a statement.
 
-import type { AnyCodec } from "../codec/codec"
-import { encodeBoolean } from "../codecs/boolean"
-import { encodeBytea } from "../codecs/bytea"
 import type { TextValue } from "../driver"
+import { encodeBoolean } from "../type/builtins/boolean"
+import { encodeBytea } from "../type/builtins/bytea"
+import type { AnyType } from "../type/type"
 
-/** Value that a parameter takes without a codec, encoded by its JavaScript type; `null` is `NULL`. */
+/** Value that a parameter takes without a type, encoded by its JavaScript type; `null` is `NULL`. */
 export type UntypedValue = string | number | bigint | boolean | null | Date | Uint8Array
 
-/** Tells whether a parameter takes `value` without a codec. */
+/** Tells whether a parameter takes `value` without a type. */
 function isUntypedValue(value: unknown): value is UntypedValue {
   switch (typeof value) {
     case "string":
@@ -24,9 +24,9 @@ function isUntypedValue(value: unknown): value is UntypedValue {
 }
 
 /**
- * Checks that a parameter takes `value` without a codec, such as an interpolated value of a template, so that an error points at the template rather than at the compilation of its statement.
+ * Checks that a parameter takes `value` without a type, such as an interpolated value of a template, so that an error points at the template rather than at the compilation of its statement.
  *
- * It rejects `undefined` and a value that a parameter does not take without a codec, such as an object or an array.
+ * It rejects `undefined` and a value that a parameter does not take without a type, such as an object or an array.
  */
 export function assertUntypedValue(value: unknown): asserts value is UntypedValue {
   if (!isUntypedValue(value)) {
@@ -35,9 +35,9 @@ export function assertUntypedValue(value: unknown): asserts value is UntypedValu
 }
 
 /**
- * Rejects `value` as the value of a parameter without a codec.
+ * Rejects `value` as the value of a parameter without a type.
  *
- * Only a codec tells how PostgreSQL reads an object or an array, such as JSON or an array of a type, so they are not encoded by a guess.
+ * Only a type tells how PostgreSQL reads an object or an array, such as JSON or an array of a type, so they are not encoded by a guess.
  */
 export function rejectUntypedValue(value: unknown): never {
   if (value === undefined) {
@@ -50,23 +50,23 @@ export function rejectUntypedValue(value: unknown): never {
       ? "an object"
       : `a ${typeof value}`
   throw new TypeError(
-    `A parameter without a codec takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not ${kind}; pass JSON or an array with param()`,
+    `A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not ${kind}; pass JSON or an array with param()`,
   )
 }
 
-// The values without a codec are encoded by a function of their own, which keeps this one small for the parameters with a codec, such as the values of an insert.
-/** Encodes the value of a parameter with `codec`, or by its JavaScript type without one; it rejects `undefined`, and a value that a parameter does not take without a codec. */
-export function encodeParameter(value: unknown, codec: AnyCodec | undefined): TextValue {
+// The values without a type are encoded by a function of their own, which keeps this one small for the parameters with a type, such as the values of an insert.
+/** Encodes the value of a parameter with `type`, or by its JavaScript type without one; it rejects `undefined`, and a value that a parameter does not take without a type. */
+export function encodeParameter(value: unknown, type: AnyType | undefined): TextValue {
   if (value === undefined) {
     rejectUntypedValue(value)
   }
   if (value === null) {
     return null
   }
-  return codec !== undefined ? codec.encode(value) : encodeUntypedValue(value)
+  return type !== undefined ? type.encode(value) : encodeUntypedValue(value)
 }
 
-/** Encodes a value other than `null` of a parameter without a codec by its JavaScript type. */
+/** Encodes a value other than `null` of a parameter without a type by its JavaScript type. */
 function encodeUntypedValue(value: unknown): string {
   if (typeof value === "string") {
     return value

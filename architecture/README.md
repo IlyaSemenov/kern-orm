@@ -33,19 +33,19 @@ kern-orm exists to solve problems of production projects on Orchid ORM:
 Module paths are relative to the `src/` directory of their package: `packages/db/src/` for `kern-db`, and `packages/orm/src/` for `kern-orm`.
 
 - The database layer, the package `kern-db` (`packages/db/`), runs statements on the connections of a driver.
-  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract, its errors, and the drivers, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
+  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract, its errors, and the drivers, the test helpers, the contract of types, the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
   It imports no other package of the repository, also for types; only its tests and the test helpers of its modules import the [test harness](testing.md).
   The other workspaces import it only through its entry points; `packages/db/tests/boundaries.test.ts` checks both ([decision](../decisions/packages/database-package.md)).
-  `kern-db` exports its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs, without the transaction coordinator; `kern-db/postgres-js` and `kern-db/node-postgres` export the drivers; `kern-db/testing` exports the test helpers and the driver contract; `kern-db/builder` exports what a query builder on top of it compiles and decodes with, as [SQL generation](sql.md) describes.
+  `kern-db` exports its `Database`, the driver contract and its errors, the contract of types, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-db/types` exports the built-in types, and importing it loads only the modules of types, without the transaction coordinator; `kern-db/postgres-js` and `kern-db/node-postgres` export the drivers; `kern-db/testing` exports the test helpers and the driver contract; `kern-db/builder` exports what a query builder on top of it compiles and decodes with, as [SQL generation](sql.md) describes.
 - The ORM, the package `kern-orm` (`packages/orm/`), builds on it through its entry points, as any query builder can.
   It has no `Database` of its own: the root of `kern-orm` exports `createDatabase` of the layer, `bindSchema` of `execution/db.ts` binds a schema to a `Database` of the layer, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
   `kern-orm/db`, `kern-orm/db/types`, `kern-orm/db/postgres-js`, `kern-orm/db/node-postgres`, and `kern-orm/testing` re-export the entry points of `kern-db`, so that an application of the ORM does not require `kern-db` itself.
-  Its build imports `kern-db` rather than bundling it, so that the values of the layer, such as codecs, are those of the one `kern-db` of the application.
+  Its build imports `kern-db` rather than bundling it, so that the values of the layer, such as types, are those of the one `kern-db` of the application.
 - The migrator, the package `kern-migrations` (`packages/migrations/`), uses only types of `kern-db` and nothing of `kern-orm`, and takes a `Db` by its members, as [migrations](migrations.md) describe.
 
 ## Map
 
-- [Types and expressions](types.md): `type/` and `expression/` of `kern-orm`, and `codec/`, `codecs/`, `sql/`, `index.ts`, and `types.ts` of `kern-db`.
+- [Types and expressions](types.md): `type/` and `expression/` of `kern-orm`, and `type/`, `sql/`, `index.ts`, and `types.ts` of `kern-db`.
 - [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, and `execution/db.ts`.
 - [Queries](queries.md): `query/` and `execution/db.ts`.
 - [Mutations](mutations.md): `query/mutation.ts` and `query/values.ts`.

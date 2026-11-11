@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { defineCodec } from "kern-db"
+import { defineType as defineDbType } from "kern-db"
 
 import * as t from "../types"
 
@@ -41,17 +41,17 @@ describe("defineTable", () => {
         // @ts-expect-error A column definition is a type or a column.
         id: "uuid",
       }),
-    ).toThrow('Column "id" of table "form" must be a type or a column')
+    ).toThrow('Column "id" of table "form" must be a type of kern-orm or a column')
   })
 
-  it("rejects a codec without operators as a column definition, naming defineType", () => {
+  it("rejects a type of kern-db as a column definition, naming defineType", () => {
     expect(() =>
       defineTable("form", {
-        // @ts-expect-error A codec without operators is not a type.
-        path: defineCodec({ sqlType: "ltree" }),
+        // @ts-expect-error A type of kern-db without operators is not a type of kern-orm.
+        path: defineDbType({ sqlType: "ltree" }),
       }),
     ).toThrow(
-      'Column "path" of table "form" must be a type or a column, not a codec without operators; create a type from it with defineType(codec)',
+      'Column "path" of table "form" must be a type of kern-orm or a column, not a type of kern-db, which has no operators; take a built-in type from kern-orm/types, or create a type from it with defineType() of kern-orm',
     )
   })
 
@@ -383,7 +383,7 @@ describe("createTableFactory", () => {
         // @ts-expect-error A column definition is a type or a column.
         id: "uuid",
       }),
-    ).toThrow('Column "id" of table "form" must be a type or a column')
+    ).toThrow('Column "id" of table "form" must be a type of kern-orm or a column')
     expect(() =>
       defineSnakeCaseTable(
         "form",

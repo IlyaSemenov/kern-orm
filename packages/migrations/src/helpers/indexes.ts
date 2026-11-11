@@ -130,7 +130,7 @@ async function findIndex(
   table: string,
   name: string,
 ): Promise<"missing" | "valid" | "invalid"> {
-  // `execute` returns the state as text, which needs no codecs to decode.
+  // `execute` returns the state as text, which it decodes without the types of `kern-db/types`.
   // `to_regclass` truncates a name to 63 bytes, as PostgreSQL truncates a name in DDL.
   const { rows } = await database.execute({
     text: `

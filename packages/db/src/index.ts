@@ -1,19 +1,19 @@
 export type {
   AcceptedNull,
   AcceptedValues,
-  AnyCodec,
-  AnyDerivableCodec,
-  BaseDerivableCodec,
-  Codec,
-  CodecInput,
-  CodecOptions,
-  CodecOutput,
-  CodecTransform,
-  DerivableCodec,
-  DerivableCodecWithParameters,
-  codecValues,
-} from "./codec/codec"
-export { defineCodec, isCodec } from "./codec/codec"
+  AnyType,
+  AnyDerivableType,
+  BaseDerivableType,
+  Type,
+  TypeInput,
+  TypeOptions,
+  TypeOutput,
+  TypeTransform,
+  DerivableType,
+  DerivableTypeWithParameters,
+  typeValues,
+} from "./type/type"
+export { defineType, isType } from "./type/type"
 export type {
   Database,
   DatabaseOptions,
@@ -38,7 +38,7 @@ export type { UntypedValue } from "./sql/parameter"
 export type {
   AnySqlQuery,
   DecodedFields,
-  FieldCodecs,
+  FieldTypes,
   InitialSqlQueryState,
   SqlQuery,
   SqlQueryResult,

@@ -1,22 +1,22 @@
-// Codec and text literal helpers for one-dimensional PostgreSQL arrays, such as `{a,"b c",NULL}`.
+// Type and text literal helpers for one-dimensional PostgreSQL arrays, such as `{a,"b c",NULL}`.
 
-import type { Codec, DerivableCodec } from "../codec/codec"
-import { defineCodec } from "../codec/codec"
-import type { TextValue } from "../driver"
+import type { TextValue } from "../../driver"
+import type { DerivableType, Type } from "../type"
+import { defineType } from "../type"
 
 /**
- * Creates a codec of one-dimensional arrays of `element` values.
+ * Creates a type of one-dimensional arrays of `element` values.
  *
- * A `NULL` element decodes to `null`; a nullable `element` codec, such as `array(text.nullable())`, types such elements.
+ * A `NULL` element decodes to `null`; a nullable `element` type, such as `array(text.nullable())`, types such elements.
  * Elements are separated by commas, as in arrays of all built-in types; a custom type with another delimiter, such as `box`, is not supported.
  */
 export function array<Output, Input>(
-  element: Codec<Output, Input>,
-): DerivableCodec<Output[], Input[]> {
+  element: Type<Output, Input>,
+): DerivableType<Output[], Input[]> {
   const encodeElement = (value: Input) =>
     value === null ? null : element.encode(value as NonNullable<Input>)
   // The type parameters of the element, such as the length of `varchar(255)`, stay in the SQL type and not in the cast type.
-  return defineCodec({
+  return defineType({
     sqlType: `${element.sqlType}[]`,
     castType: `${element.castType}[]`,
   }).transform({

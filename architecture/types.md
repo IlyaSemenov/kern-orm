@@ -1,19 +1,21 @@
 # Types and expressions
 
-- **Codec** (`codec/`): the contract by which the database layer converts the values of a PostgreSQL type: its SQL type and cast type, the conversion between JavaScript values and their PostgreSQL text representation, and nullability.
-  - `Codec` has only these members, without the methods that derive codecs, so that an API that takes a codec infers its values from them alone.
-  - `encode` and `decode` are properties of function types rather than methods, whose parameters TypeScript compares bivariantly, so a codec is not a codec of more accepted values, such as of numbers for `text`.
+- **Type of the database layer** (`type/` of `kern-db`): the contract by which the database layer converts the values of a PostgreSQL type: its SQL type and cast type, the conversion between JavaScript values and their PostgreSQL text representation, and nullability.
+  - Both packages name their type `Type` and its function `defineType`, as `kern-db/types` and `kern-orm/types` export their built-in types under the same names ([decision](../decisions/types/type-names-of-both-packages.md)).
+    The ORM imports those of `kern-db` as `DbType`, `defineDbType`, and `isDbType`; the root of `kern-orm` re-exports only the types of `kern-db` whose names it does not declare itself, such as `TypeOptions` and `DerivableType`, and `kern-orm/db` all of them.
+  - `Type` of `kern-db` has only these members, without the methods that derive types, so that an API that takes a type infers its values from them alone.
+  - `encode` and `decode` are properties of function types rather than methods, whose parameters TypeScript compares bivariantly, so a type is not a type of more accepted values, such as of numbers for `text`.
     They must not read `this`, so that an object that copies them calls the same functions.
-  - `defineCodec` creates a `DerivableCodec`, which adds `nullable`, `transform`, `of`, and `withParameters`, and, once `withParameters` gave it a format, `with`; each returns a derivable codec, by the rules of the same methods of a type.
-    It rejects a codec or a type in place of its options, in types and at runtime, since it would take only its SQL type names and lose its conversion and nullability.
-  - A codec is told from other objects at runtime by its brand, never by its shape.
-    Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a codec too.
-    A codec that `defineCodec` or a derivable codec creates is frozen.
-  - The codecs of the built-in types live in `codecs/`, under the names of the types; a built-in type of `kern-orm/types` is `defineType` of its codec with the operators of the type.
-    `array` of the layer builds only the representation of an array of a codec, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type adds `orderingOperators`.
-- **Type** (`type/`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
-  A type is a codec with operators and the factories of columns.
-  `defineType` creates a type from the options of `defineCodec`, from a derivable codec, such as one defined without the ORM, or from another type; it keeps the values and the type parameters of the codec or the type, without the operators of the type.
+  - `defineType` of `kern-db` creates a `DerivableType`, which adds `nullable`, `transform`, `of`, and `withParameters`, and, once `withParameters` gave it a format, `with`; each returns a derivable type, by the rules of the same methods of a type of the ORM.
+    It rejects a type, also of the ORM, in place of its options, in types and at runtime, since it would take only its SQL type names and lose its conversion and nullability.
+  - A type is told from other objects at runtime by its brand, never by its shape.
+    Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a type too.
+    A type that `defineType` or a derivable type creates is frozen.
+  - The built-in types live in `type/builtins/`, under their names; a built-in type of `kern-orm/types` is `defineType` of the ORM of the type of `kern-db/types` with the operators of the type.
+    `array` of the layer builds only the representation of an array of a type, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type of the ORM adds `orderingOperators`.
+- **Type of the ORM** (`type/` of `kern-orm`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
+  A type of the ORM is a type of the database layer with operators and the factories of columns.
+  `defineType` of the ORM creates a type from the options of `defineType` of `kern-db`, from a derivable type of `kern-db`, such as one defined without the ORM, or from another type of the ORM; it keeps the values and the type parameters of the type it takes, without the operators of a type of the ORM.
   PostgreSQL type parameters, such as `varchar.with(255)`, change only the SQL type name and not the cast type of parameters, so they apply at any point of a chain of type changes.
   `nullable` adds `null` to the values that a type returns and accepts, where it stands for `NULL`, as `coalesce`, object conditions, and the results of operators read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
   A type is nullable when it accepts `null`, which a query always passes as `NULL`: `primaryKey`, the keys of a table, `of`, and `transform` read nullability from the values that a type accepts rather than from those that it returns ([decision](../decisions/types/nullability-of-accepted-values.md)), so an `encode` of `transform` that takes `null`, also as `unknown`, makes the type nullable.
@@ -27,10 +29,10 @@
   - `nullable` adds `null` before or after `of`, which keeps it beside `T`.
   - Generic operators, such as `eq`, `in`, and `lt`, read `T` from the expression, while an operator defined as a function keeps the values of the type it was added to, and a pattern of `like` stays a string.
   - `enum` narrows its values with `of` rather than with an identity `transform`, which would call a decoder for each value.
-  - A type copies the members of its codec with the brand, so the database layer takes a type wherever it takes a codec, and `encode` and `decode` of a type are the functions of the codec, without a call of the type for each value.
-  - `nullable`, `transform`, `withParameters`, and `with` of a type derive its codec and give the result the operators of the type as they are, so an operator defined as a function is wrapped once, by the `withOperators` that added it.
-  - `Type` declares the members of `Codec` and these methods itself rather than inheriting them, which would cost instantiations for each type derived in user code ([decision](../decisions/types/codec-members-of-a-type.md)); type tests check that a type is assignable to `Codec`.
-  - A codec without operators is not a type, which `isType` tells by a brand of its own: `sql`, `param`, `caseWhen`, and `defineTable` reject it in types and at runtime, with an error that names `defineType`.
+  - A type copies the members of its type of the database layer with the brand, so the database layer takes a type of the ORM wherever it takes its own, and `encode` and `decode` of a type are the functions of its type of the layer, without a call of the type for each value.
+  - `nullable`, `transform`, `withParameters`, and `with` of a type derive its type of the database layer and give the result the operators of the type as they are, so an operator defined as a function is wrapped once, by the `withOperators` that added it.
+  - `Type` of the ORM declares the members of `Type` of `kern-db` and these methods itself rather than inheriting them, which would cost instantiations for each type derived in user code ([decision](../decisions/types/db-type-members-of-a-type.md)); type tests check that a type of the ORM is assignable to `Type` of `kern-db`.
+  - A type of the database layer is not a type of the ORM, which `isType` of the ORM tells by a brand of its own: `sql`, `param`, `caseWhen`, and `defineTable` reject it in types and at runtime, with an error that names `kern-orm/types` and `defineType` of `kern-orm`.
 - **Expression** (`expression/`): public wrapper over an expression node and its type, with operators, `and`/`or`/`not`, `sql`/`param` fragments, and functions such as `coalesce` and `caseWhen`.
   Every expression has `isNull`; the operators of its type are added to it and replace `isNull` if one has its name, in types and at runtime alike.
   SQL `=` is a capability of a type given only by the operators of `equalityOperators`, which `orderingOperators` include; these operators are marked, so that another operator named `eq` does not give it, and an array type has them only when its element type has the capability.
@@ -154,12 +156,12 @@
 
 - `sql`, `identifier`, and `param` of the database layer (`sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
   `kern-db` exports them, and `kern-orm/db` re-exports them; both and the root of `kern-orm` export the types `SqlFragment` and `SqlValue`, which the templates of `query` and `script` of a `Database` name.
-- The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a codec: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
-  - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a codec tells how PostgreSQL reads an object or an array.
-  - JSON and arrays take `param` with a codec.
-- `param` takes a codec, also a type, and the values that the codec accepts, and casts its parameter to the cast type of the codec, as `param` of the ORM does with a type.
+- The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a type: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
+  - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a type tells how PostgreSQL reads an object or an array.
+  - JSON and arrays take `param` with a type.
+- `param` takes a type, also of the ORM, and the values that the type accepts, and casts its parameter to its cast type, as `param` of the ORM does.
   - The cast is in parentheses, since text after it could continue its type name, such as a subscript `[1]` after `integer[]`.
-- A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a codec, so a fragment created without these functions cannot pass one.
+- A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a type, so a fragment created without these functions cannot pass one.
 - `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
   - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.
   - `compileFragment` compiles a fragment as a statement of its own, which binds every parameter at each place, and `compileScript` as the text of a script, which rejects every parameter.

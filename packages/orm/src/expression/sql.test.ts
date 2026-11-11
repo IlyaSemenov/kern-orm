@@ -3,7 +3,7 @@ import { expect, it } from "bun:test"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import {
   createDatabase,
-  defineCodec,
+  defineType as defineDbType,
   identifier as identifierFragment,
   param as paramFragment,
   sql as sqlFragment,
@@ -27,13 +27,13 @@ const schema = defineSchema({ form })
 
 it("rejects a column passed to sql as a type", () => {
   // @ts-expect-error A column is not a type.
-  expect(() => sql(t.uuid.primaryKey())).toThrow("sql() accepts a type, not a column")
+  expect(() => sql(t.uuid.primaryKey())).toThrow("sql() accepts a type of kern-orm, not a column")
 })
 
-it("rejects a codec without operators passed to sql, naming defineType", () => {
-  // @ts-expect-error A codec without operators is not a type.
-  expect(() => sql(defineCodec({ sqlType: "ltree" }))).toThrow(
-    "sql() accepts a type, not a codec without operators; create a type from it with defineType(codec)",
+it("rejects a type of kern-db passed to sql, naming defineType", () => {
+  // @ts-expect-error A type of kern-db without operators is not a type of kern-orm.
+  expect(() => sql(defineDbType({ sqlType: "ltree" }))).toThrow(
+    "sql() accepts a type of kern-orm, not a type of kern-db, which has no operators; take a built-in type from kern-orm/types, or create a type from it with defineType() of kern-orm",
   )
 })
 
@@ -102,7 +102,7 @@ it("rejects a query of $select, a mutation, a query of SQL text, and a query of 
 
 it("rejects a value that a parameter does not take without a type when the template is created, naming param", () => {
   const takes =
-    "A parameter without a codec takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array"
+    "A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array"
 
   for (const [value, kind] of [
     [{ name: "Survey" }, "an object"],
@@ -196,13 +196,13 @@ it("selects a constant through param with a type", () => {
 it("rejects a column passed to param as a type", () => {
   // @ts-expect-error A column is not a type.
   expect(() => param(t.uuid.primaryKey(), "id")).toThrow(
-    "param() accepts a type or an expression, not a column",
+    "param() accepts a type of kern-orm or an expression, not a column",
   )
 })
 
-it("rejects a codec without operators passed to param, naming defineType", () => {
-  // @ts-expect-error A codec without operators is not a type.
-  expect(() => param(defineCodec({ sqlType: "ltree" }), "a.b")).toThrow(
-    "param() accepts a type or an expression, not a codec without operators; create a type from it with defineType(codec)",
+it("rejects a type of kern-db passed to param, naming defineType", () => {
+  // @ts-expect-error A type of kern-db without operators is not a type of kern-orm.
+  expect(() => param(defineDbType({ sqlType: "ltree" }), "a.b")).toThrow(
+    "param() accepts a type of kern-orm or an expression, not a type of kern-db, which has no operators; take a built-in type from kern-orm/types, or create a type from it with defineType() of kern-orm",
   )
 })

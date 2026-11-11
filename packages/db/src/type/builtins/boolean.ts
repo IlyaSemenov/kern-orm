@@ -1,7 +1,7 @@
-import { defineCodec } from "../codec/codec"
+import { defineType } from "../type"
 
 /** `boolean` values. */
-export const boolean = /* @__PURE__ */ defineCodec({ sqlType: "boolean" }).transform({
+export const boolean = /* @__PURE__ */ defineType({ sqlType: "boolean" }).transform({
   decode: decodeBoolean,
   encode: encodeBoolean,
 })

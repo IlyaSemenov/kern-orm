@@ -2,9 +2,9 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
-import { bigint, integer } from "../codecs/numeric"
-import { text } from "../codecs/text"
 import { createDatabase } from "../database"
+import { bigint, integer } from "../type/builtins/numeric"
+import { text } from "../type/builtins/text"
 
 const database = createDatabase({ driver: createRecordingDriver().driver })
 
@@ -14,7 +14,7 @@ describe("results", () => {
     expectTypeOf(await database.query`UPDATE`.take().optional()).toEqualTypeOf<number>()
   })
 
-  test("are the records of the codecs of select, which adds fields and replaces them under their keys", async () => {
+  test("are the records of the types of select, which adds fields and replaces them under their keys", async () => {
     const query = database.query`SELECT`.select({
       id: integer,
       note: text.nullable(),

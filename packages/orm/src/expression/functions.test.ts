@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
-import { createDatabase, defineCodec, NotFoundError, ResultDecodeError } from "kern-db"
+import {
+  createDatabase,
+  defineType as defineDbType,
+  NotFoundError,
+  ResultDecodeError,
+} from "kern-db"
 
 import { describePostgres } from "../../testing/postgres"
 import { bindSchema } from "../execution/db"
@@ -261,15 +266,15 @@ describe("caseWhen", () => {
   })
 
   it("rejects a value other than a type, such as a column", () => {
-    const message = "caseWhen() accepts a type, not a column"
+    const message = "caseWhen() accepts a type of kern-orm, not a column"
 
     expect(() => caseWhen(t.integer.primaryKey() as never, [])).toThrow(message)
     expect(() => caseWhen(sql(t.integer)`1` as never, [])).toThrow(message)
   })
 
-  it("rejects a codec without operators, naming defineType", () => {
-    expect(() => caseWhen(defineCodec({ sqlType: "ltree" }) as never, [])).toThrow(
-      "caseWhen() accepts a type, not a codec without operators; create a type from it with defineType(codec)",
+  it("rejects a type of kern-db, naming defineType", () => {
+    expect(() => caseWhen(defineDbType({ sqlType: "ltree" }) as never, [])).toThrow(
+      "caseWhen() accepts a type of kern-orm, not a type of kern-db, which has no operators; take a built-in type from kern-orm/types, or create a type from it with defineType() of kern-orm",
     )
   })
 

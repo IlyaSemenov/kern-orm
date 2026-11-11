@@ -4,8 +4,8 @@ The [database layer](../architecture/README.md#layers) as the package `kern-db`,
 
 ## Steps
 
-1. Done: the contract of codecs and the codecs of the built-in types, exported from `kern-orm/db` and `kern-orm/db/types`, and `Type` built on them.
-2. Done: queries of SQL text in the layer, with its SQL fragments and the decoding of flat results, which `query` of a `Database` and `$query` of a `Db` start, and the documentation of migrations on its fragments and codecs.
+1. Done: the contract of types and the built-in types of the layer, exported from `kern-orm/db` and `kern-orm/db/types`, and the type of the ORM built on them.
+2. Done: queries of SQL text in the layer, with its SQL fragments and the decoding of flat results, which `query` of a `Database` and `$query` of a `Db` start, and the documentation of migrations on its fragments and types.
 3. Done: the driver contract and the tests of the layer on its own API, a harness of its tests without the ORM, the check of its imports, the coordinator out of `Database`, and `bindSchema` instead of `bind` of a `Database`.
 4. Done: the packages `kern-db`, `kern-orm`, and `kern-migrations`, their package test, and the documentation site grouped by package.
 5. The [release](#release) of the packages.

@@ -5,7 +5,7 @@ import type { TextValue } from "../driver"
 import { assertUntypedValue, bindParameter, encodeParameter, maxParameters } from "./parameter"
 
 describe("encodeParameter", () => {
-  it("encodes a value without a codec by its JavaScript type", () => {
+  it("encodes a value without a type by its JavaScript type", () => {
     expect([
       encodeParameter("it's", undefined),
       encodeParameter(1.5, undefined),
@@ -27,9 +27,9 @@ describe("encodeParameter", () => {
     ])
   })
 
-  it("rejects a value that a parameter does not take without a codec, naming param", () => {
+  it("rejects a value that a parameter does not take without a type, naming param", () => {
     const takes =
-      "A parameter without a codec takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array"
+      "A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array"
     for (const [value, kind] of [
       [{ name: "Survey" }, "an object"],
       [new Map(), "an object"],
@@ -43,13 +43,13 @@ describe("encodeParameter", () => {
     }
   })
 
-  it("rejects undefined, with a codec and without one", () => {
-    const codec = { encode: () => "encoded" } as never
+  it("rejects undefined, with a type and without one", () => {
+    const type = { encode: () => "encoded" } as never
 
     const error = new TypeError("Query parameter is undefined; use null for NULL")
     expect(() => assertUntypedValue(undefined)).toThrow(error)
     expect(() => encodeParameter(undefined, undefined)).toThrow(error)
-    expect(() => encodeParameter(undefined, codec)).toThrow("Query parameter is undefined")
+    expect(() => encodeParameter(undefined, type)).toThrow("Query parameter is undefined")
   })
 })
 

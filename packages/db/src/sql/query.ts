@@ -1,7 +1,5 @@
-// Queries of SQL text: a statement that resolves to the number of the rows of its command tag or to the fields of its rows decoded by codecs.
+// Queries of SQL text: a statement that resolves to the number of the rows of its command tag or to the fields of its rows decoded by types.
 
-import type { AnyCodec, CodecOutput } from "../codec/codec"
-import { isCodec } from "../codec/codec"
 import type { Database } from "../database"
 import type { SqlStatement } from "../driver"
 import type {
@@ -14,18 +12,20 @@ import type {
   ValueRows,
 } from "../result"
 import { decodeFlatResult, isRecordKey, toValueRows } from "../result"
+import type { AnyType, TypeOutput } from "../type/type"
+import { isType } from "../type/type"
 
 /** Compiles the statement of a query of SQL text, each time the query executes or compiles, so that what it reads when it compiles, such as a PostgreSQL schema of the current tenant, is current. */
 export type StatementSource = () => SqlStatement
 
-/** Codecs of the fields of the rows of a query of SQL text by the names of the result columns that they decode. */
-export interface FieldCodecs {
-  readonly [key: string]: AnyCodec
+/** Types of the fields of the rows of a query of SQL text by the names of the result columns that they decode. */
+export interface FieldTypes {
+  readonly [key: string]: AnyType
   readonly [key: symbol]: never
 }
 
-/** Record of the values that the codecs of fields `F` decode. */
-export type DecodedFields<F extends FieldCodecs> = { -readonly [K in keyof F]: CodecOutput<F[K]> }
+/** Record of the values that the types of fields `F` decode. */
+export type DecodedFields<F extends FieldTypes> = { -readonly [K in keyof F]: TypeOutput<F[K]> }
 
 /**
  * State in types of a query of SQL text: its result, which is the number of the rows of its command tag until a selection returns their fields, how its rows become its result, and the rows mode of the rows that its statement returns.
@@ -104,7 +104,7 @@ const countPlan: FlatResultPlan = /* @__PURE__ */ Object.freeze({
 /**
  * Immutable query of a statement of SQL text, which executes on its database when awaited.
  *
- * Without a selection, it resolves to the number of the rows of the command tag of its statement, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of the rows of the statement instead, decoded by codecs.
+ * Without a selection, it resolves to the number of the rows of the command tag of its statement, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of the rows of the statement instead, decoded by types.
  */
 // It holds the source of its statement apart from the plan of its result, so that the methods that change the result share the statement, which compiles each time the query executes.
 export class SqlQuery<out S extends SqlQueryState> {
@@ -131,12 +131,12 @@ export class SqlQuery<out S extends SqlQueryState> {
   }
 
   /**
-   * Returns the records of the rows of the statement instead of their number, with the values of the result columns named by the keys of `fields`, decoded by their codecs; it adds the fields to those selected earlier, replacing fields under their keys.
+   * Returns the records of the rows of the statement instead of their number, with the values of the result columns named by the keys of `fields`, decoded by their types; it adds the fields to those selected earlier, replacing fields under their keys.
    *
-   * A codec of a column that can be `NULL` must be nullable.
+   * A type of a column that can be `NULL` must be nullable.
    * The statement rejects without a column of a field, or with the column twice; other columns are ignored.
    */
-  select<S extends RecordSqlQueryState, F extends FieldCodecs>(
+  select<S extends RecordSqlQueryState, F extends FieldTypes>(
     this: SqlQuery<S>,
     fields: F,
   ): SqlQuery<
@@ -150,7 +150,7 @@ export class SqlQuery<out S extends SqlQueryState> {
       }
     >
   >
-  select(fields: FieldCodecs): unknown {
+  select(fields: FieldTypes): unknown {
     const { plan } = this
     if (plan.fields !== undefined && plan.value) {
       throw new Error(
@@ -158,7 +158,7 @@ export class SqlQuery<out S extends SqlQueryState> {
       )
     }
     if (typeof fields !== "object" || fields === null) {
-      throw new TypeError("select takes an object of the codecs of the fields by their columns")
+      throw new TypeError("select takes an object of the types of the fields by their columns")
     }
     // `Object.keys` would skip a symbol key and a key that is not enumerable, leaving a field that the result type promises.
     const added = Reflect.ownKeys(fields)
@@ -175,37 +175,37 @@ export class SqlQuery<out S extends SqlQueryState> {
       if (!isRecordKey(key)) {
         throw new Error(`Field "${key}" cannot be a key of a record`)
       }
-      selected.push(Object.freeze({ key, codec: requireCodec(fields[key], `field "${key}"`) }))
+      selected.push(Object.freeze({ key, type: requireType(fields[key], `field "${key}"`) }))
     }
     return this.derive({ fields: selected, rows: plan.rows, value: false })
   }
 
   /**
-   * Returns the value of the only column of the row of the statement instead of the number of the rows, decoded by `codec`.
+   * Returns the value of the only column of the row of the statement instead of the number of the rows, decoded by `type`.
    *
    * Without a row, it rejects with `NotFoundError` unless `optional` makes the query resolve to `undefined`; it rejects several rows.
-   * A `NULL` value is `null`, so a codec of a column that can be `NULL` must be nullable.
+   * A `NULL` value is `null`, so a type of a column that can be `NULL` must be nullable.
    */
-  get<S extends SqlQueryState, C extends AnyCodec>(
+  get<S extends SqlQueryState, C extends AnyType>(
     this: SqlQuery<S>,
-    codec: C,
-  ): SqlQuery<ValueState<S, CodecOutput<C>, OneValueRows<S["returned"]>>>
-  get(codec: AnyCodec): unknown {
+    type: C,
+  ): SqlQuery<ValueState<S, TypeOutput<C>, OneValueRows<S["returned"]>>>
+  get(type: AnyType): unknown {
     const { rows } = this.plan
-    return this.deriveValue(codec, "get", rows === "many" ? "one" : toValueRows(rows))
+    return this.deriveValue(type, "get", rows === "many" ? "one" : toValueRows(rows))
   }
 
   /**
-   * Returns the values of the only column of the rows of the statement instead of their number, decoded by `codec`, keeping whether the query returns an array or one value.
+   * Returns the values of the only column of the rows of the statement instead of their number, decoded by `type`, keeping whether the query returns an array or one value.
    *
-   * A `NULL` value is `null`, so a codec of a column that can be `NULL` must be nullable.
+   * A `NULL` value is `null`, so a type of a column that can be `NULL` must be nullable.
    */
-  pluck<S extends SqlQueryState, C extends AnyCodec>(
+  pluck<S extends SqlQueryState, C extends AnyType>(
     this: SqlQuery<S>,
-    codec: C,
-  ): SqlQuery<ValueState<S, CodecOutput<C>, ValueRows<S["returned"]>>>
-  pluck(codec: AnyCodec): unknown {
-    return this.deriveValue(codec, "pluck", toValueRows(this.plan.rows))
+    type: C,
+  ): SqlQuery<ValueState<S, TypeOutput<C>, ValueRows<S["returned"]>>>
+  pluck(type: AnyType): unknown {
+    return this.deriveValue(type, "pluck", toValueRows(this.plan.rows))
   }
 
   /**
@@ -269,10 +269,10 @@ export class SqlQuery<out S extends SqlQueryState> {
     return this.derive({ fields: plan.fields, rows, value: plan.value })
   }
 
-  /** Creates the query that returns the value of the only column of each row in rows mode `rows`, decoded by `codec` of `method`. */
-  private deriveValue(codec: unknown, method: string, rows: ResultRows): AnySqlQuery {
+  /** Creates the query that returns the value of the only column of each row in rows mode `rows`, decoded by `type` of `method`. */
+  private deriveValue(type: unknown, method: string, rows: ResultRows): AnySqlQuery {
     // The key names no record field: it only names the value in decoding errors.
-    const field = Object.freeze({ key: "value", codec: requireCodec(codec, method) })
+    const field = Object.freeze({ key: "value", type: requireType(type, method) })
     return this.derive({ fields: [field], rows, value: true })
   }
 
@@ -297,10 +297,10 @@ export function startSqlQuery(
   return new SqlQuery(source, database, countPlan)
 }
 
-/** Returns `value` that `what` takes as its codec, rejecting a value that is not a codec. */
-function requireCodec(value: unknown, what: string): AnyCodec {
-  if (!isCodec(value)) {
-    throw new TypeError(`${what} takes a codec`)
+/** Returns `value` that `what` takes as its type, rejecting a value that is not a type. */
+function requireType(value: unknown, what: string): AnyType {
+  if (!isType(value)) {
+    throw new TypeError(`${what} takes a type`)
   }
   return value
 }

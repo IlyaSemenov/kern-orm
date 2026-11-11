@@ -1,9 +1,9 @@
 // Advisory locks of string keys: the statements that take them in a transaction and in a session, the locks that a session holds until it ends, and polling for one in a session.
 
-import { formatArray } from "../codecs/array"
-import { decodeBoolean } from "../codecs/boolean"
 import type { Connection, DriverResult, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
+import { formatArray } from "../type/builtins/array"
+import { decodeBoolean } from "../type/builtins/boolean"
 
 /** Pause of `pollLock` in milliseconds after its first attempt, which doubles after each attempt up to `maxPollDelay`. */
 const firstPollDelay = 50

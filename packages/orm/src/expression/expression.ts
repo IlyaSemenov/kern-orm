@@ -154,9 +154,9 @@ export function getType(expression: AnyExpression): AnyType | undefined {
   return (expression as unknown as ExpressionObject)[expressionType]
 }
 
-/** Exposes a Boolean node with the shared codec and operators. */
+/** Exposes a Boolean node with the shared Boolean type and its operators. */
 export function toBooleanExpression(node: ExpressionNode): Expression<boolean | null> {
-  // The runtime type supplies the codec, not expression nullability; result decoding preserves NULL independently.
+  // The runtime type supplies the encoding, not expression nullability; result decoding preserves NULL independently.
   return toExpression(node, getBooleanType())
 }
 

@@ -1,7 +1,7 @@
 import { isRecordKey } from "kern-db/builder"
 
 import type { AnyType, TypeInput, TypeOperators, TypeOutput } from "../type/type"
-import { describeRejectedCodec, isType } from "../type/type"
+import { describeRejectedDbType, isType } from "../type/type"
 import type { IsUnion } from "../utils/type-helpers"
 
 import type { AnyColumn, ToColumn } from "./column"
@@ -349,9 +349,9 @@ function createTable(
     }
     const column = toColumn(definition)
     if (!column) {
-      const codec = describeRejectedCodec(definition)
+      const rejected = describeRejectedDbType(definition)
       throw new TypeError(
-        `Column "${key}" of table "${name}" must be a type or a column${codec ? `, not ${codec}` : ""}`,
+        `Column "${key}" of table "${name}" must be a type of kern-orm or a column${rejected ? `, not ${rejected}` : ""}`,
       )
     }
     columns[key] = column

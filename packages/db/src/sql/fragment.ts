@@ -1,10 +1,10 @@
 // SQL fragments of the database layer: text with parameters, quoted names, and nested fragments, and the renderer that turns a fragment into the text of a statement.
 
-import type { AnyCodec, Codec } from "../codec/codec"
-import { isCodec } from "../codec/codec"
 import type { SqlStatement, TextValue } from "../driver"
 import { createStatement } from "../driver"
 import { quoteIdentifier } from "../identifier"
+import type { AnyType, Type } from "../type/type"
+import { isType } from "../type/type"
 
 import type { UntypedValue } from "./parameter"
 import { assertUntypedValue, bindParameter, encodeParameter, rejectUntypedValue } from "./parameter"
@@ -22,17 +22,17 @@ export class SqlFragment {
   constructor(
     /** Text around the values; always one element longer than `values`. */
     readonly strings: readonly string[],
-    /** Interpolated values: a fragment, the parameter of `param`, or the value of a parameter without a codec. */
+    /** Interpolated values: a fragment, the parameter of `param`, or the value of a parameter without a type. */
     readonly values: readonly unknown[],
   ) {
     Object.freeze(this)
   }
 }
 
-/** Parameter of `param`: a value that its codec encodes. */
-class CodecParameter {
+/** Parameter of `param`: a value that its type encodes. */
+class TypedParameter {
   constructor(
-    readonly codec: AnyCodec,
+    readonly type: AnyType,
     readonly value: unknown,
   ) {
     Object.freeze(this)
@@ -46,7 +46,7 @@ export type SqlValue = UntypedValue | SqlFragment
  * Builds a SQL fragment.
  *
  * An interpolated fragment, such as of `identifier` or `param`, stays SQL, and another value becomes a parameter: a string, a number, a bigint, a Boolean, `null` for `NULL`, a `Date`, or a `Uint8Array`.
- * It rejects any other value, such as an object or an array: pass JSON or an array with `param` and its codec.
+ * It rejects any other value, such as an object or an array: pass JSON or an array with `param` and its type.
  */
 export function sql(strings: TemplateStringsArray, ...values: SqlValue[]): SqlFragment {
   for (let index = 0; index < values.length; index++) {
@@ -80,22 +80,22 @@ export function identifier(...names: [string, ...string[]]): SqlFragment {
 }
 
 /**
- * Creates a SQL fragment of a parameter that `codec` encodes, such as of JSON or of an array, cast to the type of the codec, such as `$1::jsonb`.
+ * Creates a SQL fragment of a parameter that `type` encodes, such as of JSON or of an array, cast to its cast type, such as `$1::jsonb`.
  *
  * The cast omits type parameters, such as `$1::numeric` for `numeric(10,2)`, so that their precision, scale, or length do not constrain the value.
  */
 export function param<Output, Input>(
-  codec: Codec<Output, Input>,
+  type: Type<Output, Input>,
   value: NoInfer<Input>,
 ): SqlFragment {
-  if (!isCodec(codec)) {
-    throw new TypeError("param() takes a codec and the value that it encodes")
+  if (!isType(type)) {
+    throw new TypeError("param() takes a type and the value that it encodes")
   }
   if (value === undefined) {
     rejectUntypedValue(value)
   }
   // Text after a cast could continue its type name, such as a subscript `[1]` after `integer[]`, so the cast is in parentheses.
-  return new SqlFragment(["(", `::${codec.castType})`], [new CodecParameter(codec, value)])
+  return new SqlFragment(["(", `::${type.castType})`], [new TypedParameter(type, value)])
 }
 
 /** Receives the parameters of a statement in the order of its text as a fragment renders, and returns their placeholders, such as `$1`. */
@@ -118,8 +118,8 @@ export function renderFragment(fragment: SqlFragment, binder: ParameterBinder): 
     const value = values[index]
     if (value instanceof SqlFragment) {
       text += renderFragment(value, binder)
-    } else if (value instanceof CodecParameter) {
-      text += binder.bindParam(value, encodeParameter(value.value, value.codec))
+    } else if (value instanceof TypedParameter) {
+      text += binder.bindParam(value, encodeParameter(value.value, value.type))
     } else {
       text += binder.bind(encodeParameter(value, undefined))
     }

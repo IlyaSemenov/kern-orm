@@ -1,7 +1,7 @@
-import { defineCodec } from "../codec/codec"
+import { defineType } from "../type"
 
 /** Binary data; PostgreSQL represents it in hex, which requires the default `bytea_output` setting. */
-export const bytea = /* @__PURE__ */ defineCodec({ sqlType: "bytea" }).transform({
+export const bytea = /* @__PURE__ */ defineType({ sqlType: "bytea" }).transform({
   decode: decodeBytea,
   encode: encodeBytea,
 })

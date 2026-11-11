@@ -70,6 +70,7 @@ export default defineConfig({
           { text: "Getting Started", link: "/database/getting-started" },
           { text: "Drivers", link: "/database/drivers" },
           { text: "SQL Queries and Scripts", link: "/database/sql" },
+          { text: "Types", link: "/database/types" },
           { text: "Transactions", link: "/database/transactions" },
           { text: "Testing", link: "/database/testing" },
           { text: "Errors", link: "/database/errors" },

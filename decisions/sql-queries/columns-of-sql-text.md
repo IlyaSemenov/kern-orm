@@ -1,6 +1,6 @@
 # Columns of SQL text checked after the statement
 
-A query of SQL text reads its fields from the result columns of their keys after the statement runs, and decodes the text of each value by the codec of its field.
+A query of SQL text reads its fields from the result columns of their keys after the statement runs, and decodes the text of each value by the type of its field.
 
 ```ts
 // Rejects with `ResultDecodeError` after the update, since the statement returns no column `published`

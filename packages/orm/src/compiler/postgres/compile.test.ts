@@ -339,7 +339,7 @@ describe("compileStatement", () => {
         limit: createParameter(value),
       }
 
-      expect(() => compileStatement(node)).toThrow("A parameter without a codec takes a string")
+      expect(() => compileStatement(node)).toThrow("A parameter without a type takes a string")
     }
   })
 

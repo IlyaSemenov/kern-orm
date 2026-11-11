@@ -1,4 +1,4 @@
-import * as codecs from "kern-db/types"
+import * as dbTypes from "kern-db/types"
 
 import type { NoOperators, OperatorDefinitions } from "../../expression/operators/definitions"
 import type { EqualityOperators, HasEquality } from "../../expression/operators/equality"
@@ -17,7 +17,7 @@ export function array<Output, Input, O extends OperatorDefinitions>(
   // oxlint-disable-next-line typescript/no-explicit-any -- element parameters do not apply to arrays
   element: Type<Output, Input, O, any>,
 ): Type<Output[], Input[], HasEquality<O> extends true ? EqualityOperators : NoOperators> {
-  const type = defineType(codecs.array(element))
+  const type = defineType(dbTypes.array(element))
   // PostgreSQL compares arrays by their elements, so an array has `=` only when its elements do.
   return (hasEquality(element) ? type.withOperators(equalityOperators) : type) as Type<
     Output[],

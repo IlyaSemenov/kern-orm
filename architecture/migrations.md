@@ -7,7 +7,7 @@
 - The migrator requires `kern-db` by a peer dependency and imports only types from it, so that a copy of `kern-db` other than the one of the database of the application cannot change what the migrator does.
   It imports nothing of `kern-orm`, also in types, and takes a `Db` by its members `$database` and `$schemaName`.
   `packages/db/tests/boundaries.test.ts` checks the imports of its sources, and the package test those of its built code.
-- The migrator runs everything through the `Database` of its target: transactions with `transaction`, sessions with `session`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without codecs, which are values of `kern-db`.
+- The migrator runs everything through the `Database` of its target: transactions with `transaction`, sessions with `session`, scripts with `script`, and its own statements with `execute`, which returns text values, so that it decodes them without the types of `kern-db/types`, which it would import at runtime.
 - The main entry point has no `node:*` imports, so that it bundles into an application: the migration format, histories, running, and helpers.
   The entry point `kern-migrations/cli` holds the [command line](#command-line), and `kern-migrations/testing` the [verification](#verification), which import `node:*` modules.
 
@@ -26,7 +26,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - A step without `down` does nothing on rollback, such as a change of data that cannot be undone.
 - The database of a migration is `Pick<Database, "query" | "script" | "execute">` of the target: its statements run in the transaction of the migration, or, for a change outside a transaction, each in a transaction of its own on the connection of the session, and its unqualified names resolve in the target schema through the search path.
   It lacks the other members of `Database`, such as `close`, which a migration must not use.
-  Its `query` and `script` are of the [database layer](README.md#layers): their templates take the SQL fragments of `kern-db`, and `query` decodes rows by codecs, such as of `kern-db/types`.
+  Its `query` and `script` are of the [database layer](README.md#layers): their templates take the SQL fragments of `kern-db`, and `query` decodes rows by types, such as of `kern-db/types`.
 
 ### Changes outside a transaction
 
@@ -133,7 +133,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - They reject a name that finds another relation, such as an index of another table, also in an earlier schema of the search path, where it hides the index of the table, before they change anything: building would create an index that dropping cannot find, and dropping would leave the index while its migration is recorded as rolled back.
   - Building does nothing when the table has a valid index of the name, which an attempt whose record of the migration failed has built ([decision](../decisions/migrations/valid-index-counts-as-built.md)), and drops an index of the name that is not valid before building it.
   - Dropping does nothing when the name finds nothing.
-  - They check the catalog with one statement of `execute`, which returns the state of the index as text, so that they need no codecs to decode it.
+  - They check the catalog with one statement of `execute`, which returns the state of the index as text, so that they decode it without the types of `kern-db/types`.
   - A partitioned table requires a step of its own: PostgreSQL rejects `CREATE INDEX CONCURRENTLY` of a partitioned table and `DROP INDEX CONCURRENTLY` of its index before they change anything ([decision](../decisions/migrations/concurrent-index-of-partitioned-table.md)).
 - `createExtension` has no `down`, since an extension belongs to the whole database, such as to every tenant.
   - It checks `pg_extension` in a `DO` block rather than running `CREATE EXTENSION IF NOT EXISTS`, which sends a notice of an existing extension that postgres.js logs, at every new tenant of a history that creates one.

@@ -76,7 +76,8 @@ The SQL that loads nested queries and relations.
 
 - [Values narrowed in types by `of`](types/narrowed-values.md): rather than by a list of values at runtime.
 - [Nullability read from the accepted values](types/nullability-of-accepted-values.md): rather than kept apart from the values in types and expressions.
-- [Members of a codec declared again in `Type`](types/codec-members-of-a-type.md): rather than inherited from `Codec` or shared through a higher-kinded type.
+- [One name for the types of both packages](types/type-names-of-both-packages.md): `Type` and `defineType` in `kern-db` and `kern-orm`, rather than `Codec` or `SqlType` in `kern-db`.
+- [Members of the type of `kern-db` declared again in the type of the ORM](types/db-type-members-of-a-type.md): rather than inherited from `Type` of `kern-db` or shared through a higher-kinded type.
 
 ## Tables and schemas
 

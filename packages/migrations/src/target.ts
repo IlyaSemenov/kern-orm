@@ -179,7 +179,7 @@ function compareKeys(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0
 }
 
-/** Executes a statement of the migrator; `execute` gives its values as text, which the migrator decodes without codecs, since it imports only types of `kern-db`. */
+/** Executes a statement of the migrator; `execute` gives its values as text, which the migrator decodes without the types of `kern-db/types`, since it imports nothing of `kern-db` at runtime. */
 function execute(
   database: Database,
   text: string,

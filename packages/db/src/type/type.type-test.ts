@@ -1,51 +1,48 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import type { Codec, CodecInput, CodecOutput, DerivableCodec } from "./codec"
-import { defineCodec, isCodec } from "./codec"
+import type { DerivableType, Type, TypeInput, TypeOutput } from "./type"
+import { defineType, isType } from "./type"
 
-const text = defineCodec({ sqlType: "text" })
-const numeric = defineCodec({ sqlType: "numeric" }).withParameters(
+const text = defineType({ sqlType: "text" })
+const numeric = defineType({ sqlType: "numeric" }).withParameters(
   (precision: number, scale?: number) => `numeric(${precision},${scale ?? 0})`,
 )
-const timestamptz = defineCodec({ sqlType: "timestamptz" }).transform({
+const timestamptz = defineType({ sqlType: "timestamptz" }).transform({
   decode: value => value,
   encode: (value: string | Date) => (value instanceof Date ? value.toISOString() : value),
 })
 // The values are `unknown`, which includes a JSON `null` value, and the accepted values are those other than `null`.
-const jsonb = defineCodec({ sqlType: "jsonb" }).transform<{}, {}>({
+const jsonb = defineType({ sqlType: "jsonb" }).transform<{}, {}>({
   decode: value => JSON.parse(value),
   encode: value => JSON.stringify(value),
-}) as DerivableCodec<unknown, {}>
+}) as DerivableType<unknown, {}>
 
-describe("defineCodec", () => {
-  test("defines a codec of strings", () => {
-    expectTypeOf(text).toEqualTypeOf<DerivableCodec<string>>()
-    expectTypeOf<CodecOutput<typeof text>>().toEqualTypeOf<string>()
-    expectTypeOf<CodecInput<typeof text>>().toEqualTypeOf<string>()
+describe("defineType", () => {
+  test("defines a type of strings", () => {
+    expectTypeOf(text).toEqualTypeOf<DerivableType<string>>()
+    expectTypeOf<TypeOutput<typeof text>>().toEqualTypeOf<string>()
+    expectTypeOf<TypeInput<typeof text>>().toEqualTypeOf<string>()
   })
 
-  test("rejects a codec, also typed by its contract alone", () => {
-    // @ts-expect-error A codec is not options of a codec.
-    defineCodec(timestamptz)
-    const contract: Codec<string> = text
-    // @ts-expect-error A codec is not options of a codec.
-    defineCodec(contract)
+  test("rejects a type, also typed by its contract alone", () => {
+    // @ts-expect-error A type is not options of a type.
+    defineType(timestamptz)
+    const contract: Type<string> = text
+    // @ts-expect-error A type is not options of a type.
+    defineType(contract)
   })
 })
 
-describe("Codec", () => {
-  test("is the contract of a derivable codec", () => {
-    expectTypeOf(text).toExtend<Codec<string>>()
-    expectTypeOf(timestamptz).toExtend<Codec<string, string | Date>>()
-    expectTypeOf(numeric.with(10, 2).nullable()).toExtend<Codec<string | null>>()
+describe("Type", () => {
+  test("is the contract of a derivable type", () => {
+    expectTypeOf(text).toExtend<Type<string>>()
+    expectTypeOf(timestamptz).toExtend<Type<string, string | Date>>()
+    expectTypeOf(numeric.with(10, 2).nullable()).toExtend<Type<string | null>>()
   })
 
-  test("reads the values of a codec passed as the contract", () => {
-    function encodeAndDecode<Output, Input>(
-      codec: Codec<Output, Input>,
-      value: NonNullable<Input>,
-    ) {
-      return codec.decode(codec.encode(value))
+  test("reads the values of a type passed as the contract", () => {
+    function encodeAndDecode<Output, Input>(type: Type<Output, Input>, value: NonNullable<Input>) {
+      return type.decode(type.encode(value))
     }
 
     expectTypeOf(encodeAndDecode(timestamptz, new Date())).toEqualTypeOf<string>()
@@ -54,36 +51,36 @@ describe("Codec", () => {
     encodeAndDecode(text, 1)
   })
 
-  test("is not a codec of more accepted values", () => {
+  test("is not a type of more accepted values", () => {
     // @ts-expect-error The encoder of `text` takes no number.
-    const wide: Codec<string, string | number> = text
+    const wide: Type<string, string | number> = text
     void wide
   })
 
-  test("is not a codec of other returned values", () => {
+  test("is not a type of other returned values", () => {
     // @ts-expect-error `text` returns strings.
-    const numbers: Codec<number, string> = text
+    const numbers: Type<number, string> = text
     void numbers
   })
 })
 
 describe("transform", () => {
-  test("changes the values that the codec returns and accepts", () => {
+  test("changes the values that the type returns and accepts", () => {
     const cents = numeric.transform({
       decode: value => BigInt(value),
       encode: (value: bigint) => String(value),
     })
-    expectTypeOf<CodecOutput<typeof cents>>().toEqualTypeOf<bigint>()
-    expectTypeOf<CodecInput<typeof cents>>().toEqualTypeOf<bigint>()
+    expectTypeOf<TypeOutput<typeof cents>>().toEqualTypeOf<bigint>()
+    expectTypeOf<TypeInput<typeof cents>>().toEqualTypeOf<bigint>()
     expectTypeOf(cents.decode("1")).toEqualTypeOf<bigint>()
   })
 
-  test("without `encode` accepts the values of the original codec", () => {
+  test("without `encode` accepts the values of the original type", () => {
     const date = timestamptz.transform({ decode: value => new Date(value) })
-    expectTypeOf<CodecOutput<typeof date>>().toEqualTypeOf<Date>()
-    expectTypeOf<CodecInput<typeof date>>().toEqualTypeOf<string | Date>()
+    expectTypeOf<TypeOutput<typeof date>>().toEqualTypeOf<Date>()
+    expectTypeOf<TypeInput<typeof date>>().toEqualTypeOf<string | Date>()
 
-    // @ts-expect-error Without `encode`, a transformed codec accepts the values of the original codec.
+    // @ts-expect-error Without `encode`, a transformed type accepts the values of the original type.
     text.transform<number, number>({ decode: Number })
   })
 
@@ -94,7 +91,7 @@ describe("transform", () => {
         return value
       },
     })
-    // @ts-expect-error `decode` receives the values of the codec.
+    // @ts-expect-error `decode` receives the values of the type.
     text.nullable().transform({ decode: (value: number) => value })
   })
 
@@ -120,7 +117,7 @@ describe("transform", () => {
     text.transform({ decode: value => (value === "missing" ? undefined : value) })
   })
 
-  test("keeps the nullability of the original codec, also of values that include null", () => {
+  test("keeps the nullability of the original type, also of values that include null", () => {
     class Wrapper {
       constructor(readonly value: unknown) {}
     }
@@ -128,33 +125,33 @@ describe("transform", () => {
       decode: value => new Wrapper(value),
       encode: (wrapper: Wrapper) => wrapper.value as {},
     })
-    expectTypeOf<CodecOutput<typeof wrapped>>().toEqualTypeOf<Wrapper>()
+    expectTypeOf<TypeOutput<typeof wrapped>>().toEqualTypeOf<Wrapper>()
     const nullable = jsonb.nullable().transform({ decode: value => new Wrapper(value) })
-    expectTypeOf<CodecOutput<typeof nullable>>().toEqualTypeOf<Wrapper | null>()
-    expectTypeOf<CodecInput<typeof nullable>>().toEqualTypeOf<{} | null>()
+    expectTypeOf<TypeOutput<typeof nullable>>().toEqualTypeOf<Wrapper | null>()
+    expectTypeOf<TypeInput<typeof nullable>>().toEqualTypeOf<{} | null>()
   })
 
-  test("makes a codec nullable whose `encode` takes null, also as unknown", () => {
+  test("makes a type nullable whose `encode` takes null, also as unknown", () => {
     const optional = text.transform({
       decode: value => value,
       encode: (value: string | null) => value ?? "",
     })
-    expectTypeOf<CodecOutput<typeof optional>>().toEqualTypeOf<string | null>()
+    expectTypeOf<TypeOutput<typeof optional>>().toEqualTypeOf<string | null>()
     const anything = text.transform({
       decode: value => value,
       encode: (value: unknown) => String(value),
     })
-    expectTypeOf<CodecOutput<typeof anything>>().toEqualTypeOf<string | null>()
+    expectTypeOf<TypeOutput<typeof anything>>().toEqualTypeOf<string | null>()
     const length = anything.transform({ decode: value => value.length })
-    expectTypeOf<CodecOutput<typeof length>>().toEqualTypeOf<number | null>()
+    expectTypeOf<TypeOutput<typeof length>>().toEqualTypeOf<number | null>()
   })
 })
 
 describe("nullable", () => {
-  test("adds null to the values that the codec returns and accepts", () => {
+  test("adds null to the values that the type returns and accepts", () => {
     const nullable = timestamptz.nullable()
-    expectTypeOf<CodecOutput<typeof nullable>>().toEqualTypeOf<string | null>()
-    expectTypeOf<CodecInput<typeof nullable>>().toEqualTypeOf<string | Date | null>()
+    expectTypeOf<TypeOutput<typeof nullable>>().toEqualTypeOf<string | null>()
+    expectTypeOf<TypeInput<typeof nullable>>().toEqualTypeOf<string | Date | null>()
   })
 
   test("keeps the values that `decode` returns and `encode` takes other than null", () => {
@@ -168,23 +165,23 @@ describe("nullable", () => {
 describe("of", () => {
   type FieldType = "text" | "email" | "choice"
 
-  test("narrows the values that the codec returns and accepts", () => {
+  test("narrows the values that the type returns and accepts", () => {
     const narrowed = text.of<FieldType>()
-    expectTypeOf<CodecOutput<typeof narrowed>>().toEqualTypeOf<FieldType>()
-    expectTypeOf<CodecInput<typeof narrowed>>().toEqualTypeOf<FieldType>()
+    expectTypeOf<TypeOutput<typeof narrowed>>().toEqualTypeOf<FieldType>()
+    expectTypeOf<TypeInput<typeof narrowed>>().toEqualTypeOf<FieldType>()
   })
 
-  test("keeps `null` of a nullable codec apart from the narrowed values", () => {
+  test("keeps `null` of a nullable type apart from the narrowed values", () => {
     const narrowed = text.nullable().of<"a">()
-    expectTypeOf<CodecOutput<typeof narrowed>>().toEqualTypeOf<"a" | null>()
-    expectTypeOf<CodecInput<typeof narrowed>>().toEqualTypeOf<"a" | null>()
+    expectTypeOf<TypeOutput<typeof narrowed>>().toEqualTypeOf<"a" | null>()
+    expectTypeOf<TypeInput<typeof narrowed>>().toEqualTypeOf<"a" | null>()
 
     type Options = { choices: string[] }
     const optionsAfter = jsonb.nullable().of<Options>()
-    expectTypeOf<CodecOutput<typeof optionsAfter>>().toEqualTypeOf<Options | null>()
-    expectTypeOf<CodecInput<typeof optionsAfter>>().toEqualTypeOf<Options | null>()
+    expectTypeOf<TypeOutput<typeof optionsAfter>>().toEqualTypeOf<Options | null>()
+    expectTypeOf<TypeInput<typeof optionsAfter>>().toEqualTypeOf<Options | null>()
     const optionsBefore = jsonb.of<Options>().nullable()
-    expectTypeOf<CodecOutput<typeof optionsBefore>>().toEqualTypeOf<Options | null>()
+    expectTypeOf<TypeOutput<typeof optionsBefore>>().toEqualTypeOf<Options | null>()
 
     const anything = text
       .transform({
@@ -192,8 +189,8 @@ describe("of", () => {
         encode: (value: unknown) => String(value),
       })
       .of<"a">()
-    expectTypeOf<CodecOutput<typeof anything>>().toEqualTypeOf<"a" | null>()
-    expectTypeOf<CodecInput<typeof anything>>().toEqualTypeOf<"a" | null>()
+    expectTypeOf<TypeOutput<typeof anything>>().toEqualTypeOf<"a" | null>()
+    expectTypeOf<TypeInput<typeof anything>>().toEqualTypeOf<"a" | null>()
 
     // @ts-expect-error `nullable` adds `null`, which the narrowed values leave out.
     text.of<"a" | null>()
@@ -204,12 +201,12 @@ describe("of", () => {
     numeric.with(10).of<"1" | "2">()
   })
 
-  test("takes only values that the codec returns and accepts", () => {
-    // @ts-expect-error The narrowed values are values of the codec.
+  test("takes only values that the type returns and accepts", () => {
+    // @ts-expect-error The narrowed values are values of the type.
     text.of<1>()
 
     const dated = timestamptz.transform({ decode: value => new Date(value) })
-    expectTypeOf<CodecInput<ReturnType<typeof dated.of<Date>>>>().toEqualTypeOf<Date>()
+    expectTypeOf<TypeInput<ReturnType<typeof dated.of<Date>>>>().toEqualTypeOf<Date>()
 
     const overlapping = jsonb.transform({
       decode: value => value as { value: string | number },
@@ -220,30 +217,30 @@ describe("of", () => {
     overlapping.of<{ value: number }>()
 
     const length = text.transform({ decode: value => value.length })
-    // @ts-expect-error A codec that decodes text into numbers without `encode` accepts no number.
+    // @ts-expect-error A type that decodes text into numbers without `encode` accepts no number.
     length.of<1>()
   })
 })
 
 describe("with", () => {
-  test("is available on a codec with PostgreSQL type parameters", () => {
+  test("is available on a type with PostgreSQL type parameters", () => {
     expectTypeOf(numeric.with(10, 2)).toEqualTypeOf(numeric)
     numeric.nullable().with(10)
 
-    // @ts-expect-error Only a codec with PostgreSQL type parameters has `with`.
+    // @ts-expect-error Only a type with PostgreSQL type parameters has `with`.
     text.with(10)
   })
 
-  test("takes parameters typed by the codec", () => {
-    // @ts-expect-error Type parameters are typed by the codec.
+  test("takes parameters typed by the type", () => {
+    // @ts-expect-error Type parameters are typed by the type.
     numeric.with("10")
   })
 })
 
-describe("isCodec", () => {
-  test("narrows a value to a codec of any values", () => {
+describe("isType", () => {
+  test("narrows a value to a type of any values", () => {
     const value: unknown = text
-    if (isCodec(value)) {
+    if (isType(value)) {
       expectTypeOf(value.castType).toEqualTypeOf<string>()
       expectTypeOf(value.decode).returns.toBeAny()
     }

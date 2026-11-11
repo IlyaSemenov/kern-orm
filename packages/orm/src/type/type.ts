@@ -1,14 +1,14 @@
 import type {
   AcceptedNull,
   AcceptedValues,
-  AnyDerivableCodec,
-  CodecOptions,
-  CodecTransform,
-  codecValues,
-  DerivableCodec,
-  DerivableCodecWithParameters,
+  AnyDerivableType,
+  DerivableType,
+  DerivableTypeWithParameters,
+  TypeOptions,
+  TypeTransform,
+  typeValues,
 } from "kern-db"
-import { defineCodec, isCodec } from "kern-db"
+import { defineType as defineDbType, isType as isDbType } from "kern-db"
 
 import type { AnyExpression, Expression } from "../expression/expression"
 import { getType, toExpression, toNode } from "../expression/expression"
@@ -21,13 +21,13 @@ import { isGenericOperator } from "../expression/operators/generic"
 import type { NullablePrimaryKey } from "../table/column"
 import { Column } from "../table/column"
 
-/** Runtime mark of types, which tells them apart from columns, codecs without operators, and other objects. */
+/** Runtime mark of types, which tells them apart from columns, types of kern-db without operators, and other objects. */
 const typeBrand = Symbol("kern-orm.type")
 
 /**
  * SQL type: a PostgreSQL type, the JavaScript representation of its values, and the operators of its expressions.
  *
- * A type is a codec, shared by columns, parameters, and SQL expressions, so the same value is encoded and decoded identically everywhere.
+ * A type is a type of kern-db, shared by columns, parameters, and SQL expressions, so the same value is encoded and decoded identically everywhere.
  * In a table, a type is a column; `columnName`, `primaryKey`, `unique`, and `hasDefault` create a column of the type with these attributes.
  * A type with PostgreSQL type parameters, such as the length of `varchar(255)`, has `with`.
  */
@@ -49,9 +49,9 @@ export interface BaseType<
   Parameters extends unknown[] | undefined,
 > {
   readonly [typeBrand]: true
-  // The members of `Codec`, declared here rather than inherited, which would cost instantiations for each type derived in user code.
+  // The members of `Type` of kern-db, declared here rather than inherited, which would cost instantiations for each type derived in user code.
   /** Value types for type inference; absent at runtime. */
-  readonly [codecValues]: { output: Output; input: Input }
+  readonly [typeValues]: { output: Output; input: Input }
   /** SQL type name used in DDL, such as `numeric` or `vector(1536)`. */
   readonly sqlType: string
   /**
@@ -98,7 +98,7 @@ export interface BaseType<
    * `decode` receives the values that this type decodes from values other than `NULL`, including `undefined` that an earlier decoder returns, and returns a value other than `null`; `encode` returns values that this type encodes; `NULL` stays `null` without them.
    */
   transform<NewOutput extends {} | undefined, NewInput>(
-    options: CodecTransform<Exclude<Output, null>, NonNullable<Input>, NewOutput, NewInput>,
+    options: TypeTransform<Exclude<Output, null>, NonNullable<Input>, NewOutput, NewInput>,
   ): Type<
     NewOutput | AcceptedNull<NewInput | Input>,
     NewInput | AcceptedNull<Input>,
@@ -149,27 +149,27 @@ export interface TypeWithParameters<
 export type AnyType = Type<any, any, any, any>
 
 /** Values that a type decodes. */
-export type TypeOutput<T extends AnyType> = T[typeof codecValues]["output"]
+export type TypeOutput<T extends AnyType> = T[typeof typeValues]["output"]
 
 /** Values that a type encodes. */
-export type TypeInput<T extends AnyType> = T[typeof codecValues]["input"]
+export type TypeInput<T extends AnyType> = T[typeof typeValues]["input"]
 
 /** Operators of the expressions of a type. */
 export type TypeOperators<T extends AnyType> = T["operators"]
 
-// An overload of its own, since TypeScript 6 does not take every type for a derivable codec by its members.
+// An overload of its own, since TypeScript 6 does not take every type for a derivable type of kern-db by its members.
 /** Defines a type from `type`, keeping its values and PostgreSQL type parameters, without its operators. */
 export function defineType<Output, Input, Parameters extends unknown[] | undefined>(
   // oxlint-disable-next-line typescript/no-explicit-any -- the operators of the type are left out
   type: Type<Output, Input, any, Parameters>,
 ): Type<Output, Input, NoOperators, Parameters>
 /**
- * Defines a type from `codec`, such as a codec defined without kern-orm, keeping its values and PostgreSQL type parameters.
+ * Defines a type from `dbType`, a type of kern-db, such as one defined without kern-orm, keeping its values and PostgreSQL type parameters.
  *
  * Its expressions have only `isNull` until `withOperators` adds operators.
  */
 export function defineType<Output, Input, Parameters extends unknown[] | undefined>(
-  codec: DerivableCodec<Output, Input, Parameters>,
+  dbType: DerivableType<Output, Input, Parameters>,
 ): Type<Output, Input, NoOperators, Parameters>
 /**
  * Defines a type whose values are the PostgreSQL text representations as they are.
@@ -177,48 +177,48 @@ export function defineType<Output, Input, Parameters extends unknown[] | undefin
  * `transform` converts them to other values, such as `number[]` for `vector`.
  */
 export function defineType(
-  // A codec has the members of the options, so the options are checked not to be one: a codec typed by its contract alone would otherwise give a type of strings.
-  options: CodecOptions & { readonly [codecValues]?: NotADerivableCodec },
+  // A type of kern-db has the members of the options, so the options are checked not to be one: a type typed by its contract alone would otherwise give a type of strings.
+  options: TypeOptions & { readonly [typeValues]?: NotADerivableType },
 ): Type<string>
-export function defineType(definition: AnyDerivableCodec | CodecOptions): AnyType {
-  const codec = isCodec(definition)
-    ? (definition as AnyDerivableCodec)
-    : defineCodec(definition as CodecOptions)
-  return createType(codec, Object.freeze({}))
+export function defineType(definition: AnyDerivableType | TypeOptions): AnyType {
+  const dbType = isDbType(definition)
+    ? (definition as AnyDerivableType)
+    : defineDbType(definition as TypeOptions)
+  return createType(dbType, Object.freeze({}))
 }
 
-/** Type that the options of `defineType` are checked against when they are a codec typed without the methods that derive codecs, naming the reason. */
-interface NotADerivableCodec {
-  readonly "defineType takes a codec typed as a DerivableCodec, as defineCodec creates it": never
+/** Type that the options of `defineType` are checked against when they are a type of kern-db typed without the methods that derive types, naming the reason. */
+interface NotADerivableType {
+  readonly "defineType takes a type of kern-db typed as a DerivableType, as defineType of kern-db creates it": never
 }
 
-/** Tells whether `value` is a type, as opposed to a column, a codec without operators, or another object. */
+/** Tells whether `value` is a type, as opposed to a column, a type of kern-db without operators, or another object. */
 export function isType(value: unknown): value is AnyType {
   return typeof value === "object" && value !== null && typeBrand in value
 }
 
 /**
- * Describes `value`, which a function that takes a type rejected as not a type, for its error: a codec without operators, with the hint of `defineType`.
+ * Describes `value`, which a function that takes a type rejected as not a type, for its error: a type of kern-db, which has no operators, with the hints of `kern-orm/types` and `defineType`.
  *
- * It returns `undefined` for a value that is not a codec; a type is a codec too, so the caller rejects only values other than types.
+ * It returns `undefined` for a value that is not a type of kern-db; a type of kern-orm is one too, so the caller rejects only values other than types.
  */
-export function describeRejectedCodec(value: unknown): string | undefined {
-  return isCodec(value)
-    ? "a codec without operators; create a type from it with defineType(codec)"
+export function describeRejectedDbType(value: unknown): string | undefined {
+  return isDbType(value)
+    ? "a type of kern-db, which has no operators; take a built-in type from kern-orm/types, or create a type from it with defineType() of kern-orm"
     : undefined
 }
 
-/** Derivable codec that has `with`, of any values and parameters. */
-// oxlint-disable-next-line typescript/no-explicit-any -- any codec regardless of its value types
-type CodecWithAnyParameters = DerivableCodecWithParameters<any, any, never[]>
+/** Derivable type of kern-db that has `with`, of any values and parameters. */
+// oxlint-disable-next-line typescript/no-explicit-any -- any type regardless of its value types
+type DbTypeWithAnyParameters = DerivableTypeWithParameters<any, any, never[]>
 
-/** Creates the type of the values of `codec` whose expressions have `operators`. */
-function createType(codec: AnyDerivableCodec, operators: OperatorDefinitions): AnyType {
-  // Each derivation derives the codec and gives the result the operators of this type.
-  const derive = (derived: AnyDerivableCodec) => createType(derived, operators)
+/** Creates the type of the values of `dbType` whose expressions have `operators`. */
+function createType(dbType: AnyDerivableType, operators: OperatorDefinitions): AnyType {
+  // Each derivation derives the type of kern-db and gives the result the operators of this type.
+  const derive = (derived: AnyDerivableType) => createType(derived, operators)
   const type: AnyType = Object.freeze({
-    // The members of the codec with its brand, by which the database layer takes the type as a codec; `encode` and `decode` are the functions of the codec, without a call of the type for each value.
-    ...codec,
+    // The members of the type of kern-db with its brand, by which the database layer takes the type as its own; `encode` and `decode` are the functions of that type, without a call of this type for each value.
+    ...dbType,
     [typeBrand]: true,
     operators,
     withOperators(extra: OperatorDefinitions) {
@@ -238,17 +238,17 @@ function createType(codec: AnyDerivableCodec, operators: OperatorDefinitions): A
           enumerable: true,
         })
       }
-      return createType(codec, Object.freeze(merged))
+      return createType(dbType, Object.freeze(merged))
     },
     // oxlint-disable-next-line typescript/no-explicit-any -- the caller types the values
-    transform: (options: CodecTransform<any, any, any, any>) => derive(codec.transform(options)),
+    transform: (options: TypeTransform<any, any, any, any>) => derive(dbType.transform(options)),
     withParameters: (format: (...parameters: never[]) => string) =>
-      derive(codec.withParameters(format)),
-    ...("with" in codec && {
+      derive(dbType.withParameters(format)),
+    ...("with" in dbType && {
       with: (...parameters: never[]) =>
-        derive((codec as CodecWithAnyParameters).with(...parameters)),
+        derive((dbType as DbTypeWithAnyParameters).with(...parameters)),
     }),
-    nullable: () => derive(codec.nullable()),
+    nullable: () => derive(dbType.nullable()),
     // The narrowed values exist only in TypeScript.
     of: () => type,
     columnName: (name: string) => new Column(type, { name, keyKind: undefined, hasDefault: false }),

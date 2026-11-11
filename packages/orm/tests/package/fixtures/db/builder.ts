@@ -1,5 +1,5 @@
 // Small query builder of another author on top of `kern-db`, which imports only its entry points: it compiles its statements with the SQL fragments of kern-db nested in them, numbering the parameters of both in one statement, and runs them as typed queries of SQL text; prints its statement and its result without PostgreSQL.
-import type { AnyCodec, Database, SqlStatement, TextValue } from "kern-db"
+import type { AnyType, Database, SqlStatement, TextValue } from "kern-db"
 import { createDatabase, param, sql } from "kern-db"
 import type { ParameterBinder } from "kern-db/builder"
 import {
@@ -14,8 +14,8 @@ import * as t from "kern-db/types"
 
 import { createRecordingDriver } from "./recording-driver.ts"
 
-/** Condition of the builder: a column equal to a value that a codec encodes, or a fragment of kern-db. */
-export type Condition = { column: string; codec: AnyCodec; value: unknown } | SqlFragment
+/** Condition of the builder: a column equal to a value that a type encodes, or a fragment of kern-db. */
+export type Condition = { column: string; type: AnyType; value: unknown } | SqlFragment
 
 /** Compiles the select of `columns` of `table` filtered by `conditions`, numbering the parameters of the builder and of its fragments in the order of the text. */
 function compileSelect(table: string, columns: string[], conditions: Condition[]): SqlStatement {
@@ -32,7 +32,7 @@ function compileSelect(table: string, columns: string[], conditions: Condition[]
     text +=
       condition instanceof SqlFragment
         ? `(${renderFragment(condition, binder)})`
-        : `${quoteIdentifier(condition.column)} = ${binder.bind(encodeParameter(condition.value, condition.codec))}::${condition.codec.castType}`
+        : `${quoteIdentifier(condition.column)} = ${binder.bind(encodeParameter(condition.value, condition.type))}::${condition.type.castType}`
   }
   return { text, parameters }
 }
@@ -59,7 +59,7 @@ export const forms = selectFrom(
   "form",
   ["id", "name"],
   [
-    { column: "id", codec: t.integer, value: 7 },
+    { column: "id", type: t.integer, value: 7 },
     sql`${sql`name = ${"Survey"}`} OR tags @> ${param(t.array(t.text), ["poll"])}`,
   ],
 ).select({

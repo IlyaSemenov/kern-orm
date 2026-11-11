@@ -1,7 +1,6 @@
 // Tests of the contract of `Driver` in PostgreSQL, which take the functions of a test runner and assert with `node:assert/strict`, so that any supported runner can run them.
 import assert from "node:assert/strict"
 
-import type { AnyCodec } from "./codec/codec"
 import { createDatabase, getCoordinator } from "./database"
 import type { Connection, Driver, TextValue } from "./driver"
 import { createStatement } from "./driver"
@@ -11,6 +10,7 @@ import { identifier, param, sql } from "./sql/fragment"
 import type { TestHooks } from "./test-helpers"
 import { createTestHelpers } from "./test-helpers"
 import { TransactionConnectionError } from "./transaction/connection-loss"
+import type { AnyType } from "./type/type"
 import * as t from "./types"
 
 /** Options of `describeDriverContract`: how to create the driver under test. */
@@ -44,14 +44,14 @@ function createStatementRunners(target: Pick<Connection, "execute">) {
   }
 }
 
-/** Creates the condition that each column named by a key of `codecs` equals the value of the key in `values`, as a parameter of its codec. */
+/** Creates the condition that each column named by a key of `types` equals the value of the key in `values`, as a parameter of its type. */
 function equalsEach(
-  codecs: Readonly<Record<string, AnyCodec>>,
+  types: Readonly<Record<string, AnyType>>,
   values: Readonly<Record<string, unknown>>,
 ): SqlFragment {
   let condition = sql`TRUE`
-  for (const key of Object.keys(codecs)) {
-    condition = sql`${condition} AND ${identifier(key)} = ${param(codecs[key]!, values[key])}`
+  for (const key of Object.keys(types)) {
+    condition = sql`${condition} AND ${identifier(key)} = ${param(types[key]!, values[key])}`
   }
   return condition
 }
@@ -272,7 +272,7 @@ export function describeDriverContract(
       }
     })
 
-    it("decodes the values of selected expressions with their codecs", async () => {
+    it("decodes the values of selected expressions with their types", async () => {
       const rows = await database.transaction(async () => {
         await runStatement("CREATE TEMP TABLE pg_tag_test (id integer, label text) ON COMMIT DROP")
         await runStatement("INSERT INTO pg_tag_test VALUES (1, 'first'), (2, NULL)")
@@ -807,7 +807,7 @@ export function describeDriverContract(
       })
 
       it("round-trips the built-in types", async () => {
-        const codecs = {
+        const types = {
           bigint: t.bigint,
           numeric: t.numeric.with(20, 6),
           price: t.numeric.with(10, 2).transform({ decode: Number }),
@@ -862,10 +862,10 @@ export function describeDriverContract(
             '1 day 2 hours', '{"tags": ["a", "b"]}', '{a,"b c",NULL,"NULL"}', '192.168.0.1', 'published'
           )
         `)
-          const selected = await database.query`SELECT * FROM pg_type_test`.select(codecs)
+          const selected = await database.query`SELECT * FROM pg_type_test`.select(types)
           // Every value also matches itself as an encoded parameter.
           const matched =
-            await database.query`SELECT id FROM pg_type_test WHERE ${equalsEach(codecs, values)}`.pluck(
+            await database.query`SELECT id FROM pg_type_test WHERE ${equalsEach(types, values)}`.pluck(
               t.uuid,
             )
           return { selected, matched }
@@ -876,7 +876,7 @@ export function describeDriverContract(
       })
 
       it("round-trips date and time values of years outside 1 to 9999", async () => {
-        const codecs = {
+        const types = {
           id: t.integer,
           at: t.timestamptz,
           local: t.timestamp,
@@ -915,12 +915,12 @@ export function describeDriverContract(
             (3, '9999-12-31 23:59:59+00', '9999-12-31 23:59:59', '5874897-12-31')
         `)
           const selected = await database.query`SELECT * FROM pg_moment_test ORDER BY id`.select(
-            codecs,
+            types,
           )
           // Every value also matches itself as an encoded parameter.
           const matched = await Promise.all(
             values.map(value =>
-              database.query`SELECT id FROM pg_moment_test WHERE ${equalsEach(codecs, value)}`.pluck(
+              database.query`SELECT id FROM pg_moment_test WHERE ${equalsEach(types, value)}`.pluck(
                 t.integer,
               ),
             ),

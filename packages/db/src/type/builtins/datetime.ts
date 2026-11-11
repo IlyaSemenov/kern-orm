@@ -1,5 +1,5 @@
-import { defineCodec } from "../codec/codec"
-import { formatTypeName } from "../codec/type-name"
+import { defineType } from "../type"
+import { formatTypeName } from "../type-name"
 
 // Date and time values are strings in fixed ISO 8601 formats, so that no precision or time zone is lost and string order is chronological for years 1 to 9999.
 // Other years are astronomical ISO 8601 years like those of `Date.toISOString`, such as `+010000` and `0000` for 1 BC, converted to the PostgreSQL format on encoding.
@@ -7,7 +7,7 @@ import { formatTypeName } from "../codec/type-name"
 // `with(precision)` sets the number of fractional digits of seconds that PostgreSQL stores.
 
 /** Point in time as a UTC ISO 8601 string with microseconds, such as `2026-01-15T07:00:00.123456Z`; accepts a `Date` too. */
-export const timestamptz = /* @__PURE__ */ defineCodec({ sqlType: "timestamptz" })
+export const timestamptz = /* @__PURE__ */ defineType({ sqlType: "timestamptz" })
   .transform({
     decode: normalizeTimestamptz,
     encode: (value: string | Date) =>
@@ -16,23 +16,23 @@ export const timestamptz = /* @__PURE__ */ defineCodec({ sqlType: "timestamptz" 
   .withParameters(/* @__PURE__ */ createPrecisionFormatter("timestamptz"))
 
 /** Date and time without a time zone as an ISO 8601 string with microseconds, such as `2026-01-15T10:00:00.000000`. */
-export const timestamp = /* @__PURE__ */ defineCodec({ sqlType: "timestamp" })
+export const timestamp = /* @__PURE__ */ defineType({ sqlType: "timestamp" })
   .transform({ decode: normalizeTimestamp, encode: toPostgresYear })
   .withParameters(/* @__PURE__ */ createPrecisionFormatter("timestamp"))
 
 /** Calendar date as an ISO 8601 string, such as `2026-01-15`. */
-export const date = /* @__PURE__ */ defineCodec({ sqlType: "date" }).transform({
+export const date = /* @__PURE__ */ defineType({ sqlType: "date" }).transform({
   decode: normalizeDate,
   encode: toPostgresYear,
 })
 
 /** Time of day as a string with microseconds, such as `10:00:00.000000`. */
-export const time = /* @__PURE__ */ defineCodec({ sqlType: "time" })
+export const time = /* @__PURE__ */ defineType({ sqlType: "time" })
   .transform({ decode: normalizeTime })
   .withParameters(/* @__PURE__ */ createPrecisionFormatter("time"))
 
 /** Interval in the PostgreSQL output format, such as `1 day 02:00:00`. */
-export const interval = /* @__PURE__ */ defineCodec({ sqlType: "interval" })
+export const interval = /* @__PURE__ */ defineType({ sqlType: "interval" })
 
 function createPrecisionFormatter(name: string) {
   return (precision: number) => formatTypeName(name, precision)

@@ -2,7 +2,7 @@
 
 The database layer becomes the package `kern-db` in the repository of `kern-orm`, which then publishes three packages with independent versions, each in a directory named by its responsibility:
 
-- `kern-db` (`packages/db`): the driver contract and the drivers, `Database` with its ambient transactions, sessions, and advisory locks, SQL fragments and queries of SQL text with their parameters, codecs and the decoding of flat results, the test helpers, and the errors of drivers and transactions.
+- `kern-db` (`packages/db`): the driver contract and the drivers, `Database` with its ambient transactions, sessions, and advisory locks, SQL fragments and queries of SQL text with their parameters, types and the decoding of flat results, the test helpers, and the errors of drivers and transactions.
 - `kern-orm` (`packages/orm`): tables, schemas, relations, expressions with their operators, queries and mutations, the AST with its lowering and compiler, the decoding of nested results, and `bindSchema`.
 - `kern-migrations` (`packages/migrations`): the migrator, which uses only `kern-db`, also in types.
 
@@ -69,7 +69,7 @@ A regular dependency installs `kern-db` with `kern-orm`, and a package manager s
 The migrator takes the database of the application, so it requires `kern-db` as a peer dependency, and its database is the one that the application created.
 
 A peer dependency does not ensure one copy: an application that requires another minor version of `kern-db` gets two.
-Values that a module of one copy brands, such as codecs and SQL fragments, are not values of another copy, and only the errors of drivers and transactions recognize another copy, by their brands of `Symbol.for`.
+Values that a module of one copy brands, such as types and SQL fragments, are not values of another copy, and only the errors of drivers and transactions recognize another copy, by their brands of `Symbol.for`.
 kern-orm supports installations of compatible versions and does not make every branded value work across copies.
 
 ## A range of the whole 0.x series

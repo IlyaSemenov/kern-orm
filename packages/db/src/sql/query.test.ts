@@ -3,12 +3,12 @@ import { describe, expect, it } from "bun:test"
 import { describePostgres } from "@kern-orm/test-harness/postgres"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
-import { boolean } from "../codecs/boolean"
-import { integer } from "../codecs/numeric"
-import { text } from "../codecs/text"
 import { createDatabase } from "../database"
 import type { DriverResult } from "../driver"
 import { NotFoundError } from "../result"
+import { boolean } from "../type/builtins/boolean"
+import { integer } from "../type/builtins/numeric"
+import { text } from "../type/builtins/text"
 
 import { identifier, param } from "./fragment"
 import type { AnySqlQuery } from "./query"
@@ -59,9 +59,9 @@ describe("statements", () => {
   it("reject a value that the template does not take when they are created", () => {
     const { database } = createRecordedDatabase()
 
-    // @ts-expect-error A parameter without a codec takes no object.
+    // @ts-expect-error A parameter without a type takes no object.
     expect(() => database.query`SELECT ${{ id: 1 }}`).toThrow(
-      "A parameter without a codec takes a string",
+      "A parameter without a type takes a string",
     )
     // @ts-expect-error A parameter has no undefined.
     expect(() => database.query`SELECT ${undefined}`).toThrow(
@@ -89,7 +89,7 @@ describe("statements", () => {
 describe("rows", () => {
   const columns = ["name", "id", "note"]
 
-  it("decode the result columns of the keys of select by their codecs, adding fields to those selected earlier", async () => {
+  it("decode the result columns of the keys of select by their types, adding fields to those selected earlier", async () => {
     const { database } = createRecordedDatabase({
       columns,
       rows: [
@@ -180,7 +180,7 @@ describe("rows", () => {
     expect(await none.query`SELECT`.get(integer).optional()).toBeUndefined()
   })
 
-  it("reject select after get or pluck, nullable after them, optional of many rows, other values than codecs, and a key that cannot be a field", () => {
+  it("reject select after get or pluck, nullable after them, optional of many rows, other values than types, and a key that cannot be a field", () => {
     const query: AnySqlQuery = createRecordedDatabase().database.query`SELECT`
 
     // @ts-expect-error Types reject select after get.
@@ -194,10 +194,10 @@ describe("rows", () => {
     expect(() => query.select({ id: integer }).optional()).toThrow(
       "optional applies only to a query of one row, such as one made by take",
     )
-    // @ts-expect-error A string is not a codec.
-    expect(() => query.get("integer")).toThrow("get takes a codec")
-    // @ts-expect-error A string is not a codec.
-    expect(() => query.select({ id: "integer" })).toThrow('field "id" takes a codec')
+    // @ts-expect-error A string is not a type.
+    expect(() => query.get("integer")).toThrow("get takes a type")
+    // @ts-expect-error A string is not a type.
+    expect(() => query.select({ id: "integer" })).toThrow('field "id" takes a type')
     expect(() => query.select({ [Symbol("id")]: integer } as never)).toThrow(
       "A selected field must have a string key",
     )

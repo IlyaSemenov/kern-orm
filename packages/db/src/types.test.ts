@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 
 import { build } from "esbuild"
 
-it("loads only the modules of codecs", async () => {
+it("loads only the modules of types", async () => {
   const sources = fileURLToPath(new URL(".", import.meta.url))
   const { metafile } = await build({
     entryPoints: ["./types.ts"],
@@ -18,8 +18,6 @@ it("loads only the modules of codecs", async () => {
 
   const modules = Object.keys(metafile.inputs).filter(path => path !== "types.ts")
   // No other module of kern-db, such as the transaction coordinator.
-  expect(modules.filter(path => !path.startsWith("codec/") && !path.startsWith("codecs/"))).toEqual(
-    [],
-  )
-  expect(modules).toContain("codecs/datetime.ts")
+  expect(modules.filter(path => !path.startsWith("type/"))).toEqual([])
+  expect(modules).toContain("type/builtins/datetime.ts")
 })

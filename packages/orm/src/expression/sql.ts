@@ -10,7 +10,7 @@ import type { ScalarQuery, ScalarQueryValue } from "../query/operand"
 import { RecordQuery } from "../query/record"
 import { SelectQuery } from "../query/select"
 import type { AnyType, Type } from "../type/type"
-import { describeRejectedCodec, isType } from "../type/type"
+import { describeRejectedDbType, isType } from "../type/type"
 
 import type { AnyExpression, Expression, UntypedExpression } from "./expression"
 import {
@@ -56,7 +56,9 @@ export function sql(first: TemplateStringsArray | AnyType, ...values: unknown[])
     return createFragment(first, values, undefined)
   }
   if (!isType(first)) {
-    throw new TypeError(`sql() accepts a type, not ${describeRejectedCodec(first) ?? "a column"}`)
+    throw new TypeError(
+      `sql() accepts a type of kern-orm, not ${describeRejectedDbType(first) ?? "a column"}`,
+    )
   }
   return (strings: TemplateStringsArray, ...values: unknown[]) =>
     createFragment(strings, values, first)
@@ -100,7 +102,7 @@ export function param<
 export function param(type: AnyType | AnyExpression, value: unknown): AnyExpression {
   if (!isType(type) && !isExpression(type)) {
     throw new TypeError(
-      `param() accepts a type or an expression, not ${describeRejectedCodec(type) ?? "a column"}`,
+      `param() accepts a type of kern-orm or an expression, not ${describeRejectedDbType(type) ?? "a column"}`,
     )
   }
   if (isExpression(type)) {

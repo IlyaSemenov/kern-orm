@@ -86,12 +86,11 @@ export {
 } from "./expression/aggregates"
 export type { NumberTypeOperators } from "./type/number"
 export type {
-  BaseDerivableCodec,
-  Codec,
-  CodecOptions,
-  CodecTransform,
-  DerivableCodec,
-  DerivableCodecWithParameters,
+  BaseDerivableType,
+  DerivableType,
+  DerivableTypeWithParameters,
+  TypeOptions,
+  TypeTransform,
 } from "kern-db"
 export type { AnyType, BaseType, Type, TypeInput, TypeOperators, TypeOutput } from "./type/type"
 export { defineType } from "./type/type"
@@ -170,7 +169,7 @@ export type {
 export type {
   AnySqlQuery,
   DecodedFields,
-  FieldCodecs,
+  FieldTypes,
   InitialSqlQueryState,
   SqlQuery,
   SqlQueryResult,

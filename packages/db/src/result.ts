@@ -1,7 +1,7 @@
 // Results of statements: how rows modes make the rows of a statement its result, the keys that a decoded record can have, the errors of a result that breaks its contract, and the decoding of flat results, whose rows hold no nested rows.
 
-import type { AnyCodec } from "./codec/codec"
 import type { DriverResult, TextValue } from "./driver"
+import type { AnyType } from "./type/type"
 
 /**
  * How a query returns its rows: `many` as an array; `one` as one row, rejecting without it; `nullable` as one row or `null` without it; `optional` as one row or `undefined` without it.
@@ -57,10 +57,10 @@ export class NotFoundError extends Error {
   }
 }
 
-/** Field of a flat result: the key of a record, which names the result column of its value, and the codec that decodes the value. */
+/** Field of a flat result: the key of a record, which names the result column of its value, and the type that decodes the value. */
 export interface FlatField {
   readonly key: string
-  readonly codec: AnyCodec
+  readonly type: AnyType
 }
 
 /** How a flat result decodes the result of a statement. */
@@ -256,12 +256,12 @@ function decodeFlatRow(
   let index = 0
   try {
     if (plan.value) {
-      return decodeFlatValue(fields[0]!.codec, row[columns[0]!])
+      return decodeFlatValue(fields[0]!.type, row[columns[0]!])
     }
     const record: Record<string, unknown> = {}
     for (; index < fields.length; index++) {
       const field = fields[index]!
-      record[field.key] = decodeFlatValue(field.codec, row[columns[index]!])
+      record[field.key] = decodeFlatValue(field.type, row[columns[index]!])
     }
     return record
   } catch (error) {
@@ -269,12 +269,12 @@ function decodeFlatRow(
   }
 }
 
-/** Decodes a value of a row of the driver with `codec`, keeping `NULL` as `null`, and rejecting a missing value, such as of a sparse row. */
-function decodeFlatValue(codec: AnyCodec, value: TextValue | undefined): unknown {
+/** Decodes a value of a row of the driver with `type`, keeping `NULL` as `null`, and rejecting a missing value, such as of a sparse row. */
+function decodeFlatValue(type: AnyType, value: TextValue | undefined): unknown {
   if (value === undefined) {
     throw new Error("Driver returned no value")
   }
-  return value === null ? null : codec.decode(value)
+  return value === null ? null : type.decode(value)
 }
 
 /** Returns the error of the result of a `FieldFailure`, adding `prefix`, such as the index of the row, before the key of its field. */

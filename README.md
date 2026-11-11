@@ -80,7 +80,7 @@ await db.$transaction(async () => {
 ## Packages
 
 - [`kern-orm`](packages/orm): tables, schemas, relations, queries, and the SQL compiler.
-- [`kern-db`](packages/db): databases with ambient transactions, queries of SQL text, codecs, the drivers of [postgres.js](https://github.com/porsager/postgres) and [node-postgres](https://node-postgres.com/), and test transactions, which work without the ORM.
+- [`kern-db`](packages/db): databases with ambient transactions, queries of SQL text, types, the drivers of [postgres.js](https://github.com/porsager/postgres) and [node-postgres](https://node-postgres.com/), and test transactions, which work without the ORM.
 - [`kern-migrations`](packages/migrations): migrations of PostgreSQL schemas.
 
 ## Development

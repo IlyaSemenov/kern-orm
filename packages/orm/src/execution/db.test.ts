@@ -286,7 +286,7 @@ it("rejects a table of a Db and an expression in the templates of a script and a
   const { driver, scripts, statements } = createRecordingDriver()
   const database = createDatabase({ driver })
   const db = bindSchema(schema, database)
-  const message = "A parameter without a codec takes a string"
+  const message = "A parameter without a type takes a string"
 
   // @ts-expect-error A table of a Db takes $script of the Db.
   await expect(database.script`ANALYZE ${db.post}`).rejects.toThrow(message)

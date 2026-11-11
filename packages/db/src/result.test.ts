@@ -1,7 +1,5 @@
 import { describe, expect, it } from "bun:test"
 
-import { integer } from "./codecs/numeric"
-import { text } from "./codecs/text"
 import type { DriverResult } from "./driver"
 import type { FlatResultPlan, ResultRows } from "./result"
 import {
@@ -11,6 +9,8 @@ import {
   takeOnlyRow,
   toMissingResult,
 } from "./result"
+import { integer } from "./type/builtins/numeric"
+import { text } from "./type/builtins/text"
 
 /** Result mode of records in rows mode `rows`. */
 function createMode(rows: ResultRows) {
@@ -45,8 +45,8 @@ describe("missing result", () => {
 
 describe("flat results", () => {
   const fields = [
-    { key: "id", codec: integer },
-    { key: "title", codec: text },
+    { key: "id", type: integer },
+    { key: "title", type: text },
   ]
 
   /** Result of a statement of `rows` with `columns` whose command tag reports `count` rows. */
@@ -107,7 +107,7 @@ describe("flat results", () => {
 
   it("read a value from the only column, whatever its name, and reject other numbers of columns", () => {
     const plan: FlatResultPlan = {
-      fields: [{ key: "value", codec: integer }],
+      fields: [{ key: "value", type: integer }],
       rows: "many",
       value: true,
     }
@@ -151,8 +151,8 @@ describe("flat results", () => {
     })
     const plan: FlatResultPlan = {
       fields: [
-        { key: "id", codec: integer },
-        { key: "location", codec: point },
+        { key: "id", type: integer },
+        { key: "location", type: point },
       ],
       rows: "many",
       value: false,
@@ -189,7 +189,7 @@ describe("flat results", () => {
 
   it("reject a row of the driver of another width than the result columns, without a path", () => {
     const value: FlatResultPlan = {
-      fields: [{ key: "value", codec: integer }],
+      fields: [{ key: "value", type: integer }],
       rows: "many",
       value: true,
     }

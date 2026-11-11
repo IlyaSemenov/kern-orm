@@ -1,17 +1,17 @@
 import { describe, expect, it } from "bun:test"
 
-import { defineCodec, isCodec } from "./codec"
+import { defineType, isType } from "./type"
 
-const vector = defineCodec({ sqlType: "vector" })
+const vector = defineType({ sqlType: "vector" })
   .transform({
     decode: text => JSON.parse(text) as number[],
     encode: (value: number[]) => JSON.stringify(value),
   })
   .withParameters((dimensions: number) => `vector(${dimensions})`)
 
-describe("defineCodec", () => {
-  it("defines a codec of the text representations as they are", () => {
-    const ltree = defineCodec({ sqlType: "ltree" })
+describe("defineType", () => {
+  it("defines a type of the text representations as they are", () => {
+    const ltree = defineType({ sqlType: "ltree" })
 
     expect(ltree.sqlType).toBe("ltree")
     expect(ltree.castType).toBe("ltree")
@@ -21,24 +21,24 @@ describe("defineCodec", () => {
   })
 
   it("rejects type parameters in the SQL type name without a cast type", () => {
-    expect(() => defineCodec({ sqlType: "vector(3)" })).toThrow("withParameters")
-    expect(defineCodec({ sqlType: "vector(3)", castType: "vector" }).castType).toBe("vector")
+    expect(() => defineType({ sqlType: "vector(3)" })).toThrow("withParameters")
+    expect(defineType({ sqlType: "vector(3)", castType: "vector" }).castType).toBe("vector")
   })
 
-  it("rejects a codec, which would lose its conversion and nullability", () => {
-    // @ts-expect-error A codec is not options of a codec.
-    expect(() => defineCodec(vector.nullable())).toThrow(
-      "defineCodec() takes options, not a codec or a type, which is a codec already",
+  it("rejects a type, which would lose its conversion and nullability", () => {
+    // @ts-expect-error A type is not options of a type.
+    expect(() => defineType(vector.nullable())).toThrow(
+      "defineType() of kern-db takes options, not a type",
     )
   })
 
-  it("creates a codec that cannot be changed", () => {
-    expect(Object.isFrozen(defineCodec({ sqlType: "ltree" }))).toBe(true)
+  it("creates a type that cannot be changed", () => {
+    expect(Object.isFrozen(defineType({ sqlType: "ltree" }))).toBe(true)
   })
 })
 
 describe("type parameters", () => {
-  it("create a codec with parameters, keeping the codec without them", () => {
+  it("create a type with parameters, keeping the type without them", () => {
     expect(vector.with(1536).sqlType).toBe("vector(1536)")
     expect(vector.sqlType).toBe("vector")
   })
@@ -47,7 +47,7 @@ describe("type parameters", () => {
     expect(vector.with(1536).castType).toBe("vector")
   })
 
-  it("keep the other changes of the codec", () => {
+  it("keep the other changes of the type", () => {
     const embedding = vector
       .transform({ decode: value => value.length })
       .nullable()
@@ -58,28 +58,28 @@ describe("type parameters", () => {
     expect(embedding.isNullable).toBe(true)
   })
 
-  it("apply again to a codec that has them", () => {
+  it("apply again to a type that has them", () => {
     expect(vector.with(3).with(1536).sqlType).toBe("vector(1536)")
   })
 
-  it("give only a codec of withParameters the method with", () => {
-    expect("with" in defineCodec({ sqlType: "ltree" })).toBe(false)
+  it("give only a type of withParameters the method with", () => {
+    expect("with" in defineType({ sqlType: "ltree" })).toBe(false)
     expect("with" in vector.nullable()).toBe(true)
   })
 })
 
 describe("transform", () => {
-  const numeric = defineCodec({ sqlType: "numeric" })
+  const numeric = defineType({ sqlType: "numeric" })
 
-  it("decodes values of the codec into another representation", () => {
+  it("decodes values of the type into another representation", () => {
     expect(numeric.transform({ decode: Number }).decode("12.50")).toBe(12.5)
   })
 
-  it("keeps the encoder of the codec without one of its own", () => {
+  it("keeps the encoder of the type without one of its own", () => {
     expect(numeric.transform({ decode: Number }).encode).toBe(numeric.encode)
   })
 
-  it("encodes the representation through the codec", () => {
+  it("encodes the representation through the type", () => {
     const cents = numeric
       .transform({ decode: value => BigInt(value), encode: (value: bigint) => String(value) })
       .transform({ decode: value => value / 100n, encode: (value: bigint) => value * 100n })
@@ -96,7 +96,7 @@ describe("transform", () => {
     expect(cents.encode(1250)).toBe("12.5")
   })
 
-  it("encodes and decodes by functions taken from the codec", () => {
+  it("encodes and decodes by functions taken from the type", () => {
     const { decode, encode } = numeric
       .transform({ decode: Number, encode: (value: number) => String(value) })
       .transform({ decode: value => value * 100, encode: (value: number) => value / 100 })
@@ -115,8 +115,8 @@ describe("transform", () => {
 })
 
 describe("nullable", () => {
-  it("creates a nullable codec, keeping the codec it is called on", () => {
-    const ltree = defineCodec({ sqlType: "ltree" })
+  it("creates a nullable type, keeping the type it is called on", () => {
+    const ltree = defineType({ sqlType: "ltree" })
 
     expect(ltree.nullable().isNullable).toBe(true)
     expect(ltree.isNullable).toBe(false)
@@ -124,27 +124,27 @@ describe("nullable", () => {
 })
 
 describe("of", () => {
-  it("narrows the values only in types, keeping the codec", () => {
-    const ltree = defineCodec({ sqlType: "ltree" })
+  it("narrows the values only in types, keeping the type", () => {
+    const ltree = defineType({ sqlType: "ltree" })
 
     expect<unknown>(ltree.of<"a" | "b">()).toBe(ltree)
   })
 })
 
-describe("isCodec", () => {
-  it("takes a codec and a codec derived from it", () => {
-    expect(isCodec(vector)).toBe(true)
-    expect(isCodec(vector.with(3).nullable())).toBe(true)
+describe("isType", () => {
+  it("takes a type and a type derived from it", () => {
+    expect(isType(vector)).toBe(true)
+    expect(isType(vector.with(3).nullable())).toBe(true)
   })
 
-  it("takes an object that copies the members of a codec", () => {
+  it("takes an object that copies the members of a type", () => {
     const extended = { ...vector, operators: {} }
 
-    expect(isCodec(extended)).toBe(true)
+    expect(isType(extended)).toBe(true)
     expect(extended.encode([1, 2])).toBe("[1,2]")
   })
 
-  it("rejects an object with the same members that copies no codec", () => {
+  it("rejects an object with the same members that copies no type", () => {
     const lookalike = {
       sqlType: "ltree",
       castType: "ltree",
@@ -153,9 +153,9 @@ describe("isCodec", () => {
       decode: (text: string) => text,
     }
 
-    expect(isCodec(lookalike)).toBe(false)
-    expect(isCodec({ type: vector })).toBe(false)
-    expect(isCodec(null)).toBe(false)
-    expect(isCodec("vector")).toBe(false)
+    expect(isType(lookalike)).toBe(false)
+    expect(isType({ type: vector })).toBe(false)
+    expect(isType(null)).toBe(false)
+    expect(isType("vector")).toBe(false)
   })
 })

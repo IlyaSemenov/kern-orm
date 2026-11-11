@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test"
 
-import { defineCodec } from "../codec/codec"
-import { array } from "../codecs/array"
-import { jsonb } from "../codecs/json"
-import { integer, numeric } from "../codecs/numeric"
 import type { TextValue } from "../driver"
+import { array } from "../type/builtins/array"
+import { jsonb } from "../type/builtins/json"
+import { integer, numeric } from "../type/builtins/numeric"
+import { defineType } from "../type/type"
 
 import type { ParameterBinder } from "./fragment"
 import { compileFragment, identifier, param, renderFragment, sql, SqlFragment } from "./fragment"
@@ -53,10 +53,10 @@ describe("sql", () => {
     expect(compileFragment(fragment).parameters).toEqual(["2028-01-02T03:04:05.678Z"])
   })
 
-  it("rejects a value that is neither a fragment nor a value of a parameter without a codec when it is created", () => {
+  it("rejects a value that is neither a fragment nor a value of a parameter without a type when it is created", () => {
     for (const value of [{ name: "Survey" }, [1, 2], () => 1, Symbol("value")]) {
       // @ts-expect-error The template takes neither an object, an array, a function, nor a symbol.
-      expect(() => sql`SELECT ${value}`).toThrow("A parameter without a codec takes a string")
+      expect(() => sql`SELECT ${value}`).toThrow("A parameter without a type takes a string")
     }
     // @ts-expect-error The template takes no undefined.
     expect(() => sql`SELECT ${undefined}`).toThrow("Query parameter is undefined")
@@ -91,7 +91,7 @@ describe("identifier", () => {
 })
 
 describe("param", () => {
-  it("encodes its value with the codec and casts the parameter to the cast type, in parentheses", () => {
+  it("encodes its value with the type and casts the parameter to the cast type, in parentheses", () => {
     expect(
       compileFragment(
         sql`SELECT ${param(jsonb, { choices: ["a"] })}, ${param(array(integer), [1, 2])}[1], ${param(numeric.with(10, 2), "1.50")}`,
@@ -119,19 +119,19 @@ describe("param", () => {
     })
   })
 
-  it("takes an object that copies the members of a codec", () => {
+  it("takes an object that copies the members of a type", () => {
     const type = { ...integer, operators: {} }
 
     expect(compileFragment(param(type, 1))).toEqual({ text: "($1::integer)", parameters: ["1"] })
   })
 
-  it("rejects a value that is not a codec, and an undefined value", () => {
-    // @ts-expect-error The options of a codec are not a codec.
+  it("rejects a value that is not a type, and an undefined value", () => {
+    // @ts-expect-error The options of a type are not a type.
     expect(() => param({ sqlType: "ltree" }, "a.b")).toThrow(
-      "param() takes a codec and the value that it encodes",
+      "param() takes a type and the value that it encodes",
     )
-    // @ts-expect-error A codec of text takes no undefined.
-    expect(() => param(defineCodec({ sqlType: "ltree" }), undefined)).toThrow(
+    // @ts-expect-error A type of text takes no undefined.
+    expect(() => param(defineType({ sqlType: "ltree" }), undefined)).toThrow(
       "Query parameter is undefined",
     )
   })
@@ -150,8 +150,8 @@ describe("renderFragment", () => {
         return "?p"
       },
     }
-    const zone = param(defineCodec({ sqlType: "text" }), "UTC")
-    const other = param(defineCodec({ sqlType: "text" }), "UTC")
+    const zone = param(defineType({ sqlType: "text" }), "UTC")
+    const other = param(defineType({ sqlType: "text" }), "UTC")
 
     expect(renderFragment(sql`${zone} ${1} ${sql`${zone}`} ${other}`, binder)).toBe(
       "(?p::text) ? (?p::text) (?p::text)",
@@ -163,11 +163,11 @@ describe("renderFragment", () => {
     expect(keys[3]).not.toBe(keys[0])
   })
 
-  it("rejects a value of a fragment created without its functions that a parameter does not take without a codec", () => {
+  it("rejects a value of a fragment created without its functions that a parameter does not take without a type", () => {
     const fragment = new SqlFragment(["SELECT ", ""], [{ name: "Survey" }])
 
     expect(() => compileFragment(fragment)).toThrow(
-      "A parameter without a codec takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not an object",
+      "A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not an object",
     )
   })
 })

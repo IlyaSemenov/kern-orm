@@ -12,10 +12,10 @@
 
 ## Results
 
-- A query resolves to the number of the rows of the command tag of its statement, as a mutation without `RETURNING` does; `select` returns records instead, and `get` and `pluck` values, decoded by the codecs they take, which include the types of the ORM.
+- A query resolves to the number of the rows of the command tag of its statement, as a mutation without `RETURNING` does; `select` returns records instead, and `get` and `pluck` values, decoded by the types they take, also of the ORM.
   - `take`, `optional`, and `nullable` change the rows mode as for a query of a table, before or after a selection; before a selection, they check the number of the rows as for a mutation of one row.
   - `take` adds no limit, since kern-db does not change the text of a statement, so a query of one row rejects several rows.
-  - Types cannot check what the statement returns: the codec of a field declares the values of its column, including whether it is nullable, as `sql(type)` does, and decoding keeps `NULL` as `null` whatever the codec.
+  - Types cannot check what the statement returns: the type of a field declares the values of its column, including whether it is nullable, as `sql(type)` does, and decoding keeps `NULL` as `null` whatever the type.
 - The database layer decodes the result by a flat plan (`decodeFlatResult` of `result.ts`), which has no nested rows, literals, or conversions.
 - Records are read from the result columns by the keys of their fields, as the driver names the columns, rather than by position: the statement chooses the order of its columns, and two columns of one type in another order would decode silently.
   - A missing column, or a column that the result has twice, rejects with `ResultDecodeError`; other columns are ignored, such as those of `RETURNING *`.

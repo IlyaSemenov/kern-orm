@@ -442,15 +442,15 @@ describe.each(["node", "bun"])("%s", runtime => {
       })
     })
 
-    test("recognizes the codecs of kern-db, kern-orm/db, and kern-orm in each other's entry points", () => {
+    test("recognizes the types of kern-db, kern-orm/db, and kern-orm in each other's entry points", () => {
       const formId = "6f1c1f5e-4e8f-4c2a-9a55-9f5a3c4b2d10"
-      const output = JSON.parse(run([runtime, "codecs.ts"], ormConsumer))
+      const output = JSON.parse(run([runtime, "db-types.ts"], ormConsumer))
 
       expect(output).toEqual({
-        sameBuiltInCodecs: true,
-        typeIsCodec: true,
-        codecOfOrmIsCodec: true,
-        codecIsCodecOfOrm: true,
+        sameBuiltInTypes: true,
+        ormTypeIsDbType: true,
+        ormDbTypeIsDbType: true,
+        dbTypeIsOrmDbType: true,
         record: { id: formId, count: 2 },
         value: formId,
         ormRecord: { id: formId, count: 2 },
