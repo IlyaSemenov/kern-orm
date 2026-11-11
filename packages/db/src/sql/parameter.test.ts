@@ -1,6 +1,13 @@
 import { describe, expect, it } from "bun:test"
 
+import { describePostgres } from "@kern-orm/test-harness/postgres"
+
 import type { TextValue } from "../driver"
+import { boolean } from "../type/builtins/boolean"
+import { bytea } from "../type/builtins/bytea"
+import { timestamptz } from "../type/builtins/datetime"
+import { bigint, doublePrecision } from "../type/builtins/numeric"
+import { text } from "../type/builtins/text"
 
 import { assertUntypedValue, bindParameter, encodeParameter, maxParameters } from "./parameter"
 
@@ -51,6 +58,43 @@ describe("encodeParameter", () => {
     expect(() => encodeParameter(undefined, undefined)).toThrow(error)
     expect(() => encodeParameter(undefined, type)).toThrow("Query parameter is undefined")
   })
+})
+
+describePostgres("values without a type in PostgreSQL", ({ database, testTransaction }) => {
+  it("are read by PostgreSQL as the values of the types of their places, in any time zone of the session", () =>
+    testTransaction(async () => {
+      await database.query`SET LOCAL TimeZone = 'Asia/Kathmandu'`
+      const values = await database.query`
+        SELECT
+          ${`it's "quoted"`}::text AS text,
+          ${1.5}::double precision AS number,
+          ${9007199254740993n}::bigint AS bigint,
+          ${false}::boolean AS boolean,
+          ${null}::text AS nothing,
+          ${new Date("2026-01-15T07:00:00.123Z")}::timestamptz AS date,
+          ${new Uint8Array([0, 255])}::bytea AS bytes
+      `
+        .select({
+          text: text,
+          number: doublePrecision,
+          bigint: bigint,
+          boolean: boolean,
+          nothing: text.nullable(),
+          date: timestamptz,
+          bytes: bytea,
+        })
+        .take()
+
+      expect(values).toEqual({
+        text: `it's "quoted"`,
+        number: 1.5,
+        bigint: 9007199254740993n,
+        boolean: false,
+        nothing: null,
+        date: "2026-01-15T07:00:00.123000Z",
+        bytes: new Uint8Array([0, 255]),
+      })
+    }))
 })
 
 describe("bindParameter", () => {

@@ -5,6 +5,9 @@ import {
   normalizeTime,
   normalizeTimestamp,
   normalizeTimestamptz,
+  time,
+  timestamp,
+  timestamptz,
   toPostgresYear,
 } from "./datetime"
 
@@ -55,4 +58,13 @@ it("converts ISO 8601 years outside 1 to 9999 to PostgreSQL years", () => {
   expect(toPostgresYear("-004712-01-01")).toBe("4713-01-01 BC")
   expect(toPostgresYear("2026-01-15")).toBe("2026-01-15")
   expect(toPostgresYear("-infinity")).toBe("-infinity")
+})
+
+it("formats the precision of timestamptz, timestamp, and time in their SQL types and not in their cast types", () => {
+  expect([timestamptz.with(3).sqlType, timestamp.with(3).sqlType, time.with(0).sqlType]).toEqual([
+    "timestamptz(3)",
+    "timestamp(3)",
+    "time(0)",
+  ])
+  expect(timestamptz.with(3).castType).toBe("timestamptz")
 })
