@@ -1,5 +1,16 @@
 # kern-orm
 
+## 0.12.0
+
+### Minor Changes
+
+- 1cf41eb: Add helpers to read backend PIDs and wait for blocked statements in `kern-db/testing` and `kern-orm/testing`.
+- 9923ac1: Add `isOutcomeUnknown`, which tells whether the outcome of a failed statement or transaction is unknown because its connection failed.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.3.0
+
 ## 0.11.0
 
 ### Minor Changes

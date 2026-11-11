@@ -1,5 +1,15 @@
 # kern-migrations
 
+## 0.4.0
+
+### Minor Changes
+
+- 9deee7b: Reject a target that is not a `Db`, a database, or a driver with a `TypeError`, and add `isMigrationTarget`.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.3.0
+
 ## 0.3.0
 
 ### Minor Changes
