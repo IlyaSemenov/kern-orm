@@ -10,13 +10,4 @@ A published version keeps its range forever, so a package manager accepts it wit
   - deprecating the broken versions with `npm deprecate`.
 - A companion package that starts to rely on a newer version of `kern-orm` must raise the minimum of its range.
 
-The compatibility test runs a consumer of each companion package in two projects that install packages from npm:
-
-- the packed package with the minimum of its range;
-- the oldest published version of the package that is not deprecated and whose range accepts the packed `kern-orm`, with the packed `kern-orm`, unless the package has none, such as before its first release.
-
-The packed `kern-orm` has the version that the pending changesets release.
-A minimum that npm does not have yet runs with the packed `kern-orm` only when it is the version of the workspace, between the version commit of a release and its publishing, or the version that the pending changesets release, so that a mistake in a range fails the test.
-A consumer of the migrator also installs a driver: the packed one when its range accepts the `kern-orm` of the project, else the newest published one that does.
-
 Each companion package lists what it relies on, such as [drivers](drivers.md#compatibility) and [migrations](migrations.md#compatibility).
