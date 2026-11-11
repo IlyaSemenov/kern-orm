@@ -35,8 +35,8 @@ Do not catalog files or restate information evident from their names and locatio
 - Name runtime tests `*.test.ts`, compile-only type tests `*.type-test.ts`, and tests of the packed packages `*.package-test.ts`.
 - Structure type tests with `describe` and `test` from `bun:test`, like runtime tests; `bun test` does not run them, and typecheck checks their bodies.
 - Put a call that no overload accepts on one line under `@ts-expect-error`: TypeScript 6 reports it at the call, and TypeScript 7 at the argument.
-- Keep each package entry point, `src/index.ts` and one `src/<name>.ts` per subpath export, limited to explicit public exports.
-- Do not add an `index.ts` to a directory inside `src/`: import each module by its own path, and re-export only from package entry points.
+- Keep each package entry point, `src/index.ts` for `.` and `src/<subpath>.ts` for each subpath export, such as `src/db.ts` for `./db` and `src/db/types.ts` for `./db/types`, limited to explicit public exports.
+- Keep `index.ts` only as the root entry point: a directory inside `src/` has none, each module is imported by its own path, and only package entry points re-export.
 - Export from each entry point the types that the inferred types of its values reference, also from an entry point of values such as `kern-orm/types`, so that a consumer module that imports only that entry point can emit its declarations: TypeScript names a type only through a module that the program loads and that the consumer resolves.
   The package test emits the declarations of a module of each entry point of values in a program of its own, and of a consumer that cannot resolve `kern-db`.
 - Treat `package.json` exports and supported runtimes as public contracts.

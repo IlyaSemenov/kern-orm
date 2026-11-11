@@ -1,28 +1,13 @@
-export {
-  array,
-  bigint,
-  boolean,
-  bytea,
-  char,
-  cidr,
-  date,
-  doublePrecision,
-  enumOf as enum,
-  inet,
-  integer,
-  interval,
-  json,
-  jsonb,
-  numeric,
-  real,
-  smallint,
-  text,
-  time,
-  timestamp,
-  timestamptz,
-  uuid,
-  varchar,
-} from "./type/builtins"
+export { array } from "./type/builtins/array"
+export { bytea } from "./type/builtins/binary"
+export { boolean } from "./type/builtins/boolean"
+export { date, interval, time, timestamp, timestamptz } from "./type/builtins/datetime"
+export { enumOf as enum } from "./type/builtins/enum"
+export { json, jsonb } from "./type/builtins/json"
+export { cidr, inet } from "./type/builtins/network"
+export { bigint, doublePrecision, integer, numeric, real, smallint } from "./type/builtins/numeric"
+export { char, text, varchar } from "./type/builtins/text"
+export { uuid } from "./type/builtins/uuid"
 // The types that the declarations of these values name, so that a module that imports only this entry point emits its declarations: TypeScript names a type only through a module that the program loads.
 export type { AnyExpression } from "./expression/expression"
 export type { ComparisonSignature } from "./expression/operators/comparison"

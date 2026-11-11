@@ -4,7 +4,7 @@ import type { ResultOf } from "../query/select"
 import { from } from "../query/select"
 import type { ExpressionValue } from "../query/selection"
 import { defineTable } from "../table/table"
-import { text } from "../type/builtins"
+import { text } from "../type/builtins/text"
 import { defineType } from "../type/type"
 import * as t from "../types"
 

@@ -10,7 +10,7 @@ import { from } from "../query/select"
 import { decodeResult } from "../result/result"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"
-import { text } from "../type/builtins"
+import { text } from "../type/builtins/text"
 import { defineType } from "../type/type"
 import * as t from "../types"
 
