@@ -1,5 +1,16 @@
 # kern-migrations
 
+## 0.3.0
+
+### Minor Changes
+
+- 9bec4f3: Accept a driver of kern-db as the target of `migrate`, `rollback`, `redo`, `getMigrationStatus`, `runMigrationCli`, and `verifyMigrations`, without joining the transactions of the databases of the application or closing the driver.
+- f833508: Add the migration helpers `createSequence`, `dropSequence`, `renameSequence`, and `changeSequence`.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.2.0
+
 ## 0.2.0
 
 ### Minor Changes
