@@ -10,7 +10,7 @@ const updatedCount = await database.query`UPDATE form SET published = true WHERE
 It resolves to the number of rows that PostgreSQL reports for the statement, such as the updated rows.
 To require exactly one such row, such as when updating a record by its key, add `take`: it rejects with `NotFoundError` without the row, unless you add `optional`.
 
-Interpolated values become query parameters.
+Interpolated values become query parameters, and [`sql` fragments](#sql-fragments) stay SQL.
 The statement runs in the current [transaction](./transactions).
 
 ## Rows
@@ -43,6 +43,24 @@ To get the values of a single column, pass its type to `pluck`, or to `get` for 
 const total = await database.query`SELECT count(*) FROM form`.get(t.integer)
 // total: number
 ```
+
+## SQL fragments
+
+To build a part of a statement separately, such as the condition of an optional filter, write it with the `sql` template and interpolate it into the statement:
+
+```ts
+import { sql } from "kern-db"
+
+const filter = published === undefined ? sql`true` : sql`published = ${published}`
+
+const forms = await database.query`SELECT id, name FROM form WHERE ${filter}`.select({
+  id: t.uuid,
+  name: t.text,
+})
+```
+
+A fragment stays SQL, and the values interpolated into it become parameters of the statement.
+Interpolate a fragment into as many statements and other fragments as you need.
 
 ## Names known at runtime
 
@@ -82,7 +100,7 @@ import { readFile } from "node:fs/promises"
 await database.script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so interpolate only names from `identifier` into its template:
+A script has no parameters, so interpolate only names from `identifier` and `sql` fragments without values into its template:
 
 ```ts
 await database.script`ANALYZE ${identifier(schemaName, tableName)}`

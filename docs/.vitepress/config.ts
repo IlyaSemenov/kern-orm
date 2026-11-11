@@ -75,6 +75,7 @@ export default defineConfig({
           { text: "Testing", link: "/database/testing" },
           { text: "Errors", link: "/database/errors" },
           { text: "Custom Drivers", link: "/database/custom-drivers" },
+          { text: "Building Query Builders", link: "/database/query-builders" },
         ],
       },
       {
