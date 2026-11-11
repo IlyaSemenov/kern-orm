@@ -1,0 +1,15 @@
+{
+  "name": "@kern-orm/test-harness",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Test harness shared by the tests of the packages: PostgreSQL of the tests and the recording driver",
+  "type": "module",
+  "exports": {
+    "./postgres": "./postgres.ts",
+    "./recording-driver": "./recording-driver.ts"
+  },
+  "dependencies": {
+    "kern-db": "workspace:*",
+    "postgres": "catalog:"
+  }
+}

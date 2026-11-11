@@ -1,6 +1,7 @@
 // States of the methods of `SelectQuery` in types: the states of the queries that they apply to, and of those that they return.
 
-import type { OneRow } from "../database/result"
+import type { OneRow } from "kern-db"
+
 import type { GroupValue } from "../expression/aggregates"
 import type {
   TypedOperand,

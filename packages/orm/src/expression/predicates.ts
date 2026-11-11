@@ -1,7 +1,8 @@
+import { SqlQuery } from "kern-db/builder"
+
 import { combineNodes, negateNode } from "../ast/boolean"
 import type { ExpressionNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
-import { SqlQuery } from "../database/sql/query"
 import type { ScalarQuery } from "../query/operand"
 
 import type { AnyExpression, Expression } from "./expression"

@@ -34,7 +34,7 @@
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
   Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.
 - **Result** (`result/`): decodes driver rows and packed nested rows by the result plan of a compiled query, or the number of the rows of the command tag of a mutation without `RETURNING`, and converts the result as the plan tells.
-  The database layer (`database/result.ts`) holds the rows modes, how a query of one row takes its row, the keys that a record can have, and `NotFoundError` and `ResultDecodeError`, which the ORM throws too; `RequiredRelationError` is of the ORM.
+  The database layer (`result.ts`) holds the rows modes, how a query of one row takes its row, the keys that a record can have, and `NotFoundError` and `ResultDecodeError`, which the ORM throws too; `RequiredRelationError` is of the ORM.
   The layer also decodes the flat results of [queries of SQL text](sql-queries.md#results), from the result columns of the keys of their fields.
   The result plan is internal: `toSQL` and `$compile` return only the text and parameters of a statement.
 - **Nested rows** (`lowering/nested.ts`): builds a query that packs the rows of a nested query as JSON, with the result plan that decodes them.

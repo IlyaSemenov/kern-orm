@@ -1,7 +1,8 @@
 import { expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createDatabase } from "../database/database"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase } from "kern-db"
+
 import { bindSchema } from "../execution/db"
 import { sql } from "../expression/sql"
 import { collectDefinitions, many, one } from "../schema/relation"

@@ -1,8 +1,8 @@
+import { identifier as createIdentifier } from "kern-db"
+import { assertUntypedValue, SqlFragment, SqlQuery } from "kern-db/builder"
+
 import type { ExpressionNode, RawSqlNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
-import { identifier as createIdentifier, SqlFragment } from "../database/sql/fragment"
-import { isUntypedValue, rejectUntypedValue } from "../database/sql/parameter"
-import { SqlQuery } from "../database/sql/query"
 import { TransformedQuery } from "../query/conversion"
 import { MutationQuery } from "../query/mutation"
 import { isTableQuery } from "../query/node"
@@ -174,8 +174,8 @@ function toInterpolatedNode(value: unknown): ExpressionNode {
     return createNode({ kind: "fragment", fragment: value })
   }
   // A value of a parameter is checked here rather than when the statement compiles, so that the error points at the template.
-  if (!isOperandSource(value) && !isUntypedValue(value)) {
-    rejectUntypedValue(value)
+  if (!isOperandSource(value)) {
+    assertUntypedValue(value)
   }
   return toValueNode(value)
 }

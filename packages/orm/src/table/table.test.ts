@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
-import { defineCodec } from "../database/codec/codec"
+import { defineCodec } from "kern-db"
+
 import * as t from "../types"
 
 import type { Column } from "./column"

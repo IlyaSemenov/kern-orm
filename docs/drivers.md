@@ -1,29 +1,29 @@
 # Drivers
 
 kern-orm runs queries through a driver for the PostgreSQL client of your application.
-Install the driver for your client, and pass it to `createDatabase`:
+Install your client, and pass the driver for it to `createDatabase`:
 
-- [postgres.js](#postgres-js): `@kern-orm/postgres-js`.
-- [node-postgres](#node-postgres): `@kern-orm/node-postgres`.
+- [postgres.js](#postgres-js): `kern-orm/db/postgres-js`.
+- [node-postgres](#node-postgres): `kern-orm/db/node-postgres`.
 
 For another client, [write a driver](./custom-drivers).
 
 ## postgres.js
 
-If your application uses [postgres.js](https://github.com/porsager/postgres), install `@kern-orm/postgres-js`:
+If your application uses [postgres.js](https://github.com/porsager/postgres), install it with kern-orm:
 
 ::: code-group
 
 ```sh [npm]
-npm install kern-orm @kern-orm/postgres-js postgres
+npm install kern-orm postgres
 ```
 
 ```sh [pnpm]
-pnpm add kern-orm @kern-orm/postgres-js postgres
+pnpm add kern-orm postgres
 ```
 
 ```sh [bun]
-bun add kern-orm @kern-orm/postgres-js postgres
+bun add kern-orm postgres
 ```
 
 :::
@@ -31,8 +31,8 @@ bun add kern-orm @kern-orm/postgres-js postgres
 Pass your client to `postgresJsDriver`:
 
 ```ts
-import { postgresJsDriver } from "@kern-orm/postgres-js"
 import { createDatabase } from "kern-orm"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import postgres from "postgres"
 
 export const database = createDatabase({
@@ -47,22 +47,22 @@ To name the columns of your tables in snake case, use the [naming conventions](.
 
 ## node-postgres
 
-If your application uses [node-postgres](https://node-postgres.com/), install `@kern-orm/node-postgres` instead of `@kern-orm/postgres-js`, and `@types/pg` for its types:
+If your application uses [node-postgres](https://node-postgres.com/), install it with kern-orm, and `@types/pg` for its types:
 
 ::: code-group
 
 ```sh [npm]
-npm install kern-orm @kern-orm/node-postgres pg
+npm install kern-orm pg
 npm install --save-dev @types/pg
 ```
 
 ```sh [pnpm]
-pnpm add kern-orm @kern-orm/node-postgres pg
+pnpm add kern-orm pg
 pnpm add --save-dev @types/pg
 ```
 
 ```sh [bun]
-bun add kern-orm @kern-orm/node-postgres pg
+bun add kern-orm pg
 bun add --dev @types/pg
 ```
 
@@ -71,8 +71,8 @@ bun add --dev @types/pg
 Pass your pool to `nodePostgresDriver`:
 
 ```ts
-import { nodePostgresDriver } from "@kern-orm/node-postgres"
 import { createDatabase } from "kern-orm"
+import { nodePostgresDriver } from "kern-orm/db/node-postgres"
 import { Pool } from "pg"
 
 export const database = createDatabase({

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import { runInNewContext } from "node:vm"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase, NotFoundError, ResultDecodeError } from "kern-db"
+
 import { describePostgres } from "../../testing/postgres"
-import { createDatabase } from "../database/database"
-import { NotFoundError, ResultDecodeError } from "../database/result"
 import { bindSchema } from "../execution/db"
 import { coalesce } from "../expression/functions"
 import { not } from "../expression/predicates"

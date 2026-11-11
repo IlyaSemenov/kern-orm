@@ -15,8 +15,8 @@ const total = await database.query`SELECT count(*) FROM form`.get(t.integer)
 In code that uses no schemas, such as a runner of jobs, import `createDatabase` from `kern-orm/db`, which exports the database without the query builder:
 
 ```ts
-import { postgresJsDriver } from "@kern-orm/postgres-js"
 import { createDatabase } from "kern-orm/db"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import postgres from "postgres"
 
 export const database = createDatabase({

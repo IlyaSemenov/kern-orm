@@ -1,17 +1,18 @@
 import { describe, expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { createSubquery } from "../ast/testing"
-import { text } from "../database/codecs/text"
-import { createDatabase } from "../database/database"
-import type { DriverResult } from "../database/driver"
-import { NotFoundError } from "../database/result"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import type { DriverResult } from "kern-db"
 import {
+  createDatabase,
   identifier as identifierFragment,
+  NotFoundError,
   param as paramFragment,
   sql as sqlFragment,
-} from "../database/sql/fragment"
-import { createTestHelpers } from "../database/testing"
+} from "kern-db"
+import { createTestHelpers } from "kern-db/testing"
+import { text } from "kern-db/types"
+
+import { createSubquery } from "../ast/testing"
 import { identifier, sql } from "../expression/sql"
 import { lower } from "../lowering/testing"
 import type { AnySelectQuery } from "../query/select"

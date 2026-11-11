@@ -1,4 +1,5 @@
-import * as codecs from "../../database/codecs/bytea"
+import * as codecs from "kern-db/types"
+
 import { equalityOperators } from "../../expression/operators/equality"
 import { defineType } from "../type"
 

@@ -11,3 +11,22 @@ export function run(cmd: string[], cwd: string, timeout?: number): string {
   }
   return result.stdout.toString()
 }
+
+/**
+ * Runs a command in `cwd` without blocking the event loop and returns its standard output, throwing with its standard error on failure or after `timeout` milliseconds.
+ *
+ * A command that needs a server of the calling process, such as npm of the registry of the package test, must run this way.
+ */
+export async function runAsync(cmd: string[], cwd: string, timeout: number): Promise<string> {
+  const child = Bun.spawn({ cmd, cwd, stdout: "pipe", stderr: "pipe", timeout })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  if (exitCode !== 0) {
+    const outcome = child.signalCode === null ? "failed" : "timed out"
+    throw new Error(`${cmd.join(" ")} ${outcome}:\n${stdout}${stderr}`)
+  }
+  return stdout
+}

@@ -1,7 +1,8 @@
 // Text operators import the `text` type from this module rather than from `builtins/text.ts`, which creates it on load: inside the import cycle with them, that would run before `textOperators` are initialized.
 
-import type { DerivableCodec } from "../database/codec/codec"
-import * as codecs from "../database/codecs/text"
+import type { DerivableCodec } from "kern-db"
+import * as codecs from "kern-db/types"
+
 import { orderingOperators } from "../expression/operators/ordering"
 import type { TextTypeOperators } from "../expression/operators/text"
 import { textOperators } from "../expression/operators/text"

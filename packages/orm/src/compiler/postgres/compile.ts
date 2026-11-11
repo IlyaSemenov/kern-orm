@@ -1,3 +1,7 @@
+import type { SqlStatement } from "kern-db"
+import { createStatement } from "kern-db"
+import { encodeParameter, quoteIdentifier, renderFragment } from "kern-db/builder"
+
 import { combineFilters } from "../../ast/boolean"
 import type {
   AssignmentNode,
@@ -15,11 +19,6 @@ import type {
   TableSourceNode,
 } from "../../ast/nodes"
 import { findValueProjection } from "../../ast/projections"
-import type { SqlStatement } from "../../database/driver"
-import { createStatement } from "../../database/driver"
-import { quoteIdentifier } from "../../database/identifier"
-import { renderFragment } from "../../database/sql/fragment"
-import { encodeParameter } from "../../database/sql/parameter"
 import type { AnyDb } from "../../execution/db"
 import type { StatementPlan } from "../../result/result"
 import type { AnyTable } from "../../table/table"

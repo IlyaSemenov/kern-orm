@@ -9,7 +9,7 @@ See the [documentation](https://ilyasemenov.github.io/kern-orm/).
 ## Install
 
 ```sh
-npm install kern-orm @kern-orm/postgres-js postgres
+npm install kern-orm postgres
 ```
 
 See [Getting Started](https://ilyasemenov.github.io/kern-orm/getting-started) for the supported runtimes, TypeScript, and PostgreSQL versions.
@@ -19,8 +19,8 @@ See [Getting Started](https://ilyasemenov.github.io/kern-orm/getting-started) fo
 Describe the tables and their relations, then load forms with their fields in one SQL statement, and insert a form with its fields in a transaction:
 
 ```ts
-import { postgresJsDriver } from "@kern-orm/postgres-js"
 import { bindSchema, createDatabase, defineSchema, defineTable, many } from "kern-orm"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import * as t from "kern-orm/types"
 import postgres from "postgres"
 

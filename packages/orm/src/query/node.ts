@@ -1,6 +1,8 @@
 // Semantic query nodes: what a query selects, before lowering turns it into a SQL select statement.
 // They share source, expression, and order nodes with the SQL AST, so column references keep pointing to their sources by identity.
 
+import type { ResultMode } from "kern-db/builder"
+
 import type {
   ExpressionNode,
   MutationStatementNode,
@@ -11,7 +13,6 @@ import type {
   TableSourceNode,
 } from "../ast/nodes"
 import { noFilters } from "../ast/nodes"
-import type { ResultMode } from "../database/result"
 import type { AnyDb } from "../execution/db"
 import type { ResultConversion } from "../result/result"
 import type { RelationDefinition } from "../schema/relation"

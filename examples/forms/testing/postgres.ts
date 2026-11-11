@@ -2,9 +2,9 @@
 import { afterAll, beforeAll, describe } from "bun:test"
 import { createHash } from "node:crypto"
 
-import { postgresJsDriver } from "@kern-orm/postgres-js"
 import type { Database, DbOf } from "kern-orm"
 import { bindSchema, createDatabase } from "kern-orm"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import type { TestHelpers } from "kern-orm/testing"
 import { createTestHelpers } from "kern-orm/testing"
 import postgres from "postgres"

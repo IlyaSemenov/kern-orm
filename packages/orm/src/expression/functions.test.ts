@@ -1,10 +1,9 @@
 import { describe, expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase, defineCodec, NotFoundError, ResultDecodeError } from "kern-db"
+
 import { describePostgres } from "../../testing/postgres"
-import { defineCodec } from "../database/codec/codec"
-import { createDatabase } from "../database/database"
-import { NotFoundError, ResultDecodeError } from "../database/result"
 import { bindSchema } from "../execution/db"
 import { desc } from "../query/order"
 import { from } from "../query/select"

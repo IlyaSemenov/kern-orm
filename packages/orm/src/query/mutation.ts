@@ -1,12 +1,12 @@
 // Mutations of a table: inserts, updates, and deletes, which return the number of the rows they change or the fields of those rows.
 
+import type { OneValueRows, ResultRows, SqlStatement, ValueRows } from "kern-db"
+import { toValueRows } from "kern-db/builder"
+
 import { combineFilters } from "../ast/boolean"
 import type { AssignmentNode, ConflictNode, InsertNode, TableSourceNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
-import type { SqlStatement } from "../database/driver"
-import type { OneValueRows, ResultRows, ValueRows } from "../database/result"
-import { toValueRows } from "../database/result"
 import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
 import type { TypedOperand } from "../expression/functions"

@@ -1,8 +1,9 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
-import type { Database } from "../database/database"
-import { createDatabase } from "../database/database"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import type { Database } from "kern-db"
+import { createDatabase } from "kern-db"
+
 import type { SelectQueryKind } from "../query/kind"
 import type { SelectQuery } from "../query/select"
 import { from } from "../query/select"

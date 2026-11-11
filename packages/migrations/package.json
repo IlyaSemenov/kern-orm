@@ -39,7 +39,6 @@
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
-    "@kern-orm/postgres-js": "workspace:*",
     "kern-orm": "workspace:*",
     "postgres": "catalog:"
   },

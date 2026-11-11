@@ -9,15 +9,15 @@ kern-orm is in early development, and its API changes between minor versions.
 ::: code-group
 
 ```sh [npm]
-npm install kern-orm @kern-orm/postgres-js postgres
+npm install kern-orm postgres
 ```
 
 ```sh [pnpm]
-pnpm add kern-orm @kern-orm/postgres-js postgres
+pnpm add kern-orm postgres
 ```
 
 ```sh [bun]
-bun add kern-orm @kern-orm/postgres-js postgres
+bun add kern-orm postgres
 ```
 
 :::
@@ -65,8 +65,8 @@ export const schema = defineSchema({ form })
 Connect to PostgreSQL with the postgres.js driver and bind the schema to the database:
 
 ```ts [src/db.ts]
-import { postgresJsDriver } from "@kern-orm/postgres-js"
 import { bindSchema, createDatabase } from "kern-orm"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import postgres from "postgres"
 
 import { schema } from "./schema"

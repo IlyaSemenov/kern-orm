@@ -1,6 +1,7 @@
 // States of queries in types: the parts that a query carries in one type parameter and its methods change.
 
-import type { ResultRows } from "../database/result"
+import type { ResultRows } from "kern-db"
+
 import type { OperatorDefinitions } from "../expression/operators/definitions"
 import type { NoRelations, SchemaContext, UsedRelation } from "../schema/relation"
 import type { AnyTable } from "../table/table"

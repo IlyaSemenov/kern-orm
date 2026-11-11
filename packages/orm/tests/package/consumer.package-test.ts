@@ -1,22 +1,43 @@
-// Checks the packed packages as a consumer project installs them; the `test:package` script builds them first.
+// Checks the packed packages as consumer projects outside the workspace install them, at the versions that the release of the pending changesets gives them; the `test:package` script builds them first.
+// The consumers resolve the packages only from their own node_modules, without the `paths` of the repository and the overrides of its workspace.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises"
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { basename, join, relative } from "node:path"
 
+import { getReleasePlan } from "@changesets/get-release-plan"
 import { build } from "esbuild"
 import { rolldown } from "rolldown"
 
-import { run } from "./run"
+import { run, runAsync } from "./run"
 
 const root = join(import.meta.dir, "../../../..")
+const fixtures = join(import.meta.dir, "fixtures")
 
-const packages = [
-  "packages/orm",
-  "packages/postgres-js",
-  "packages/node-postgres",
-  "packages/migrations",
-]
+/** Directories of the published packages. */
+const packageDirs = ["packages/db", "packages/orm", "packages/migrations"]
+
+/** Fields of a manifest that require other packages. */
+const dependencyFields = ["dependencies", "peerDependencies", "optionalDependencies"] as const
+
+/** Manifest of a packed package. */
+interface Manifest {
+  name: string
+  version: string
+  dependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+  optionalDependencies?: Record<string, string>
+}
 
 const compileOnlyOutput = {
   text: 'SELECT "form"."name" AS "name" FROM "form" AS "form" WHERE "form"."name" = $1',
@@ -33,45 +54,136 @@ const consumerOutput = {
   statementText: 'DELETE FROM "app"."form" WHERE id = ($1::uuid)',
 }
 
-let consumer: string
+/** Directory of the temporary files of the test: the packed and extracted packages, and the consumer projects. */
+let work: string
+/** Manifests of the packed packages of the repository by their names, at the versions of the release plan. */
+const packed = new Map<string, Manifest>()
+/** Packages that the registry of the test serves, by their names: their manifests, their tarballs, and the integrity of the tarballs. */
+const served = new Map<string, { manifest: Manifest; tarball: string; integrity: string }>()
+/** Registry of npm for the consumers, which serves the packages of `served` and rejects any other package, so that npm installs them without network. */
+let registry: ReturnType<typeof Bun.serve>
+/** Consumer of `kern-orm`, which does not require `kern-db` itself, and of the migrator. */
+let ormConsumer: string
+/** Consumer of `kern-db` alone, without `kern-orm` and without `pg` installed. */
+let dbConsumer: string
 
-/** Links a package installed in a workspace package into the node_modules of the consumer project. */
-async function linkPackage(dir: string, name: string): Promise<void> {
-  const target = join(consumer, "node_modules", name)
-  await mkdir(dirname(target), { recursive: true })
-  await symlink(join(root, dir, "node_modules", name), target)
+/** Returns the directory of a packed package of the repository extracted in `work`. */
+function getPackedDir(name: string): string {
+  return join(work, "packages", name)
 }
 
-beforeAll(async () => {
-  consumer = await mkdtemp(join(tmpdir(), "kern-orm-consumer-"))
-  // Assemble node_modules without network: the packed packages, and the dependencies they leave to the consumer.
-  for (const dir of packages) {
-    const { name } = await Bun.file(join(root, dir, "package.json")).json()
-    // `changeset publish` publishes with npm, which, unlike Bun, leaves protocols such as `catalog:` as they are.
-    const [{ filename }] = JSON.parse(
-      run(["npm", "pack", "--json", "--pack-destination", consumer], join(root, dir)),
-    ) as [{ filename: string }]
-    const target = join(consumer, "node_modules", name)
-    await mkdir(target, { recursive: true })
-    run(["tar", "-xzf", filename, "-C", target, "--strip-components=1"], consumer)
+/** Packs the package of directory `dir` into `work` without running its lifecycle scripts, and returns the path of the tarball. */
+function pack(dir: string): string {
+  // `changeset publish` publishes with npm, which, unlike Bun, leaves protocols such as `catalog:` as they are.
+  const [{ filename }] = JSON.parse(
+    run(["npm", "pack", "--json", "--ignore-scripts", "--pack-destination", work], dir),
+  ) as [{ filename: string }]
+  return join(work, filename)
+}
+
+/** Adds the package of `tarball` with `manifest` to the registry of the test. */
+async function serve(manifest: Manifest, tarball: string): Promise<void> {
+  const hash = new Bun.CryptoHasher("sha512").update(await Bun.file(tarball).bytes())
+  served.set(manifest.name, { manifest, tarball, integrity: `sha512-${hash.digest("base64")}` })
+}
+
+/** Packs the package of the repository of `dir` with the version that the release plan gives it, extracts it, and serves it. */
+async function packRelease(dir: string, versions: ReadonlyMap<string, string | undefined>) {
+  const { name } = (await Bun.file(join(root, dir, "package.json")).json()) as Manifest
+  const target = getPackedDir(name)
+  await mkdir(target, { recursive: true })
+  run(["tar", "-xzf", pack(join(root, dir)), "-C", target, "--strip-components=1"], work)
+  // The manifest of the workspace holds the version before the release, such as `0.0.0` of a package that was never released, so the package is packed again with the version of the release.
+  const manifestPath = join(target, "package.json")
+  const manifest = (await Bun.file(manifestPath).json()) as Manifest
+  manifest.version = versions.get(name) ?? manifest.version
+  await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
+  packed.set(name, manifest)
+  await serve(manifest, pack(target))
+}
+
+/** Starts the registry of the test, which answers the requests of npm for the metadata of a package and for its tarball. */
+function startRegistry(): ReturnType<typeof Bun.serve> {
+  const server = Bun.serve({
+    port: 0,
+    fetch(request): Response {
+      const { pathname } = new URL(request.url)
+      const tarball = /^\/-\/([^/]+\.tgz)$/.exec(pathname)
+      if (tarball !== null) {
+        return new Response(Bun.file(join(work, tarball[1]!)))
+      }
+      const entry = served.get(decodeURIComponent(pathname.slice(1)))
+      if (entry === undefined) {
+        return Response.json({ error: "Not found" }, { status: 404 })
+      }
+      const { manifest } = entry
+      return Response.json({
+        name: manifest.name,
+        "dist-tags": { latest: manifest.version },
+        versions: {
+          [manifest.version]: {
+            ...manifest,
+            dist: {
+              tarball: new URL(`-/${basename(entry.tarball)}`, server.url).href,
+              integrity: entry.integrity,
+            },
+          },
+        },
+      })
+    },
+  })
+  return server
+}
+
+/**
+ * Creates the consumer project `name` from the fixtures of `fixtures/<name>` and `fixtures/common`, whose manifest requires the packages of `required` and postgres.js, and installs them with npm from the registry of the test.
+ *
+ * It then links the development tools of the fixtures, and `linked` packages of the workspace, which the registry does not serve.
+ */
+async function createConsumer(
+  name: string,
+  required: string[],
+  linked: { path: string; name: string }[],
+): Promise<string> {
+  const dir = join(work, `${name}-consumer`)
+  await mkdir(dir)
+  await cp(join(fixtures, "common"), dir, { recursive: true })
+  await cp(join(fixtures, name), dir, { recursive: true })
+  const dependencies: Record<string, string> = {
+    postgres: `^${served.get("postgres")!.manifest.version}`,
   }
-  await mkdir(join(consumer, "node_modules/@types"))
-  await linkPackage("packages/postgres-js", "postgres")
-  await linkPackage("packages/node-postgres", "pg")
-  await linkPackage("packages/node-postgres", "@types/pg")
-  await symlink(join(root, "node_modules/@types/node"), join(consumer, "node_modules/@types/node"))
-  await symlink(join(root, "node_modules/@types/bun"), join(consumer, "node_modules/@types/bun"))
-  await symlink(join(root, "node_modules/vitest"), join(consumer, "node_modules/vitest"))
-  // The node-postgres driver resolves a copy of `kern-orm` of its own, whose errors the copy of the consumer recognizes.
-  await cp(
-    join(consumer, "node_modules/kern-orm"),
-    join(consumer, "node_modules/@kern-orm/node-postgres/node_modules/kern-orm"),
-    { recursive: true },
+  for (const packageName of required) {
+    dependencies[packageName] = `^${packed.get(packageName)!.version}`
+  }
+  await writeFile(join(dir, "package.json"), JSON.stringify({ type: "module", dependencies }))
+  // An empty configuration of the user, and a cache of the test, so that npm reads nothing of the machine.
+  await writeFile(join(work, ".npmrc"), "")
+  await runAsync(
+    [
+      "npm",
+      "install",
+      `--registry=${registry.url.href}`,
+      `--userconfig=${join(work, ".npmrc")}`,
+      `--cache=${join(work, "npm-cache")}`,
+      "--no-package-lock",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+    ],
+    dir,
+    60_000,
   )
-  await cp(join(import.meta.dir, "fixtures"), consumer, { recursive: true })
-  await writeFile(join(consumer, "package.json"), JSON.stringify({ type: "module" }))
+  await mkdir(join(dir, "node_modules/@types"), { recursive: true })
+  for (const { path, name: packageName } of [
+    { path: "node_modules/@types/node", name: "@types/node" },
+    { path: "node_modules/@types/bun", name: "@types/bun" },
+    { path: "node_modules/vitest", name: "vitest" },
+    ...linked,
+  ]) {
+    await symlink(join(root, path), join(dir, "node_modules", packageName))
+  }
   await writeFile(
-    join(consumer, "tsconfig.json"),
+    join(dir, "tsconfig.json"),
     JSON.stringify({
       compilerOptions: {
         module: "nodenext",
@@ -79,7 +191,7 @@ beforeAll(async () => {
         strict: true,
         declaration: true,
         emitDeclarationOnly: true,
-        // The script of the command line imports the list module of its migrations by its file name, as Node.js requires.
+        // A fixture imports the modules of the project by their file names, as Node.js requires.
         allowImportingTsExtensions: true,
         outDir: "declarations",
         types: ["node"],
@@ -88,7 +200,7 @@ beforeAll(async () => {
     }),
   )
   await writeFile(
-    join(consumer, "tsconfig.declarations.json"),
+    join(dir, "tsconfig.declarations.json"),
     JSON.stringify({
       extends: "./tsconfig.json",
       compilerOptions: {
@@ -100,8 +212,33 @@ beforeAll(async () => {
       exclude: [],
     }),
   )
+  return dir
+}
+
+beforeAll(async () => {
+  // The real path, which bundlers report the modules of the consumers by.
+  work = await realpath(await mkdtemp(join(tmpdir(), "kern-packages-")))
+  registry = startRegistry()
+  const plan = await getReleasePlan(root)
+  const versions = new Map(plan.releases.map(release => [release.name, release.newVersion]))
+  for (const dir of packageDirs) {
+    await packRelease(dir, versions)
+  }
+  // postgres.js has no dependencies, so the registry serves it as the workspace installs it.
+  const postgresDir = await realpath(join(root, "packages/db/node_modules/postgres"))
+  await serve(await Bun.file(join(postgresDir, "package.json")).json(), pack(postgresDir))
+  ormConsumer = await createConsumer(
+    "orm",
+    ["kern-orm", "@kern-orm/migrations"],
+    // The client of the scenario of node-postgres, whose dependencies the registry does not serve.
+    [
+      { path: "packages/db/node_modules/pg", name: "pg" },
+      { path: "packages/db/node_modules/@types/pg", name: "@types/pg" },
+    ],
+  )
+  dbConsumer = await createConsumer("db", ["kern-db"], [])
   await writeFile(
-    join(consumer, "tsconfig.type-tests.json"),
+    join(ormConsumer, "tsconfig.type-tests.json"),
     JSON.stringify({
       extends: "./tsconfig.declarations.json",
       compilerOptions: {
@@ -113,7 +250,7 @@ beforeAll(async () => {
     }),
   )
   await writeFile(
-    join(consumer, "tsconfig.primary-key.json"),
+    join(ormConsumer, "tsconfig.primary-key.json"),
     JSON.stringify({
       extends: "./tsconfig.json",
       compilerOptions: {
@@ -125,7 +262,7 @@ beforeAll(async () => {
   )
   // The weakest options that kern-orm supports, as the install section of docs/getting-started.md states.
   await writeFile(
-    join(consumer, "tsconfig.found-key.json"),
+    join(ormConsumer, "tsconfig.found-key.json"),
     JSON.stringify({
       extends: "./tsconfig.json",
       compilerOptions: {
@@ -138,7 +275,7 @@ beforeAll(async () => {
     }),
   )
   await writeFile(
-    join(consumer, "tsconfig.primary-key-without-strict-null-checks.json"),
+    join(ormConsumer, "tsconfig.primary-key-without-strict-null-checks.json"),
     JSON.stringify({
       extends: "./tsconfig.primary-key.json",
       compilerOptions: {
@@ -146,26 +283,77 @@ beforeAll(async () => {
       },
     }),
   )
-}, 60_000)
+}, 120_000)
 
 afterAll(async () => {
-  await rm(consumer, { recursive: true, force: true })
+  await registry?.stop(true)
+  await rm(work, { recursive: true, force: true })
 })
 
-test("publishes dependencies without the catalog: and workspace: protocols", async () => {
-  const protocols: string[] = []
-  for (const dir of packages) {
-    const { name } = await Bun.file(join(root, dir, "package.json")).json()
-    const manifest = await Bun.file(join(consumer, "node_modules", name, "package.json")).json()
-    for (const field of ["dependencies", "peerDependencies"]) {
-      for (const [dependency, range] of Object.entries<string>(manifest[field] ?? {})) {
-        if (/^(catalog|workspace):/.test(range)) {
-          protocols.push(`${name} ${field} ${dependency}: ${range}`)
+describe("manifests", () => {
+  test("publish dependencies without the catalog: and workspace: protocols", () => {
+    const protocols: string[] = []
+    for (const manifest of packed.values()) {
+      for (const field of dependencyFields) {
+        for (const [dependency, range] of Object.entries(manifest[field] ?? {})) {
+          if (/^(catalog|workspace):/.test(range)) {
+            protocols.push(`${manifest.name} ${field} ${dependency}: ${range}`)
+          }
         }
       }
     }
-  }
-  expect(protocols).toEqual([])
+    expect(protocols).toEqual([])
+  })
+
+  test("require the packages of the repository by ranges that their versions of the release plan satisfy", () => {
+    const required: string[] = []
+    const unsatisfied: string[] = []
+    for (const manifest of packed.values()) {
+      for (const field of dependencyFields) {
+        for (const [dependency, range] of Object.entries(manifest[field] ?? {})) {
+          const target = packed.get(dependency)
+          if (target !== undefined) {
+            required.push(`${manifest.name} ${field} ${dependency}`)
+            if (!Bun.semver.satisfies(target.version, range)) {
+              unsatisfied.push(
+                `${manifest.name} ${field} ${dependency}: ${range} rejects ${target.version}`,
+              )
+            }
+          }
+        }
+      }
+    }
+
+    expect(unsatisfied).toEqual([])
+    expect(required.toSorted()).toEqual([
+      "@kern-orm/migrations peerDependencies kern-orm",
+      "kern-orm dependencies kern-db",
+    ])
+  })
+
+  test("give kern-db no dependency on kern-orm, also in its code and declarations", async () => {
+    const isOrm = (specifier: string) => /^(?:kern-orm|@kern-orm\/[^/]+)(?:\/|$)/.test(specifier)
+    const manifest = packed.get("kern-db")!
+    const references: string[] = []
+    for (const field of dependencyFields) {
+      for (const dependency of Object.keys(manifest[field] ?? {})) {
+        if (isOrm(dependency)) {
+          references.push(`${field} ${dependency}`)
+        }
+      }
+    }
+    const dir = getPackedDir("kern-db")
+    for (const file of await readdir(join(dir, "dist"))) {
+      const code = await readFile(join(dir, "dist", file), "utf8")
+      for (const [, specifier] of code.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
+        if (isOrm(specifier!)) {
+          references.push(`${file}: ${specifier}`)
+        }
+      }
+    }
+
+    expect(references).toEqual([])
+  })
 })
 
 describe.each([
@@ -173,14 +361,19 @@ describe.each([
   // The minimum version that consumers need, as the install section of docs/getting-started.md states.
   ["minimum", ["node", Bun.resolveSync("typescript-6/lib/tsc.js", import.meta.dir)]],
 ])("TypeScript %s", (_, tsc) => {
-  test("emits declarations and type-checks their consumer with Node.js module resolution", () => {
-    run([...tsc, "-p", consumer], consumer)
-    run([...tsc, "-p", "tsconfig.declarations.json"], consumer)
-    run([...tsc, "-p", "tsconfig.type-tests.json"], consumer)
+  test("emits declarations of a consumer of kern-orm and type-checks their consumer with Node.js module resolution", () => {
+    run([...tsc, "-p", ormConsumer], ormConsumer)
+    run([...tsc, "-p", "tsconfig.declarations.json"], ormConsumer)
+    run([...tsc, "-p", "tsconfig.type-tests.json"], ormConsumer)
+  }, 60_000)
+
+  test("emits declarations of a consumer of kern-db without kern-orm and pg and checks them with the declarations of kern-db", () => {
+    run([...tsc, "-p", dbConsumer], dbConsumer)
+    run([...tsc, "-p", "tsconfig.declarations.json"], dbConsumer)
   }, 60_000)
 
   test("rejects a query of another key in upsert, also of a singleton table, of a consumer with strictNullChecks alone", () => {
-    run([...tsc, "-p", "tsconfig.found-key.json"], consumer)
+    run([...tsc, "-p", "tsconfig.found-key.json"], ormConsumer)
   }, 60_000)
 
   test("names the reason in the errors of primaryKey() of a nullable type and column", () => {
@@ -203,65 +396,149 @@ describe.each([
 })
 
 describe.each(["node", "bun"])("%s", runtime => {
-  test("runs a consumer", () => {
-    expect(JSON.parse(run([runtime, "consumer.ts"], consumer))).toEqual(consumerOutput)
-  })
-
-  test("runs a consumer of the migrator", () => {
-    expect(JSON.parse(run([runtime, "migrations.ts"], consumer))).toEqual({
-      keys: ["0001_create_form", "0002_drop_form"],
-      steps: [{ up: "CREATE TABLE form (id integer)", down: "DROP TABLE form" }],
-      loadError: {
-        name: "MigrationError",
-        key: "0002_drop_form",
-        message:
-          "Migration 0002_drop_form must export a step or a non-empty array of steps as its default export",
-      },
+  describe("consumer of kern-orm", () => {
+    test("runs a consumer that connects with kern-orm/db/postgres-js", () => {
+      expect(JSON.parse(run([runtime, "consumer.ts"], ormConsumer))).toEqual(consumerOutput)
     })
-  })
 
-  test("runs the command line of the migrator from a script whose migrations come from the list that new writes", async () => {
-    // Each runtime starts from the empty list of the fixtures, as a project creates it before its first migration.
-    await rm(join(consumer, "cli-migrations"), { recursive: true, force: true })
-    await cp(join(import.meta.dir, "fixtures/cli-migrations"), join(consumer, "cli-migrations"), {
-      recursive: true,
-    })
-    const runCli = (...args: string[]) => run([runtime, "migrations-cli.ts", ...args], consumer)
-
-    expect(runCli("new", "create_form")).toBe(
-      `Created cli-migrations/0001_create_form.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({ keys: [], loadErrors: [] })}\n`,
-    )
-    expect(runCli("new", "create_user")).toBe(
-      `Created cli-migrations/0002_create_user.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({
-        keys: ["0001_create_form"],
-        // The template of a new migration fails to load until its blank names are filled in.
-        loadErrors: ["Cannot load migration 0001_create_form: Cannot quote an empty name"],
-      })}\n`,
-    )
-    const unknown = Bun.spawnSync({ cmd: [runtime, "migrations-cli.ts", "unknown"], cwd: consumer })
-    expect({ exitCode: unknown.exitCode, stderr: unknown.stderr.toString() }).toEqual({
-      exitCode: 1,
-      stderr: "Unknown command unknown\nRun with --help to list the commands.\n",
-    })
-  })
-
-  test.skipIf(!process.env.DATABASE_URL)(
-    "verifies a history with the migration tests of its directory in PostgreSQL",
-    () => {
-      expect(JSON.parse(run([runtime, "migrations-testing.ts"], consumer))).toEqual({
-        calls: ["assertUp", "assertDown"],
-        failure:
-          "Rolling back migration 0001_create_form does not restore the structure of the schema (- before the migration, + after its rollback):\n  + column survey.id integer\n  + table survey",
+    test("runs a query of the ORM and a query of SQL text of its database in one ambient transaction", () => {
+      expect(JSON.parse(run([runtime, "transaction.ts"], ormConsumer))).toEqual({
+        result: { names: ["Survey"], count: 0 },
+        statements: [
+          { connection: 1, text: "BEGIN", parameters: [] },
+          {
+            connection: 1,
+            text: 'SELECT "form"."name" AS "name" FROM "form" AS "form"',
+            parameters: [],
+          },
+          { connection: 1, text: "UPDATE form SET name = $1", parameters: ["Poll"] },
+          { connection: 1, text: "COMMIT", parameters: [] },
+          { connection: 1, text: "release", parameters: [] },
+        ],
       })
-    },
-  )
-
-  test("runs a consumer of the node-postgres driver, which recognizes the errors of its copy of kern-orm", () => {
-    expect(JSON.parse(run([runtime, "node-postgres.ts"], consumer))).toEqual({
-      acquireAfterClose: "Cannot acquire a connection: the driver is closed",
-      isConnectionError: true,
-      queryErrorCode: null,
     })
+
+    test("recognizes the codecs of kern-db, kern-orm/db, and kern-orm in each other's entry points", () => {
+      const formId = "6f1c1f5e-4e8f-4c2a-9a55-9f5a3c4b2d10"
+      const output = JSON.parse(run([runtime, "codecs.ts"], ormConsumer))
+
+      expect(output).toEqual({
+        sameBuiltInCodecs: true,
+        typeIsCodec: true,
+        codecOfOrmIsCodec: true,
+        codecIsCodecOfOrm: true,
+        record: { id: formId, count: 2 },
+        value: formId,
+        ormRecord: { id: formId, count: 2 },
+        parameter: { text: "SELECT ($1::integer)", parameters: ["7"] },
+        ormQuery: {
+          text: 'SELECT "form"."path" AS "path" FROM "form" AS "form" WHERE "form"."id" = $1',
+          parameters: [formId],
+        },
+        statements: expect.any(Array),
+      })
+    })
+
+    test("runs a consumer of the node-postgres driver of kern-orm/db/node-postgres, whose errors are those of kern-orm", () => {
+      expect(JSON.parse(run([runtime, "node-postgres.ts"], ormConsumer))).toEqual({
+        acquireAfterClose: "Cannot acquire a connection: the driver is closed",
+        isConnectionError: true,
+        queryErrorCode: null,
+      })
+    })
+
+    test("runs a consumer of the migrator", () => {
+      expect(JSON.parse(run([runtime, "migrations.ts"], ormConsumer))).toEqual({
+        keys: ["0001_create_form", "0002_drop_form"],
+        steps: [{ up: "CREATE TABLE form (id integer)", down: "DROP TABLE form" }],
+        loadError: {
+          name: "MigrationError",
+          key: "0002_drop_form",
+          message:
+            "Migration 0002_drop_form must export a step or a non-empty array of steps as its default export",
+        },
+      })
+    })
+
+    test("runs the command line of the migrator from a script whose migrations come from the list that new writes", async () => {
+      // Each runtime starts from the empty list of the fixtures, as a project creates it before its first migration.
+      await rm(join(ormConsumer, "cli-migrations"), { recursive: true, force: true })
+      await cp(join(fixtures, "orm/cli-migrations"), join(ormConsumer, "cli-migrations"), {
+        recursive: true,
+      })
+      const runCli = (...args: string[]) =>
+        run([runtime, "migrations-cli.ts", ...args], ormConsumer)
+
+      expect(runCli("new", "create_form")).toBe(
+        `Created cli-migrations/0001_create_form.ts\nWrote cli-migrations/index.ts\n${JSON.stringify({ keys: [], loadErrors: [] })}\n`,
+      )
+      expect(runCli("new", "create_user")).toBe(
+        `Created cli-migrations/0002_create_user.ts\nWrote cli-migrations/index.ts\n${JSON.stringify(
+          {
+            keys: ["0001_create_form"],
+            // The template of a new migration fails to load until its blank names are filled in.
+            loadErrors: ["Cannot load migration 0001_create_form: Cannot quote an empty name"],
+          },
+        )}\n`,
+      )
+      const unknown = Bun.spawnSync({
+        cmd: [runtime, "migrations-cli.ts", "unknown"],
+        cwd: ormConsumer,
+      })
+      expect({ exitCode: unknown.exitCode, stderr: unknown.stderr.toString() }).toEqual({
+        exitCode: 1,
+        stderr: "Unknown command unknown\nRun with --help to list the commands.\n",
+      })
+    })
+
+    test.skipIf(!process.env.DATABASE_URL)(
+      "verifies a history with the migration tests of its directory in PostgreSQL",
+      () => {
+        expect(JSON.parse(run([runtime, "migrations-testing.ts"], ormConsumer))).toEqual({
+          calls: ["assertUp", "assertDown"],
+          failure:
+            "Rolling back migration 0001_create_form does not restore the structure of the schema (- before the migration, + after its rollback):\n  + column survey.id integer\n  + table survey",
+        })
+      },
+    )
+  })
+
+  describe("consumer of kern-db without kern-orm and pg", () => {
+    test("runs queries of SQL text in a transaction and creates the driver of postgres.js and the test helpers", () => {
+      expect(JSON.parse(run([runtime, "db.ts"], dbConsumer))).toEqual({
+        forms: [{ id: 1, tags: ["draft", "poll"] }],
+        statements: [
+          { connection: 1, text: "BEGIN", parameters: [] },
+          {
+            connection: 1,
+            text: 'SELECT id, tags FROM form WHERE "form"."name" = $1 AND tags @> ($2::text[])',
+            parameters: ["Survey", '{"poll"}'],
+          },
+          { connection: 1, text: "COMMIT", parameters: [] },
+          { connection: 1, text: "release", parameters: [] },
+        ],
+      })
+    })
+
+    test("runs a query builder of another author, which compiles nested fragments of kern-db with its own parameters and runs typed queries of SQL text", () => {
+      expect(JSON.parse(run([runtime, "builder.ts"], dbConsumer))).toEqual({
+        statement: {
+          text: 'SELECT "id", "name" FROM "form" WHERE "id" = $1::integer AND (name = $2 OR tags @> ($3::text[]))',
+          parameters: ["7", "Survey", '{"poll"}'],
+        },
+        records: [{ id: 7, name: "Survey" }],
+      })
+    })
+
+    test.skipIf(!process.env.DATABASE_URL)(
+      "runs a query of SQL text in PostgreSQL with kern-db/postgres-js",
+      () => {
+        expect(JSON.parse(run([runtime, "db-postgres.ts"], dbConsumer))).toEqual({
+          sum: 2,
+          settings: { tags: ["poll"] },
+        })
+      },
+    )
   })
 })
 
@@ -304,8 +581,8 @@ describe("test runners", () => {
 
   /** Runs a test runner in a scenario directory and returns the recorded statements of each process; a scenario with failing tests expects a nonzero exit code. */
   async function runScenario(name: string, cmd: string[], { failing = false } = {}) {
-    const log = join(consumer, `${name}.log`)
-    const cwd = join(consumer, "runners", name)
+    const log = join(dbConsumer, `${name}.log`)
+    const cwd = join(dbConsumer, "runners", name)
     const result = Bun.spawnSync({
       cmd,
       cwd,
@@ -380,7 +657,7 @@ describe("test runners", () => {
   test("Vitest runs each test with its hooks in a test transaction of aroundEach", async () => {
     const statements = await runScenario("vitest", [
       "node",
-      join(consumer, "node_modules/vitest/vitest.mjs"),
+      join(dbConsumer, "node_modules/vitest/vitest.mjs"),
       "run",
     ])
 
@@ -393,7 +670,7 @@ describe("test runners", () => {
   test("Vitest closes a fixture whose seed never settles after its before hook times out", async () => {
     const statements = await runScenario(
       "vitest-stuck-seed",
-      ["node", join(consumer, "node_modules/vitest/vitest.mjs"), "run"],
+      ["node", join(dbConsumer, "node_modules/vitest/vitest.mjs"), "run"],
       { failing: true },
     )
 
@@ -462,20 +739,20 @@ describe("test runners", () => {
     test("node:test runs the tests of the driver contract", () => {
       run(
         ["node", "--test", "contract.mjs"],
-        join(consumer, "runners/node-driver-contract"),
+        join(dbConsumer, "runners/node-driver-contract"),
         30_000,
       )
     }, 60_000)
 
     test("Vitest verifies a history with the migration tests that import.meta.glob finds", () => {
       run(
-        ["node", join(consumer, "node_modules/vitest/vitest.mjs"), "run"],
-        join(consumer, "runners/vitest-migrations"),
+        ["node", join(ormConsumer, "node_modules/vitest/vitest.mjs"), "run"],
+        join(ormConsumer, "runners/vitest-migrations"),
       )
     }, 60_000)
 
     test("node:test with t.signal rolls back a test that times out while its query runs once the query completes", async () => {
-      const report = join(consumer, "node-postgres.tap")
+      const report = join(dbConsumer, "node-postgres.tap")
       const processes = await runScenario(
         "node-postgres",
         [
@@ -495,12 +772,12 @@ describe("test runners", () => {
     }, 60_000)
 
     test("Vitest with the signal of aroundEach rolls back a test that times out while its query runs once the query completes", async () => {
-      const report = join(consumer, "vitest-postgres.json")
+      const report = join(dbConsumer, "vitest-postgres.json")
       const processes = await runScenario(
         "vitest-postgres",
         [
           "node",
-          join(consumer, "node_modules/vitest/vitest.mjs"),
+          join(dbConsumer, "node_modules/vitest/vitest.mjs"),
           "run",
           "--reporter=json",
           `--outputFile=${report}`,
@@ -560,56 +837,82 @@ function readVitestOutcomes(report: {
   )
 }
 
+/** Bundles of a fixture of a consumer: the code, and the modules of the files that the bundle includes, relative to the consumer. */
+interface Bundle {
+  code: string
+  modules: string[]
+}
+
 const bundlers = {
-  async esbuild(entry: string) {
+  async esbuild(consumer: string, entry: string): Promise<Bundle> {
     const result = await build({
       entryPoints: [join(consumer, entry)],
+      absWorkingDir: consumer,
       bundle: true,
       platform: "node",
       format: "esm",
-      external: ["postgres"],
+      external: ["pg", "postgres"],
+      metafile: true,
       write: false,
     })
-    return result.outputFiles[0]!.text
+    return { code: result.outputFiles[0]!.text, modules: Object.keys(result.metafile.inputs) }
   },
-  async rolldown(entry: string) {
+  async rolldown(consumer: string, entry: string): Promise<Bundle> {
     const bundle = await rolldown({
       input: join(consumer, entry),
       platform: "node",
-      external: ["postgres"],
+      external: ["pg", "postgres"],
     })
     const { output } = await bundle.generate({ format: "esm" })
-    return output[0].code
+    return {
+      code: output[0].code,
+      modules: output[0].moduleIds.map(id => relative(consumer, id)),
+    }
   },
 }
 
 describe.each(Object.keys(bundlers) as (keyof typeof bundlers)[])("%s", bundler => {
-  test("drops unused types and execution code of a compile-only consumer", async () => {
-    const code = await bundlers[bundler]("compile-only.ts")
+  test("drops unused types and execution code of a compile-only consumer of kern-orm", async () => {
+    const { code } = await bundlers[bundler](ormConsumer, "compile-only.ts")
 
     // Markers of the transaction coordinator, of the errors of drivers, and of unused built-in types.
     const markers = [
       "AsyncLocalStorage",
-      "kern-orm.QueryError",
-      "kern-orm.ConnectionError",
-      "kern-orm.TransactionConnectionError",
+      "kern-db.QueryError",
+      "kern-db.ConnectionError",
+      "kern-db.TransactionConnectionError",
       "timestamptz",
       "jsonb",
     ]
     expect(markers.filter(marker => code.includes(marker))).toEqual([])
-    const file = join(consumer, `compile-only.${bundler}.mjs`)
+    const file = join(ormConsumer, `compile-only.${bundler}.mjs`)
     await writeFile(file, code)
-    expect(JSON.parse(run(["node", file], consumer))).toEqual(compileOnlyOutput)
+    expect(JSON.parse(run(["node", file], ormConsumer))).toEqual(compileOnlyOutput)
   })
 
-  test("keeps the execution code a consumer uses", async () => {
-    expect((await bundlers[bundler]("consumer.ts")).includes("AsyncLocalStorage")).toBe(true)
+  test("keeps the execution code a consumer of kern-orm uses", async () => {
+    const { code } = await bundlers[bundler](ormConsumer, "consumer.ts")
+
+    expect(code.includes("AsyncLocalStorage")).toBe(true)
+  })
+
+  test("bundles a consumer of kern-db with no module but its own and those of kern-db", async () => {
+    const { modules } = await bundlers[bundler](dbConsumer, "db.ts")
+
+    expect(
+      modules.filter(
+        module =>
+          !["db.ts", "recording-driver.ts"].includes(module) &&
+          !module.startsWith("node_modules/kern-db/"),
+      ),
+    ).toEqual([])
+    expect(modules).toContain("node_modules/kern-db/dist/postgres-js.mjs")
   })
 })
 
-/** Type-checks project `config` of the consumer with `tsc` and returns the reason that each error names, as the property that a type error interface of kern-orm requires, or the first line of an error without one. */
+/** Type-checks project `config` of the consumer of kern-orm with `tsc` and returns the reason that each error names, as the property that a type error interface of kern-orm requires, or the first line of an error without one. */
 function getTypeErrorReasons(tsc: string[], config: string): string[] {
-  const { stdout } = Bun.spawnSync({ cmd: [...tsc, "-p", config], cwd: consumer })
+  const { stdout } = Bun.spawnSync({ cmd: [...tsc, "-p", config], cwd: ormConsumer })
   // An error starts at the start of a line, and its details follow on indented lines.
   return stdout
     .toString()

@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import { createDatabase } from "../database/database"
+import { createDatabase } from "kern-db"
+
 import { bindSchema } from "../execution/db"
 import type { ResultOf } from "../query/select"
 import { from } from "../query/select"

@@ -3,7 +3,7 @@ import type { AnyDb } from "kern-orm"
 import { sql } from "kern-orm"
 import * as t from "kern-orm/types"
 
-export { describePooledPostgres, describePostgres } from "./database/postgres"
+export { describePooledPostgres, describePostgres } from "@kern-orm/test-harness/postgres"
 
 /**
  * Runs `callback` while a transaction of `db` holds what `statement` takes, with what it gives, and commits it at the latest when `callback` ends.

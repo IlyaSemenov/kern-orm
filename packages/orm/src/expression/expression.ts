@@ -1,6 +1,7 @@
+import { SqlQuery } from "kern-db/builder"
+
 import type { ExpressionNode } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
-import { SqlQuery } from "../database/sql/query"
 import { getBooleanType } from "../type/boolean"
 import type { AnyType } from "../type/type"
 

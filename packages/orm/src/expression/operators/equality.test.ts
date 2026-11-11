@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../../testing/database/recording-driver"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase } from "kern-db"
+
 import { falseNode } from "../../ast/nodes"
-import { createDatabase } from "../../database/database"
 import { bindSchema } from "../../execution/db"
 import type { AnySelectQuery } from "../../query/select"
 import { from } from "../../query/select"

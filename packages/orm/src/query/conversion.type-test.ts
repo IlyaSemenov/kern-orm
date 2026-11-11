@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import { createDatabase } from "../database/database"
-import type { Driver } from "../database/driver"
+import type { Driver } from "kern-db"
+import { createDatabase } from "kern-db"
+
 import { bindSchema } from "../execution/db"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "bun:test"
 
-import type { DriverResult } from "../database/driver"
-import type { ResultMode, ResultRows } from "../database/result"
-import { NotFoundError, ResultDecodeError } from "../database/result"
+import type { DriverResult, ResultRows } from "kern-db"
+import { NotFoundError, ResultDecodeError } from "kern-db"
+import type { ResultMode } from "kern-db/builder"
+
 import * as t from "../types"
 
 import type { ResultConversion, ResultField, ResultPlan, StatementPlan } from "./result"

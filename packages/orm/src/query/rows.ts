@@ -1,8 +1,9 @@
 // Rows modes of select queries: the mode of a query of a table or of a relation, how filters change them, the limit of `take`, and the result of a query state.
 
+import type { ResultByRows, ResultRows } from "kern-db"
+
 import type { ExpressionNode } from "../ast/nodes"
 import { oneNode } from "../ast/nodes"
-import type { ResultByRows, ResultRows } from "../database/result"
 import type { RelationDefinition, RelationKind } from "../schema/relation"
 import type { AnyTable } from "../table/table"
 

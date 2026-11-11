@@ -1,10 +1,16 @@
+import type {
+  AnySqlQuery,
+  OneRow,
+  OneValueRows,
+  ResultRows,
+  SqlStatement,
+  ValueRows,
+} from "kern-db"
+import { toValueRows } from "kern-db/builder"
+
 import type { ExpressionNode, NestedQueryNode, ScalarProjection } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
-import type { SqlStatement } from "../database/driver"
-import type { OneRow, OneValueRows, ResultRows, ValueRows } from "../database/result"
-import { toValueRows } from "../database/result"
-import type { AnySqlQuery } from "../database/sql/query"
 import type { AnyDb } from "../execution/db"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { operandNode, toExpression } from "../expression/expression"

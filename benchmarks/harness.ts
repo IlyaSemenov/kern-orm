@@ -1,8 +1,8 @@
 // Harness of the benchmarks: a transaction whose changes roll back, and median timings of statements and JavaScript.
 
-import { postgresJsDriver } from "@kern-orm/postgres-js"
 import type { DriverResult } from "kern-orm"
 import { createDatabase, createStatement } from "kern-orm"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import postgres from "postgres"
 
 import { findMedian } from "./statistics"

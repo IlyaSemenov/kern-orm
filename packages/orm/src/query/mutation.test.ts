@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase, NotFoundError } from "kern-db"
+
 import {
   describePooledPostgres,
   describePostgres,
   startWaiting,
   whileHolding,
 } from "../../testing/postgres"
-import { createDatabase } from "../database/database"
-import { NotFoundError } from "../database/result"
 import { bindSchema } from "../execution/db"
 import { coalesce } from "../expression/functions"
 import { sql } from "../expression/sql"

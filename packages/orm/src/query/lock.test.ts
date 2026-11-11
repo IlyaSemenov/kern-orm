@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
+import { isQueryError, NotFoundError } from "kern-db"
+
 import {
   describePooledPostgres,
   startsWaiting,
   startWaiting,
   whileHolding,
 } from "../../testing/postgres"
-import { isQueryError } from "../database/error-condition"
-import { NotFoundError } from "../database/result"
 import { bindSchema } from "../execution/db"
 import { RequiredRelationError } from "../result/result"
 import { many, one } from "../schema/relation"

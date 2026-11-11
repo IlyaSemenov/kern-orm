@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../../testing/database/recording-driver"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase, NotFoundError, param as paramFragment, sql as sqlFragment } from "kern-db"
+import { text } from "kern-db/types"
+
 import { describePostgres } from "../../../testing/postgres"
 import type {
   DeleteNode,
@@ -23,10 +26,6 @@ import {
   createSubquery,
   createTextSubquery,
 } from "../../ast/testing"
-import { text } from "../../database/codecs/text"
-import { createDatabase } from "../../database/database"
-import { NotFoundError } from "../../database/result"
-import { param as paramFragment, sql as sqlFragment } from "../../database/sql/fragment"
 import { bindSchema } from "../../execution/db"
 import type { AnyExpression, Expression } from "../../expression/expression"
 import { toExpression, toNode } from "../../expression/expression"

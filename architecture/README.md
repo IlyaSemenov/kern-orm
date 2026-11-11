@@ -30,26 +30,27 @@ kern-orm exists to solve problems of production projects on Orchid ORM:
 
 ## Layers
 
-Module paths are relative to `packages/orm/src/`.
+Module paths are relative to the `src/` directory of their package: `packages/db/src/` for `kern-db`, and `packages/orm/src/` for `kern-orm`.
 
-- The database layer (`database/`) runs statements on the connections of a driver.
-  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
-  Its production modules import only each other and Node.js built-ins, also for types, so that it works without the ORM ([backlog](../backlog/database-layer-as-a-package.md)).
-  Its tests, the [driver contract](drivers.md#tests-of-the-contract), and the harness of its tests in `packages/orm/testing/database/` run on its own API and import no module of the ORM either, which `packages/orm/tests/database-layer.test.ts` checks for every file of the layer.
-  `kern-orm/db` exports the layer: its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-orm/db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs of the layer, without the ORM and the transaction coordinator.
-- The ORM, the other modules, builds on it.
+- The database layer, the package `kern-db` (`packages/db/`), runs statements on the connections of a driver.
+  It holds the `Database` of transactions, sessions, and advisory locks, the driver contract, its errors, and the drivers, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
+  It imports no other package of the repository, also for types; only its tests and the test helpers of its modules import the [test harness](testing.md).
+  The other workspaces import it only through its entry points; `packages/db/tests/boundaries.test.ts` checks both ([decision](../decisions/packages/database-package.md)).
+  `kern-db` exports its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs, without the transaction coordinator; `kern-db/postgres-js` and `kern-db/node-postgres` export the drivers; `kern-db/testing` exports the test helpers and the driver contract; `kern-db/builder` exports what a query builder on top of it compiles and decodes with.
+- The ORM, the package `kern-orm` (`packages/orm/`), builds on it through its entry points, as any query builder can.
   It has no `Database` of its own: the root of `kern-orm` exports `createDatabase` of the layer, `bindSchema` of `execution/db.ts` binds a schema to a `Database` of the layer, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
+  `kern-orm/db`, `kern-orm/db/types`, `kern-orm/db/postgres-js`, `kern-orm/db/node-postgres`, and `kern-orm/testing` re-export the entry points of `kern-db`, so that an application of the ORM does not require `kern-db` itself.
 
 ## Map
 
-- [Types and expressions](types.md): `type/`, `expression/`, `database/codec/`, `database/codecs/`, `database/sql/`, `db.ts`, and `db/types.ts`.
+- [Types and expressions](types.md): `type/` and `expression/` of `kern-orm`, and `codec/`, `codecs/`, `sql/`, `index.ts`, and `types.ts` of `kern-db`.
 - [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, and `execution/db.ts`.
 - [Queries](queries.md): `query/` and `execution/db.ts`.
 - [Mutations](mutations.md): `query/mutation.ts` and `query/values.ts`.
-- [Queries of SQL text](sql-queries.md): `database/sql/query.ts`, `query` and `script` of `database/database.ts`, and `$query` and the scripts of `execution/db.ts`.
-- [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, `result/`, `database/result.ts`, and `database/identifier.ts`.
-- [Transactions](transactions.md): `database/database.ts` and `database/transaction/`.
-- [Testing](testing.md): `database/testing.ts` and `database/transaction/fixture-stack.ts`.
-- [Drivers](drivers.md): `database/driver.ts`, `database/driver-error.ts`, `database/error-condition.ts`, `database/error-condition-codes.ts`, `database/driver-contract.ts`, `packages/postgres-js/` and `packages/node-postgres/`.
+- [Queries of SQL text](sql-queries.md): `sql/query.ts`, and `query` and `script` of `database.ts` of `kern-db`, and `$query` and the scripts of `execution/db.ts`.
+- [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, and `result/` of `kern-orm`, and `result.ts`, `identifier.ts`, and `builder.ts` of `kern-db`.
+- [Transactions](transactions.md): `database.ts` and `transaction/` of `kern-db`.
+- [Testing](testing.md): `test-helpers.ts` and `transaction/fixture-stack.ts` of `kern-db`, and the test harness in `testing/` of the repository.
+- [Drivers](drivers.md): `driver.ts`, `driver-error.ts`, `error-condition.ts`, `error-condition-codes.ts`, `driver-contract.ts`, and `drivers/` of `kern-db`.
 - [Migrations](migrations.md): `packages/migrations/`.
 - [Package compatibility](compatibility.md): the ranges by which the packages of the repository depend on each other.

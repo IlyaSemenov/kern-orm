@@ -7,6 +7,7 @@
       "devDependencies": {
         "@arethetypeswrong/core": "^0.18.5",
         "@changesets/cli": "^3.0.3",
+        "@changesets/get-release-plan": "^5.0.2",
         "@ilyasemenov/oxc-config": "^0.1.1",
         "@tsconfig/bun": "^1.0.11",
         "@types/bun": "^1.4.4",
@@ -29,7 +30,6 @@
       "version": "0.0.0",
       "devDependencies": {
         "@ark/attest": "^0.58.0",
-        "@kern-orm/postgres-js": "workspace:*",
         "@types/pg": "catalog:",
         "kern-orm": "workspace:*",
         "mitata": "^1.0.34",
@@ -46,15 +46,33 @@
         "ripple-di": "^3.2.0",
       },
       "devDependencies": {
-        "@kern-orm/postgres-js": "workspace:*",
         "postgres": "catalog:",
       },
+    },
+    "packages/db": {
+      "name": "kern-db",
+      "version": "0.0.0",
+      "devDependencies": {
+        "@kern-orm/test-harness": "workspace:*",
+        "@types/pg": "catalog:",
+        "pg": "catalog:",
+        "postgres": "catalog:",
+      },
+      "peerDependencies": {
+        "@types/pg": "^8.0.0",
+        "pg": "^8.23.1",
+        "postgres": "^4.0.0",
+      },
+      "optionalPeers": [
+        "@types/pg",
+        "pg",
+        "postgres",
+      ],
     },
     "packages/migrations": {
       "name": "@kern-orm/migrations",
       "version": "0.3.1",
       "devDependencies": {
-        "@kern-orm/postgres-js": "workspace:*",
         "kern-orm": "workspace:*",
         "postgres": "catalog:",
       },
@@ -62,47 +80,32 @@
         "kern-orm": ">=0.10.0 <1",
       },
     },
-    "packages/node-postgres": {
-      "name": "@kern-orm/node-postgres",
-      "version": "0.3.0",
-      "devDependencies": {
-        "@types/pg": "catalog:",
-        "kern-orm": "workspace:*",
-        "pg": "catalog:",
-      },
-      "peerDependencies": {
-        "@types/pg": "^8.0.0",
-        "kern-orm": ">=0.9.0 <1",
-        "pg": "^8.23.1",
-      },
-      "optionalPeers": [
-        "@types/pg",
-      ],
-    },
     "packages/orm": {
       "name": "kern-orm",
       "version": "0.9.0",
+      "dependencies": {
+        "kern-db": "^0.1.0",
+      },
       "devDependencies": {
-        "@kern-orm/postgres-js": "workspace:*",
+        "@kern-orm/test-harness": "workspace:*",
         "postgres": "catalog:",
         "typescript-6": "catalog:",
       },
     },
-    "packages/postgres-js": {
-      "name": "@kern-orm/postgres-js",
-      "version": "0.3.0",
-      "devDependencies": {
-        "kern-orm": "workspace:*",
+    "testing": {
+      "name": "@kern-orm/test-harness",
+      "version": "0.0.0",
+      "dependencies": {
+        "kern-db": "workspace:*",
         "postgres": "catalog:",
-      },
-      "peerDependencies": {
-        "kern-orm": ">=0.9.0 <1",
-        "postgres": "^4.0.0",
       },
     },
   },
   "patchedDependencies": {
     "typescript@6.0.3": "patches/typescript@6.0.3.patch",
+  },
+  "overrides": {
+    "kern-db": "workspace:*",
   },
   "catalog": {
     "@types/pg": "^8.23.1",
@@ -188,6 +191,8 @@
     "@changesets/format": ["@changesets/format@0.1.3", "", { "dependencies": { "package-manager-detector": "^1.8.0", "tinyexec": "^1.3.1" } }, "sha512-zTZrJbfY81+/MsXsey6i3jQjpApz4PqRQ+nouHGDJhCa5sKCExwR9mZFQ/67lMsqZDNy2G2v3wTbzOmZ56EtaQ=="],
 
     "@changesets/get-dependents-graph": ["@changesets/get-dependents-graph@3.0.0", "", { "dependencies": { "@changesets/types": "^7.0.0", "semver": "^7.8.1" } }, "sha512-ji/t5wFA1zREKXRUePE6Qi+Qu2UgxCeSSGQrphezwvQZrp49B7sJ+8+wvM0tA7zPeSxYKCojDy3WWgrl+s+awg=="],
+
+    "@changesets/get-release-plan": ["@changesets/get-release-plan@5.0.2", "", { "dependencies": { "@changesets/assemble-release-plan": "^7.0.0", "@changesets/config": "^4.0.1", "@changesets/pre": "^3.0.0", "@changesets/read": "^1.0.1", "@changesets/types": "^7.0.0", "@manypkg/get-packages": "^3.1.0" } }, "sha512-laSJNxAH1EPiG20Z/Qxt10FnzXA7WarRulQvGHetoFzS2B7YDvkJIyoxDvoVk+M89astTC49ZS4wUrMe7PUD2g=="],
 
     "@changesets/git": ["@changesets/git@4.0.1", "", { "dependencies": { "@changesets/errors": "^1.0.0", "@changesets/types": "^7.0.0", "@manypkg/get-packages": "^3.1.0", "picomatch": "^4.0.4", "tinyexec": "^1.3.0" } }, "sha512-6vWpIAC4LkpmlqaIu37ViT5enyd9+uBwAiGqCGhASvkSHBgx4PrtTGXWTMFYpDmZbjgyonyVgMciPrW4MqtJsA=="],
 
@@ -317,9 +322,7 @@
 
     "@kern-orm/migrations": ["@kern-orm/migrations@workspace:packages/migrations"],
 
-    "@kern-orm/node-postgres": ["@kern-orm/node-postgres@workspace:packages/node-postgres"],
-
-    "@kern-orm/postgres-js": ["@kern-orm/postgres-js@workspace:packages/postgres-js"],
+    "@kern-orm/test-harness": ["@kern-orm/test-harness@workspace:testing"],
 
     "@keyv/bigmap": ["@keyv/bigmap@1.3.1", "", { "dependencies": { "hashery": "^1.4.0", "hookified": "^1.15.0" }, "peerDependencies": { "keyv": "^5.6.0" } }, "sha512-WbzE9sdmQtKy8vrNPa9BRnwZh5UF4s1KTmSK0KUVLo3eff5BlQNNWDnFOouNpKfPKDnms9xynJjsMYjMaT/aFQ=="],
 
@@ -874,6 +877,8 @@
     "jsonparse": ["jsonparse@1.3.1", "", {}, "sha512-POQXvpdL69+CluYsillJ7SUhKvytYjW9vG/GKpnf+xP8UWgYEM/RaMzHHofbALDiKbbP1W8UEYmgGl39WkPZsg=="],
 
     "jsonstream-next": ["jsonstream-next@3.0.0", "", { "dependencies": { "jsonparse": "^1.2.0", "through2": "^4.0.2" }, "bin": { "jsonstream-next": "bin.js" } }, "sha512-aAi6oPhdt7BKyQn1SrIIGZBt0ukKuOUE1qV6kJ3GgioSOYzsRc8z9Hfr1BVmacA/jLe9nARfmgMGgn68BqIAgg=="],
+
+    "kern-db": ["kern-db@workspace:packages/db"],
 
     "kern-orm": ["kern-orm@workspace:packages/orm"],
 

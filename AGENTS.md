@@ -21,7 +21,7 @@ Do not catalog files or restate information evident from their names and locatio
 
 ## Scope
 
-- Keep publishable packages in `packages/`, private usage examples in `examples/`, and benchmarks in `benchmarks/`.
+- Keep publishable packages in `packages/`, private usage examples in `examples/`, benchmarks in `benchmarks/`, and the test harness that the tests of several packages share in `testing/`.
 - Name a workspace directory by the responsibility of its package rather than by its npm name, such as `packages/db` for `kern-db`.
 - Keep production code in `packages/*/src/`.
 - Name a directory of one concept in the singular, such as `expression/`, and a directory of like items in the plural, such as `builtins/`.
@@ -29,6 +29,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Test each behavior at the lowest level that can check it: a helper directly, a module that combines helpers by its own unit tests.
 - Keep integration and package-boundary tests, with fixtures of their own, in `packages/*/tests/`, importing packages by name.
 - Keep the test harness shared by the tests of a package in `packages/*/testing/`, and that of an example in `examples/*/testing/`, importing packages by name.
+  Keep a harness that the tests of several packages share, such as `describePostgres` of a `Database` and the recording driver, in the private workspace `testing/`, `@kern-orm/test-harness`, which they import by name and declare in `devDependencies` as `workspace:*`.
   Keep a test helper that builds or reads internals beside them in `src/<module>/testing.ts`, such as `src/ast/testing.ts`, so that nothing outside `src/` imports from `src/`.
 - Use `examples/` as acceptance tests of the public API in realistic multi-schema setups.
 - Name runtime tests `*.test.ts`, compile-only type tests `*.type-test.ts`, and tests of the packed packages `*.package-test.ts`.
@@ -45,7 +46,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Prefer DX over older runtimes: when a newer runtime version enables a simpler or safer API, raise the minimum version instead of working around older ones.
 - Declare the minimum versions in `engines` of every published package and in the install section of `docs/getting-started.md`.
 - Pin the PostgreSQL major version of the CI service and state it in the install section of `docs/getting-started.md`.
-  When raising it, regenerate `packages/orm/src/database/error-condition-codes.ts` from `src/backend/utils/errcodes.txt` of that version, as its header describes.
+  When raising it, regenerate `packages/db/src/error-condition-codes.ts` from `src/backend/utils/errcodes.txt` of that version, as its header describes.
 - Support TypeScript 6.0 or newer with `strictNullChecks` in consumer projects, and state it in the install section of `docs/getting-started.md`.
   The package test type-checks its consumer with both the pinned `typescript` and the minimum version, `typescript-6` in `devDependencies` of `kern-orm`, and the `types:ts6` script type-checks the repository with the minimum version.
 - Test both runtimes in CI, at the versions pinned in `mise.toml`, against its PostgreSQL service: the `test` script on Bun, the `test:node` script on Node.js, and the `test:package` script, which also runs the scenarios of `node:test` and Vitest.
@@ -53,8 +54,8 @@ Do not catalog files or restate information evident from their names and locatio
 ## Workspaces
 
 - Register every workspace package and its subpath exports in `paths` of the root `tsconfig.json`; tests, examples, and typecheck resolve packages to their sources through it.
-- Keep the database layer independent of the ORM: no module of `packages/orm/src/database/`, of the entry points `src/db.ts`, `src/db/types.ts`, and `src/testing.ts`, or of the harness `packages/orm/testing/database/` imports a module of the ORM, also for types, which `packages/orm/tests/database-layer.test.ts` checks.
-  The layer becomes the package `kern-db` ([backlog](backlog/database-layer-as-a-package.md)), on which `kern-orm` and the migrator depend and which depends on neither.
+- Keep `kern-db` independent of the other packages of the repository: no file of `packages/db` imports another package of the repository, also for types, except that its tests and the test helpers of its modules import the test harness; no workspace imports a module of another workspace by a relative path; and the other workspaces import `kern-db` only through its entry points; `packages/db/tests/boundaries.test.ts` checks all three.
+- Link `kern-db` for the ranges of the packages that require it through `overrides` of the root `package.json`: Bun links a workspace package for a plain range only when its version satisfies the range, and otherwise fetches the range from the registry, such as before the first release of a package.
 - Declare the dependency of a published package on another package of the repository by a range of one minor line, such as `^0.1.0`, under the contract in [architecture/compatibility.md](architecture/compatibility.md).
   - Declare it in `dependencies` when the package does not work without the other, such as `kern-orm` on `kern-db`.
   - Declare it in `peerDependencies` for a companion package, which works with the objects that the application creates with the other package, such as the migrator with the database of the application, and in `devDependencies` as `workspace:*`, which links the workspace package.
@@ -63,7 +64,7 @@ Do not catalog files or restate information evident from their names and locatio
   - When a dependent needs a newer version within its range, raise the minimum of its range by hand and add a changeset of the dependent in the same change: changesets warns that the range does not fit the local version until the release, and does not release the dependent by itself.
   - In companion packages, import from the package they depend on only types and values that behave the same with any copy of it, such as error classes, which recognize the errors of another copy by a symbol of `Symbol.for`, so that a duplicate copy cannot change runtime behavior.
     When a companion package needs runtime identity of that package, such as its transaction context, stop and reconsider how it depends on it.
-- Declare a workspace package used only by the tests of a published package in its `devDependencies` as `workspace:*`, such as `@kern-orm/postgres-js` in `kern-orm`: package managers do not install the dev dependencies of an installed package, and changesets neither rewrites the protocol nor releases the package for it.
+- Declare a workspace package used only by the tests of a published package in its `devDependencies` as `workspace:*`: package managers do not install the dev dependencies of an installed package, and changesets neither rewrites the protocol nor releases the package for it.
 - Declare a registry package that several workspaces use in development, such as `postgres`, in their `devDependencies` as `"catalog:"`, with its version in `workspaces.catalog` of the root `package.json`.
   A driver for an older major version of its client declares that client by its own range instead; Bun installs it for that workspace alone, and typecheck resolves its types from there.
 - Keep `typescript` at 7.1 or later: tsdown generates declarations through the API of TypeScript 7, which 7.0 does not provide.
@@ -163,6 +164,7 @@ Do not catalog files or restate information evident from their names and locatio
 
 - Add one `.changeset/*.md` file for each independently releasable user-visible change.
 - Do not add changesets for internal refactors, maintenance, tests, or documentation changes that do not require a package release.
+- Add the changesets of a change together with it: the package test installs the packed packages with npm from a registry of its own at the versions of the release plan, so a new package at version `0.0.0`, or a range that only the next version satisfies, fails it until its changeset exists.
 - Choose the SemVer bump from the public contract: `patch` for backward-compatible fixes and `minor` for backward-compatible functionality.
 - Before 1.0, use `minor` for breaking changes; starting with 1.0, use `major` and remove this rule.
 - Create `.changeset/<unique-name>.md` with this format, listing every affected package:
@@ -196,13 +198,13 @@ Describe the user-visible change.
     Register there by name any other matcher of `jest-extended` that a test needs, rather than all of them: some, such as `toBeOneOf` and `toBeNaN`, differ from those of Vitest.
   - Do not use the test context of Vitest, such as its `signal`: `bun:test` passes a `done` callback to a test function that declares a parameter.
   - In Bun 1.4.4, `await expect(promise).rejects` ignores the timeout of the test, so a regression that leaves the promise pending hangs `bun test`; the `test:node` script fails such a test at its timeout instead.
-- Test how the test helpers work with a test runner, such as with its timeouts, hooks, and abort signal, by running the runner in a subprocess with a timeout and checking the outcome of each test and the recorded statements: `bun:test` in `packages/orm/tests/test-runner.test.ts`, and `node:test` and Vitest against the packed packages in the package test.
-- Test SQL generation and transaction routing without a database through the recording driver in `packages/orm/testing/database/`.
-- Test the contract of a driver with `describeDriverContract` of `kern-orm/testing`, which `tests/driver.test.ts` of every driver package calls, skipping it when `DATABASE_URL` is not set; keep in that file only the tests of what its client alone does.
+- Test how the test helpers work with a test runner, such as with its timeouts, hooks, and abort signal, by running the runner in a subprocess with a timeout and checking the outcome of each test and the recorded statements: `bun:test` in `packages/db/tests/test-runner.test.ts`, and `node:test` and Vitest against the packed packages in the package test.
+- Test SQL generation and transaction routing without a database through the recording driver of `testing/recording-driver.ts`.
+- Test the contract of a driver with `describeDriverContract` of `kern-db/testing`, which the test of each driver of `kern-db`, such as `packages/db/tests/postgres-js.test.ts`, calls, skipping it when `DATABASE_URL` is not set; keep in that file only the tests of what its client alone does.
   Write the tests of the contract with `node:assert/strict` and only the functions of `DriverContractRunner`: users run them with any supported test runner.
 - Skip tests that need PostgreSQL when `DATABASE_URL` is not set; CI provides it.
   Locally, it points to an empty database, set in `.env.test.local` copied from `.env.test.local.example`, which `bun test` and the Vitest config load instead of `.env.local`.
-  In `kern-orm`, declare them with `describePostgres` of `packages/orm/testing/postgres.ts`, which skips them and gives them a database created with `test: true`, and in the database layer with that of `packages/orm/testing/database/postgres.ts`, which gives them a `Database` of the layer.
+  In `kern-orm`, declare them with `describePostgres` of `packages/orm/testing/postgres.ts`, which skips them and gives them a database created with `test: true`, and in `kern-db` with that of `testing/postgres.ts`, which gives them a `Database`.
   In `examples/forms`, declare them with `describePostgres` of `examples/forms/testing/postgres.ts`, which also creates the SaaS and the sample tenants in their PostgreSQL schemas.
   Declare tests that need statements outside a transaction to run on the pool, such as tests of transactions, with `describePooledPostgres` of the same files, which gives them a database without `test: true`.
 - Leave the test database unchanged: create tables and data in `testTransaction` or in the seed of a test fixture of a database created with `test: true`, or, in a database without it, in a transaction that rolls them back or drops them, such as with `ON COMMIT DROP`, and close every fixture the test opens.

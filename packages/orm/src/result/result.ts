@@ -1,13 +1,13 @@
-import type { DriverResult } from "../database/driver"
-import type { ResultMode } from "../database/result"
+import type { DriverResult } from "kern-db"
+import { NotFoundError, ResultDecodeError } from "kern-db"
+import type { ResultMode } from "kern-db/builder"
 import {
   createFieldDecodeError,
-  describeCause,
-  NotFoundError,
-  ResultDecodeError,
+  createResultDecodeError,
   takeOnlyRow,
   toMissingResult,
-} from "../database/result"
+} from "kern-db/builder"
+
 import type { AnyType } from "../type/type"
 
 /** Field of a compiled result: the key of a record and how its value is decoded. */
@@ -165,9 +165,7 @@ function convertTopResult(
     // Only `map` of rows `many` tells a path here, the index of its row: the whole result and the only row have no field.
     throw error instanceof NestedFailure
       ? createRowError("", error)
-      : new ResultDecodeError(`Cannot convert the result${describeCause(error)}`, undefined, {
-          cause: error,
-        })
+      : createResultDecodeError("Cannot convert the result", undefined, error)
   }
 }
 

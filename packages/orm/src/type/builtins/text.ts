@@ -1,4 +1,5 @@
-import * as codecs from "../../database/codecs/text"
+import * as codecs from "kern-db/types"
+
 import { defineTextType, getTextType } from "../text"
 
 /** Variable-length string without a limit. */

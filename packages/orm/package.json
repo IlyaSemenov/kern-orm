@@ -30,6 +30,8 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./db": "./dist/db.mjs",
+    "./db/node-postgres": "./dist/db/node-postgres.mjs",
+    "./db/postgres-js": "./dist/db/postgres-js.mjs",
     "./db/types": "./dist/db/types.mjs",
     "./testing": "./dist/testing.mjs",
     "./types": "./dist/types.mjs",
@@ -42,8 +44,11 @@
     "build": "tsdown",
     "prepublishOnly": "bun run build"
   },
+  "dependencies": {
+    "kern-db": "^0.1.0"
+  },
   "devDependencies": {
-    "@kern-orm/postgres-js": "workspace:*",
+    "@kern-orm/test-harness": "workspace:*",
     "postgres": "catalog:",
     "typescript-6": "catalog:"
   },

@@ -1,4 +1,5 @@
-import type { OneRow, ResultRows } from "../database/result"
+import type { OneRow, ResultRows } from "kern-db"
+
 import type { NoRelations, SchemaContext, UsableRelation, UsedRelation } from "../schema/relation"
 import type { AnyTable } from "../table/table"
 

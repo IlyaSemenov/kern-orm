@@ -1,6 +1,6 @@
 # Types and expressions
 
-- **Codec** (`database/codec/`): the contract by which the database layer converts the values of a PostgreSQL type: its SQL type and cast type, the conversion between JavaScript values and their PostgreSQL text representation, and nullability.
+- **Codec** (`codec/`): the contract by which the database layer converts the values of a PostgreSQL type: its SQL type and cast type, the conversion between JavaScript values and their PostgreSQL text representation, and nullability.
   - `Codec` has only these members, without the methods that derive codecs, so that an API that takes a codec infers its values from them alone.
   - `encode` and `decode` are properties of function types rather than methods, whose parameters TypeScript compares bivariantly, so a codec is not a codec of more accepted values, such as of numbers for `text`.
     They must not read `this`, so that an object that copies them calls the same functions.
@@ -9,7 +9,7 @@
   - A codec is told from other objects at runtime by its brand, never by its shape.
     Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a codec too.
     A codec that `defineCodec` or a derivable codec creates is frozen.
-  - The codecs of the built-in types live in `database/codecs/`, under the names of the types; a built-in type of `kern-orm/types` is `defineType` of its codec with the operators of the type.
+  - The codecs of the built-in types live in `codecs/`, under the names of the types; a built-in type of `kern-orm/types` is `defineType` of its codec with the operators of the type.
     `array` of the layer builds only the representation of an array of a codec, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type adds `orderingOperators`.
 - **Type** (`type/`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
   A type is a codec with operators and the factories of columns.
@@ -152,14 +152,14 @@
 
 ## SQL fragments of the database layer
 
-- `sql`, `identifier`, and `param` of the database layer (`database/sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
-  `kern-orm/db` exports them; it and the root export the types `SqlFragment` and `SqlValue`, which the templates of `query` and `script` of a `Database` name.
+- `sql`, `identifier`, and `param` of the database layer (`sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
+  `kern-db` exports them, and `kern-orm/db` re-exports them; both and the root of `kern-orm` export the types `SqlFragment` and `SqlValue`, which the templates of `query` and `script` of a `Database` name.
 - The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a codec: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
   - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a codec tells how PostgreSQL reads an object or an array.
   - JSON and arrays take `param` with a codec.
 - `param` takes a codec, also a type, and the values that the codec accepts, and casts its parameter to the cast type of the codec, as `param` of the ORM does with a type.
   - The cast is in parentheses, since text after it could continue its type name, such as a subscript `[1]` after `integer[]`.
-- A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`database/sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a codec, so a fragment created without these functions cannot pass one.
+- A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a codec, so a fragment created without these functions cannot pass one.
 - `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
   - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.
   - `compileFragment` compiles a fragment as a statement of its own, which binds every parameter at each place, and `compileScript` as the text of a script, which rejects every parameter.

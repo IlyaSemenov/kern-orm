@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import type { Codec } from "../database/codec/codec"
-import { defineCodec } from "../database/codec/codec"
+import type { Codec } from "kern-db"
+import { defineCodec } from "kern-db"
+
 import type { NoOperators } from "../expression/operators/definitions"
 import { orderingOperators } from "../expression/operators/ordering"
 import { param, sql } from "../expression/sql"

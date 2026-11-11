@@ -1,0 +1,71 @@
+{
+  "name": "kern-db",
+  "version": "0.0.0",
+  "description": "PostgreSQL database layer with ambient transactions, typed SQL queries, and test transactions",
+  "keywords": [
+    "database",
+    "postgres",
+    "postgresql",
+    "sql",
+    "transactions",
+    "typescript"
+  ],
+  "homepage": "https://ilyasemenov.github.io/kern-orm/",
+  "bugs": "https://github.com/IlyaSemenov/kern-orm/issues",
+  "license": "MIT",
+  "author": "Ilya Semenov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IlyaSemenov/kern-orm.git",
+    "directory": "packages/db"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./builder": "./dist/builder.mjs",
+    "./node-postgres": "./dist/node-postgres.mjs",
+    "./postgres-js": "./dist/postgres-js.mjs",
+    "./testing": "./dist/testing.mjs",
+    "./types": "./dist/types.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@kern-orm/test-harness": "workspace:*",
+    "@types/pg": "catalog:",
+    "pg": "catalog:",
+    "postgres": "catalog:"
+  },
+  "peerDependencies": {
+    "@types/pg": "^8.0.0",
+    "pg": "^8.23.1",
+    "postgres": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/pg": {
+      "optional": true
+    },
+    "pg": {
+      "optional": true
+    },
+    "postgres": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "bun": ">=1.4",
+    "node": ">=24"
+  }
+}

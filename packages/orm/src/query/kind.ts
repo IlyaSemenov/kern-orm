@@ -1,9 +1,10 @@
 // Kinds of select queries: an unbound query, or a query bound to a `Db` that executes it when awaited.
 
+import type { SqlStatement } from "kern-db"
+import { createStatement } from "kern-db"
+
 import type { CompileOptions } from "../compiler/postgres/compile"
 import { compileStatement } from "../compiler/postgres/compile"
-import type { SqlStatement } from "../database/driver"
-import { createStatement } from "../database/driver"
 import type { AnyDb } from "../execution/db"
 import { lowerStatement } from "../lowering/lower"
 

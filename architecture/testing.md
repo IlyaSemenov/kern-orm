@@ -1,10 +1,12 @@
 # Testing
 
-- **Test helpers** (`database/testing.ts`, exported from `kern-orm/testing`): test transactions and test fixtures of a database created with `test: true`, created once per project with the `before` and `after` hooks of a test runner.
+- **Test helpers** (`test-helpers.ts`, exported from `kern-db/testing`): test transactions and test fixtures of a database created with `test: true`, created once per project with the `before` and `after` hooks of a test runner.
   They run through the transaction coordinator of the database, which they find by the object of the database, so they require the database that `createDatabase` created rather than a copy of it ([transactions](transactions.md)).
-  The coordinator keeps its [test fixtures](#test-fixtures) in a fixture stack (`database/transaction/fixture-stack.ts`).
+  The coordinator keeps its [test fixtures](#test-fixtures) in a fixture stack (`transaction/fixture-stack.ts`).
 - **Test runners**: the test helpers support `bun:test` on Bun, and `node:test` and Vitest on Node.js.
   Scenarios of each runner, run in a subprocess, check its timeouts and hooks: those of `bun:test` from the sources with the recording driver, and those of `node:test` and Vitest against the packed packages with a recording driver and in PostgreSQL, where they also check the abort signal of a test.
+- **Test harness** (`testing/` of the repository): the private workspace `@kern-orm/test-harness`, which holds the helpers of PostgreSQL and the recording driver that the tests of the packages share: `describePostgres` and `describePooledPostgres` give a block of tests a `Database` in PostgreSQL at `DATABASE_URL`.
+  It is not published; the tests import it by name, so that no workspace imports a module of another by a relative path.
 
 ## Test transactions
 

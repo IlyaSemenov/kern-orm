@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
-import { defineCodec, isCodec } from "../database/codec/codec"
+import { defineCodec, isCodec } from "kern-db"
+
 import { orderingOperators } from "../expression/operators/ordering"
 import { sql } from "../expression/sql"
 

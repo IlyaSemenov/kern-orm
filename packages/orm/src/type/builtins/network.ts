@@ -1,4 +1,5 @@
-import * as codecs from "../../database/codecs/network"
+import * as codecs from "kern-db/types"
+
 import { orderingOperators } from "../../expression/operators/ordering"
 import { defineType } from "../type"
 

@@ -1,14 +1,15 @@
 import { expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
-import { defineCodec } from "../database/codec/codec"
-import { jsonb } from "../database/codecs/json"
-import { createDatabase } from "../database/database"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import {
+  createDatabase,
+  defineCodec,
   identifier as identifierFragment,
   param as paramFragment,
   sql as sqlFragment,
-} from "../database/sql/fragment"
+} from "kern-db"
+import { jsonb } from "kern-db/types"
+
 import { bindSchema } from "../execution/db"
 import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"

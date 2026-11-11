@@ -1,7 +1,8 @@
 // Text operators import the `integer` type from this module rather than from `builtins/numeric.ts`, which creates it on load: inside the import cycle with expressions, that would run before `orderingOperators` and `defineType` are initialized.
 
-import type { DerivableCodec } from "../database/codec/codec"
-import * as codecs from "../database/codecs/numeric"
+import type { DerivableCodec } from "kern-db"
+import * as codecs from "kern-db/types"
+
 import type { MergeOperators, NoOperators } from "../expression/operators/definitions"
 import { orderingOperators } from "../expression/operators/ordering"
 

@@ -1,4 +1,5 @@
-import { isRecordKey } from "../database/result"
+import { isRecordKey } from "kern-db/builder"
+
 import type { AnyType, TypeInput, TypeOperators, TypeOutput } from "../type/type"
 import { describeRejectedCodec, isType } from "../type/type"
 import type { IsUnion } from "../utils/type-helpers"

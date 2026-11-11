@@ -1,1 +1,0 @@
-export { nodePostgresDriver } from "./driver"

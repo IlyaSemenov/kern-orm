@@ -1,7 +1,8 @@
 // Queries of `$select`: one record of the values of expressions and of literals and the results of independent queries, in one statement without a source.
 
+import type { SqlStatement } from "kern-db"
+
 import type { CompileOptions } from "../compiler/postgres/compile"
-import type { SqlStatement } from "../database/driver"
 import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
 import type { UsedRelation } from "../schema/relation"

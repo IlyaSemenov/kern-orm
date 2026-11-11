@@ -1,6 +1,7 @@
-import type { TextValue } from "../../database/driver"
-import type { ParameterBinder } from "../../database/sql/fragment"
-import { bindParameter } from "../../database/sql/parameter"
+import type { TextValue } from "kern-db"
+import type { ParameterBinder } from "kern-db/builder"
+import { bindParameter } from "kern-db/builder"
+
 import type { AnyDb } from "../../execution/db"
 import type { AnyTable } from "../../table/table"
 

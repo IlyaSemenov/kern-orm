@@ -9,7 +9,6 @@
     "ripple-di": "^3.2.0"
   },
   "devDependencies": {
-    "@kern-orm/postgres-js": "workspace:*",
     "postgres": "catalog:"
   }
 }

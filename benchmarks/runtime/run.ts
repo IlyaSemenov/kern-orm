@@ -104,7 +104,8 @@ async function buildBase(ref: string): Promise<{ build: string; commit: string }
   await execute("git", ["worktree", "add", "--detach", worktree, commit], root)
   // Lifecycle scripts, such as `prepare` that installs Git hooks, do not run for a build.
   await execute(process.execPath, ["install", "--frozen-lockfile", "--ignore-scripts"], worktree)
-  await execute(process.execPath, ["run", "build"], join(worktree, "packages/orm"))
+  // The build of kern-orm imports the build of kern-db.
+  await execute(process.execPath, ["run", "build"], worktree)
   return { build: join(worktree, "packages/orm/dist"), commit }
 }
 

@@ -1,7 +1,15 @@
 import { defineConfig } from "tsdown"
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/testing.ts", "src/types.ts", "src/db.ts", "src/db/types.ts"],
+  entry: [
+    "src/index.ts",
+    "src/testing.ts",
+    "src/types.ts",
+    "src/db.ts",
+    "src/db/node-postgres.ts",
+    "src/db/postgres-js.ts",
+    "src/db/types.ts",
+  ],
   format: "esm",
   dts: true,
   exports: true,

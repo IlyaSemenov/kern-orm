@@ -1,4 +1,5 @@
-import * as codecs from "../../database/codecs/numeric"
+import * as codecs from "kern-db/types"
+
 import { orderingOperators } from "../../expression/operators/ordering"
 import { defineNumberType, getIntegerType } from "../number"
 import { defineType } from "../type"

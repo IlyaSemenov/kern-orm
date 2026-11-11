@@ -1,4 +1,5 @@
-import * as codecs from "../../database/codecs/array"
+import * as codecs from "kern-db/types"
+
 import type { NoOperators, OperatorDefinitions } from "../../expression/operators/definitions"
 import type { EqualityOperators, HasEquality } from "../../expression/operators/equality"
 import { equalityOperators, hasEquality } from "../../expression/operators/equality"

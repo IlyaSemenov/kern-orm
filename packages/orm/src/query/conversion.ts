@@ -2,8 +2,9 @@
 
 import { types } from "node:util"
 
+import type { SqlStatement } from "kern-db"
+
 import type { CompileOptions } from "../compiler/postgres/compile"
-import type { SqlStatement } from "../database/driver"
 import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
 import type { ResultConversion } from "../result/result"

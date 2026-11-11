@@ -1,8 +1,9 @@
 import { expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase } from "kern-db"
+
 import { compileStatement } from "../compiler/postgres/compile"
-import { createDatabase } from "../database/database"
 import { bindSchema } from "../execution/db"
 import { and, not } from "../expression/predicates"
 import { sql } from "../expression/sql"

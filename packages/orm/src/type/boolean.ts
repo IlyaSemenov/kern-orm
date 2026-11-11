@@ -1,6 +1,7 @@
 // Expressions import the Boolean type from this module rather than from `builtins/boolean.ts`, which creates it on load: inside the import cycle with expressions, that would run before `equalityOperators` and `defineType` are initialized.
 
-import * as codecs from "../database/codecs/boolean"
+import * as codecs from "kern-db/types"
+
 import type { EqualityOperators } from "../expression/operators/equality"
 import { equalityOperators } from "../expression/operators/equality"
 

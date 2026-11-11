@@ -7,8 +7,9 @@ import type {
   codecValues,
   DerivableCodec,
   DerivableCodecWithParameters,
-} from "../database/codec/codec"
-import { defineCodec, isCodec } from "../database/codec/codec"
+} from "kern-db"
+import { defineCodec, isCodec } from "kern-db"
+
 import type { AnyExpression, Expression } from "../expression/expression"
 import { getType, toExpression, toNode } from "../expression/expression"
 import type {

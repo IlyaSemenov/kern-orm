@@ -1,4 +1,4 @@
-// Releasing a node-postgres connection whose last statement PostgreSQL rejected: waiting with an empty query for the status of its transaction and returning it to the pool, which `@kern-orm/node-postgres` does, against closing it, which makes the next statement reconnect.
+// Releasing a node-postgres connection whose last statement PostgreSQL rejected: waiting with an empty query for the status of its transaction and returning it to the pool, which the node-postgres driver of kern-db does, against closing it, which makes the next statement reconnect.
 // It measures the time from the release to the end of the next statement, `SELECT 1`, on a pool of one connection.
 
 import pg from "pg"

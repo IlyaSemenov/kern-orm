@@ -1,9 +1,10 @@
 import { describe, expect, it } from "bun:test"
 import { runInNewContext } from "node:vm"
 
-import { createRecordingDriver } from "../../testing/database/recording-driver"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase } from "kern-db"
+
 import { falseNode, trueNode } from "../ast/nodes"
-import { createDatabase } from "../database/database"
 import { bindSchema } from "../execution/db"
 import { from } from "../query/select"
 import { defineSchema } from "../schema/schema"
