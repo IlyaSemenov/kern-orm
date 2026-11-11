@@ -51,7 +51,7 @@
     },
     "packages/db": {
       "name": "kern-db",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "@types/pg": "catalog:",
@@ -71,7 +71,7 @@
     },
     "packages/migrations": {
       "name": "kern-migrations",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "kern-db": "workspace:*",
@@ -79,14 +79,14 @@
         "postgres": "catalog:",
       },
       "peerDependencies": {
-        "kern-db": "^0.3.0",
+        "kern-db": "^0.4.0",
       },
     },
     "packages/orm": {
       "name": "kern-orm",
-      "version": "0.12.0",
+      "version": "0.12.1",
       "dependencies": {
-        "kern-db": "^0.3.0",
+        "kern-db": "^0.4.0",
       },
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",

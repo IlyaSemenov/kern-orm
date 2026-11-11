@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.4.0
+
+### Minor Changes
+
+- 2ca43cc: Add `error.unsent` to `ConnectionError`, for which `isOutcomeUnknown` returns `false` when it is `true`, and require `createUnreachableDriver` in `describeDriverContract`.
+
 ## 0.3.0
 
 ### Minor Changes

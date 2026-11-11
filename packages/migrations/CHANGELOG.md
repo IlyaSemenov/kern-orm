@@ -1,5 +1,12 @@
 # kern-migrations
 
+## 0.4.1
+
+### Patch Changes
+
+- 852a243: Validate the `schemaName` and `count` options before any query.
+- Updated dependencies: kern-db@0.4.0
+
 ## 0.4.0
 
 ### Minor Changes
