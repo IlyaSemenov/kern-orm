@@ -312,7 +312,9 @@ describe("decoding by a recording driver", () => {
       ),
     ]) {
       expect(error).toBeInstanceOf(ResultDecodeError)
-      expect((error?.cause as Error).message).toContain("must return its result synchronously")
+      expect(error?.cause).toMatchObject({
+        message: expect.stringContaining("must return its result synchronously"),
+      })
     }
     // The earlier conversion of a chain fails by itself.
     const chained = await captureFailure(
@@ -321,7 +323,9 @@ describe("decoding by a recording driver", () => {
         .map((): any => Promise.resolve(1))
         .map(failOnCall),
     )
-    expect((chained?.cause as Error).message).toContain("The callback of map")
+    expect(chained?.cause).toMatchObject({
+      message: expect.stringContaining("The callback of map"),
+    })
   })
 
   it("handles the rejection of a Promise that a callback returned, also a later one or of another realm, so that it stays out of unhandled rejections", async () => {

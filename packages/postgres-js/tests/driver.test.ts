@@ -56,7 +56,12 @@ describe.skipIf(!DATABASE_URL)("postgresJsDriver", () => {
         pid = (await connection.execute(createStatement("SELECT pg_backend_pid()"))).rows[0]![0]
         // postgres.js refuses a statement of 65534 parameters or more before sending it, which leaves the exchange of messages and the status of the connection intact.
         const error = await connection
-          .execute(createStatement("SELECT 1", new Array(65534).fill(null)))
+          .execute(
+            createStatement(
+              "SELECT 1",
+              Array.from({ length: 65534 }, () => null),
+            ),
+          )
           .catch((error: unknown) => error)
         expect(error).toBeInstanceOf(ConnectionError)
         expect(error).toMatchObject({ message: expect.stringContaining("MAX_PARAMETERS_EXCEEDED") })

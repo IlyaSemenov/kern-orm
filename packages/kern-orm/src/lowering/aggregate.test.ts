@@ -177,7 +177,8 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
 
     expect(aggregates).toEqual({
       bigSum: 9007199254740995n,
-      bigAverage: 4503599627370497.5,
+      // The double nearest to the average, 4503599627370497.5.
+      bigAverage: 4503599627370498,
       exactSum: "3.35",
       exactAverage: "1.6750000000000000",
       missingBigSum: 0n,

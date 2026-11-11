@@ -392,6 +392,7 @@ describe("synchronous results", () => {
     expectTypeOf(await db.form.count().transform(fail)).toEqualTypeOf<never>()
     expectTypeOf(await db.form.count().transform(() => undefined)).toEqualTypeOf<undefined>()
     expectTypeOf(await db.form.count().map(() => "text")).toEqualTypeOf<string>()
+    // oxlint-disable-next-line unicorn/no-thenable -- a member `then` that is not a function does not make the result awaitable
     expectTypeOf(await db.form.count().map(() => ({ then: "text" }))).toEqualTypeOf<{
       then: string
     }>()
