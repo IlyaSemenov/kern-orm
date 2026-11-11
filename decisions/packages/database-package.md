@@ -69,7 +69,7 @@ A regular dependency installs `kern-db` with `kern-orm`, and a package manager s
 The migrator takes the database of the application, so it requires `kern-db` as a peer dependency, and its database is the one that the application created.
 
 A peer dependency does not ensure one copy: an application that requires another minor version of `kern-db` gets two.
-Values that a module of one copy brands, such as types and SQL fragments, are not values of another copy, and only the errors of drivers and transactions recognize another copy, by their brands of `Symbol.for`.
+Values that a module of one copy brands, such as types and SQL fragments, are not values of another copy, and only the errors of drivers and transactions and `isDatabase` recognize another copy, by their brands of `Symbol.for`.
 kern-orm supports installations of compatible versions and does not make every branded value work across copies.
 
 ## A range of the whole 0.x series

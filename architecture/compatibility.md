@@ -15,7 +15,7 @@ The root `package.json` overrides `kern-db` with `workspace:*`, so that every wo
 The package test checks the ranges as a release publishes them: it installs the packed packages at the versions that the release of the pending changesets gives them, as [testing](testing.md#package-test) describes.
 
 A peer dependency does not ensure one copy of a package in an application.
-Only the errors of drivers and transactions recognize the errors of another copy, by brands of `Symbol.for`; other values that a module of one copy brands, such as types and SQL fragments, are not values of another copy.
+Only the errors of drivers and transactions and `isDatabase` recognize the values of another copy, by brands of `Symbol.for`; other values that a module of one copy brands, such as types and SQL fragments, are not values of another copy.
 
 Each companion package lists what it relies on, such as [drivers](drivers.md#compatibility) and [migrations](migrations.md#compatibility).
 

@@ -13,6 +13,9 @@
 The package test (`packages/orm/tests/package/`) checks the packed packages as consumer projects outside the workspace install them, without the `paths` of the repository and the overrides of its workspace:
 
 - It packs each published package at the version that the release of the pending changesets gives it, serves the tarballs from a registry of its own, and installs them with npm, so that no step needs a package published first, and a range that the version of the release plan does not satisfy fails it.
+  It requires a package of the repository that the release gives a new version by the range that `changeset version` writes.
+  A dependency takes the new version; a peer dependency takes it only when its range rejects it, such as `^0.1.0` of a new minor version.
+  A range of a protocol, such as `workspace:*`, stays as it is, so that the test rejects it.
 - It checks that the dependencies, peer dependencies, and optional dependencies of the published manifests have no `catalog:` or `workspace:` protocol, and that `kern-db` and `kern-migrations` depend on nothing of `kern-orm`, also in their code and declarations.
 - A consumer of `kern-orm` and `kern-migrations`, and a consumer of `kern-db` and `kern-migrations` without `kern-orm` and `pg`, type-check under the pinned TypeScript and the minimum version, and run on Node.js and Bun, also in PostgreSQL at `DATABASE_URL`.
 - The consumer of `kern-db` includes a query builder of another author, which compiles fragments of the layer with `kern-db/builder` alone.

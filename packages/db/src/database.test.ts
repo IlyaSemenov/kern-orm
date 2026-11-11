@@ -5,13 +5,38 @@ import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import postgres from "postgres"
 
 import type { Database, IsolationLevel } from "./database"
-import { createDatabase } from "./database"
+import { createDatabase, isDatabase } from "./database"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
 import { postgresJsDriver } from "./drivers/postgres-js"
 import { identifier, param, sql } from "./sql/fragment"
 import { TransactionConnectionError } from "./transaction/connection-loss"
 import * as t from "./types"
+
+describe("isDatabase", () => {
+  it("recognizes a database of createDatabase, also of another copy of kern-db by its brand", () => {
+    const { driver } = createRecordingDriver()
+    const database = createDatabase({ driver })
+
+    expect(isDatabase(database)).toBe(true)
+    expect(isDatabase({ [Symbol.for("kern-db.Database")]: true })).toBe(true)
+  })
+
+  it("rejects a spread copy of a database", () => {
+    const { driver } = createRecordingDriver()
+    const database = createDatabase({ driver })
+
+    expect(isDatabase({ ...database })).toBe(false)
+  })
+
+  it("rejects another value, such as a driver", () => {
+    const { driver } = createRecordingDriver()
+
+    expect(isDatabase(driver)).toBe(false)
+    expect(isDatabase(null)).toBe(false)
+    expect(isDatabase(undefined)).toBe(false)
+  })
+})
 
 it("closes the driver when disposed", async () => {
   const { driver } = createRecordingDriver()

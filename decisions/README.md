@@ -94,6 +94,7 @@ The SQL that loads nested queries and relations.
 - [Errors of drivers recognized by `instanceof`](drivers/error-recognition.md): the classes recognize the errors of another copy of `kern-db` by a brand, rather than by predicates.
 - [Error classes of `kern-db` in drivers](drivers/error-classes-of-kern-db.md): every driver rejects with them, and a custom driver imports them at runtime, rather than define classes of its own.
 - [Release decided by the driver](drivers/release-by-driver.md): by what the driver saw on the connection and the status of its transaction, rather than by a failure that the caller passes.
+- [Drivers recognized by their methods, databases by a brand](drivers/recognizing-drivers-and-databases.md): `isDriver` accepts a driver written by hand, and `isDatabase` only a database of `createDatabase`, of any copy of `kern-db`.
 - [`QueryError` told by the conditions of PostgreSQL](drivers/error-conditions.md): one predicate of every condition by its name, without a constraint argument, rather than a predicate of each condition, constants of the codes, or a member of `QueryError`.
 
 ## Migrations

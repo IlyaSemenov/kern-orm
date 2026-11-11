@@ -56,6 +56,23 @@ export interface Driver {
   close(): Promise<void>
 }
 
+/**
+ * Checks whether `value` is a driver: an object with the methods of `Driver`, such as to reject a client of PostgreSQL passed instead of its driver.
+ *
+ * It checks the methods rather than a brand, since an application may write a driver of its own.
+ */
+export function isDriver(value: unknown): value is Driver {
+  const driver = value as Partial<Driver> | null
+  return (
+    (typeof driver === "object" || typeof driver === "function") &&
+    driver !== null &&
+    typeof driver.execute === "function" &&
+    typeof driver.executeScript === "function" &&
+    typeof driver.acquire === "function" &&
+    typeof driver.close === "function"
+  )
+}
+
 /** Connection reserved by a driver, such as for a transaction or a session. */
 export interface Connection {
   /**

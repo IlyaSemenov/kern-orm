@@ -22,9 +22,9 @@ export type {
   SessionOptions,
   TransactionOptions,
 } from "./database"
-export { createDatabase } from "./database"
+export { createDatabase, isDatabase } from "./database"
 export type { Connection, Driver, DriverResult, SqlStatement, TextValue } from "./driver"
-export { createStatement } from "./driver"
+export { createStatement, isDriver } from "./driver"
 export type { DriverErrorFields } from "./driver-error"
 export { ConnectionError, QueryError, toDriverError } from "./driver-error"
 export type { QueryErrorCode, QueryErrorCondition } from "./error-condition"

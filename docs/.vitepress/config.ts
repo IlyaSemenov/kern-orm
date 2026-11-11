@@ -76,6 +76,7 @@ export default defineConfig({
           { text: "Errors", link: "/database/errors" },
           { text: "Custom Drivers", link: "/database/custom-drivers" },
           { text: "Building Query Builders", link: "/database/query-builders" },
+          { text: "Building Packages", link: "/database/packages" },
         ],
       },
       {

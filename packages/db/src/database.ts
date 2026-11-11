@@ -133,6 +133,22 @@ export interface DatabaseOptions {
   onReleaseError?: (error: unknown) => void
 }
 
+/** Marks a database of `createDatabase` of any copy of kern-db, which `isDatabase` of another copy recognizes. */
+const databaseBrand = /* @__PURE__ */ Symbol.for("kern-db.Database")
+
+/**
+ * Checks whether `value` is a database of `createDatabase`, also of another copy of kern-db, such as to reject a client of PostgreSQL or a `Db` of kern-orm passed instead of a database.
+ *
+ * It checks the brand that `createDatabase` sets, so it rejects a spread copy of a database.
+ */
+export function isDatabase(value: unknown): value is Database {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[databaseBrand] === true
+  )
+}
+
 // The coordinator of each database, which `Database` does not expose, so that its type does not depend on the private members of the class of one copy of the module; the test helpers find it here.
 const coordinators = new WeakMap<Database, TransactionCoordinator>()
 
@@ -178,6 +194,8 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     close: () => coordinator.close(),
     [Symbol.asyncDispose]: () => coordinator.close(),
   }
+  // Not enumerable, so that spreading a database does not copy its brand.
+  Object.defineProperty(database, databaseBrand, { value: true })
   coordinators.set(database, coordinator)
   return database
 }

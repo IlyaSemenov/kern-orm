@@ -3,6 +3,7 @@
 - **Database** (`database.ts`): a driver and the ambient transaction coordinator of one connection domain.
   `bindSchema` binds schemas to it, and all schemas bound to the same database share its transactions.
   It does not expose its coordinator, so that its type does not depend on the private members of a class of one copy of the module: `getCoordinator` finds the coordinator by the object of the database for the test helpers and the driver contract, and finds none for another object, such as a copy of a database.
+  `isDatabase` recognizes a database of `createDatabase` of any copy of kern-db by a brand of `Symbol.for`, which `createDatabase` sets as a property that is not enumerable, so it rejects a copy of a database ([decision](../decisions/drivers/recognizing-drivers-and-databases.md)).
 - **Transaction coordinator** (`transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
 - **Transaction level** (`transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `transaction/settings.ts`.
 - **Session** (`transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).

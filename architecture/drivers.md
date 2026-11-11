@@ -16,6 +16,7 @@
   The caller does not tell `release` how the statements on the connection ended, since the driver sees each of them ([decision](../decisions/drivers/release-by-driver.md)).
   It replaces an idle connection whose backend exited, such as after a restart of the server, for the next statement once the client has read that the connection closed.
   Closing a driver rejects a new statement or script on the pool and a new connection from its call with `ConnectionError`, waits for the statements already sent and for the transactions on its reserved connections to end, including those still waiting for a connection, and then closes the connections.
+- `isDriver` of `driver.ts` recognizes a driver by checking that its methods are functions rather than by a brand, since an application may write a driver of its own ([decision](../decisions/drivers/recognizing-drivers-and-databases.md)).
 - A driver of kern-db supports one major version of its client, under a subpath named after the client, such as `kern-db/postgres-js` or `kern-db/node-postgres`, which requires the client by an optional peer dependency, so that importing `kern-db` loads no driver ([decision](../decisions/packages/database-package.md)).
   Supporting two major versions of a client at once takes a subpath of each.
 

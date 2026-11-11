@@ -103,8 +103,12 @@ async function serve(manifest: Manifest, tarball: string): Promise<void> {
   served.set(manifest.name, { manifest, tarball, integrity: `sha512-${hash.digest("base64")}` })
 }
 
-/** Packs the package of the repository of `dir` with the version that the release plan gives it, extracts it, and serves it. */
-async function packRelease(dir: string, versions: ReadonlyMap<string, string | undefined>) {
+/**
+ * Packs the package of the repository of `dir` with the version that the release plan gives it, extracts it, and serves it.
+ *
+ * `versions` holds the new versions of the packages that the plan releases.
+ */
+async function packRelease(dir: string, versions: ReadonlyMap<string, string>) {
   const { name } = (await Bun.file(join(root, dir, "package.json")).json()) as Manifest
   const target = getPackedDir(name)
   await mkdir(target, { recursive: true })
@@ -113,6 +117,22 @@ async function packRelease(dir: string, versions: ReadonlyMap<string, string | u
   const manifestPath = join(target, "package.json")
   const manifest = (await Bun.file(manifestPath).json()) as Manifest
   manifest.version = versions.get(name) ?? manifest.version
+  // Ranges of released packages change as `changeset version` writes them with the configuration of the repository.
+  // A dependency takes the new version by the same operator; a peer dependency takes it only when its range rejects it, such as `^0.1.0` of `0.2.0`.
+  // A range of a protocol, such as `workspace:*`, stays as it is, so that the test rejects it.
+  for (const field of dependencyFields) {
+    const dependencies = manifest[field] ?? {}
+    for (const [dependency, range] of Object.entries(dependencies)) {
+      const version = versions.get(dependency)
+      if (
+        version !== undefined &&
+        !range.includes(":") &&
+        (field !== "peerDependencies" || !Bun.semver.satisfies(version, range))
+      ) {
+        dependencies[dependency] = `${/^[~^]?/.exec(range)![0]}${version}`
+      }
+    }
+  }
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2))
   packed.set(name, manifest)
   await serve(manifest, pack(target))
@@ -260,7 +280,12 @@ beforeAll(async () => {
   work = await realpath(await mkdtemp(join(tmpdir(), "kern-packages-")))
   registry = startRegistry()
   const plan = await getReleasePlan(root)
-  const versions = new Map(plan.releases.map(release => [release.name, release.newVersion]))
+  const versions = new Map<string, string>()
+  for (const release of plan.releases) {
+    if (release.type !== "none") {
+      versions.set(release.name, release.newVersion)
+    }
+  }
   for (const dir of packageDirs) {
     await packRelease(dir, versions)
   }
