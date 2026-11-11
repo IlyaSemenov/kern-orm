@@ -227,7 +227,7 @@ function checkAppliedKeys(
 /**
  * Locks `target`, reads its versions again, loads the migrations that `plan` chooses from them, runs them, and resolves to the keys of the plan.
  *
- * The lock belongs to the qualified name of the table of versions, so that different targets migrate at once.
+ * The lock belongs to the qualified name of the table of versions, so that different targets and histories of one target migrate at once.
  * In a transaction block, such as of an enclosing transaction or a test, it runs every migration in a nested transaction that locks the target, with the search path of the migrations.
  * Outside one, it runs them in a session with that search path, which polls for the lock, since a transaction that waits for it would keep a snapshot, which `CREATE INDEX CONCURRENTLY` of the session that holds the lock waits for.
  * It decides which migrations run outside a transaction only from the steps that it loads under the lock, since another process may change the applied migrations before the lock.

@@ -34,6 +34,11 @@ const createTag = {
   down: "DROP TABLE tag",
 }
 
+const createJob = {
+  up: "CREATE TABLE job (id integer PRIMARY KEY)",
+  down: "DROP TABLE job",
+}
+
 const indexForm = {
   up: "CREATE INDEX form_id_idx ON form (id)",
   down: "DROP INDEX form_id_idx",
@@ -170,6 +175,60 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     })
 
     expect(tables).toEqual(["form", "migration"])
+  })
+
+  it("applies, rolls back, and lists histories of the target with different tables of versions independently, such as of a package and the application", async () => {
+    // The history of the package numbers its migrations as the application does.
+    const jobHistory = defineTestHistory(
+      { "0001_create_job": createJob },
+      { tableName: "job_migration" },
+    )
+    const appHistory = defineTestHistory({
+      "0001_create_form": createForm,
+      "0002_create_user": createUser,
+    })
+
+    /** Lists the migrations of both histories and the tables of the target. */
+    async function describeTarget() {
+      const job = await getMigrationStatus(db, jobHistory)
+      const app = await getMigrationStatus(db, appHistory)
+      return {
+        job: { applied: job.applied, pending: job.pending, unknown: job.unknown },
+        app: { applied: app.applied, pending: app.pending, unknown: app.unknown },
+        tables: await listTables(database, "migrations_tenant"),
+      }
+    }
+
+    const result = await testTransaction(async () => {
+      const migrated = [await migrate(db, jobHistory), await migrate(db, appHistory)]
+      const jobRolledBack = await rollback(db, jobHistory)
+      const afterJobRollback = await describeTarget()
+      await migrate(db, jobHistory)
+      const appRolledBack = await rollback(db, appHistory, { count: "all" })
+      return {
+        migrated,
+        jobRolledBack,
+        afterJobRollback,
+        appRolledBack,
+        afterAppRollback: await describeTarget(),
+      }
+    })
+
+    expect(result).toEqual({
+      migrated: [["0001_create_job"], ["0001_create_form", "0002_create_user"]],
+      jobRolledBack: ["0001_create_job"],
+      afterJobRollback: {
+        job: { applied: [], pending: ["0001_create_job"], unknown: [] },
+        app: { applied: ["0001_create_form", "0002_create_user"], pending: [], unknown: [] },
+        tables: ["app_user", "form", "job_migration", "kern_migration"],
+      },
+      appRolledBack: ["0002_create_user", "0001_create_form"],
+      afterAppRollback: {
+        job: { applied: ["0001_create_job"], pending: [], unknown: [] },
+        app: { applied: [], pending: ["0001_create_form", "0002_create_user"], unknown: [] },
+        tables: ["job", "job_migration", "kern_migration"],
+      },
+    })
   })
 
   it("rejects a schema or table name longer than PostgreSQL identifiers before changing anything", async () => {
@@ -1010,6 +1069,32 @@ describePooledPostgres(
           openGate()
 
           expect([await first, second]).toEqual([["0001_create_form"], ["0001_create_form"]])
+        })
+      })
+
+      it("migrates histories of one target with different tables of versions at once", async () => {
+        const runs = { count: 0 }
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          // Histories that create the target schema at once fail on its unique name, since they do not lock each other.
+          await database.script("CREATE SCHEMA migrations_pool_1")
+          const waiting = defineTestHistory({
+            "0001_create_form": { up: waitBefore(createForm.up, gate, runs) },
+          })
+          const first = start(migrate(db, waiting, target))
+          await waitFor(async () => runs.count === 1)
+          const second = await settleWithin(
+            start(
+              migrate(
+                db,
+                defineTestHistory({ "0001_create_job": createJob }, { tableName: "job_migration" }),
+                target,
+              ),
+            ),
+          )
+          openGate()
+
+          expect([await first, second]).toEqual([["0001_create_form"], ["0001_create_job"]])
         })
       })
 

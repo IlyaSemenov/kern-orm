@@ -61,13 +61,15 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 ## Applying and rolling back
 
 - Each target keeps the keys of its applied migrations, with the time of applying, in its table of versions in the target schema, `kern_migration` by default, with columns `key` and `applied_at`.
+- Histories with different tables of versions apply to one target independently, such as the history of a package beside that of the application: a call reads and records only the table of its history, so the keys of another history, including those of the same numbers, are neither applied nor unknown to it.
+  `verifyMigrations` checks a history in a schema of its own, without the objects of another history.
 - Every call first resolves the target schema and checks that it and its table of versions exist, then reads the table only when it exists, since a statement on a missing table would fail and abort an enclosing transaction.
   It checks them with a query of `pg_catalog` rather than with `to_regclass` and `to_regnamespace`, whose lookups in the catalog cache of the connection miss a schema that another transaction committed while this one waited for the lock of the target.
   It rejects a target schema or a table of versions whose name is longer than `max_identifier_length` bytes before changing anything, since PostgreSQL truncates such a name, and the check would miss what the migrator created under it.
 - `migrate` applies the pending migrations of a target, or the first `count` of them, and resolves to their keys.
 - `migrate` returns after the first read when nothing is pending, so that migrating a tenant that is up to date at the first access of each process costs two statements outside a transaction.
   Otherwise, it locks the target with the [advisory lock](transactions.md#locks) of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
-- The lock belongs to the target, so that different targets, such as tenants, migrate at once.
+- The lock belongs to the table of versions, so that different targets, such as tenants, and histories of one target migrate at once.
 - In a transaction block, where `isInTransactionBlock` of the `Database` is `true`, such as inside a transaction that creates a tenant with its schema, a test transaction, or the seed of a test fixture, a call runs as a nested level that takes the lock with `lock`, and every migration runs `up` and `down` of its steps, so that its changes commit or roll back with the enclosing transaction.
 - Outside one, a call runs in a [session](transactions.md#sessions), also without a migration that has changes outside a transaction, since it learns of them only from the migrations that it loads under the lock:
   - The session takes the lock with `pollLock`, since a transaction that waits for the lock with `lock` keeps a snapshot, which `CREATE INDEX CONCURRENTLY` of the session that holds the lock waits for ([decision](../decisions/migrations/polling-for-the-lock.md)).
@@ -75,7 +77,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - A migration with a change of its direction outside a transaction runs it alone, and the migrator records the migration after it in a statement of its own.
     The other migrations between such migrations run in one transaction of the session with their records, so that a call without such migrations runs in one transaction.
 - A call inside a session outside its transactions rejects, since `session` rejects there; the migrator does not join that session, whose lock would last until the session ends, such as for the whole life of a worker.
-- Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something other than the migrator has created them meanwhile, which would abort an enclosing transaction.
+- Under the lock, `migrate` creates the schema and the table of versions that the read found missing, with `IF NOT EXISTS`, so that no statement fails when something that does not hold the lock, such as another history of the target, has created them meanwhile, which would abort an enclosing transaction.
   In a session, it creates them in the transaction of the first migrations, so that a call that fails there changes nothing, or before a first migration outside a transaction, each in a transaction of its own.
   Creating only what is missing keeps PostgreSQL from sending a notice of an existing schema, which postgres.js logs by default.
 - The search path of the level of the migrations, a nested level or a session, is the target schema followed by the schemas of the history, and the level restores the previous search path when it ends.
@@ -210,3 +212,4 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 ## Open questions
 
 - Isolation: reading the versions again after the lock sees the commit of another process only under `READ COMMITTED`, so decide what `migrate` does in a transaction of a stricter isolation level.
+- Creating a target schema at once: histories of one target do not share a lock, so when two of them create a missing target schema at once, `CREATE SCHEMA IF NOT EXISTS` of the second fails on the unique index of `pg_namespace` once the first commits; decide whether creating the schema takes a lock of its own.
