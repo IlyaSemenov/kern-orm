@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url"
 import { createDatabase } from "kern-db"
 import { bindSchema, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
+import postgres from "postgres"
 
 import { describePostgres } from "../../testing/postgres"
 import { MigrationError } from "../error"
@@ -249,6 +250,21 @@ describe("runCli without a database", () => {
       acquire: rejectStatement,
       close: async () => {},
     },
+  })
+
+  it("prints the TypeError of a value that is not a target, such as a client of PostgreSQL, and exits with 1", async () => {
+    // postgres.js connects only at the first query, which the command never sends.
+    const sql = postgres("postgres://localhost/none")
+
+    expect(await run(sql as never, ["migrate"])).toEqual({
+      exitCode: 1,
+      log: [],
+      errors: [
+        new TypeError(
+          "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+        ),
+      ],
+    })
   })
 
   it("prints the usage of --help, and the usage as an error without a command", async () => {

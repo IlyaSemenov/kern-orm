@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import type { Database } from "kern-db"
 import * as t from "kern-db/types"
 import { bindSchema, defineSchema } from "kern-orm"
+import postgres from "postgres"
 
 import { describePostgres } from "../../testing/postgres"
 import { MigrationError } from "../error"
@@ -28,6 +29,26 @@ const countTemporarySchemas = (database: Database) =>
   database.query`SELECT count(*)::integer FROM pg_namespace WHERE nspname LIKE 'kern_verify_%'`.get(
     t.integer,
   )
+
+it("rejects a value that is not a target, such as a client of PostgreSQL, with TypeError before checking or loading the history", async () => {
+  // postgres.js connects only at the first query, which the verification never sends.
+  const sql = postgres("postgres://localhost/none")
+  let loaded = false
+  const history = defineMigrations({
+    "0001_create_form": () => {
+      loaded = true
+      return Promise.reject(new Error("The module failed to load"))
+    },
+  })
+  const message =
+    "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db"
+
+  await expect(verifyMigrations(sql as never, defineMigrations({}))).rejects.toThrow(
+    new TypeError(message),
+  )
+  await expect(verifyMigrations(sql as never, history)).rejects.toThrow(new TypeError(message))
+  expect(loaded).toBe(false)
+})
 
 describePostgres("verifyMigrations", ({ database, driver, testTransaction, recordStatements }) => {
   it("applies, rolls back, and applies again each migration in a temporary schema in a nested transaction that rolls back", async () => {

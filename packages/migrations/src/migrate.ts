@@ -18,6 +18,7 @@ import type {
   TargetVersions,
 } from "./target"
 import {
+  checkMigrationTarget,
   createVersionsTable,
   deleteVersion,
   insertVersion,
@@ -69,6 +70,7 @@ export async function migrate(
   history: MigrationHistory,
   options: MigrateOptions = {},
 ): Promise<string[]> {
+  checkMigrationTarget(target)
   const count =
     options.count === undefined ? Number.POSITIVE_INFINITY : getCount(options.count, false)
   const opened = await openTarget(target, history, options)
@@ -93,6 +95,7 @@ export async function rollback(
   history: MigrationHistory,
   options: RollbackOptions = {},
 ): Promise<string[]> {
+  checkMigrationTarget(target)
   const count = getCount(options.count, true)
   const opened = await openTarget(target, history, options)
   checkAppliedKeys(history, opened.target, opened.versions, "roll back the migrations of")
@@ -118,6 +121,7 @@ export async function redo(
   history: MigrationHistory,
   options: RedoOptions = {},
 ): Promise<string[]> {
+  checkMigrationTarget(target)
   const count = getCount(options.count, false)
   const opened = await openTarget(target, history, options)
   checkAppliedKeys(history, opened.target, opened.versions, "redo the migrations of")

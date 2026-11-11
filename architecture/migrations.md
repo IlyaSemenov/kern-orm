@@ -61,6 +61,9 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - A target may be a `Driver` of `kern-db` instead, such as of a package that takes the driver of the application, which has no `Database` of its own to pass.
   A call creates a database over the driver and never closes it, since closing a database closes its driver, which belongs to the application; its statements run outside the transactions of any database of the application.
   The database belongs to the copy of `kern-db` of the migrator, so a migration of such a target that uses types or SQL fragments in its queries requires the application to share that copy: a database rejects those of another copy.
+- `migrate`, `rollback`, `redo`, `getMigrationStatus`, and `verifyMigrations` check their target before their other arguments, and reject a value that is not a target, such as a client of PostgreSQL, with `TypeError`.
+  The command line parses its arguments first and checks the target only for the commands that use the database.
+- `isMigrationTarget` recognizes a target using `isDatabase` and `isDriver` of `kern-db`, and a `Db` by a `$database` that `isDatabase` accepts and the presence of `$schemaName`, which it does not read.
 - The `schemaName` option of a call overrides the PostgreSQL schema of the target, such as the schema of a tenant that is being created, which no context names yet.
 - A call resolves the PostgreSQL schema once, at its start, calling the function of `schemaName` of a `Db` at most once; without one, the target is `current_schema()`, and a call rejects when it is `NULL`.
 

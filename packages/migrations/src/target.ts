@@ -1,5 +1,5 @@
 import type { Database, Driver, DriverResult, SqlStatement } from "kern-db"
-import { createDatabase, isDriver } from "kern-db"
+import { createDatabase, isDatabase, isDriver } from "kern-db"
 
 import type { MigrationHistory } from "./history"
 import { compareMigrationNumbers, getMigrationNumber } from "./history"
@@ -19,17 +19,46 @@ export interface MigrationTargetDb {
   readonly $schemaName: string | undefined
 }
 
+/**
+ * Checks whether `value` is a target of migrations: a `Db` of kern-orm, or a `Database` or a `Driver` of kern-db, such as to reject a client of PostgreSQL passed instead of its driver.
+ *
+ * It recognizes a `Db` by its database and the presence of `$schemaName`, which it does not read, since the schemaName callback may require the current tenant context.
+ */
+export function isMigrationTarget(value: unknown): value is MigrationTarget {
+  if (isDatabase(value) || isDriver(value)) {
+    return true
+  }
+  const db = value as Partial<MigrationTargetDb> | null
+  return (
+    (typeof db === "object" || typeof db === "function") &&
+    db !== null &&
+    "$schemaName" in db &&
+    isDatabase(db.$database)
+  )
+}
+
 /** Checks whether `target` is a `Db` rather than a `Database` or a `Driver`. */
 export function isMigrationTargetDb(target: MigrationTarget): target is MigrationTargetDb {
   return "$database" in target
 }
 
+/** Throws `TypeError` for a value that is not a target of migrations. */
+export function checkMigrationTarget(target: unknown): asserts target is MigrationTarget {
+  if (!isMigrationTarget(target)) {
+    throw new TypeError(
+      "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+    )
+  }
+}
+
 /**
  * Returns the database of `target`: of a `Db`, a `Database` itself, or a new database over a `Driver`.
  *
+ * It throws `TypeError` for a value that is not a target.
  * The database over a driver is never closed, since closing it would close the driver, which belongs to the application.
  */
 export function getTargetDatabase(target: MigrationTarget): Database {
+  checkMigrationTarget(target)
   if (isMigrationTargetDb(target)) {
     return target.$database
   }

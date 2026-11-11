@@ -20,3 +20,4 @@ export type { Migration, MigrationChange, MigrationDatabase, MigrationStep } fro
 export { defineMigration } from "./migration"
 export { quoteIdentifier, quoteLiteral } from "./sql"
 export type { MigrationTarget, MigrationTargetDb, MigrationTargetOptions } from "./target"
+export { isMigrationTarget } from "./target"

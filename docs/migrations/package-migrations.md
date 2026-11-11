@@ -77,4 +77,6 @@ export async function migrateFormBuilder(driver: Driver) {
 }
 ```
 
+To check the driver or database that the application passes before your package does anything else with it, call `isMigrationTarget`.
+
 With a [PostgreSQL schema per tenant](./#tenants), apply the migrations of the package to the schema of each tenant, beside the migrations of the tenant.

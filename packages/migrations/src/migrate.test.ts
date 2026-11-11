@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import type { Database } from "kern-db"
 import { bindSchema, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
+import postgres from "postgres"
 
 import { countLockWaiters, settleWithin, waitFor } from "../testing/concurrency"
 import { describePooledPostgres, describePostgres } from "../testing/postgres"
@@ -48,6 +49,27 @@ const indexForm = {
     down: "DROP INDEX CONCURRENTLY IF EXISTS form_id_idx",
   },
 }
+
+it.each([
+  ["migrate", migrate],
+  ["rollback", rollback],
+  ["redo", redo],
+  ["getMigrationStatus", getMigrationStatus],
+] as const)(
+  "%s rejects a value that is not a target, such as a client of PostgreSQL, with TypeError before checking its options",
+  async (_, call) => {
+    // postgres.js connects only at the first query, which the call never sends.
+    const sql = postgres("postgres://localhost/none")
+
+    await expect(
+      call(sql as never, defineMigrations({ "0001_create_form": createForm }), { count: 0 }),
+    ).rejects.toThrow(
+      new TypeError(
+        "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+      ),
+    )
+  },
+)
 
 describePostgres("migrate", ({ database, testTransaction, recordStatements, notices }) => {
   const db = bindSchema(schema, database, { schemaName: "migrations_tenant" })

@@ -7,7 +7,7 @@ import type { MigrationDatabase, MigrationStep } from "../migration"
 import { runMigrationSteps, toMigrationDatabase } from "../migration"
 import { quoteIdentifier } from "../sql"
 import type { MigrationTarget } from "../target"
-import { getTargetDatabase } from "../target"
+import { checkMigrationTarget, getTargetDatabase } from "../target"
 
 import type { MigrationTest, MigrationTestCallback } from "./migration-test"
 import { describeSchema } from "./structure"
@@ -54,6 +54,7 @@ export async function verifyMigrations(
   history: MigrationHistory,
   options: VerifyMigrationsOptions = {},
 ): Promise<void> {
+  checkMigrationTarget(target)
   // A history without migrations comes from a pattern or a directory that matches no file, more likely than from a project without migrations.
   if (history.keys.length === 0) {
     throw new Error("Cannot verify a history without migrations")
