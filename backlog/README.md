@@ -5,7 +5,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 
 ## Next
 
-- [Database layer as a package](database-layer-as-a-package.md): `kern-db` beside `kern-orm` and `kern-migrations` in this repository, for the migrator and code without the ORM, with the order of their first release.
 - [Moving from rake-db](moving-from-rake-db.md): the applied versions of rake-db and a baseline of the schema.
 - [Through and many-to-many relations](through-and-many-to-many-relations.md): relations through other relations and through a join table.
 - [Type of the fields of a helper](type-of-the-fields-of-a-helper.md): `ResultOf` of a helper or a type of its own.

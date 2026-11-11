@@ -18,3 +18,7 @@ A peer dependency does not ensure one copy of a package in an application.
 Only the errors of drivers and transactions recognize the errors of another copy, by brands of `Symbol.for`; other values that a module of one copy brands, such as types and SQL fragments, are not values of another copy.
 
 Each companion package lists what it relies on, such as [drivers](drivers.md#compatibility) and [migrations](migrations.md#compatibility).
+
+## Open questions
+
+- Releases of a dependent for a new minor version: changesets releases a dependent whose range the new version leaves with a patch, such as `kern-orm` for a new minor version of `kern-db`; decide whether it is a minor instead, since an application that also imports `kern-db` gets two copies until it updates.
