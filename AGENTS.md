@@ -37,7 +37,8 @@ Do not catalog files or restate information evident from their names and locatio
 - Put a call that no overload accepts on one line under `@ts-expect-error`: TypeScript 6 reports it at the call, and TypeScript 7 at the argument.
 - Keep each package entry point, `src/index.ts` and one `src/<name>.ts` per subpath export, limited to explicit public exports.
 - Do not add an `index.ts` to a directory inside `src/`: import each module by its own path, and re-export only from package entry points.
-- Export from an entry point every type that the inferred types of public values reference, so that the declarations of a consumer module can name them; the package test emits such declarations.
+- Export from each entry point the types that the inferred types of its values reference, also from an entry point of values such as `kern-orm/types`, so that a consumer module that imports only that entry point can emit its declarations: TypeScript names a type only through a module that the program loads and that the consumer resolves.
+  The package test emits the declarations of a module of each entry point of values in a program of its own, and of a consumer that cannot resolve `kern-db`.
 - Treat `package.json` exports and supported runtimes as public contracts.
 
 ## Runtimes

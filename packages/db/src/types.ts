@@ -8,3 +8,5 @@ export { cidr, inet } from "./type/builtins/network"
 export { bigint, doublePrecision, integer, numeric, real, smallint } from "./type/builtins/numeric"
 export { char, text, varchar } from "./type/builtins/text"
 export { uuid } from "./type/builtins/uuid"
+// The types that the declarations of these values name, so that a module that imports only this entry point emits its declarations: TypeScript names a type only through a module that the program loads.
+export type { BaseDerivableType, DerivableType, DerivableTypeWithParameters } from "./type/type"

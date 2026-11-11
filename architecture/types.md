@@ -3,6 +3,7 @@
 - **Type of the database layer** (`type/` of `kern-db`): the contract by which the database layer converts the values of a PostgreSQL type: its SQL type and cast type, the conversion between JavaScript values and their PostgreSQL text representation, and nullability.
   - Both packages name their type `Type` and its function `defineType`, as `kern-db/types` and `kern-orm/types` export their built-in types under the same names ([decision](../decisions/types/type-names-of-both-packages.md)).
     The ORM imports those of `kern-db` as `DbType`, `defineDbType`, and `isDbType`; the root of `kern-orm` re-exports only the types of `kern-db` whose names it does not declare itself, such as `TypeOptions` and `DerivableType`, and `kern-orm/db` all of them.
+    So a consumer that cannot resolve `kern-db`, as with pnpm, names a type of `kern-db` whose name the root declares, such as `TypeOutput` in the signature of `get` of a query, only in a program that loads `kern-orm/db`.
   - `Type` of `kern-db` has only these members, without the methods that derive types, so that an API that takes a type infers its values from them alone.
   - `encode` and `decode` are properties of function types rather than methods, whose parameters TypeScript compares bivariantly, so a type is not a type of more accepted values, such as of numbers for `text`.
     They must not read `this`, so that an object that copies them calls the same functions.

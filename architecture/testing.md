@@ -16,6 +16,8 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
 - It checks that the dependencies, peer dependencies, and optional dependencies of the published manifests have no `catalog:` or `workspace:` protocol, and that `kern-db` and `kern-migrations` depend on nothing of `kern-orm`, also in their code and declarations.
 - A consumer of `kern-orm` and `kern-migrations`, and a consumer of `kern-db` and `kern-migrations` without `kern-orm` and `pg`, type-check under the pinned TypeScript and the minimum version, and run on Node.js and Bun, also in PostgreSQL at `DATABASE_URL`.
 - The consumer of `kern-db` includes a query builder of another author, which compiles fragments of the layer with `kern-db/builder` alone.
+- The consumers emit the declarations of modules that export values, under both versions of TypeScript, also of a module that imports only `kern-orm/types`, `kern-orm/db/types`, or `kern-db/types`, in a program of its own, since a module of another entry point in the program would name the types that the entry point fails to export.
+- A third consumer of `kern-orm`, which npm installs with `--install-strategy=nested`, cannot resolve `kern-db`, as in a strict layout such as of pnpm, so its declarations name the types of `kern-db` only through the entry points of `kern-orm`, also from a module that imports only its root.
 - The built code of `kern-migrations` imports nothing of `kern-db`, which only its declarations import, and a bundled consumer of `kern-db` includes no module but its own and those of `kern-db`.
 
 ## Test transactions

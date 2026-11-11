@@ -1,6 +1,7 @@
 // Checks the packed packages as consumer projects outside the workspace install them, at the versions that the release of the pending changesets gives them; the `test:package` script builds them first.
 // The consumers resolve the packages only from their own node_modules, without the `paths` of the repository and the overrides of its workspace.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { existsSync } from "node:fs"
 import {
   cp,
   mkdir,
@@ -66,6 +67,8 @@ let registry: ReturnType<typeof Bun.serve>
 let ormConsumer: string
 /** Consumer of `kern-db` and of the migrator, without `kern-orm` and without `pg` installed. */
 let dbConsumer: string
+/** Consumer of `kern-orm` that cannot resolve `kern-db`, which npm installs under `kern-orm`, as a strict layout such as of pnpm does; it emits the declarations of the fixtures that export values. */
+let isolatedOrmConsumer: string
 
 /** Returns the directory of a packed package of the repository extracted in `work`. */
 function getPackedDir(name: string): string {
@@ -148,6 +151,22 @@ function startRegistry(): ReturnType<typeof Bun.serve> {
   return server
 }
 
+/** Options of a consumer project that differs from the others of its fixtures. */
+interface ConsumerOptions {
+  /** Name of its directory instead of `<name>-consumer`. */
+  dir?: string
+  /** Layout of the installed packages: `nested` installs each dependency of a package under it, so that the consumer cannot resolve the dependencies of a package, as in a strict layout such as of pnpm. */
+  installStrategy?: "nested"
+  /** Fixtures that its `tsconfig.json` includes instead of all of them. */
+  include?: string[]
+  /**
+   * Programs of their own by their names, each of its fixtures in `tsconfig.<name>.json`.
+   *
+   * TypeScript names a type in a declaration only through a module that the program loads and that exports the type, so a fixture that imports another entry point would hide a type that an entry point does not export.
+   */
+  programs?: Record<string, string[]>
+}
+
 /**
  * Creates the consumer project `name` from the fixtures of `fixtures/<name>` and `fixtures/common`, whose manifest requires the packages of `required` and postgres.js, and installs them with npm from the registry of the test.
  *
@@ -157,8 +176,9 @@ async function createConsumer(
   name: string,
   required: string[],
   linked: { path: string; name: string }[],
+  options: ConsumerOptions = {},
 ): Promise<string> {
-  const dir = join(work, `${name}-consumer`)
+  const dir = join(work, options.dir ?? `${name}-consumer`)
   await mkdir(dir)
   await cp(join(fixtures, "common"), dir, { recursive: true })
   await cp(join(fixtures, name), dir, { recursive: true })
@@ -182,6 +202,7 @@ async function createConsumer(
       "--ignore-scripts",
       "--no-audit",
       "--no-fund",
+      `--install-strategy=${options.installStrategy ?? "hoisted"}`,
     ],
     dir,
     60_000,
@@ -209,7 +230,7 @@ async function createConsumer(
         outDir: "declarations",
         types: ["node"],
       },
-      include: ["*.ts"],
+      include: options.include ?? ["*.ts"],
     }),
   )
   await writeFile(
@@ -225,6 +246,12 @@ async function createConsumer(
       exclude: [],
     }),
   )
+  for (const [program, include] of Object.entries(options.programs ?? {})) {
+    await writeFile(
+      join(dir, `tsconfig.${program}.json`),
+      JSON.stringify({ extends: "./tsconfig.json", include }),
+    )
+  }
   return dir
 }
 
@@ -249,7 +276,19 @@ beforeAll(async () => {
       { path: "packages/db/node_modules/@types/pg", name: "@types/pg" },
     ],
   )
-  dbConsumer = await createConsumer("db", ["kern-db", "kern-migrations"], [])
+  dbConsumer = await createConsumer("db", ["kern-db", "kern-migrations"], [], {
+    programs: { types: ["types-helper.ts"] },
+  })
+  isolatedOrmConsumer = await createConsumer("orm", ["kern-orm"], [], {
+    dir: "orm-isolated-consumer",
+    installStrategy: "nested",
+    include: ["helper.ts"],
+    programs: {
+      root: ["root-helper.ts"],
+      types: ["types-helper.ts"],
+      "db-types": ["db-types-helper.ts"],
+    },
+  })
   await writeFile(
     join(ormConsumer, "tsconfig.type-tests.json"),
     JSON.stringify({
@@ -389,6 +428,22 @@ describe.each([
     run([...tsc, "-p", ormConsumer], ormConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], ormConsumer)
     run([...tsc, "-p", "tsconfig.type-tests.json"], ormConsumer)
+  }, 60_000)
+
+  test("emits declarations of a consumer of kern-orm that cannot resolve kern-db, also of a module that imports only the root, and type-checks them", () => {
+    // npm installs kern-db only under kern-orm, so the declarations name its types through the entry points of kern-orm.
+    expect(existsSync(join(isolatedOrmConsumer, "node_modules/kern-db"))).toBe(false)
+    run([...tsc, "-p", isolatedOrmConsumer], isolatedOrmConsumer)
+    run([...tsc, "-p", "tsconfig.root.json"], isolatedOrmConsumer)
+    run([...tsc, "-p", "tsconfig.declarations.json"], isolatedOrmConsumer)
+  }, 60_000)
+
+  test("emits declarations of a module that imports only kern-orm/types, kern-orm/db/types, or kern-db/types, and type-checks them", () => {
+    run([...tsc, "-p", "tsconfig.types.json"], isolatedOrmConsumer)
+    run([...tsc, "-p", "tsconfig.db-types.json"], isolatedOrmConsumer)
+    run([...tsc, "-p", "tsconfig.declarations.json"], isolatedOrmConsumer)
+    run([...tsc, "-p", "tsconfig.types.json"], dbConsumer)
+    run([...tsc, "-p", "tsconfig.declarations.json"], dbConsumer)
   }, 60_000)
 
   test("emits declarations of a consumer of kern-db and the migrator without kern-orm and pg and checks them with the declarations of the packages", () => {
