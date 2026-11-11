@@ -154,6 +154,12 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - Dropping does nothing when the name finds nothing.
   - They check the catalog with one statement of `execute`, which returns the state of the index as text, so that they decode it without the types of `kern-db/types`.
   - A partitioned table requires a step of its own: PostgreSQL rejects `CREATE INDEX CONCURRENTLY` of a partitioned table and `DROP INDEX CONCURRENTLY` of its index before they change anything ([decision](../decisions/migrations/concurrent-index-of-partitioned-table.md)).
+- `createSequence` and `changeSequence` take each number of their options as a safe integer of `number` or as any integer of `bigint`, and reject another `number`, which may differ from the integer that the code wrote.
+- `changeSequence` takes the states of a sequence before and after the change, which list the same options, as `changeColumn` does, with `null` of `minValue` and `maxValue` for the defaults of the type.
+  It builds one `ALTER SEQUENCE` of the options that differ, comparing numbers by value, so that `10` and `10n` are the same.
+  A change of `type` or of the sign of `increment` requires `minValue` and `maxValue` in both states and sets them also when they do not differ, since PostgreSQL derives the defaults from the type and the direction, and replaces a bound equal to a limit of the old type with that of the new type, which rollback would not restore.
+  A change of `type` requires the bounds as numbers: when `AS` changes the type, `NO MINVALUE` and `NO MAXVALUE` can give the limits of the new type whatever the direction.
+  It does not restart the sequence: `start` changes only the value that a restart begins from, since the value before a restart is not part of a state that rollback could restore.
 - `createExtension` has no `down`, since an extension belongs to the whole database, such as to every tenant.
   - It checks `pg_extension` in a `DO` block rather than running `CREATE EXTENSION IF NOT EXISTS`, which sends a notice of an existing extension that postgres.js logs, at every new tenant of a history that creates one.
   - When the extension is missing, it takes a transaction-level advisory lock and checks again, so that migrations of different targets that create one extension at once wait for each other instead of failing on the unique index of `pg_extension`.

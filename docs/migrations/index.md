@@ -31,7 +31,7 @@ Do not import the tables, custom types, or database of your application into a m
 
 ## Helpers
 
-Pass the names of tables, columns, indexes, and constraints without quotes: helpers quote them.
+Pass the names of tables, columns, indexes, constraints, and sequences without quotes: helpers quote them.
 Pass definitions, conditions, defaults, and the columns of an index as SQL, quoting a name in them where SQL needs it, such as `'"order"'`.
 When you build SQL text from values of your code, quote names with `quoteIdentifier` and strings with `quoteLiteral`, both from `kern-migrations`.
 
@@ -39,6 +39,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Columns: `addColumn(table, column, definition)`, `dropColumn` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
 - Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](#migrations-outside-a-transaction).
 - Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
+- Sequences: `createSequence(name, options)` and `dropSequence` with the same arguments, `renameSequence(from, to)`, and `changeSequence(name, from, to)`; the options are `type`, `increment`, `minValue`, `maxValue`, `start`, `cache`, and `cycle`.
 - Extensions: `createExtension(name, { schema })`.
 
 For a change that no helper covers, write a [step of SQL](#sql-steps), or [a helper of your own](./custom-helpers) to reuse it in several migrations.
@@ -60,7 +61,7 @@ changeColumn(
 
 Applying converts the values with `using` of the second state, and rolling back with that of the first.
 
-### Drop a table, column, index, or constraint
+### Drop a table, column, index, constraint, or sequence
 
 Pass a drop helper the definition of what it drops: rolling back creates it again from the definition.
 
@@ -86,6 +87,8 @@ export default defineMigration([
 
 Describe each constraint once: in the definition, or by a step of its own.
 An index of a `PRIMARY KEY` or `UNIQUE` constraint goes with its constraint.
+
+Rolling back a dropped sequence creates it again from its `start` rather than from its current value.
 
 ### Index names
 
