@@ -161,7 +161,7 @@ To sort by an aggregate that you do not select, return it from the callback, suc
 
 `limit`, `offset`, `take`, `get`, `pluck`, `distinct`, `distinctOn`, `map`, and `transform` apply to the groups, and a query of groups nests in a selection, `$select`, and `in` as other queries do.
 
-A query with `groupBy` cannot [lock rows](../../database/transactions#locking-rows), and neither `update` nor `delete` can be called on it.
+A query with `groupBy` cannot [lock rows](../transactions#locking-rows), and neither `update` nor `delete` can be called on it.
 
 ## Related records of a group
 

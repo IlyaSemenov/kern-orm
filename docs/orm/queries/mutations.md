@@ -234,9 +234,9 @@ The change and its related records run in one statement, so related records are 
 Query such records in a separate query after the change instead.
 
 A query that rejects while reading what it returns, such as with `NotFoundError` of a query of `find` in the callback of `select`, or by a callback of `map` or `transform` that throws, has already made its change.
-To undo the change with the error, run the query in a [transaction](../../database/transactions).
+To undo the change with the error, run the query in a [transaction](../transactions).
 
 ## Many records
 
 A statement takes at most 65535 parameters: each plain value takes one, and a `sql` fragment or a query takes those of the values in it.
-To insert more values, such as tens of thousands of records, call `insertMany` with batches of them in a [transaction](../../database/transactions).
+To insert more values, such as tens of thousands of records, call `insertMany` with batches of them in a [transaction](../transactions).

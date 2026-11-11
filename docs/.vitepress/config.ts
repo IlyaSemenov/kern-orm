@@ -18,8 +18,6 @@ export default defineConfig({
   head: isDev ? [["meta", { name: "robots", content: "noindex" }]] : [],
   cleanUrls: true,
   lastUpdated: true,
-  // A file whose name starts with `_` is a part that pages include with `<!--@include: ./_name.md-->`, not a page of its own.
-  srcExclude: ["**/_*.md"],
   themeConfig: {
     nav: [
       { text: "ORM", link: "/orm/getting-started", activeMatch: "^/orm/" },
@@ -60,6 +58,9 @@ export default defineConfig({
           },
           { text: "Singleton Tables", link: "/orm/singleton-tables" },
           { text: "Multiple Schemas", link: "/orm/multiple-schemas" },
+          { text: "Transactions", link: "/orm/transactions" },
+          { text: "Testing", link: "/orm/testing" },
+          { text: "Errors", link: "/orm/errors" },
           { text: "Custom Types", link: "/orm/custom-types" },
         ],
       },
@@ -70,8 +71,8 @@ export default defineConfig({
           { text: "Drivers", link: "/database/drivers" },
           { text: "SQL Queries and Scripts", link: "/database/sql" },
           { text: "Transactions", link: "/database/transactions" },
-          { text: "Database Errors", link: "/database/errors" },
           { text: "Testing", link: "/database/testing" },
+          { text: "Errors", link: "/database/errors" },
           { text: "Custom Drivers", link: "/database/custom-drivers" },
         ],
       },

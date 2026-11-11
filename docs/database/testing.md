@@ -1,7 +1,5 @@
 # Testing
 
-<!--@include: ./_without-orm.md-->
-
 Run each test in a test transaction, which always rolls back, so that tests leave the data in the database unchanged.
 Test transactions need a database created with `test: true`:
 
@@ -18,7 +16,7 @@ Create the test helpers of the database once, in a module of your tests, with th
 // test/helpers.ts
 import { after, before } from "node:test"
 
-import { createTestHelpers } from "kern-orm/testing"
+import { createTestHelpers } from "kern-db/testing"
 
 export const { testTransaction, useTestFixture } = createTestHelpers(database, {
   before,
@@ -34,11 +32,15 @@ Wrap the body of every test in `testTransaction`, the same way with `node:test`,
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
+import * as t from "kern-db/types"
+
 test("publishes a form", () =>
   testTransaction(async () => {
     await publishForm(formId)
-    const form = await db.form.find(formId).select("published")
-    assert.deepEqual(form, { published: true })
+    const published = await database.query`SELECT published FROM form WHERE id = ${formId}`.get(
+      t.boolean,
+    )
+    assert.equal(published, true)
   }))
 ```
 
@@ -65,11 +67,11 @@ test("assigns the next position", () =>
   ))
 ```
 
-A test transaction does not count as a transaction for [`$isInTransaction()` and `$ensureTransaction`](./transactions#joining-the-current-transaction), so that the tested code behaves as in production.
-To test how the code behaves inside a transaction, wrap the call in `$transaction` in the test.
+A test transaction does not count as a transaction for [`isInTransaction()` and `ensureTransaction`](./transactions#joining-the-current-transaction), so that the tested code behaves as in production.
+To test how the code behaves inside a transaction, wrap the call in `database.transaction` in the test.
 
-Such a database rejects queries and transactions outside test transactions and the seeds of [fixtures](#fixtures).
-Queries of a test that keep running after it times out never run in the transaction of another test.
+Such a database rejects statements and transactions outside test transactions and the seeds of [fixtures](#fixtures).
+Statements of a test that keep running after it times out never run in the transaction of another test.
 
 Rolling back does not reset PostgreSQL sequences, so the IDs a test generates may differ between runs: compare them with the records the test creates, not with literal values.
 
@@ -102,10 +104,10 @@ Put a fixture for all tests, such as one that applies [migrations](../migrations
 // test/setup.ts
 import { migrate } from "kern-migrations"
 
-useTestFixture(() => migrate(db, migrations))
+useTestFixture(() => migrate(database, migrations))
 ```
 
-Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./sql), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.
+Run the statements of the preparation through the database, such as the SQL of migrations with [`database.script`](./sql#scripts), so that the fixture rolls them back: a tool that connects to PostgreSQL on its own commits its changes.
 
 Each test runner loads the setup module in its own way:
 
@@ -142,11 +144,11 @@ With Vitest, pass the signal of the test context in `aroundEach`:
 aroundEach((runTest, { signal }) => testTransaction(runTest, { signal }))
 ```
 
-When the signal aborts, the later queries of the test fail, and its transaction rolls back without waiting for the test to finish.
+When the signal aborts, the later statements of the test fail, and its transaction rolls back without waiting for the test to finish.
 Without a signal, as with `bun:test`, which gives none for a test, the transaction of a test that times out stays open until the code of the test finishes or, while a fixture is open, until the next test starts.
 
-A query that the test has already sent runs to its end before the rollback.
-To limit how long such a query delays the next test, set `statement_timeout` for the connections of the test database.
+A statement that the test has already sent runs to its end before the rollback.
+To limit how long such a statement delays the next test, set `statement_timeout` for the connections of the test database.
 
 ## Test migrations
 

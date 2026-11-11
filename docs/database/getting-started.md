@@ -78,21 +78,10 @@ await database.transaction(async () => {
 })
 ```
 
-## Examples on the other pages
-
-The other pages of the Database group show an application of kern-orm, which imports the database layer from `kern-orm/db`.
-Import the same from kern-db:
-
-- `kern-orm/db`: from `kern-db`.
-- `kern-orm/db/types`, `kern-orm/db/postgres-js`, and `kern-orm/db/node-postgres`: from `kern-db/types`, `kern-db/postgres-js`, and `kern-db/node-postgres`.
-- `kern-orm/testing`: from `kern-db/testing`.
-
-Their examples call the methods of a `Db` of kern-orm, such as `db.$transaction`: call the methods of your database of the same names without `$`, such as `database.transaction`.
-
 ## Next steps
 
 - [Drivers](./drivers): the drivers of postgres.js and node-postgres.
 - [SQL Queries and Scripts](./sql): scripts, names known at runtime, and JSON and arrays in statements.
 - [Transactions](./transactions): nested transactions, advisory locks, isolation levels, and statements outside a transaction.
-- [Database Errors](./errors): statements that PostgreSQL rejects and lost connections.
 - [Testing](./testing): run each test in a transaction that rolls back.
+- [Errors](./errors): statements that PostgreSQL rejects and lost connections.

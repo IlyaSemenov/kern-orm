@@ -1,45 +1,92 @@
 # SQL Queries and Scripts
 
-<!--@include: ./_without-orm.md-->
-
-In code that has the database but no `Db`, such as a runner of migrations, run statements with `database.query` and scripts with `database.script`:
+Write a statement with the `database.query` template and await it:
 
 ```ts
-import * as t from "kern-orm/db/types"
+const updatedCount = await database.query`UPDATE form SET published = true WHERE id = ${formId}`
+// updatedCount: number
+```
 
-await database.script(await readFile("migrations/001-forms.sql", "utf8"))
+It resolves to the number of rows that PostgreSQL reports for the statement, such as the updated rows.
+To require exactly one such row, such as when updating a record by its key, add `take`: it rejects with `NotFoundError` without the row, unless you add `optional`.
+
+Interpolated values become query parameters.
+The statement runs in the current [transaction](./transactions).
+
+## Rows
+
+To get the rows that the statement returns, pass the types of their columns from `kern-db/types` to `select`:
+
+```ts
+import * as t from "kern-db/types"
+
+const forms = await database.query`SELECT id, name, published FROM form ORDER BY name`.select({
+  id: t.uuid,
+  name: t.text,
+  published: t.boolean,
+})
+// forms: { id: string; name: string; published: boolean }[]
+```
+
+`select` reads each field from the column of its name, whatever their order.
+Give a column that can be `NULL` a nullable type, such as `t.text.nullable()`.
+
+To get one row, add `take`: it rejects with `NotFoundError` without the row, unless you add `optional`, which gives `undefined` then, or `nullable`, which gives `null`.
+`take` adds no `LIMIT` to the statement, so it rejects several rows.
+
+kern-db checks the rows after the statement runs, so a statement that rejects in `take` or while decoding its rows has already made its change.
+To undo the change with the error, run the statement in a [transaction](./transactions).
+
+To get the values of a single column, pass its type to `pluck`, or to `get` for one value:
+
+```ts
 const total = await database.query`SELECT count(*) FROM form`.get(t.integer)
 // total: number
 ```
 
-`database.query` runs and returns rows as [`$query`](../orm/queries/sql) of a `Db` does; pass the types of `kern-orm/db/types` to its `select`, `get`, and `pluck`.
+## Names known at runtime
 
-In code that uses no schemas, such as a runner of jobs, import `createDatabase` from `kern-orm/db`, which exports the database without the query builder:
+To name a table, a column, or another object known only at runtime, such as in a loop over tables, interpolate `identifier` with its name:
 
 ```ts
-import { createDatabase } from "kern-orm/db"
-import { postgresJsDriver } from "kern-orm/db/postgres-js"
-import postgres from "postgres"
+import { identifier } from "kern-db"
 
-export const database = createDatabase({
-  driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
-})
+await database.query`UPDATE form SET ${identifier(column)} = ${value}`
 ```
 
-The templates of `database.query` and `database.script` interpolate the SQL fragments of `kern-orm/db`, not the tables, expressions, and `sql` fragments of `kern-orm`: interpolate those with `$query` or `$script` of a `Db`.
-To name an object known only at runtime there, interpolate `identifier` from `kern-orm/db`, which takes the names as [`identifier`](../orm/queries/sql#names-known-at-runtime) of `kern-orm` does:
+`identifier` does not add a PostgreSQL schema to the name.
+To name an object in a schema, pass the schema before the name:
 
 ```ts
-import { identifier } from "kern-orm/db"
-
-await database.script`ANALYZE ${identifier(schemaName, tableName)}`
+await database.query`ANALYZE ${identifier(schemaName, tableName)}`
 ```
 
-To pass JSON or an array, interpolate `param` from `kern-orm/db` with its type:
+## JSON and arrays
+
+To pass JSON or an array, interpolate `param` with its type:
 
 ```ts
-import { param } from "kern-orm/db"
-import * as t from "kern-orm/db/types"
+import { param } from "kern-db"
+import * as t from "kern-db/types"
 
 await database.query`UPDATE form SET tags = ${param(t.array(t.text), tags)} WHERE id = ${formId}`
 ```
+
+## Scripts
+
+To run several statements at once, such as the SQL of a migration file, pass them to `database.script`:
+
+```ts
+import { readFile } from "node:fs/promises"
+
+await database.script(await readFile("migrations/001-forms.sql", "utf8"))
+```
+
+A script has no parameters, so interpolate only names from `identifier` into its template:
+
+```ts
+await database.script`ANALYZE ${identifier(schemaName, tableName)}`
+```
+
+The script runs in the current transaction; outside one, PostgreSQL applies all its statements or none.
+Leave transactions to kern-db: do not write `BEGIN`, `COMMIT`, or `ROLLBACK` in a script.

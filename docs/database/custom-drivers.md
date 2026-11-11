@@ -1,13 +1,11 @@
 # Custom Drivers
 
-<!--@include: ./_without-orm.md-->
-
-To run kern-orm on a PostgreSQL client that has no [driver](./drivers), write a function that returns a `Driver` for your client, and pass the driver to `createDatabase`:
+To run kern-db on a PostgreSQL client that has no [driver](./drivers), write a function that returns a `Driver` for your client, and pass the driver to `createDatabase`:
 
 ```ts [src/acme-driver.ts]
 import type { AcmeClient, AcmeConnection, AcmeError } from "acme-postgres"
-import type { Driver, DriverResult, SqlStatement } from "kern-orm/db"
-import { ConnectionError, toDriverError } from "kern-orm/db"
+import type { Driver, DriverResult, SqlStatement } from "kern-db"
+import { ConnectionError, toDriverError } from "kern-db"
 
 /** Rejects with the error of `promise` as `QueryError` or `ConnectionError`. */
 async function classifyError<T>(promise: Promise<T>): Promise<T> {
@@ -98,7 +96,7 @@ Call `describeDriverContract` from a test file to check the driver in PostgreSQL
 ```ts
 import { after, before, describe, it } from "node:test"
 
-import { describeDriverContract } from "kern-orm/testing"
+import { describeDriverContract } from "kern-db/testing"
 
 const { DATABASE_URL } = process.env
 
