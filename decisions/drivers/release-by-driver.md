@@ -4,8 +4,8 @@
 After a `ConnectionError`, it trusts the status only when its client refused the statement without breaking the exchange of messages, as postgres.js 4 does for a statement of too many parameters.
 Each driver tells this from what it has seen on the connection and from the status of its transaction, which PostgreSQL reports in `ReadyForQuery` after every statement:
 
-- `@kern-orm/postgres-js` leaves it to postgres.js 4, which reads the status on release once the statements of the connection complete, has closed a lost connection, and settles every other failed statement at the `ReadyForQuery` that follows it.
-- `@kern-orm/node-postgres` remembers whether a statement failed with `ConnectionError` and reads `getTransactionStatus()` of `pg`; after a statement that PostgreSQL rejected, it first waits for that status with an empty query.
+- The driver of postgres.js leaves it to postgres.js 4, which reads the status on release once the statements of the connection complete, has closed a lost connection, and settles every other failed statement at the `ReadyForQuery` that follows it.
+- The driver of node-postgres remembers whether a statement failed with `ConnectionError` and reads `getTransactionStatus()` of `pg`; after a statement that PostgreSQL rejected, it first waits for that status with an empty query.
 
 ```ts
 // The caller only releases the connection, whatever happened on it.
@@ -22,7 +22,7 @@ try {
 `release(failure?)` took the failure of the last statement when it failed, and the driver returned such a connection to its pool only once it was idle.
 It saved the drivers from tracking the statements and reading the status, but:
 
-- A `QueryError` of `COMMIT` does not tell that the connection is idle, so the coordinator passed every failure of `BEGIN`, `COMMIT`, and `ROLLBACK`, and `@kern-orm/node-postgres`, which did not read the status, closed the connection after every failed `COMMIT`, such as of a deferred constraint or a serialization failure, which made the next statement reconnect.
+- A `QueryError` of `COMMIT` does not tell that the connection is idle, so the coordinator passed every failure of `BEGIN`, `COMMIT`, and `ROLLBACK`, and the driver of node-postgres, which did not read the status, closed the connection after every failed `COMMIT`, such as of a deferred constraint or a serialization failure, which made the next statement reconnect.
   On PostgreSQL 18, a statement timeout that expires between `Parse` of `COMMIT` and its `Execute`, which the extended protocol counts as one statement, rejects `COMMIT` with `57014` of severity `ERROR`, and `ReadyForQuery` reports a failed transaction; a cancel that comes in the same window does the same by the sources of PostgreSQL, which was not reproduced.
 - Every caller of a bare driver had to remember the failure of its last statement, such as the heartbeat of kern-jobs, which kept it to pass it on release.
 - No caller saw a transaction that a statement left open without failing, such as a `BEGIN` sent on a reserved connection.
@@ -41,7 +41,7 @@ The status tells an idle connection from one in a transaction or a failed one, b
 
 ## Closing after a `QueryError` instead of waiting for the status
 
-`@kern-orm/node-postgres` could close a connection whose last statement PostgreSQL rejected instead of waiting for its status.
+The driver of node-postgres could close a connection whose last statement PostgreSQL rejected instead of waiting for its status.
 The wait costs a round trip of an empty query, while closing makes the next statement reconnect: from the release to the end of the next statement on a local PostgreSQL 18, the [benchmark](../../benchmarks/suites/release-after-rejected-statement.ts) measures closing at about 20 times the time of the wait.
 
 ## Closing a connection left in a transaction

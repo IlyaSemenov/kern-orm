@@ -8,6 +8,16 @@
 - **Test harness** (`testing/` of the repository): the private workspace `@kern-orm/test-harness`, which holds the helpers of PostgreSQL and the recording driver that the tests of the packages share: `describePostgres` and `describePooledPostgres` give a block of tests a `Database` in PostgreSQL at `DATABASE_URL`.
   It is not published; the tests import it by name, so that no workspace imports a module of another by a relative path.
 
+## Package test
+
+The package test (`packages/orm/tests/package/`) checks the packed packages as consumer projects outside the workspace install them, without the `paths` of the repository and the overrides of its workspace:
+
+- It packs each published package at the version that the release of the pending changesets gives it, serves the tarballs from a registry of its own, and installs them with npm, so that no step needs a package published first, and a range that the version of the release plan does not satisfy fails it.
+- It checks that the dependencies, peer dependencies, and optional dependencies of the published manifests have no `catalog:` or `workspace:` protocol, and that `kern-db` and `kern-migrations` depend on nothing of `kern-orm`, also in their code and declarations.
+- A consumer of `kern-orm` and `kern-migrations`, and a consumer of `kern-db` and `kern-migrations` without `kern-orm` and `pg`, type-check under the pinned TypeScript and the minimum version, and run on Node.js and Bun, also in PostgreSQL at `DATABASE_URL`.
+- The consumer of `kern-db` includes a query builder of another author, which compiles fragments of the layer with `kern-db/builder` alone.
+- The built code of `kern-migrations` imports nothing of `kern-db`, which only its declarations import, and a bundled consumer of `kern-db` includes no module but its own and those of `kern-db`.
+
 ## Test transactions
 
 - Test transactions reuse the ambient transaction coordinator and always roll back.
@@ -25,7 +35,7 @@
   - It rejects with the reason of the signal, once its level ends if it started one; a failure to start or end its level after the abort suppresses the reason in a `SuppressedError`.
   - An abort after the callback settles does nothing: the level stops listening to the signal once the callback settles, since `node:test` aborts the signal after every test.
 - A statement already sent by a level that ends, whether by an abort, a preemption, or the closing of a fixture, completes before the rollback and delays the next level until then; `statement_timeout` of the connection bounds it.
-  kern-orm does not cancel it: a [cancel request](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-CANCELING-REQUESTS) interrupts whatever the backend runs when it arrives, such as the rollback or a statement of the next test, and gives no reply on whether it did.
+  kern-db does not cancel it: a [cancel request](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-CANCELING-REQUESTS) interrupts whatever the backend runs when it arrives, such as the rollback or a statement of the next test, and gives no reply on whether it did.
 
 ## Test fixtures
 

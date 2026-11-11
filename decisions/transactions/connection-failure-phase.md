@@ -19,7 +19,7 @@ The wrapper costs one promise for every statement of a transaction, which `.catc
 ## The driver reports the failure
 
 A driver could keep a flag on its `Connection` of whether a statement failed with `ConnectionError`, which the coordinator reads before `COMMIT`, without a promise for every statement.
-It extends the contract that every driver implements, including custom drivers, so every driver package would need a release that requires the new version of `kern-orm`, and the phase would still need the order of the failure and `COMMIT`, which only the coordinator knows.
+It extends the contract that every driver implements, including custom drivers, so every custom driver would need a release that requires the new version of `kern-db`, and the phase would still need the order of the failure and `COMMIT`, which only the coordinator knows.
 
 ## The rejection of the callback alone
 

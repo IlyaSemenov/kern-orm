@@ -36,10 +36,12 @@ Module paths are relative to the `src/` directory of their package: `packages/db
   It holds the `Database` of transactions, sessions, and advisory locks, the driver contract, its errors, and the drivers, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
   It imports no other package of the repository, also for types; only its tests and the test helpers of its modules import the [test harness](testing.md).
   The other workspaces import it only through its entry points; `packages/db/tests/boundaries.test.ts` checks both ([decision](../decisions/packages/database-package.md)).
-  `kern-db` exports its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs, without the transaction coordinator; `kern-db/postgres-js` and `kern-db/node-postgres` export the drivers; `kern-db/testing` exports the test helpers and the driver contract; `kern-db/builder` exports what a query builder on top of it compiles and decodes with.
+  `kern-db` exports its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs, without the transaction coordinator; `kern-db/postgres-js` and `kern-db/node-postgres` export the drivers; `kern-db/testing` exports the test helpers and the driver contract; `kern-db/builder` exports what a query builder on top of it compiles and decodes with, as [SQL generation](sql.md) describes.
 - The ORM, the package `kern-orm` (`packages/orm/`), builds on it through its entry points, as any query builder can.
   It has no `Database` of its own: the root of `kern-orm` exports `createDatabase` of the layer, `bindSchema` of `execution/db.ts` binds a schema to a `Database` of the layer, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
   `kern-orm/db`, `kern-orm/db/types`, `kern-orm/db/postgres-js`, `kern-orm/db/node-postgres`, and `kern-orm/testing` re-export the entry points of `kern-db`, so that an application of the ORM does not require `kern-db` itself.
+  Its build imports `kern-db` rather than bundling it, so that the values of the layer, such as codecs, are those of the one `kern-db` of the application.
+- The migrator, the package `kern-migrations` (`packages/migrations/`), uses only types of `kern-db` and nothing of `kern-orm`, and takes a `Db` by its members, as [migrations](migrations.md) describe.
 
 ## Map
 
@@ -50,7 +52,7 @@ Module paths are relative to the `src/` directory of their package: `packages/db
 - [Queries of SQL text](sql-queries.md): `sql/query.ts`, and `query` and `script` of `database.ts` of `kern-db`, and `$query` and the scripts of `execution/db.ts`.
 - [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, and `result/` of `kern-orm`, and `result.ts`, `identifier.ts`, and `builder.ts` of `kern-db`.
 - [Transactions](transactions.md): `database.ts` and `transaction/` of `kern-db`.
-- [Testing](testing.md): `test-helpers.ts` and `transaction/fixture-stack.ts` of `kern-db`, and the test harness in `testing/` of the repository.
+- [Testing](testing.md): `test-helpers.ts` and `transaction/fixture-stack.ts` of `kern-db`, the test harness in `testing/` of the repository, and the package test in `packages/orm/tests/package/`.
 - [Drivers](drivers.md): `driver.ts`, `driver-error.ts`, `error-condition.ts`, `error-condition-codes.ts`, `driver-contract.ts`, and `drivers/` of `kern-db`.
 - [Migrations](migrations.md): `packages/migrations/`.
 - [Package compatibility](compatibility.md): the ranges by which the packages of the repository depend on each other.

@@ -38,6 +38,11 @@
   The layer also decodes the flat results of [queries of SQL text](sql-queries.md#results), from the result columns of the keys of their fields.
   The result plan is internal: `toSQL` and `$compile` return only the text and parameters of a statement.
 - **Nested rows** (`lowering/nested.ts`): builds a query that packs the rows of a nested query as JSON, with the result plan that decodes them.
+- **Builder API** (`builder.ts` of `kern-db`, the entry point `kern-db/builder`): the rules of the database layer by which a query builder on top of it compiles statements and decodes their results.
+  It is a public entry point under [package compatibility](compatibility.md), since the ORM uses the layer only as any query builder can ([decision](../decisions/packages/database-package.md#an-internal-entry-point-of-the-builder-api)).
+  - `renderFragment` renders a [fragment of the layer](types.md#sql-fragments-of-the-database-layer) into a statement of the builder through its `ParameterBinder`; `bindParameter`, `encodeParameter`, and `assertUntypedValue` add and encode parameters by the rules of the layer, and `quoteIdentifier` quotes a name as `identifier` does.
+  - `startSqlQuery` starts a [query of SQL text](sql-queries.md) of a `StatementSource`, which compiles the statement of the builder each time the query executes, as `$query` of a `Db` does.
+  - `takeOnlyRow`, `toMissingResult`, `toValueRows`, and `isRecordKey` apply the rows modes of `ResultMode` and the keys that a record can have, and `createResultDecodeError` and `createFieldDecodeError` create `ResultDecodeError`, so that a result of the builder fails as a result of the layer does.
 
 ## Statements
 

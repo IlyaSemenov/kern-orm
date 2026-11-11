@@ -1,6 +1,6 @@
 # The database layer as the package `kern-db`
 
-The [database layer](../../architecture/README.md#layers) becomes the package `kern-db` in the repository of `kern-orm`, which then publishes three packages with independent versions, each in a directory named by its responsibility:
+The database layer becomes the package `kern-db` in the repository of `kern-orm`, which then publishes three packages with independent versions, each in a directory named by its responsibility:
 
 - `kern-db` (`packages/db`): the driver contract and the drivers, `Database` with its ambient transactions, sessions, and advisory locks, SQL fragments and queries of SQL text with their parameters, codecs and the decoding of flat results, the test helpers, and the errors of drivers and transactions.
 - `kern-orm` (`packages/orm`): tables, schemas, relations, expressions with their operators, queries and mutations, the AST with its lowering and compiler, the decoding of nested results, and `bindSchema`.
@@ -29,7 +29,7 @@ const db = bindSchema(schema, createDatabase({ driver: postgresJsDriver(postgres
 
 ## A package with subpaths
 
-`kern-orm` could keep the layer as its entry points, such as `kern-orm/db`, as it does until the package exists.
+`kern-orm` could hold the layer and export it from entry points of its own, such as `kern-orm/db`.
 One version and no ranges between the packages would keep every combination tested.
 Code without the ORM, such as the migrator and a runner of jobs, would then install the ORM, and its releases would follow every release of the ORM; the boundary of the layer would hold only by a check of imports.
 
@@ -46,6 +46,19 @@ A driver implements the contract of `kern-db` and uses its errors, so it changes
 `kern-db` gives each driver a subpath, such as `kern-db/postgres-js`, and requires its client by an optional peer dependency; importing `kern-db` loads no driver.
 Supporting two major versions of a client at once would take a subpath of each, decided when a client needs it.
 Drizzle ORM gives its drivers subpaths of `drizzle-orm` with optional peer dependencies too.
+
+## An internal entry point of the builder API
+
+`kern-orm` compiles its statements and decodes their results with the rules of the layer, such as how a fragment renders, how a parameter encodes, and how a query of one row takes its row.
+`kern-db/builder` exports them as a public entry point, so that the ORM uses the layer only as a query builder of another author can:
+
+```ts
+import { renderFragment, startSqlQuery } from "kern-db/builder"
+```
+
+An entry point for `kern-orm` alone, such as `kern-db/internal`, would keep these functions out of the public API, which users learn and whose changes a release of `kern-db` describes.
+The ORM would then use the layer in ways that another query builder cannot, and nothing would show that the public API of `kern-db` is enough for one.
+Nor could they change freely: `kern-orm` accepts every patch of the minor line of `kern-db` that it requires, so a change that breaks it needs a new minor version of `kern-db` either way.
 
 ## A peer dependency of `kern-orm`
 

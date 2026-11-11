@@ -66,7 +66,7 @@
 - A connection whose settings fail to restore, or whose [advisory locks](#locks) fail to release, must not return to the pool with them, and `release` of a connection takes no argument ([decision](../decisions/drivers/release-by-driver.md)), so the session leaves it in a transaction, which a driver closes on release.
   - It sends `BEGIN`, again while PostgreSQL rejects it with a `QueryError` that may leave the connection idle, such as when a cancel request hits the statement, and releases the connection only after that.
   - A `BEGIN` that completes, one that a failed transaction rejects, and one that rejects with `ConnectionError` end it, since a driver closes each such connection on release.
-  - A client that refuses, without sending them, both the statement that releases the locks or restores the settings and `BEGIN` keeps an idle connection, which returns to the pool with them: kern-orm cannot tell such a `ConnectionError` from a lost connection, on which sending `BEGIN` again would never end.
+  - A client that refuses, without sending them, both the statement that releases the locks or restores the settings and `BEGIN` keeps an idle connection, which returns to the pool with them: kern-db cannot tell such a `ConnectionError` from a lost connection, on which sending `BEGIN` again would never end.
   - The failure does not change the result or the error of the session, and goes to the handler of [failed releases](#levels) unless it is a `ConnectionError`, which a lost connection gives, with nothing to restore.
 
 ## Locks

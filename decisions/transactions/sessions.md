@@ -40,4 +40,4 @@ A statement that needs a session fails there, since it runs in a transaction blo
 ## Closing a connection through the driver
 
 A connection whose settings fail to restore could be closed by an operation of the driver contract rather than by leaving it in a transaction, which every driver closes on release.
-postgres.js 4 gives a reserved connection only `release()`, and closes it by the status of its transaction, so `@kern-orm/postgres-js` would implement the operation with the same `BEGIN`, and the contract of custom drivers would grow for `pg` alone.
+postgres.js 4 gives a reserved connection only `release()`, and closes it by the status of its transaction, so the driver of postgres.js would implement the operation with the same `BEGIN`, and the contract of custom drivers would grow for `pg` alone.

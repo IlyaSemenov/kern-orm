@@ -11,6 +11,9 @@ Until 1.0, a new minor version of a package may break its contract, so a publish
 - A change does not keep published versions of other packages working: a published version that a change breaks gets no fix and no deprecated alias.
 - A range may widen once a pair of versions is tested together and the contract settles.
 
+The root `package.json` overrides `kern-db` with `workspace:*`, so that every workspace links the workspace package for its range, also before a release, when the version of the manifest does not satisfy the range, such as `0.0.0` for `^0.1.0`: Bun links a workspace package for a plain range only when its version satisfies the range, and otherwise installs the range from the registry.
+The package test checks the ranges as a release publishes them: it installs the packed packages at the versions that the release of the pending changesets gives them, as [testing](testing.md#package-test) describes.
+
 A peer dependency does not ensure one copy of a package in an application.
 Only the errors of drivers and transactions recognize the errors of another copy, by brands of `Symbol.for`; other values that a module of one copy brands, such as codecs and SQL fragments, are not values of another copy.
 

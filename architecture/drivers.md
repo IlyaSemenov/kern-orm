@@ -47,7 +47,7 @@
 
 ## Compatibility
 
-A custom driver relies on the contract of `driver.ts`, and on `QueryError`, `ConnectionError`, and `toDriverError` of `driver-error.ts`, which it imports from `kern-db` at runtime ([decision](../decisions/drivers/error-classes-of-kern-orm.md)).
+A custom driver relies on the contract of `driver.ts`, and on `QueryError`, `ConnectionError`, and `toDriverError` of `driver-error.ts`, which it imports from `kern-db` at runtime ([decision](../decisions/drivers/error-classes-of-kern-db.md)).
 
 ## Tests of the contract
 

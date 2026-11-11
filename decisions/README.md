@@ -90,8 +90,8 @@ The SQL that loads nested queries and relations.
 
 ## Drivers
 
-- [Errors of drivers recognized by `instanceof`](drivers/error-recognition.md): the classes recognize the errors of another copy of `kern-orm` by a brand, rather than by predicates.
-- [Error classes of `kern-orm` in drivers](drivers/error-classes-of-kern-orm.md): the drivers import them at runtime and require `kern-orm` 0.8.0, rather than define classes of their own.
+- [Errors of drivers recognized by `instanceof`](drivers/error-recognition.md): the classes recognize the errors of another copy of `kern-db` by a brand, rather than by predicates.
+- [Error classes of `kern-db` in drivers](drivers/error-classes-of-kern-db.md): every driver rejects with them, and a custom driver imports them at runtime, rather than define classes of its own.
 - [Release decided by the driver](drivers/release-by-driver.md): by what the driver saw on the connection and the status of its transaction, rather than by a failure that the caller passes.
 - [`QueryError` told by the conditions of PostgreSQL](drivers/error-conditions.md): one predicate of every condition by its name, without a constraint argument, rather than a predicate of each condition, constants of the codes, or a member of `QueryError`.
 
@@ -106,4 +106,4 @@ The SQL that loads nested queries and relations.
 
 ## Packages
 
-- [The database layer as the package `kern-db`](packages/database-package.md): a package of one repository with the drivers as its subpaths, a regular dependency of `kern-orm`, a peer dependency of the migrator, and ranges of one minor line.
+- [The database layer as the package `kern-db`](packages/database-package.md): a package of one repository with the drivers as its subpaths, a public entry point for query builders on top of it, a regular dependency of `kern-orm`, a peer dependency of the migrator, and ranges of one minor line.
