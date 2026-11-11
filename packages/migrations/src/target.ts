@@ -71,6 +71,18 @@ export interface MigrationTargetOptions {
   schemaName?: string
 }
 
+/** Throws `TypeError` for a value that is not a target of migrations, and then for options of the call whose `schemaName` is set but is not a non-empty string. */
+export function checkTargetArguments(
+  target: unknown,
+  options: MigrationTargetOptions,
+): asserts target is MigrationTarget {
+  checkMigrationTarget(target)
+  const { schemaName } = options
+  if (schemaName !== undefined && (typeof schemaName !== "string" || schemaName === "")) {
+    throw new TypeError("schemaName must be a string that is not empty")
+  }
+}
+
 /** Target whose PostgreSQL schema a call resolved at its start. */
 export interface ResolvedTarget {
   readonly database: Database

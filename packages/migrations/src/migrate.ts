@@ -18,7 +18,7 @@ import type {
   TargetVersions,
 } from "./target"
 import {
-  checkMigrationTarget,
+  checkTargetArguments,
   createVersionsTable,
   deleteVersion,
   insertVersion,
@@ -70,7 +70,7 @@ export async function migrate(
   history: MigrationHistory,
   options: MigrateOptions = {},
 ): Promise<string[]> {
-  checkMigrationTarget(target)
+  checkTargetArguments(target, options)
   const count =
     options.count === undefined ? Number.POSITIVE_INFINITY : getCount(options.count, false)
   const opened = await openTarget(target, history, options)
@@ -95,7 +95,7 @@ export async function rollback(
   history: MigrationHistory,
   options: RollbackOptions = {},
 ): Promise<string[]> {
-  checkMigrationTarget(target)
+  checkTargetArguments(target, options)
   const count = getCount(options.count, true)
   const opened = await openTarget(target, history, options)
   checkAppliedKeys(history, opened.target, opened.versions, "roll back the migrations of")
@@ -121,7 +121,7 @@ export async function redo(
   history: MigrationHistory,
   options: RedoOptions = {},
 ): Promise<string[]> {
-  checkMigrationTarget(target)
+  checkTargetArguments(target, options)
   const count = getCount(options.count, false)
   const opened = await openTarget(target, history, options)
   checkAppliedKeys(history, opened.target, opened.versions, "redo the migrations of")
@@ -148,6 +148,7 @@ export async function getMigrationStatus(
   history: MigrationHistory,
   options: MigrationTargetOptions = {},
 ): Promise<MigrationStatus> {
+  checkTargetArguments(target, options)
   const opened = await openTarget(target, history, options)
   const { versions } = opened
   const known = new Set(history.keys)
@@ -390,7 +391,7 @@ function getLastKeys(versions: TargetVersions, count: number): string[] {
   return versions.applied.slice(Math.max(versions.applied.length - count, 0))
 }
 
-/** Returns the number of migrations of a `count` option, rejecting one that is not a positive integer, or `"all"` when `allowsAll` is set. */
+/** Returns the number of migrations of a `count` option, 1 without it, accepting a positive integer, or `"all"` when `allowsAll` is set; throws `TypeError` for another value. */
 function getCount(count: number | "all" | undefined, allowsAll: boolean): number {
   if (count === undefined) {
     return 1
@@ -399,7 +400,7 @@ function getCount(count: number | "all" | undefined, allowsAll: boolean): number
     return Number.POSITIVE_INFINITY
   }
   if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 1) {
-    throw new Error(
+    throw new TypeError(
       `count must be a positive integer${allowsAll ? ' or "all"' : ""}, not ${String(count)}`,
     )
   }

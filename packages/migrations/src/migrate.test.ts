@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import type { Database } from "kern-db"
+import type { Database, Driver } from "kern-db"
 import { bindSchema, defineSchema, defineTable } from "kern-orm"
 import * as t from "kern-orm/types"
 import postgres from "postgres"
@@ -62,14 +62,58 @@ it.each([
     const sql = postgres("postgres://localhost/none")
 
     await expect(
-      call(sql as never, defineMigrations({ "0001_create_form": createForm }), { count: 0 }),
-    ).rejects.toThrow(
+      call(sql as never, defineMigrations({ "0001_create_form": createForm }), {
+        count: 0,
+        schemaName: "",
+      }),
+    ).rejects.toEqual(
       new TypeError(
         "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
       ),
     )
   },
 )
+
+describe("options", () => {
+  /** Driver that rejects every statement, so that a call that sends one rejects with its error. */
+  const driver: Driver = {
+    execute: () => Promise.reject(new Error("No statement runs")),
+    executeScript: () => Promise.reject(new Error("No statement runs")),
+    acquire: () => Promise.reject(new Error("No statement runs")),
+    close: async () => {},
+  }
+  const history = defineMigrations({ "0001_create_form": createForm })
+
+  it.each([
+    ["migrate", migrate],
+    ["rollback", rollback],
+    ["redo", redo],
+    ["getMigrationStatus", getMigrationStatus],
+  ] as const)(
+    "%s rejects a schemaName that is not a non-empty string with TypeError before any statement",
+    async (_, call) => {
+      for (const schemaName of [5, null, ""]) {
+        await expect(call(driver, history, { schemaName: schemaName as never })).rejects.toEqual(
+          new TypeError("schemaName must be a string that is not empty"),
+        )
+      }
+    },
+  )
+
+  it.each([
+    ["migrate", 1.5, migrate, "count must be a positive integer, not 1.5"],
+    ["migrate", "all", migrate, "count must be a positive integer, not all"],
+    ["redo", 0, redo, "count must be a positive integer, not 0"],
+    ["rollback", -1, rollback, 'count must be a positive integer or "all", not -1'],
+  ] as const)(
+    "%s rejects count %p with TypeError before any statement",
+    async (_, count, call, message) => {
+      await expect(call(driver, history, { count: count as never })).rejects.toEqual(
+        new TypeError(message),
+      )
+    },
+  )
+})
 
 describePostgres("migrate", ({ database, testTransaction, recordStatements, notices }) => {
   const db = bindSchema(schema, database, { schemaName: "migrations_tenant" })
@@ -135,18 +179,6 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     ])
 
     expect(keys).toEqual([["0001_create_form"], ["0002_create_user", "0003_create_tag"]])
-  })
-
-  it("rejects a count that is not a positive integer before any statement", async () => {
-    const history = defineMigrations({ "0001_create_form": createForm })
-
-    const statements = await recordStatements(async () => {
-      await expect(migrate(db, history, { count: 1.5 })).rejects.toThrow(
-        "count must be a positive integer, not 1.5",
-      )
-    })
-
-    expect(statements).toEqual([])
   })
 
   it("applies nothing to a target that is up to date, with two statements outside a transaction", async () => {
@@ -652,17 +684,6 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
           'Cannot roll back the migrations of schema "migrations_tenant": migration 0002_create_user is applied, but the history lacks it',
         )
       })
-    })
-
-    it("rejects a count that is not a positive integer, or all for rollback", async () => {
-      const history = defineMigrations({ "0001_create_form": createForm })
-
-      await expect(rollback(db, history, { count: 0 })).rejects.toThrow(
-        'count must be a positive integer or "all", not 0',
-      )
-      await expect(redo(db, history, { count: 0 })).rejects.toThrow(
-        "count must be a positive integer, not 0",
-      )
     })
 
     it("redo rolls back the last applied migrations and applies them again", async () => {

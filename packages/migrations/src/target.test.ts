@@ -5,7 +5,7 @@ import { createDatabase } from "kern-db"
 import { bindSchema, defineSchema } from "kern-orm"
 import postgres from "postgres"
 
-import { getTargetDatabase, isMigrationTarget } from "./target"
+import { checkTargetArguments, getTargetDatabase, isMigrationTarget } from "./target"
 
 /** Driver that rejects every statement, which the tests below never run. */
 const driver: Driver = {
@@ -61,5 +61,29 @@ describe("getTargetDatabase", () => {
         "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
       ),
     )
+  })
+})
+
+describe("checkTargetArguments", () => {
+  it("accepts a target with options without schemaName or with a schema name", () => {
+    expect(() => checkTargetArguments(database, {})).not.toThrow()
+    expect(() => checkTargetArguments(database, { schemaName: undefined })).not.toThrow()
+    expect(() => checkTargetArguments(database, { schemaName: "tenant_acme" })).not.toThrow()
+  })
+
+  it("throws TypeError for a value that is not a target before checking the options", () => {
+    const check = () => checkTargetArguments({}, { schemaName: "" })
+
+    expect(check).toThrow(TypeError)
+    expect(check).toThrow(
+      "The target of migrations must be a Db of kern-orm, or a Database or a driver of kern-db",
+    )
+  })
+
+  it.each([5, null, ""])("throws TypeError for schemaName %p", schemaName => {
+    const check = () => checkTargetArguments(database, { schemaName: schemaName as never })
+
+    expect(check).toThrow(TypeError)
+    expect(check).toThrow("schemaName must be a string that is not empty")
   })
 })
