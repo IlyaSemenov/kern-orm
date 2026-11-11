@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/recording-driver"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { compileStatement } from "../compiler/postgres/compile"
 import { createDatabase } from "../execution/database"
 import { lower } from "../lowering/testing"

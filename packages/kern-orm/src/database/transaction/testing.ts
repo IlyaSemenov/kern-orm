@@ -1,7 +1,6 @@
-import type { SqlStatement } from "kern-orm"
-import { createStatement } from "kern-orm"
-
-import { createRecordingDriver } from "../../../testing/recording-driver"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
+import type { SqlStatement } from "../driver"
+import { createStatement } from "../driver"
 
 import { TransactionCoordinator } from "./coordinator"
 import type { ReleaseErrorHandler } from "./release"

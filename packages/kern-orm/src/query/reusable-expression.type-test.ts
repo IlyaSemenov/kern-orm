@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/recording-driver"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { createDatabase } from "../execution/database"
 import type { Expression } from "../expression/expression"
 import { caseWhen, coalesce } from "../expression/functions"

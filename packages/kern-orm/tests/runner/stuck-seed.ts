@@ -1,10 +1,10 @@
 // Tests run by test-runner.test.ts under `bun test`: the before hook of the first describe block times out while the seed of its fixture never settles.
 import { afterAll, beforeAll, describe, test } from "bun:test"
 
-import { createDatabase, createStatement } from "kern-orm"
+import { createDatabase, createStatement } from "kern-orm/db"
 import { createTestHelpers } from "kern-orm/testing"
 
-import { createRecordingDriver } from "../../testing/recording-driver"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 
 const { driver, statements, releases } = createRecordingDriver()
 const database = createDatabase({ driver, test: true })

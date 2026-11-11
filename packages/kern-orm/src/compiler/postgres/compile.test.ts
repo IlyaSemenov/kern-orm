@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
 import { describePostgres } from "../../../testing/postgres"
-import { createRecordingDriver } from "../../../testing/recording-driver"
 import type {
   DeleteNode,
   InsertNode,

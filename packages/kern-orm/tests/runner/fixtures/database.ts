@@ -1,10 +1,10 @@
 // Database shared by the preload and the test files that test-runner.test.ts runs under `bun test`.
 import { afterAll, beforeAll } from "bun:test"
 
-import { createDatabase, createStatement } from "kern-orm"
+import { createDatabase, createStatement } from "kern-orm/db"
 import { createTestHelpers } from "kern-orm/testing"
 
-import { createRecordingDriver } from "../../../testing/recording-driver"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
 
 export const { driver, statements, releases } = createRecordingDriver()
 

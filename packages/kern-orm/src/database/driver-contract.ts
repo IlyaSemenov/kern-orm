@@ -1,19 +1,18 @@
 // Tests of the contract of `Driver` in PostgreSQL, which take the functions of a test runner and assert with `node:assert/strict`, so that any supported runner can run them.
 import assert from "node:assert/strict"
 
-import type { Connection, Driver, TextValue } from "../database/driver"
-import { createStatement } from "../database/driver"
-import { ConnectionError, QueryError } from "../database/driver-error"
-import type { TestHooks } from "../database/testing"
-import { createTestHelpers } from "../database/testing"
-import { TransactionConnectionError } from "../database/transaction/connection-loss"
-import { and } from "../expression/predicates"
-import { param, sql } from "../expression/sql"
-import { defineSchema } from "../schema/schema"
-import { defineTable } from "../table/table"
-import * as t from "../types"
+import * as t from "../db/types"
 
+import type { AnyCodec } from "./codec/codec"
 import { createDatabase } from "./database"
+import type { Connection, Driver, TextValue } from "./driver"
+import { createStatement } from "./driver"
+import { ConnectionError, QueryError } from "./driver-error"
+import type { SqlFragment } from "./sql/fragment"
+import { identifier, param, sql } from "./sql/fragment"
+import type { TestHooks } from "./testing"
+import { createTestHelpers } from "./testing"
+import { TransactionConnectionError } from "./transaction/connection-loss"
 
 /** Options of `describeDriverContract`: how to create the driver under test. */
 export interface DriverContractOptions {
@@ -46,6 +45,18 @@ function createStatementRunners(target: Pick<Connection, "execute">) {
   }
 }
 
+/** Creates the condition that each column named by a key of `codecs` equals the value of the key in `values`, as a parameter of its codec. */
+function equalsEach(
+  codecs: Readonly<Record<string, AnyCodec>>,
+  values: Readonly<Record<string, unknown>>,
+): SqlFragment {
+  let condition = sql`TRUE`
+  for (const key of Object.keys(codecs)) {
+    condition = sql`${condition} AND ${identifier(key)} = ${param(codecs[key]!, values[key])}`
+  }
+  return condition
+}
+
 /**
  * Declares the tests of the contract of `Driver` for a driver.
  *
@@ -67,16 +78,12 @@ export function describeDriverContract(
     const { selectValue: selectValueOnDriver } = createStatementRunners(driver)
 
     it("executes a query in a transaction", async () => {
-      const tag = defineTable("pg_tag_test", {
-        id: t.integer,
-        label: t.text,
-      })
-      const db = database.bind(defineSchema({ tag }))
-
       const rows = await database.transaction(async () => {
         await runStatement("CREATE TEMP TABLE pg_tag_test (id integer, label text) ON COMMIT DROP")
         await runStatement("INSERT INTO pg_tag_test VALUES (1, 'first'), (2, 'second')")
-        return await db.tag.select("label").where({ id: 2 })
+        return await database.query`SELECT label FROM pg_tag_test WHERE id = ${2}`.select({
+          label: t.text,
+        })
       })
 
       assert.deepEqual(rows, [{ label: "second" }])
@@ -215,6 +222,19 @@ export function describeDriverContract(
       assert.equal(await selectValueOnDriver("SELECT $1::jsonb ->> 'a'", ['{"a":"x"}']), "x")
     })
 
+    it("compares parameters of param with the operators of their types", async () => {
+      const comparisons = await Promise.all([
+        // Compared as text, "2" is greater than "10".
+        database.query`SELECT ${param(t.integer, 2)} < ${10}`.get(t.boolean),
+        // Cast to numeric(3,1), 1.04 would round to 1.0.
+        database.query`SELECT ${param(t.numeric.with(3, 1), "1.04")} <> ${"1.0"}`.get(t.boolean),
+        // Cast to char, "ab" would truncate to "a".
+        database.query`SELECT ${param(t.char, "ab")} = ${"ab"}`.get(t.boolean),
+      ])
+
+      assert.deepEqual(comparisons, [true, true, true])
+    })
+
     it("runs concurrent statements of a transaction in the order of calls", async () => {
       const values = await database.transaction(() =>
         Promise.all([
@@ -253,23 +273,20 @@ export function describeDriverContract(
       }
     })
 
-    it("decodes selected expressions with their types", async () => {
-      const tag = defineTable("pg_tag_test", {
-        id: t.integer,
-        label: t.text.nullable(),
-      })
-      const db = database.bind(defineSchema({ tag }))
-
+    it("decodes the values of selected expressions with their codecs", async () => {
       const rows = await database.transaction(async () => {
         await runStatement("CREATE TEMP TABLE pg_tag_test (id integer, label text) ON COMMIT DROP")
         await runStatement("INSERT INTO pg_tag_test VALUES (1, 'first'), (2, NULL)")
-        return await db.tag.select(columns => ({
-          key: columns.id,
-          name: columns.label,
-          isFirst: columns.label.eq("first"),
-          total: sql(t.bigint)`count(*) OVER ()`,
-          length: sql(t.integer.nullable())`length(${columns.label})`,
-        }))
+        return await database.query`
+          SELECT id AS key, label AS name, label = ${"first"} AS "isFirst", count(*) OVER () AS total, length(label) AS length
+          FROM pg_tag_test
+        `.select({
+          key: t.integer,
+          name: t.text.nullable(),
+          isFirst: t.boolean.nullable(),
+          total: t.bigint,
+          length: t.integer.nullable(),
+        })
       })
 
       // The query has no order, so the rows are sorted here.
@@ -712,12 +729,7 @@ export function describeDriverContract(
       const { runStatement, selectValue } = createStatementRunners(database)
 
       it("discards only the rows of a rolled-back nested transaction", async () => {
-        const tag = defineTable("pg_nested_test", {
-          id: t.integer,
-        })
-        const db = database.bind(defineSchema({ tag }))
-
-        const rows = await testTransaction(async () => {
+        const ids = await testTransaction(async () => {
           await runStatement("CREATE TABLE pg_nested_test (id integer)")
           await runStatement("INSERT INTO pg_nested_test VALUES (1)")
           const failure = new Error("failure")
@@ -727,10 +739,10 @@ export function describeDriverContract(
           })
           await assert.rejects(failed, error => error === failure)
           await database.transaction(() => runStatement("INSERT INTO pg_nested_test VALUES (3)"))
-          return await db.tag.select("id")
+          return await database.query`SELECT id FROM pg_nested_test`.pluck(t.integer)
         })
 
-        assert.deepEqual(rows.map(({ id }) => id).toSorted(), [1, 3])
+        assert.deepEqual(ids.toSorted(), [1, 3])
       })
 
       it("keeps the transaction usable after a failed statement in a nested transaction", async () => {
@@ -746,15 +758,9 @@ export function describeDriverContract(
       })
 
       it("keeps the changes of open fixtures for test transactions until each fixture closes", async () => {
-        const entry = defineTable("pg_fixture_test", {
-          label: t.text,
-        })
-        const db = database.bind(defineSchema({ entry }))
-        const selectLabels = () =>
-          testTransaction(async () => {
-            const rows = await db.entry.select("label")
-            return rows.map(({ label }) => label).toSorted()
-          })
+        const queryLabels = async () =>
+          (await database.query`SELECT label FROM pg_fixture_test`.pluck(t.text)).toSorted()
+        const selectLabels = () => testTransaction(queryLabels)
 
         {
           await using _run = await database.coordinator.createTestFixture(async () => {
@@ -764,13 +770,15 @@ export function describeDriverContract(
           {
             await using file = await database.coordinator.createTestFixture(async () => {
               await runStatement("INSERT INTO pg_fixture_test VALUES ('file')")
-              return await db.entry.where({ label: "file" }).select("label")
+              return await database.query`SELECT label FROM pg_fixture_test WHERE label = ${"file"}`.select(
+                { label: t.text },
+              )
             })
             assert.deepEqual(file.data, [{ label: "file" }])
 
             const inTest = await testTransaction(async () => {
               await runStatement("INSERT INTO pg_fixture_test VALUES ('test')")
-              return (await db.entry.select("label")).map(({ label }) => label).toSorted()
+              return await queryLabels()
             })
             assert.deepEqual(inTest, ["file", "run", "test"])
             assert.deepEqual(await selectLabels(), ["file", "run"])
@@ -800,7 +808,7 @@ export function describeDriverContract(
       })
 
       it("round-trips the built-in types", async () => {
-        const sample = defineTable("pg_type_test", {
+        const codecs = {
           bigint: t.bigint,
           numeric: t.numeric.with(20, 6),
           price: t.numeric.with(10, 2).transform({ decode: Number }),
@@ -817,8 +825,7 @@ export function describeDriverContract(
           labels: t.array(t.text.nullable()),
           address: t.inet,
           status: t.enum("pg_status_test", ["draft", "published"]),
-        })
-        const db = database.bind(defineSchema({ sample }))
+        }
         const values = {
           bigint: 9007199254740993n,
           numeric: "12345678901234.123456",
@@ -856,50 +863,26 @@ export function describeDriverContract(
             '1 day 2 hours', '{"tags": ["a", "b"]}', '{a,"b c",NULL,"NULL"}', '192.168.0.1', 'published'
           )
         `)
-          const selected = await db.sample.select("*")
+          const selected = await database.query`SELECT * FROM pg_type_test`.select(codecs)
           // Every value also matches itself as an encoded parameter.
-          const matched = await db.sample.where(values).select("id")
+          const matched =
+            await database.query`SELECT id FROM pg_type_test WHERE ${equalsEach(codecs, values)}`.pluck(
+              t.uuid,
+            )
           return { selected, matched }
         })
 
         assert.deepEqual(rows.selected, [values])
-        assert.deepEqual(rows.matched, [{ id: values.id }])
-      })
-
-      it("compares parameters of param with the operators of their types", async () => {
-        const probe = defineTable("pg_param_test", {
-          id: t.integer,
-        })
-        const db = database.bind(defineSchema({ probe }))
-
-        const rows = await testTransaction(async () => {
-          await runStatement("CREATE TABLE pg_param_test (id integer)")
-          await runStatement("INSERT INTO pg_param_test VALUES (1)")
-          return await db.probe
-            .where(() =>
-              and(
-                // Compared as text, "2" is greater than "10".
-                param(t.integer, 2).lt(10),
-                // Cast to numeric(3,1), 1.04 would round to 1.0.
-                param(t.numeric.with(3, 1), "1.04").ne("1.0"),
-                // Cast to char, "ab" would truncate to "a".
-                param(t.char, "ab").eq("ab"),
-              ),
-            )
-            .select("id")
-        })
-
-        assert.deepEqual(rows, [{ id: 1 }])
+        assert.deepEqual(rows.matched, [values.id])
       })
 
       it("round-trips date and time values of years outside 1 to 9999", async () => {
-        const moment = defineTable("pg_moment_test", {
+        const codecs = {
           id: t.integer,
           at: t.timestamptz,
           local: t.timestamp,
           day: t.date,
-        })
-        const db = database.bind(defineSchema({ moment }))
+        }
         const values = [
           {
             id: 1,
@@ -932,16 +915,22 @@ export function describeDriverContract(
             (2, '294276-12-31 23:59:59.999999+00', '10000-01-01', '10000-01-01'),
             (3, '9999-12-31 23:59:59+00', '9999-12-31 23:59:59', '5874897-12-31')
         `)
-          const selected = await db.moment.select("*")
+          const selected = await database.query`SELECT * FROM pg_moment_test ORDER BY id`.select(
+            codecs,
+          )
           // Every value also matches itself as an encoded parameter.
           const matched = await Promise.all(
-            values.map(value => db.moment.where(value).select("id")),
+            values.map(value =>
+              database.query`SELECT id FROM pg_moment_test WHERE ${equalsEach(codecs, value)}`.pluck(
+                t.integer,
+              ),
+            ),
           )
           return { selected, matched }
         })
 
         assert.deepEqual(rows.selected, values)
-        assert.deepEqual(rows.matched, [[{ id: 1 }], [{ id: 2 }], [{ id: 3 }]])
+        assert.deepEqual(rows.matched, [[1], [2], [3]])
       })
     })
   })

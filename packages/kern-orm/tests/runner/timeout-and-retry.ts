@@ -1,10 +1,10 @@
 // Tests run by test-runner.test.ts under `bun test`: the first one times out while its code keeps querying, and the last one is retried.
 import { afterAll, beforeAll, test } from "bun:test"
 
-import { createDatabase, createStatement } from "kern-orm"
+import { createDatabase, createStatement } from "kern-orm/db"
 import { createTestHelpers } from "kern-orm/testing"
 
-import { createRecordingDriver } from "../../testing/recording-driver"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 
 const { driver, statements } = createRecordingDriver()
 const database = createDatabase({ driver, test: true })

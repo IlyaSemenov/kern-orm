@@ -56,6 +56,7 @@ A driver follows the [contract of package compatibility](compatibility.md), and 
 - It takes the functions of a test runner, as `createTestHelpers` takes its hooks, and asserts with `node:assert/strict`, so that it runs with `node:test`, `bun:test`, and Vitest.
   The driver packages run it with `bun:test` and Vitest from the sources, and the package test with `node:test` against the packed packages.
 - It has no check of `DATABASE_URL`: the caller declares it in a block that skips it, in the way of its test runner.
+- It runs on the `Database` of the database layer, with its queries of SQL text, codecs, and test helpers, and creates its tables as temporary tables or in test transactions, without tables of the ORM.
 
 ## postgres.js
 

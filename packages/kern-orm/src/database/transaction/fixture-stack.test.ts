@@ -1,8 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
-import { createStatement } from "kern-orm"
-
-import { createRecordingDriver } from "../../../testing/recording-driver"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
+import { createStatement } from "../driver"
 
 import { TransactionCoordinator } from "./coordinator"
 import {

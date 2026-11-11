@@ -1,7 +1,7 @@
 import { expect, it } from "bun:test"
 
-import { describePostgres } from "../../testing/postgres"
-import * as t from "../types"
+import { describePostgres } from "../../testing/database/postgres"
+import * as t from "../db/types"
 
 import { conditionsByCode } from "./error-condition-codes"
 

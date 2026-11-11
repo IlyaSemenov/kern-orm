@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test"
 
-import type { SqlStatement } from "kern-orm"
-import { ConnectionError, createStatement, QueryError, TransactionConnectionError } from "kern-orm"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
+import type { SqlStatement } from "../driver"
+import { createStatement } from "../driver"
+import { ConnectionError, QueryError } from "../driver-error"
 
-import { createRecordingDriver } from "../../../testing/recording-driver"
-
+import { TransactionConnectionError } from "./connection-loss"
 import { TransactionCoordinator } from "./coordinator"
 import { createTestCoordinator, failOn, holdOn, markHandled, run } from "./testing"
 

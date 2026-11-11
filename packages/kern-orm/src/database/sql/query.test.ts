@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
-import { describePostgres } from "../../../testing/postgres"
-import { createRecordingDriver } from "../../../testing/recording-driver"
+import { describePostgres } from "../../../testing/database/postgres"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
 import { boolean } from "../codecs/boolean"
 import { integer } from "../codecs/numeric"
 import { text } from "../codecs/text"

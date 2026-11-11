@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import { createRecordingDriver } from "../../../testing/recording-driver"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
 import { bigint, integer } from "../codecs/numeric"
 import { text } from "../codecs/text"
 import { createDatabase } from "../database"

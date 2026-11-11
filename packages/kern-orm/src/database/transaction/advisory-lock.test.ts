@@ -1,9 +1,8 @@
 import { describe, expect, it } from "bun:test"
 
-import type { SqlStatement } from "kern-orm"
-import { QueryError } from "kern-orm"
-
-import { createRecordingDriver } from "../../../testing/recording-driver"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
+import type { SqlStatement } from "../driver"
+import { QueryError } from "../driver-error"
 
 import { pause, pollLock } from "./advisory-lock"
 import { TransactionCoordinator } from "./coordinator"

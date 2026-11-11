@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
-import type { RecordingDriverOptions } from "../../../testing/recording-driver"
-import { createRecordingDriver } from "../../../testing/recording-driver"
+import type { RecordingDriverOptions } from "../../../testing/database/recording-driver"
+import { createRecordingDriver } from "../../../testing/database/recording-driver"
 import { createStatement } from "../driver"
 import { ConnectionError, QueryError } from "../driver-error"
 

@@ -1,4 +1,4 @@
-import type { Connection, Driver, DriverResult, SqlStatement } from "kern-orm"
+import type { Connection, Driver, DriverResult, SqlStatement } from "kern-orm/db"
 
 /** Executed statement with the connection that ran it: `pool` or the number of an acquired connection. */
 export interface RecordedStatement {

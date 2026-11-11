@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test"
 import { runInNewContext } from "node:vm"
 
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { describePostgres } from "../../testing/postgres"
-import { createRecordingDriver } from "../../testing/recording-driver"
 import { NotFoundError, ResultDecodeError } from "../database/result"
 import { createDatabase } from "../execution/database"
 import { coalesce } from "../expression/functions"

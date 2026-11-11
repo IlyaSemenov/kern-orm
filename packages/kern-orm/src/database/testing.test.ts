@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test"
 
-import { describePostgres } from "../../testing/postgres"
-import { createRecordingDriver } from "../../testing/recording-driver"
-import * as t from "../types"
+import { describePostgres } from "../../testing/database/postgres"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
+import * as t from "../db/types"
 
 import { createDatabase } from "./database"
 import { createStatement } from "./driver"

@@ -1,62 +1,12 @@
-// PostgreSQL of the tests at `DATABASE_URL`, such as from `.env.test.local`; the tests that need it are skipped without it.
-import { afterAll, beforeAll, describe } from "bun:test"
-
-import { postgresJsDriver } from "@kern-orm/postgres-js"
-import type { AnyDb, Database } from "kern-orm"
+// PostgreSQL of the tests of the ORM at `DATABASE_URL`, such as from `.env.test.local`; the tests that need it are skipped without it.
+import type { AnyDb } from "kern-orm"
 import { createDatabase, sql } from "kern-orm"
-import type { TestHelpers } from "kern-orm/testing"
-import { createTestHelpers } from "kern-orm/testing"
 import * as t from "kern-orm/types"
-import postgres from "postgres"
 
-const { DATABASE_URL } = process.env
+import { definePostgresBlocks } from "./database/postgres"
 
-/** Database of a `describePostgres` block with its test helpers. */
-export interface PostgresTestContext extends TestHelpers {
-  /** Database created with `test: true`, closed after the block. */
-  readonly database: Database
-}
-
-/** Database of a `describePooledPostgres` block. */
-export interface PooledPostgresContext {
-  /** Database created without `test: true`, closed after the block. */
-  readonly database: Database
-}
-
-/**
- * Declares a `describe` block of tests that run in PostgreSQL on a database created without `test: true`, such as tests of what concurrent transactions see, skipped when `DATABASE_URL` is not set.
- *
- * A test drops what its transactions commit.
- */
-export function describePooledPostgres(
-  name: string,
-  body: (context: PooledPostgresContext) => void,
-): void {
-  describe.skipIf(!DATABASE_URL)(name, () => {
-    const database = createDatabase({ driver: postgresJsDriver(postgres(DATABASE_URL!)) })
-    afterAll(() => database.close())
-    body({ database })
-  })
-}
-
-/**
- * Declares a `describe` block of tests that run in PostgreSQL, skipped when `DATABASE_URL` is not set.
- *
- * `body` registers the tests, which use the database of the block through `context`.
- */
-export function describePostgres(name: string, body: (context: PostgresTestContext) => void): void {
-  describe.skipIf(!DATABASE_URL)(name, () => {
-    const database = createDatabase({
-      driver: postgresJsDriver(postgres(DATABASE_URL!)),
-      test: true,
-    })
-    afterAll(() => database.close())
-    body({
-      ...createTestHelpers(database, { before: beforeAll, after: afterAll }),
-      database,
-    })
-  })
-}
+// The blocks of the database layer, over the database of the ORM, which binds schemas.
+export const { describePooledPostgres, describePostgres } = definePostgresBlocks(createDatabase)
 
 /**
  * Runs `callback` while a transaction of `db` holds what `statement` takes, with what it gives, and commits it at the latest when `callback` ends.

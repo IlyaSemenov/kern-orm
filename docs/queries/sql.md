@@ -122,7 +122,19 @@ const total = await database.query`SELECT count(*) FROM form`.get(t.integer)
 
 `database.query` runs and returns rows as `$query` does; pass the types of `kern-orm/db/types` to its `select`, `get`, and `pluck`.
 
-Their templates interpolate the SQL fragments of `kern-orm/db`, not the tables, expressions, and `sql` fragments of `kern-orm`: interpolate those with `$query` or `$script` of a `Db`.
+In code that uses no schemas, such as a runner of jobs, create the database with `createDatabase` from `kern-orm/db`, which takes the options of `createDatabase` of `kern-orm` and has no `bind`:
+
+```ts
+import { postgresJsDriver } from "@kern-orm/postgres-js"
+import { createDatabase } from "kern-orm/db"
+import postgres from "postgres"
+
+export const database = createDatabase({
+  driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
+})
+```
+
+The templates of `database.query` and `database.script` interpolate the SQL fragments of `kern-orm/db`, not the tables, expressions, and `sql` fragments of `kern-orm`: interpolate those with `$query` or `$script` of a `Db`.
 To name an object known only at runtime there, interpolate `identifier` from `kern-orm/db`, which takes the names as [`identifier`](#names-known-at-runtime) of `kern-orm` does:
 
 ```ts

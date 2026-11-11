@@ -3,14 +3,12 @@ import { describe, expect, it } from "bun:test"
 import { postgresJsDriver } from "@kern-orm/postgres-js"
 import postgres from "postgres"
 
-import { describePooledPostgres, describePostgres } from "../../testing/postgres"
-import { createRecordingDriver } from "../../testing/recording-driver"
-import type { Database } from "../execution/database"
-import { createDatabase } from "../execution/database"
-import * as t from "../types"
+import { describePooledPostgres, describePostgres } from "../../testing/database/postgres"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
+import * as t from "../db/types"
 
-import { text } from "./codecs/text"
-import type { IsolationLevel } from "./database"
+import type { Database, IsolationLevel } from "./database"
+import { createDatabase } from "./database"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
 import { identifier, param, sql } from "./sql/fragment"
@@ -55,7 +53,7 @@ it("rejects a value in the template of a script, also in a fragment that it inte
 
   await expect(database.script`SELECT ${1}`).rejects.toThrow(message)
   await expect(database.script`SELECT ${sql`upper(${"x"})`}`).rejects.toThrow(message)
-  await expect(database.script`SELECT ${param(text, "x")}`).rejects.toThrow(message)
+  await expect(database.script`SELECT ${param(t.text, "x")}`).rejects.toThrow(message)
   expect(scripts).toEqual([])
 })
 

@@ -35,7 +35,8 @@ Module paths are relative to `packages/kern-orm/src/`.
 - The database layer (`database/`) runs statements on the connections of a driver.
   It holds the `Database` of transactions, sessions, and advisory locks, the driver contract and its errors, the test helpers, the contract of codecs, the codecs of the built-in types, its SQL fragments with their renderer, its queries of SQL text, the rows modes of results with the errors of a result that breaks its contract and the decoding of flat results, and the text representations of the values that it reads and writes itself, such as of arrays and Booleans.
   Its production modules import only each other and Node.js built-ins, also for types, so that it works without the ORM ([backlog](../backlog/database-layer-as-a-package.md)).
-  `kern-orm/db` exports its contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results, and `kern-orm/db/types` the codecs of the built-in types, and importing `kern-orm/db/types` loads only the modules of codecs of the layer, without the ORM and the transaction coordinator.
+  Its tests, the [driver contract](drivers.md#tests-of-the-contract), and the harness of its tests in `packages/kern-orm/testing/database/` run on its own API and import no module of the ORM either, which `packages/kern-orm/tests/database-layer.test.ts` checks for every file of the layer.
+  `kern-orm/db` exports the layer: its `Database`, the driver contract and its errors, the contract of codecs, its SQL fragments, the types of its queries of SQL text, and the errors of their results; `kern-orm/db/types` exports the codecs of the built-in types, and importing it loads only the modules of codecs of the layer, without the ORM and the transaction coordinator.
 - The ORM, the other modules, builds on it.
   `execution/database.ts` adds `bind` to its `Database`, and `$query` of a `Db` starts a query of SQL text of the layer whose statement the `Db` compiles.
 
@@ -49,6 +50,6 @@ Module paths are relative to `packages/kern-orm/src/`.
 - [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, `result/`, `database/result.ts`, and `database/identifier.ts`.
 - [Transactions](transactions.md): `database/database.ts` and `database/transaction/`.
 - [Testing](testing.md): `database/testing.ts` and `database/transaction/fixture-stack.ts`.
-- [Drivers](drivers.md): `database/driver.ts`, `database/driver-error.ts`, `database/error-condition.ts`, `database/error-condition-codes.ts`, `execution/driver-contract.ts`, `packages/postgres-js/` and `packages/node-postgres/`.
+- [Drivers](drivers.md): `database/driver.ts`, `database/driver-error.ts`, `database/error-condition.ts`, `database/error-condition-codes.ts`, `database/driver-contract.ts`, `packages/postgres-js/` and `packages/node-postgres/`.
 - [Migrations](migrations.md): `packages/migrations/`.
 - [Package compatibility](compatibility.md): the peer dependency of companion packages on `kern-orm`, and `packages/kern-orm/tests/package/compatibility.package-test.ts`.

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 import {
   describePooledPostgres,
   describePostgres,
   startWaiting,
   whileHolding,
 } from "../../testing/postgres"
-import { createRecordingDriver } from "../../testing/recording-driver"
 import { NotFoundError } from "../database/result"
 import { createDatabase } from "../execution/database"
 import { coalesce } from "../expression/functions"

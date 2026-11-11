@@ -1,6 +1,6 @@
 import { expect, it } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/recording-driver"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { identifier } from "../expression/sql"
 import { defineSchema } from "../schema/schema"
 import { defineTable } from "../table/table"

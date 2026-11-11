@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import { createRecordingDriver } from "../../testing/recording-driver"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { createDatabase } from "../execution/database"
 import { sql } from "../expression/sql"
 import { many } from "../schema/relation"

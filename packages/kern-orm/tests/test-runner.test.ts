@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
-import type { RecordedRelease, RecordedStatement } from "../testing/recording-driver"
+import type { RecordedRelease, RecordedStatement } from "../testing/database/recording-driver"
 
 /** Runs `bun test` with `args` in the runner directory and returns the result its tests print. */
 function runBunTest(args: string[]) {

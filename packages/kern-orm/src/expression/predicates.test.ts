@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import { runInNewContext } from "node:vm"
 
-import { createRecordingDriver } from "../../testing/recording-driver"
+import { createRecordingDriver } from "../../testing/database/recording-driver"
 import { falseNode, trueNode } from "../ast/nodes"
 import { createDatabase } from "../execution/database"
 import { from } from "../query/select"
