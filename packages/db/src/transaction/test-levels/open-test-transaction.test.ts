@@ -2,10 +2,9 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
-import { createStatement } from "../driver"
-import { ConnectionError, QueryError } from "../driver-error"
-
-import { TransactionCoordinator } from "./coordinator"
+import { createStatement } from "../../driver"
+import { ConnectionError, QueryError } from "../../driver-error"
+import { TransactionCoordinator } from "../coordinator"
 import {
   createTestCoordinator,
   failOn,
@@ -14,7 +13,7 @@ import {
   run,
   seedNothing,
   settleCallbacks,
-} from "./testing"
+} from "../testing"
 
 const texts = (statements: readonly { text: string }[]) => statements.map(({ text }) => text)
 

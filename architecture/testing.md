@@ -3,7 +3,8 @@
 - **Test helpers** (`test-helpers.ts`, exported from `kern-db/testing`): test transactions and test fixtures of a database created with `test: true`, created once per project with the `before` and `after` hooks of a test runner.
   `openTestFixture` opens a test fixture without the hooks, such as in a server that runs browser tests.
   They run through the transaction coordinator of the database, which they find by the object of the database, so they require the database that `createDatabase` created rather than a copy of it ([transactions](transactions.md)).
-  The coordinator keeps its [test fixtures](#test-fixtures) in a fixture stack (`transaction/fixture-stack.ts`), and opens its [open test transactions](#open-test-transactions) in `transaction/open-test-transaction.ts`.
+  The coordinator keeps its [test fixtures](#test-fixtures) in a fixture stack (`transaction/test-levels/fixture-stack.ts`), and opens its [open test transactions](#open-test-transactions) in `transaction/test-levels/open-test-transaction.ts`.
+  The modules of the levels of the test helpers, which only a database created for tests uses, such as their abort signals and the turns of open test transactions, are in `transaction/test-levels/`.
 - **Lock waits** (`lock-wait.ts`, exported from `kern-db/testing`): `waitForLock` and `waitForLockedStatement` poll an observer, any target with `execute`, until a backend waits for a lock, and reject after a timeout.
   They read the locks with `pg_blocking_pids`, which reads the current lock state even inside a transaction, and `waitForLockedStatement` clears the snapshot of `pg_stat_activity` before each check, which a transaction keeps from its first read.
 - **Test runners**: the test helpers support `bun:test` on Bun, and `node:test` and Vitest on Node.js.

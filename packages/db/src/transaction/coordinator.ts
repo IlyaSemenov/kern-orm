@@ -19,7 +19,6 @@ import type {
   TestTransactionOptions,
 } from "../test-helpers"
 
-import { acquireUnlessAborted } from "./abort"
 import {
   createLockStatement,
   createTryLockStatement,
@@ -28,7 +27,6 @@ import {
   SessionLocks,
 } from "./advisory-lock"
 import { TransactionConnectionError } from "./connection-loss"
-import { TestFixtureStack } from "./fixture-stack"
 import type { LevelOptions, Outcome, Rejection, TransactionLevel } from "./level"
 import {
   closeStarting,
@@ -44,12 +42,18 @@ import {
   suppress,
   suppressAbortReason,
 } from "./level"
-import { OpenTestTransactions, runInTurn, runStatementInTurn } from "./open-test-transaction"
 import type { ReleaseErrorHandler } from "./release"
 import { releaseConnection } from "./release"
 import { createSessionLevel, releaseSession } from "./session"
 import type { LevelSetting } from "./settings"
 import { applySettings, getLevelSettings } from "./settings"
+import { acquireUnlessAborted } from "./test-levels/abort"
+import { TestFixtureStack } from "./test-levels/fixture-stack"
+import {
+  OpenTestTransactions,
+  runInTurn,
+  runStatementInTurn,
+} from "./test-levels/open-test-transaction"
 
 /**
  * Routes statements and scripts to the ambient transaction or session of the current async context or to the pool.

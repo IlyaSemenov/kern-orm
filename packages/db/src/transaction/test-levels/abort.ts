@@ -1,9 +1,8 @@
 // Waiting for a promise unless the abort signal of a test aborts first, for the levels and connections of test transactions.
 
-import type { Connection, Driver } from "../driver"
-
-import type { ReleaseErrorHandler } from "./release"
-import { releaseConnection } from "./release"
+import type { Connection, Driver } from "../../driver"
+import type { ReleaseErrorHandler } from "../release"
+import { releaseConnection } from "../release"
 
 /**
  * Runs `start` and settles as its promise, or rejects with the reason of `signal` when it aborts first and `abort`, called on the abort, returns `true`.

@@ -2,9 +2,8 @@ import { describe, expect, it } from "bun:test"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
-import { createStatement } from "../driver"
-
-import { TransactionCoordinator } from "./coordinator"
+import { createStatement } from "../../driver"
+import { TransactionCoordinator } from "../coordinator"
 import {
   createTestCoordinator,
   failOn,
@@ -13,7 +12,7 @@ import {
   run,
   seedNothing,
   settleCallbacks,
-} from "./testing"
+} from "../testing"
 
 it("runs test transactions in the innermost fixture and keeps its seeded changes until it closes", async () => {
   const { coordinator, statements, releases } = createTestCoordinator()

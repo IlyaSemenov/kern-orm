@@ -6,12 +6,12 @@ import type { IsolationLevel } from "../database"
 import type { Connection, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 
-import { settleUnlessAborted } from "./abort"
 import type { SessionLocks } from "./advisory-lock"
 import { ConnectionWatch } from "./connection-loss"
 import type { LevelSetting } from "./settings"
 import { applySettings } from "./settings"
-import type { TurnQueue } from "./turns"
+import { settleUnlessAborted } from "./test-levels/abort"
+import type { TurnQueue } from "./test-levels/turns"
 
 /** Transaction, savepoint nested in it, or session, run by one callback in its own async context, a test fixture without a context, or an open test transaction whose context the callbacks of `run` share. */
 export interface TransactionLevel {
