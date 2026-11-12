@@ -85,7 +85,7 @@ Do not catalog files or restate information evident from their names and locatio
 - Check a call or a value that types reject against an interface whose only property is named after the reason, such as `NotAKey`, rather than against `never`, so that the error tells the reason.
   Give the property the details that users need to fix the call, such as the keys of the table, or `never` when there are none.
 - Design the API and its documentation for the common case of one `Db` imported across the application, such as `import { db } from "#db"`: code of that case must not need to refer to a schema.
-  Require schemas in user code only where the code has no `Db`, such as with dependency injection or in code shared by several Dbs.
+  Require schemas in user code only where the code has no `Db`, such as in code shared by several Dbs.
 
 ## Refactoring
 

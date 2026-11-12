@@ -24,13 +24,13 @@ For reusable conditions and other expressions, see [`defineExpression`](./expres
 
 ## Queries without a Db
 
-To define a query before a `Db` is available, start it from the schema, such as `schema.form`.
-Execute it with `$execute` when you get the `Db`, such as through dependency injection:
+When your application gets its database from dependency injection, bind `db` to a function that returns the database, as [Database of the current context](../schemas#database-of-the-current-context) describes, and build reusable queries from `db` as above: each runs on the database of the context where it is awaited.
+
+To define a query in code that has no `Db`, such as code [shared by several Dbs](../multiple-schemas#shared-code), start it from the schema, such as `schema.form`, and execute it with `$execute` of the `Db` that runs it:
 
 ```ts
 export const publishedForms = schema.form.where({ published: true }).select("id", "name")
 
-const db = useDb()
 const forms = await db.$execute(publishedForms)
 ```
 

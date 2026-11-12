@@ -23,6 +23,7 @@ export interface MigrationTargetDb {
  * Checks whether `value` is a target of migrations: a `Db` of kern-orm, or a `Database` or a `Driver` of kern-db, such as to reject a client of PostgreSQL passed instead of its driver.
  *
  * It recognizes a `Db` by its database and the presence of `$schemaName`, which it does not read, since the schemaName callback may require the current tenant context.
+ * Reading the database of a `Db` bound to a function that returns it calls that function, so the check throws what the function throws, such as outside the context that provides the database.
  */
 export function isMigrationTarget(value: unknown): value is MigrationTarget {
   if (isDatabase(value) || isDriver(value)) {

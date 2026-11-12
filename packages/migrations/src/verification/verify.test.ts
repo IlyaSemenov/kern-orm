@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test"
+import { AsyncLocalStorage } from "node:async_hooks"
 
 import type { Database } from "kern-db"
 import * as t from "kern-db/types"
@@ -103,6 +104,26 @@ describePostgres("verifyMigrations", ({ database, driver, testTransaction, recor
     await testTransaction(() => verifyMigrations(db, history))
 
     expect(searchPath).toMatch(/^"kern_verify_[0-9a-f]{12}", "extensions"$/)
+  })
+
+  it("verifies on the database that the function of a Db bound to one returns at the call, such as of dependency injection", async () => {
+    const context = new AsyncLocalStorage<Database>()
+    const db = bindSchema(defineSchema({}), () => context.getStore()!)
+    const forms: (string | null)[][] = []
+    const history = defineMigrations({
+      "0001_create_form": [
+        createForm,
+        {
+          up: async database => {
+            forms.push(await listFormNames(database))
+          },
+        },
+      ],
+    })
+
+    await context.run(database, () => testTransaction(() => verifyMigrations(db, history)))
+
+    expect(forms).toEqual([[], []])
   })
 
   it("verifies on a Driver in a transaction of its own that rolls back, also when it fails, and leaves the driver open", async () => {

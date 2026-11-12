@@ -89,6 +89,15 @@ await using database = createDatabase({
 const db = bindSchema(schema, database)
 ```
 
+When your application gets its database from dependency injection, pass a function that returns it, and each query of `db` runs on the database of its context:
+
+```ts [src/db.ts]
+// useDatabase() returns the database of the current context
+export const db = bindSchema(schema, () => useDatabase())
+```
+
+See [Database of the current context](./schemas#database-of-the-current-context).
+
 ## Query
 
 Import `db` wherever you query the database and start queries from its tables:

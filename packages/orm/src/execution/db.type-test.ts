@@ -27,6 +27,19 @@ const schema = defineSchema({ post })
 const database = createDatabase({ driver: createRecordingDriver().driver })
 const db = bindSchema(schema, database)
 
+describe("bindSchema", () => {
+  test("takes a function that returns the database, giving the same type of Db as the database itself", () => {
+    expectTypeOf(bindSchema(schema, () => database)).toEqualTypeOf(db)
+  })
+
+  test("rejects a function that returns a promise of a database or takes arguments", () => {
+    // @ts-expect-error The function must return the database itself.
+    bindSchema(schema, async () => database)
+    // @ts-expect-error The Db calls the function without arguments.
+    bindSchema(schema, (tenant: string) => (tenant === "" ? database : database))
+  })
+})
+
 describe("$database", () => {
   test("is the database that the schema is bound to, without anything of the ORM", () => {
     expectTypeOf(db.$database).toEqualTypeOf<Database>()

@@ -158,7 +158,7 @@ To use one, call [`matches`](./filtering#combining-conditions), such as `matches
 
 To accept a value or a column of another query as an argument, type the parameter as both, such as `label: string | Expression<string>`.
 
-When the code that defines an expression has no `Db`, such as with dependency injection or in code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
+When the code that defines an expression has no `Db`, such as code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
 
 To call an expression in queries of schemas that do not share the relations of the table, define it with `form` itself as returned by `defineTable`; it then receives only the columns:
 

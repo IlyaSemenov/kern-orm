@@ -84,6 +84,7 @@ The SQL that loads nested queries and relations.
 
 - [Column naming conventions of the table factory](schemas/column-naming-conventions.md).
 - [Singleton tables](schemas/singleton-tables.md): an option of a table whose queries start as queries of its row.
+- [Database of the current context](schemas/database-of-the-current-context.md): a function that returns the database, which a `Db` checks only in the callbacks of its own transactions and sessions, rather than in every transaction of the async context or not at all.
 
 ## Transactions
 

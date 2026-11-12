@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+
 import type {
   Database,
   InitialSqlQueryState,
@@ -6,7 +8,7 @@ import type {
   SqlStatement,
   TransactionOptions,
 } from "kern-db"
-import { createStatement } from "kern-db"
+import { createStatement, isDatabase } from "kern-db"
 import { SqlQuery, startSqlQuery } from "kern-db/builder"
 
 import type { RawSqlNode } from "../ast/nodes"
@@ -79,7 +81,11 @@ export interface DbMutationState<
 
 interface DbMethods<T extends Tables, R extends SchemaRelations> {
   readonly $schema: Schema<T, R>
-  /** Database that the `Db` is bound to. */
+  /**
+   * Database that the `Db` is bound to.
+   *
+   * Reading it calls the function given to `bindSchema` instead of a database, as a statement does, such as to resolve the database of the current context.
+   */
   readonly $database: Database
   /**
    * PostgreSQL schema of the tables, or `undefined` for a `Db` bound without `schemaName`.
@@ -196,10 +202,12 @@ export type AnyDb = Db<any, any>
  * Binds a schema to a database, placing its tables in a PostgreSQL schema.
  *
  * Schemas bound to the same database, such as tenant and SaaS schemas, share its connections and transactions.
+ * Given a function instead of a database, such as one that reads it from dependency injection, the `Db` calls it for each statement and at the start of each transaction, session, and lock, in the async context of the caller.
+ * The function must return the same database within a transaction or session; in the callback of a transaction or session of the `Db`, a statement for which it returns another database rejects.
  */
 export function bindSchema<T extends Tables, R extends SchemaRelations>(
   schema: Schema<T, R>,
-  database: Database,
+  database: Database | (() => Database),
   options: BindOptions = {},
 ): Db<T, R> {
   const tables = new Set<AnyTable>(Object.values(schema.$tables))
@@ -208,6 +216,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
   // Changing the options object after binding does not change the Db.
   const { schemaName } = options
   const resolveSchemaName = () => (typeof schemaName === "function" ? schemaName() : schemaName)
+  const { resolveDatabase, executor, track } = createDatabaseResolver(database)
 
   function compile(query: DbQuery<T, R>): CompiledQuery {
     // A query of SQL text has no node: it compiles its statement from its own source.
@@ -239,7 +248,9 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
 
   const methods: DbMethods<T, R> = {
     $schema: schema,
-    $database: database,
+    get $database() {
+      return resolveDatabase()
+    },
     get $schemaName() {
       return resolveSchemaName()
     },
@@ -249,6 +260,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     },
     async $execute<Q extends DbQuery<T, R>>(query: Q) {
       const compiled = compile(query)
+      const database = resolveDatabase()
       if (compiled.locksRows && !database.isInTransaction()) {
         throw new Error(
           "Cannot lock the rows of a query outside a transaction, where the locks would end with its statement; a test transaction alone does not count",
@@ -259,11 +271,11 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     $select: selection => startRecordQuery(selection, db),
     $query(strings, ...values) {
       const node = toRawSqlNode(strings, values)
-      return startSqlQuery(() => compileText(node), database)
+      return startSqlQuery(() => compileText(node), executor)
     },
     async $script(script: string | TemplateStringsArray, ...values: unknown[]) {
       if (typeof script === "string") {
-        return database.script(script)
+        return resolveDatabase().script(script)
       }
       const { text, parameters } = compileText(toRawSqlNode(script, values))
       if (parameters.length > 0) {
@@ -271,20 +283,73 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
           "A script has no parameters, so it takes no values, also in the queries and sql fragments that it interpolates",
         )
       }
-      return database.script(text)
+      return resolveDatabase().script(text)
     },
-    $transaction: (callback, options) => database.transaction(callback, options),
-    $ensureTransaction: callback => database.ensureTransaction(callback),
-    $isInTransaction: () => database.isInTransaction(),
-    $isInTransactionBlock: () => database.isInTransactionBlock(),
-    $session: (callback, options) => database.session(callback, options),
-    $lock: key => database.lock(key),
-    $tryLock: key => database.tryLock(key),
-    $pollLock: (key, options) => database.pollLock(key, options),
+    // Async, so that an exception of the function passed to bindSchema rejects the promise.
+    async $transaction(callback, options) {
+      const database = resolveDatabase()
+      return database.transaction(track(database, callback), options)
+    },
+    async $ensureTransaction(callback) {
+      const database = resolveDatabase()
+      return database.ensureTransaction(track(database, callback))
+    },
+    $isInTransaction: () => resolveDatabase().isInTransaction(),
+    $isInTransactionBlock: () => resolveDatabase().isInTransactionBlock(),
+    async $session(callback, options) {
+      const database = resolveDatabase()
+      return database.session(track(database, callback), options)
+    },
+    $lock: async key => resolveDatabase().lock(key),
+    $tryLock: async key => resolveDatabase().tryLock(key),
+    $pollLock: async (key, options) => resolveDatabase().pollLock(key, options),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
   const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>
     bindQuery(startQuery(schema.$tables[key]!, contexts[key]!), db),
   )
   return db
+}
+
+/** Resolution of the database of a `Db`, which tracks the database of the callbacks of its transactions and sessions. */
+interface DatabaseResolver {
+  /** Returns the database of the `Db`, calling its function, if any, and rejecting a result that is not a database or another database inside the callback of a transaction or session of the `Db`. */
+  resolveDatabase(): Database
+  /** Executor of the queries of SQL text of the `Db`, which resolves the database when a query executes rather than when it is built. */
+  executor: Pick<Database, "execute">
+  /** Wraps the callback of `$transaction`, `$ensureTransaction`, or `$session` of the `Db` on `database`, so that `resolveDatabase` in it rejects another database. */
+  track<Result>(database: Database, callback: () => Promise<Result>): () => Promise<Result>
+}
+
+/**
+ * Creates the resolver of `database`, the database given to `bindSchema` or a function that returns it.
+ *
+ * Only the callbacks of the transactions and sessions of the `Db` are checked: a transaction of its database or of another `Db` is not known here, and checking it would require kern-db to expose the transactions of every database in the async context.
+ */
+function createDatabaseResolver(database: Database | (() => Database)): DatabaseResolver {
+  if (typeof database !== "function") {
+    return { resolveDatabase: () => database, executor: database, track: (_, callback) => callback }
+  }
+  const getDatabase = database
+  // The database of the innermost callback of a transaction or session of the Db in the async context.
+  const started = new AsyncLocalStorage<Database>()
+  function resolveDatabase(): Database {
+    const resolved = getDatabase()
+    if (!isDatabase(resolved)) {
+      throw new TypeError("The function passed to bindSchema must return a database")
+    }
+    const current = started.getStore()
+    if (current !== undefined && current !== resolved) {
+      throw new Error(
+        "The function passed to bindSchema returned another database inside the callback of a transaction or session of the Db; it must return the same database there",
+      )
+    }
+    return resolved
+  }
+  return {
+    resolveDatabase,
+    executor: { execute: statement => resolveDatabase().execute(statement) },
+    track: (resolved, callback) =>
+      started.getStore() === resolved ? callback : () => started.run(resolved, callback),
+  }
 }

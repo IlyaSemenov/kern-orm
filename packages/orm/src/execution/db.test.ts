@@ -1,7 +1,9 @@
 import { describe, expect, it } from "bun:test"
+import { AsyncLocalStorage } from "node:async_hooks"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
-import type { DriverResult } from "kern-db"
+import type { Database, DriverResult } from "kern-db"
 import {
   createDatabase,
   identifier as identifierFragment,
@@ -517,6 +519,155 @@ it("gives the database it is bound to by $database", () => {
   const database = createDatabase({ driver: createRecordingDriver().driver })
 
   expect(bindSchema(schema, database).$database).toBe(database)
+})
+
+describe("function that returns the database", () => {
+  const anotherDatabase =
+    "The function passed to bindSchema returned another database inside the callback of a transaction or session of the Db; it must return the same database there"
+
+  /** Creates a Db bound to a function that returns the database that the async context provides, or the default one outside such a context, and counts its calls. */
+  function connectProvided() {
+    const defaultDriver = createRecordingDriver({ respond: () => ({ rows: [["post-id"]] }) })
+    const providedDriver = createRecordingDriver({ respond: () => ({ rows: [["post-id"]] }) })
+    const defaultDatabase = createDatabase({ driver: defaultDriver.driver })
+    const providedDatabase = createDatabase({ driver: providedDriver.driver })
+    const context = new AsyncLocalStorage<Database>()
+    let calls = 0
+    const db = bindSchema(schema, () => {
+      calls++
+      return context.getStore() ?? defaultDatabase
+    })
+    /** Runs `callback` with the provided database in the async context. */
+    const provide = <T>(callback: () => T) => context.run(providedDatabase, callback)
+    return {
+      db,
+      provide,
+      defaultDatabase,
+      providedDatabase,
+      defaultStatements: defaultDriver.statements,
+      providedStatements: providedDriver.statements,
+      providedScripts: providedDriver.scripts,
+      countCalls: () => calls,
+    }
+  }
+
+  it("calls it for each statement in the async context of the caller, not when a query is built", async () => {
+    const { db, provide, defaultStatements, providedStatements, providedScripts, countCalls } =
+      connectProvided()
+    const query = db.post.select("id")
+    const textQuery = db.$query`SELECT 1`
+    const select = 'SELECT "post"."id" AS "id" FROM "post" AS "post"'
+
+    expect(query.toSQL().text).toBe(select)
+    expect(countCalls()).toBe(0)
+
+    await provide(async () => {
+      await query
+      await textQuery
+      await db.$execute(schema.post.select("id"))
+      await db.$script("SELECT 2")
+    })
+    await query
+
+    expect(countCalls()).toBe(5)
+    expect(providedStatements.map(({ text }) => text)).toEqual([select, "SELECT 1", select])
+    expect(providedScripts).toEqual([{ connection: "pool", script: "SELECT 2" }])
+    expect(defaultStatements.map(({ text }) => text)).toEqual([select])
+  })
+
+  it("calls it at the start of a transaction, a session, and a lock, and when $database is read", async () => {
+    const { db, provide, providedDatabase, defaultStatements, providedStatements } =
+      connectProvided()
+
+    const inside = await provide(() =>
+      db.$transaction(async () => {
+        await db.$lock("import")
+        await db.$ensureTransaction(async () => {})
+        return { inTransaction: db.$isInTransaction(), database: db.$database }
+      }),
+    )
+    await provide(() => db.$session(async () => db.$isInTransactionBlock()))
+
+    expect(inside).toEqual({ inTransaction: true, database: providedDatabase })
+    expect(providedStatements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      "COMMIT",
+    ])
+    expect(defaultStatements).toEqual([])
+  })
+
+  it("rejects another database inside a transaction or a session of the Db, and accepts it after", async () => {
+    const { db, provide, providedStatements } = connectProvided()
+
+    await db.$transaction(async () => {
+      await expect(provide(async () => await db.post.select("id"))).rejects.toEqual(
+        new Error(anotherDatabase),
+      )
+      await expect(provide(() => db.$transaction(async () => {}))).rejects.toEqual(
+        new Error(anotherDatabase),
+      )
+      expect(getThrownError(() => provide(() => db.$isInTransaction()))).toEqual(
+        new Error(anotherDatabase),
+      )
+      await db.$transaction(async () => await db.post.select("id"))
+    })
+    await db.$session(async () => {
+      await expect(provide(() => db.$script("SELECT 1"))).rejects.toEqual(
+        new Error(anotherDatabase),
+      )
+    })
+    await provide(async () => await db.post.select("id"))
+
+    expect(providedStatements.map(({ text }) => text)).toEqual([
+      'SELECT "post"."id" AS "id" FROM "post" AS "post"',
+    ])
+  })
+
+  it("rejects another database in $ensureTransaction that joins a transaction of the database, but not outside its callback", async () => {
+    const { db, provide, defaultDatabase, providedStatements } = connectProvided()
+    const select = 'SELECT "post"."id" AS "id" FROM "post" AS "post"'
+
+    await defaultDatabase.transaction(async () => {
+      await db.$ensureTransaction(async () => {
+        await expect(provide(async () => await db.post.select("id"))).rejects.toEqual(
+          new Error(anotherDatabase),
+        )
+      })
+      await provide(async () => await db.post.select("id"))
+    })
+
+    expect(providedStatements.map(({ text }) => text)).toEqual([select])
+  })
+
+  it("rejects a value that is not a database, such as of a missing provider", async () => {
+    const db = bindSchema(schema, () => undefined as unknown as Database)
+    const error = new TypeError("The function passed to bindSchema must return a database")
+
+    await expect(Promise.resolve(db.post.select("id"))).rejects.toEqual(error)
+    await expect(db.$transaction(async () => {})).rejects.toEqual(error)
+    await expect(db.$lock("import")).rejects.toEqual(error)
+    expect(getThrownError(() => db.$isInTransaction())).toEqual(error)
+    expect(getThrownError(() => db.$database)).toEqual(error)
+  })
+
+  it("runs its queries in a test transaction of the database that it returns", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const database = createDatabase({ driver, test: true })
+    const context = new AsyncLocalStorage<Database>()
+    const db = bindSchema(schema, () => context.getStore()!)
+    const { testTransaction } = createTestHelpers(database, { before() {}, after() {} })
+
+    await context.run(database, () => testTransaction(async () => await db.post.select("id")))
+
+    expect(statements.map(({ connection, text }) => [connection, text])).toEqual([
+      [1, "BEGIN"],
+      [1, expect.stringMatching(/^SAVEPOINT/)],
+      [1, 'SELECT "post"."id" AS "id" FROM "post" AS "post"'],
+      [1, expect.stringMatching(/^RELEASE SAVEPOINT/)],
+      [1, "ROLLBACK"],
+    ])
+  })
 })
 
 it("runs its queries in the transactions of its database, together with statements of the database", async () => {

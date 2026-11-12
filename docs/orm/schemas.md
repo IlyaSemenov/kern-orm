@@ -128,7 +128,7 @@ Table keys cannot start with `$`, which schemas and `Db` reserve for their own m
 
 The schema only describes the tables and their relations, and `db` executes queries on the database.
 Start queries from the tables of `db`, such as `db.form`; see [Queries](./queries/).
-Where code has no `Db`, such as with dependency injection, start them from the schema instead; see [Queries without a Db](./queries/reusable#queries-without-a-db).
+Where code has no `Db`, such as code shared by several Dbs, start them from the schema instead; see [Queries without a Db](./queries/reusable#queries-without-a-db).
 
 In code that has only `db`, such as a script, reach its database with `$database`:
 
@@ -137,6 +137,39 @@ await db.$database.close()
 ```
 
 To reuse tables in several schemas, such as tenant schemas and a shared application schema, include one schema in another; see [Multiple Schemas](./multiple-schemas).
+
+### Database of the current context
+
+When your application gets its database from dependency injection, such as to give tests a database of their own, pass a function that returns it instead of the database, such as with [Ripple DI](https://github.com/IlyaSemenov/ripple-di):
+
+```ts [src/db.ts]
+import { bindSchema, createDatabase } from "kern-orm"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
+import postgres from "postgres"
+import { defineDependency } from "ripple-di"
+
+export const useDatabase = defineDependency(
+  () => createDatabase({ driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)) }),
+  { dispose: database => database.close() },
+)
+
+export const db = bindSchema(schema, () => useDatabase())
+```
+
+Import `db` and query it as usual.
+In the setup of your tests, provide the test database:
+
+```ts
+// test/setup.ts
+import { install, provide } from "ripple-di"
+
+install(provide(useDatabase, testDatabase))
+```
+
+`db` calls the function for each statement, and at the start of `$transaction`, `$session`, and `$lock`, in the async context of the caller; building a query does not call it.
+`$isInTransaction()` and `$database` call it too, so that test helpers and [migrations](../migrations/) given `db.$database` or `db` use the database of the context.
+
+The function must return the same database within a transaction or session, such as by providing the database for a whole request or test.
 
 ### PostgreSQL schemas
 

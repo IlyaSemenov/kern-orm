@@ -93,7 +93,7 @@ type FormSummary = ResultOf<typeof selectSummary>
 
 It gives one record, with only the fields that the helper selects, or what its `map` gives.
 
-When the code that defines a helper has no `Db`, such as with dependency injection or in code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
+When the code that defines a helper has no `Db`, such as code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
 Pass the table returned by `defineTable`, such as `form`, when the helper does not need the relations of the table.
 
 For a reusable condition or value, use [`defineExpression`](./expressions#reusable-expressions).

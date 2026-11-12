@@ -34,6 +34,10 @@ describe("isMigrationTarget", () => {
     expect(isMigrationTarget(db)).toBe(true)
   })
 
+  it("recognizes a Db bound to a function that returns its database", () => {
+    expect(isMigrationTarget(bindSchema(defineSchema({}), () => database))).toBe(true)
+  })
+
   it("rejects another value, such as a client of PostgreSQL or an object with a database that is not one", () => {
     // postgres.js connects only at the first query.
     const sql = postgres("postgres://localhost/none")
@@ -54,6 +58,10 @@ describe("getTargetDatabase", () => {
     expect(getTargetDatabase(database)).toBe(database)
     expect(fromDriver).not.toBe(database)
     expect(typeof fromDriver.transaction).toBe("function")
+  })
+
+  it("returns the database that the function of a Db bound to one returns", () => {
+    expect(getTargetDatabase(bindSchema(defineSchema({}), () => database))).toBe(database)
   })
 
   it("throws TypeError for a value that is not a target", () => {

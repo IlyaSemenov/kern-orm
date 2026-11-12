@@ -54,8 +54,14 @@
   The PostgreSQL schema is resolved when a `Db` compiles a query, and a compiled statement never changes afterwards.
   `$schemaName` resolves it when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
   `$database` is the database that a `Db` is bound to, typed as the `Database` of the layer, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else and nothing of the ORM.
-  `DbOf` types the `Db` of a schema, and a `Db` of every schema that includes it fits that type, since the types of entries and relations accept more tables and relations, so code shared by several schemas takes such a `Db` as a parameter.
-  Comparing two `Db` types compares the states of the queries of their entries, since a query is covariant in its state; the methods of a `Db` and a schema are generic or typed by `this`, so that comparing them compares no queries.
+  - `bindSchema` also takes a function that returns the database, such as of dependency injection, so that a module-level `Db` runs on the database of the current context, as `schemaName` resolves its schema.
+    The `Db` calls it in the async context of the caller for each statement, including a query of SQL text when it executes, at the start of `$transaction`, `$ensureTransaction`, `$session`, `$lock`, `$tryLock`, and `$pollLock`, and when `$isInTransaction()`, `$isInTransactionBlock()`, or `$database` is read; never when a database is created, a schema is bound, or a query is built or compiled.
+    The methods that return a promise reject, rather than throw, when the function throws.
+    It rejects a result that is not a database by `isDatabase`, such as `undefined` of a missing provider.
+  - The function must return the same database within a transaction or session.
+    Inside the callback of `$transaction`, `$ensureTransaction`, or `$session` of the `Db`, also of `$ensureTransaction` that joins a transaction of the database, a call for which the function returns another database rejects; outside such a callback, such as in a transaction of the database or of another `Db`, it is not checked ([decision](../decisions/schemas/database-of-the-current-context.md)).
+    `DbOf` types the `Db` of a schema, and a `Db` of every schema that includes it fits that type, since the types of entries and relations accept more tables and relations, so code shared by several schemas takes such a `Db` as a parameter.
+    Comparing two `Db` types compares the states of the queries of their entries, since a query is covariant in its state; the methods of a `Db` and a schema are generic or typed by `this`, so that comparing them compares no queries.
 
 Members of schemas and `Db` other than tables start with `$`, and table keys must not.
 Column keys must not start with `$` either, which keeps such names free for members of the column references passed to query callbacks.
