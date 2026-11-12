@@ -76,9 +76,10 @@ Do not catalog files or restate information evident from their names and locatio
 
 ## Design
 
-- With every change, look for refactorings that reduce complexity: duplicated logic, a concept spread over several modules, or code that an upcoming feature will need elsewhere.
-  Make those that belong to the change, and propose the others in the final report.
-- Give a domain rule or contract its own function or module at its first use, such as the keys a record can have, operator precedence, or result decoding, so that the next use finds it.
+- With every change, look for refactorings that reduce the complexity of the code it touches, such as duplicated logic or a concept spread over several modules.
+  Make those that ease the change, and propose the others in the final report, listed apart from its fixes.
+  Do not reshape code for a feature of the backlog before its work starts.
+- Give a domain rule or contract a function of its own at its first use, such as the keys a record can have, operator precedence, or result decoding, so that the next use finds it; give it a module of its own only when several modules use it.
   Do not extract code that only looks alike.
 - Before adding a helper, search for an existing one that does the same.
 - Check a call or a value that types reject against an interface whose only property is named after the reason, such as `NotAKey`, rather than against `never`, so that the error tells the reason.
@@ -144,7 +145,8 @@ Do not catalog files or restate information evident from their names and locatio
 - Other things being equal, write the happy path as an instruction of what to do, such as "Pass the values to `where`", rather than as a description of the API, such as "`where` takes values".
   This is a preference, not a rule: keep a description wherever it reads more clearly.
 - Do not restate in prose what users see in their editor's types or learn from a TypeScript or runtime error.
-- Mention an edge case in user documentation only when users must write different code because of it; record other edge cases, typing rules, and invariants in [architecture/](architecture/README.md) and cover them with tests.
+- Document in user documentation every guarantee that the application relies on, such as of transactions, the results of queries, and migrations.
+  Mention another edge case there only when users must write different code because of it; record other edge cases, typing rules, and invariants in [architecture/](architecture/README.md) and cover them with tests.
 - Write a rule of how users must do something as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
 - State a limitation, something that users cannot do, as a description, such as "A query with `distinct` cannot select related records", rather than as an instruction to avoid it, unless the description loses clarity.
 - In [architecture/](architecture/README.md), state what users must do as a requirement of the contract, such as "must be split" or "requires a key", rather than as a description of what users do, such as "users split".
