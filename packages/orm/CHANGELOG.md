@@ -1,5 +1,11 @@
 # kern-orm
 
+## 0.15.0
+
+### Minor Changes
+
+- ab1cd7d: `bindSchema` takes a function that returns the database, such as from dependency injection, so that a module-level `db` runs each query on the database of the current context.
+
 ## 0.14.0
 
 ### Minor Changes

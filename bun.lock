@@ -84,7 +84,7 @@
     },
     "packages/orm": {
       "name": "kern-orm",
-      "version": "0.14.0",
+      "version": "0.15.0",
       "dependencies": {
         "kern-db": "^0.6.0",
       },
