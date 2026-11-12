@@ -223,8 +223,9 @@ app.use(async (c, next) => {
     return next()
   }
   const transaction = tests.get(id)
-  if (!transaction) {
-    return c.text("Unknown test", 409)
+  if (!transaction?.isOpen) {
+    tests.delete(id)
+    return c.text("The test is not running", 409)
   }
   return transaction.run(next)
 })
@@ -261,7 +262,7 @@ test("lists the forms", async ({ page, request, testId }) => {
 })
 ```
 
-The ID ties a request to its test, so a request that comes late, after its test has ended, never runs in the test transaction of the next test.
+The ID ties a request to its test, so a request that comes late, after its test has ended or the next test has rolled back its test transaction, never runs in the test transaction of the next test, and the server answers it with 409.
 When the pages send requests to the server from another origin, allow the header in the CORS settings of the server.
 
 The requests of a test see the changes of its earlier requests, and the changes of all of them roll back when the test ends:

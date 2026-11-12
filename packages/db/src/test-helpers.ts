@@ -25,6 +25,8 @@ export interface OpenedTestTransaction extends AsyncDisposable {
    * It rejects without calling `callback` once the test transaction is closed, and inside a transaction.
    */
   run<T>(callback: () => Promise<T>): Promise<T>
+  /** Whether the test transaction runs callbacks: it is `false` from the start of its closing, such as when a later test transaction in its fixture rolls it back. */
+  readonly isOpen: boolean
   /** Rolls back the test transaction; the later queries of its callbacks fail, and closing it again returns the same closing. */
   close(): Promise<void>
 }

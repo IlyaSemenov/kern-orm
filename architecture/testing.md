@@ -89,6 +89,7 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
   In the innermost fixture, it is a nested level that preempts the active level of the fixture and that a later level preempts, as a test transaction; without a fixture, it is a transaction on a connection of its own, which closing the database rolls back ([lifecycle](transactions.md#lifecycle)).
   Like a test transaction, it does not count for `isInTransaction`, and the statements and nested levels of its callbacks take turns on its connection as those of a [test transaction](#test-transactions) do.
 - `run` calls its callback in the context of the level, and rejects without calling it once the level is closed, and in the context of another level, where a transaction of the test transaction would wait for the turn that it holds itself; in the context of the level, it calls the callback as it is.
+- `isOpen` is false from the moment the level starts to end, whoever ends it, such as a later level that preempts it, so that a server tells a request of an ended test apart from a failure of `run`.
 - Closing it, preempting it, or closing its fixture ends it as any level ends: it stops accepting statements at once, its active nested level ends first, and a statement already sent completes before the rollback.
   The waiters of the turns take them at once and reject without sending anything, and late statements of its callbacks fail and never run in another level or on the pool.
   A repeated `close` returns the first closing.

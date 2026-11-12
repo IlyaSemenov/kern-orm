@@ -106,6 +106,9 @@ export class OpenTestTransactions {
         }
         return this.#storage.run(level, callback)
       },
+      get isOpen() {
+        return level.state === "open"
+      },
       close,
       [Symbol.asyncDispose]: close,
     }

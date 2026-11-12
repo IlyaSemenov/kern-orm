@@ -23,7 +23,9 @@ it("runs each statement of a callback in a savepoint of its own, nested in the i
   const fixture = await coordinator.createTestFixture(seedNothing)
   const opened = await coordinator.openTestTransaction()
   await opened.run(run(coordinator, "query"))
+  expect(opened.isOpen).toBe(true)
   const closing = opened.close()
+  expect(opened.isOpen).toBe(false)
   expect(opened.close()).toBe(closing)
   await closing
   await fixture.close()
@@ -210,12 +212,15 @@ it("is rolled back by a test transaction and by closing its fixture", async () =
   await coordinator.testTransaction(run(coordinator, "test"))
   const next = await coordinator.openTestTransaction()
 
+  expect(preempted.isOpen).toBe(false)
+  expect(next.isOpen).toBe(true)
   await expect(preempted.run(run(coordinator, "late"))).rejects.toThrow(
     "Cannot run a callback in the test transaction: it is already closed",
   )
   await preempted.close()
   await next.run(run(coordinator, "next"))
   await fixture.close()
+  expect(next.isOpen).toBe(false)
   await expect(next.run(run(coordinator, "late"))).rejects.toThrow(
     "Cannot run a callback in the test transaction: it is already closed",
   )
@@ -274,6 +279,7 @@ describe("closing the database", () => {
     const opened = await coordinator.openTestTransaction()
     await coordinator.close()
 
+    expect(opened.isOpen).toBe(false)
     await expect(opened.run(run(coordinator, "late"))).rejects.toThrow(
       "Cannot run a callback in the test transaction: it is already closed",
     )
