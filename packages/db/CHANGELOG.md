@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.6.0
+
+### Minor Changes
+
+- 4f6a8e9: Add `isOpen` to an open test transaction, which tells whether it still runs callbacks or was closed, such as rolled back by the test transaction of the next browser test.
+
 ## 0.5.0
 
 ### Minor Changes

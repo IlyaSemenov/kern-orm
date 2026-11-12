@@ -1,5 +1,11 @@
 # kern-migrations
 
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.6.0
+
 ## 0.4.2
 
 ### Patch Changes

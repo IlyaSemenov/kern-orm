@@ -1,6 +1,6 @@
 {
   "name": "kern-migrations",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Migrations of PostgreSQL schemas for kern-db and kern-orm",
   "keywords": [
     "kern-db",
@@ -46,7 +46,7 @@
     "postgres": "catalog:"
   },
   "peerDependencies": {
-    "kern-db": "^0.5.0"
+    "kern-db": "^0.6.0"
   },
   "engines": {
     "bun": ">=1.4",
