@@ -29,6 +29,12 @@ export interface PendingTestFixture<T = unknown> {
 export interface TestHooks {
   before(hook: () => Promise<void>): unknown
   after(hook: () => Promise<void>): unknown
+  /**
+   * Hook of a test runner that runs a function once the current test finishes, also when it times out, such as `onTestFinished` of `bun:test`.
+   *
+   * With it, a test that `wrapTest` declares rolls back its test transaction as soon as the runner gives up on the test, as with the abort signal of `testTransaction`.
+   */
+  onTestFinished?(hook: () => void): unknown
 }
 
 /** Options of `testTransaction`. */
@@ -78,6 +84,16 @@ export interface TestHelpers {
    * A fixture whose `seed` rejects rolls back and closes.
    */
   useTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions): TestFixture<T>
+  /**
+   * Wraps the `test` function of `node:test` or `bun:test` so that every test it declares runs in a test transaction.
+   *
+   * The wrapped function keeps the modifiers of the original, such as `test.skip`, `test.only`, and `test.each(table)`, and its options, such as a timeout.
+   * Without `onTestFinished` in the hooks, the test transaction takes the abort signal of the test context, such as `t.signal` of `node:test`.
+   * Hooks of the test, such as `beforeEach`, run outside of its test transaction.
+   * A test function must return a promise or a value rather than take a `done` callback.
+   * With Vitest, run tests in test transactions with `aroundEach` instead, which also covers their hooks: the wrapper hides the parameters of a test function from the fixtures of `test.extend`.
+   */
+  wrapTest<T extends (...args: never[]) => unknown>(test: T): T
 }
 
 /** Creates the test helpers of a database created with `test: true`, registering fixtures with the hooks of a test runner. */
@@ -86,8 +102,38 @@ export function createTestHelpers(database: Database, hooks: TestHooks): TestHel
   if (!coordinator.test) {
     throw new Error("createTestHelpers requires a database created with test: true")
   }
+  /**
+   * Runs a test function in a test transaction, which `onTestFinished`, or else the signal of the test context, aborts once the runner finishes the test.
+   *
+   * The arguments of a test of `test.each` are a row of its table rather than a context, so its `signal` belongs to the data of the test.
+   */
+  function runTestInTransaction(callback: (...args: unknown[]) => unknown, parameterized: boolean) {
+    return function (this: unknown, ...args: unknown[]) {
+      const run = async () => callback.apply(this, args)
+      if (!hooks.onTestFinished) {
+        const signal = parameterized ? undefined : readTestSignal(args[0])
+        return coordinator.testTransaction(run, { signal })
+      }
+      const controller = new AbortController()
+      let finished = false
+      hooks.onTestFinished(() => {
+        finished = true
+        // The level stops listening to the signal once the callback settles, so aborting after a test that has ended does nothing.
+        controller.abort(new Error("The test finished before its test transaction ended"))
+      })
+      // A runner reports a rejection that comes after the test has finished, such as after a timeout, as an error between tests.
+      return coordinator
+        .testTransaction(run, { signal: controller.signal })
+        .catch((error: unknown) => {
+          if (!finished) {
+            throw error
+          }
+        })
+    }
+  }
   return {
     testTransaction: (callback, options) => coordinator.testTransaction(callback, options),
+    wrapTest: test => wrapTestFunction(test, undefined, false, runTestInTransaction),
     useTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions) {
       let pending: PendingTestFixture<T> | undefined
       let fixture: OpenedTestFixture<T> | undefined
@@ -126,4 +172,52 @@ export function createTestHelpers(database: Database, hooks: TestHooks): TestHel
       }
     },
   }
+}
+
+/** Reads the abort signal of a test from the first argument of its function, the test context of `node:test`. */
+function readTestSignal(context: unknown): AbortSignal | undefined {
+  if (typeof context === "object" && context !== null && "signal" in context) {
+    const { signal } = context
+    return signal instanceof AbortSignal ? signal : undefined
+  }
+  return undefined
+}
+
+/**
+ * Wraps a `test` function of a test runner and the functions that its properties and calls return, such as `test.skip` and `test.each(table)`, replacing every function argument with `wrapCallback` of it.
+ *
+ * Calls a modifier with the object it was read from, since modifiers of `bun:test` reject another `this`.
+ * Marks the callbacks of functions reached through `each` as parameterized.
+ */
+function wrapTestFunction<T extends object>(
+  target: T,
+  owner: object | undefined,
+  parameterized: boolean,
+  wrapCallback: (
+    callback: (...args: unknown[]) => unknown,
+    parameterized: boolean,
+  ) => (...args: unknown[]) => unknown,
+): T {
+  return new Proxy(target, {
+    apply(callee, self, args: unknown[]) {
+      const wrappedArgs: unknown[] = []
+      for (const arg of args) {
+        wrappedArgs.push(
+          typeof arg === "function"
+            ? wrapCallback(arg as (...args: unknown[]) => unknown, parameterized)
+            : arg,
+        )
+      }
+      const result: unknown = Reflect.apply(callee as never, owner ?? self, wrappedArgs)
+      return typeof result === "function"
+        ? wrapTestFunction(result, undefined, parameterized, wrapCallback)
+        : result
+    },
+    get(object, key) {
+      const value: unknown = Reflect.get(object, key)
+      return typeof value === "function"
+        ? wrapTestFunction(value, object, parameterized || key === "each", wrapCallback)
+        : value
+    },
+  })
 }

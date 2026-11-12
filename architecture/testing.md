@@ -29,12 +29,19 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
 
 - Test transactions reuse the ambient transaction coordinator and always roll back.
   A test transaction runs a callback in a context created on each call, so every run and retry of a test gets its own level.
-  A test wraps its body, or a Vitest `aroundEach` hook wraps the test with its other hooks, since test runners do not carry the async context of an ordinary hook into the test.
+  A test wraps its body, or a Vitest `aroundEach` hook wraps the test with its other hooks, since test runners do not carry the async context of an ordinary hook into the test, also `bun:test`, whose `beforeEach` loses even a context entered with `enterWith`.
+- `wrapTest` wraps the `test` of a runner in a proxy that runs every function argument in a test transaction, also of the modifiers that its properties and calls return, such as `test.skip` and `test.each(table)`.
+  It calls a modifier with the object it was read from, since the modifiers of `bun:test` reject another `this`.
+  The wrapper declares only a rest parameter, so its length is zero and `bun:test` passes it no `done` callback.
+  Runners take the location of a test from the caller of `test`, so they report the location of a test declared through the proxy inside kern-db, while the stack of its error points to the test.
+  Vitest reads the fixtures of `test.extend` from the source of the test function, which the wrapper hides, so Vitest runs test transactions through `aroundEach` instead.
 - A test transaction and a test fixture take an [isolation level](transactions.md#isolation), which the transactions of code under test nested in them must match.
 - A database created for tests rejects every statement and transaction outside a test transaction or the seed of a test fixture instead of running them on the pool.
   It rejects a [session](transactions.md#sessions) everywhere, since none of its statements can run outside a transaction.
 - Late code of a timed-out test never runs in the transaction of another test, but it keeps running in its own level until that level ends, is aborted, or, in a fixture, is preempted.
-- A test transaction takes the abort signal of its test, such as `t.signal` of `node:test` or the signal of the test context of Vitest; `bun:test` has no signal for each test and relies on preemption.
+- A test transaction takes the abort signal of its test, such as `t.signal` of `node:test` or the signal of the test context of Vitest.
+  `bun:test` has no signal for each test: `wrapTest` aborts its own signal in `onTestFinished` of the hooks, which `bun:test` runs after each attempt of a test, also once it times out, and resolves the test instead of rejecting once the runner has finished it, since `bun:test` reports a later rejection as an error between tests.
+  Without that hook, `wrapTest` passes the signal of the test context, the first argument of a test function with an `AbortSignal` as its `signal`, except for a test reached through `each`, whose arguments are a row of its table; without either, a test relies on preemption.
   - Aborted while it waits for its turn in the fixture stack or for a connection, it rejects at once and never calls its callback: its change of the stack starts nothing, so it never preempts the active level, and a connection acquired after the abort returns to the pool.
   - Aborted while it preempts the active level of its fixture, it rejects once the preemption ends, without starting its level.
   - Aborted while its `BEGIN` or `SAVEPOINT` runs, its level ends once the statement completes, without calling its callback.

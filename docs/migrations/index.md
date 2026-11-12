@@ -498,23 +498,16 @@ To import the modules without the extension, as a bundler resolves them, pass `l
 To check that every migration applies and rolls back, call `verifyMigrations` with your `Db` and the migrations in a test:
 
 ```ts [src/migrations.test.ts]
-import { test } from "bun:test"
-
 import { verifyMigrations } from "kern-migrations/testing"
 
-import { testTransaction } from "../test/helpers.ts"
+import { test } from "../test/helpers.ts"
 import { db } from "./db.ts"
 import { migrations } from "./migrations.ts"
 
-test(
-  "migrations",
-  () =>
-    testTransaction(() =>
-      verifyMigrations(db, migrations, {
-        tests: new URL("./migrations/", import.meta.url),
-      }),
-    ),
-  60_000,
+test("migrations", { timeout: 60_000 }, () =>
+  verifyMigrations(db, migrations, {
+    tests: new URL("./migrations/", import.meta.url),
+  }),
 )
 ```
 

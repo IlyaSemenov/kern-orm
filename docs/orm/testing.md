@@ -10,49 +10,76 @@ export const database = createDatabase({
 })
 ```
 
-Create the test helpers of the database once, in a module of your tests, with the hooks of your test runner:
+Create the test helpers of the database once, in a module of your tests, with the hooks of your test runner, and wrap its `test` with `wrapTest`:
 
-```ts
+::: code-group
+
+```ts [node:test]
 // test/helpers.ts
-import { after, before } from "node:test"
+import { after, before, test as runnerTest } from "node:test"
 
 import { createTestHelpers } from "kern-orm/testing"
 
-export const { testTransaction, useTestFixture } = createTestHelpers(database, {
+export const { testTransaction, useTestFixture, wrapTest } = createTestHelpers(database, {
   before,
   after,
 })
+
+export const test = wrapTest(runnerTest)
 ```
 
-With `bun:test` and Vitest, pass `{ before: beforeAll, after: afterAll }`.
+```ts [bun:test]
+// test/helpers.ts
+import { afterAll, beforeAll, onTestFinished, test as runnerTest } from "bun:test"
 
-Wrap the body of every test in `testTransaction`, the same way with `node:test`, `bun:test`, and Vitest:
+import { createTestHelpers } from "kern-orm/testing"
+
+export const { testTransaction, useTestFixture, wrapTest } = createTestHelpers(database, {
+  before: beforeAll,
+  after: afterAll,
+  onTestFinished,
+})
+
+export const test = wrapTest(runnerTest)
+```
+
+:::
+
+Declare tests with this `test` instead of the one of the test runner, so that every test runs in its own test transaction.
+It takes the same options as the original, such as a timeout, and has the same modifiers, such as `test.skip`, `test.only`, and `test.each`:
 
 ```ts
 import assert from "node:assert/strict"
-import { test } from "node:test"
 
-test("publishes a form", () =>
-  testTransaction(async () => {
-    await publishForm(formId)
-    const form = await db.form.find(formId).select("published")
-    assert.deepEqual(form, { published: true })
-  }))
+import { test } from "./helpers"
+
+test("publishes a form", async () => {
+  await publishForm(formId)
+  const form = await db.form.find(formId).select("published")
+  assert.deepEqual(form, { published: true })
+})
 ```
 
-With Vitest, `aroundEach` in a setup file runs every test in a test transaction together with its hooks, so tests need no wrapper and `beforeEach` can create data for each test:
+Hooks such as `beforeEach` run outside of the test transaction, so create the data of each test in the test itself, and data shared by several tests in a [fixture](#fixtures).
+For asynchronous tests, return a promise instead of using a `done` callback.
+
+With Vitest, pass `{ before: beforeAll, after: afterAll }` to `createTestHelpers`, and instead of `wrapTest`, run every test in a test transaction with `aroundEach` in a setup file.
+It runs the hooks of the test in the test transaction as well, so `beforeEach` can create data for each test:
 
 ```ts
 // vitest.setup.ts, listed in setupFiles of the Vitest config
 import { aroundEach } from "vitest"
 
-aroundEach(runTest => testTransaction(runTest))
+aroundEach((runTest, { signal }) => testTransaction(runTest, { signal }))
 ```
 
 Transactions of the tested code run as [nested transactions](./transactions#nested-transactions) of the test transaction.
-When the tested code starts a transaction at an [isolation level](./transactions#isolation-level), pass the same `isolation` to `testTransaction`, or to `useTestFixture` when the test runs in a fixture, since a nested transaction runs at the level of its transaction:
+When the tested code starts a transaction at an [isolation level](./transactions#isolation-level), the test transaction must run at the same level, since a nested transaction runs at the level of its transaction.
+Pass the level to `useTestFixture` when the test runs in a fixture, or declare the test with the `test` of the test runner and pass the level to `testTransaction`, which takes the body of the test:
 
 ```ts
+import { test } from "node:test"
+
 test("assigns the next position", () =>
   testTransaction(
     async () => {
@@ -81,16 +108,17 @@ A fixture that opens while another one is open nests in it, and tests run in the
 Open a fixture for the tests of a test file or of a `describe` block with `useTestFixture`:
 
 ```ts
-import { describe, test } from "node:test"
+import { describe } from "node:test"
+
+import { test } from "./helpers"
 
 describe("forms of an author", () => {
   const fixture = useTestFixture(async () => ({ author: await createAuthor() }))
 
-  test("lists the forms of an author", () =>
-    testTransaction(async () => {
-      await createForm({ authorId: fixture.data.author.id })
-      // ...
-    }))
+  test("lists the forms of an author", async () => {
+    await createForm({ authorId: fixture.data.author.id })
+    // ...
+  })
 })
 ```
 
@@ -123,27 +151,28 @@ While a fixture is open, tests run one at a time: a test transaction that starts
 
 ## Tests that time out
 
-To roll back the transaction of a test as soon as the test runner gives up on the test, such as when it times out, pass the abort signal of the test to `testTransaction`:
+A test rolls back its transaction as soon as the test runner gives up on the test, such as when it times out:
+
+- With `node:test`, the `test` of `wrapTest` passes the abort signal of the test to its test transaction.
+- With `bun:test`, which gives no signal for a test, the `test` of `wrapTest` relies on `onTestFinished` passed to `createTestHelpers`.
+- With Vitest, `aroundEach` above passes the abort signal of the test to `testTransaction`.
+
+Then the later queries of the test fail, and its transaction rolls back without waiting for the test to finish.
+
+For a test that wraps its body in `testTransaction` itself, pass the abort signal of the test to `testTransaction` for the same effect:
 
 ```ts
-test("publishes a form", ({ signal }) =>
+test("assigns the next position", t =>
   testTransaction(
     async () => {
-      await publishForm(formId)
+      await addField(formId, "Name")
       // ...
     },
-    { signal },
+    { isolation: "serializable", signal: t.signal },
   ))
 ```
 
-With Vitest, pass the signal of the test context in `aroundEach`:
-
-```ts
-aroundEach((runTest, { signal }) => testTransaction(runTest, { signal }))
-```
-
-When the signal aborts, the later queries of the test fail, and its transaction rolls back without waiting for the test to finish.
-Without a signal, as with `bun:test`, which gives none for a test, the transaction of a test that times out stays open until the code of the test finishes or, while a fixture is open, until the next test starts.
+Without a signal, as with `testTransaction` under `bun:test`, the transaction of a test that times out stays open until the code of the test finishes or, while a fixture is open, until the next test starts.
 
 A query that the test has already sent runs to its end before the rollback.
 To limit how long such a query delays the next test, set `statement_timeout` for the connections of the test database.

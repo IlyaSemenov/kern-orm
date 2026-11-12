@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url"
 
 import type { RecordedRelease, RecordedStatement } from "@kern-orm/test-harness/recording-driver"
 
-/** Runs `bun test` with `args` in the runner directory and returns the result its tests print. */
+/** Runs `bun test` with `args` in the runner directory and returns the result its tests print, with the names of the failed tests and whether it reported an error outside of tests. */
 function runBunTest(args: string[]) {
-  const { stdout, error } = spawnSync("bun", ["test", ...args], {
+  const { stdout, stderr, error } = spawnSync("bun", ["test", ...args], {
     cwd: fileURLToPath(new URL("runner", import.meta.url)),
     encoding: "utf8",
     // `spawnSync` blocks the event loop, so the timeout of the calling test cannot stop a runner that hangs.
@@ -16,11 +16,19 @@ function runBunTest(args: string[]) {
   expect(error).toBeUndefined()
   const line = stdout.split("\n").find(text => text.startsWith("RESULT "))
   expect(line).toBeDefined()
-  return JSON.parse(line!.slice("RESULT ".length)) as {
+  const failed: string[] = []
+  for (const text of stderr.split("\n")) {
+    const match = /^\(fail\) (.+) \[[\d.]+m?s\]$/.exec(text)
+    if (match) {
+      failed.push(match[1]!)
+    }
+  }
+  const result = JSON.parse(line!.slice("RESULT ".length)) as {
     statements: RecordedStatement[]
     releases?: RecordedRelease[]
     lateResults?: string[]
   }
+  return { ...result, failed, unhandledError: stderr.includes("Unhandled error") }
 }
 
 describe("test transactions", () => {
@@ -41,6 +49,55 @@ describe("test transactions", () => {
     ])
     expect(connectionOf("attempt 2")).not.toBe(connectionOf("attempt 1"))
     expect(statements.filter(({ text }) => text === "ROLLBACK")).toHaveLength(4)
+  })
+})
+
+describe("wrapped test function", () => {
+  it("runs every test of its modifiers in its own transaction, and rolls back a timed-out test or attempt at once", () => {
+    const { statements, lateResults, failed, unhandledError } = runBunTest(["./wrapped-test.ts"])
+
+    expect(failed).toEqual(["times out", "fails"])
+    expect(unhandledError).toBe(false)
+    expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
+      "1: BEGIN",
+      "1: timed out",
+      // onTestFinished aborts the timed-out test before the next test starts.
+      "1: ROLLBACK",
+      "2: BEGIN",
+      "2: next",
+      "2: ROLLBACK",
+      "3: BEGIN",
+      "3: fails",
+      "3: ROLLBACK",
+      "4: BEGIN",
+      "4: attempt 1",
+      // bun:test runs onTestFinished after each attempt.
+      "4: ROLLBACK",
+      "5: BEGIN",
+      "5: attempt 2",
+      "5: ROLLBACK",
+      "6: BEGIN",
+      "6: row 1",
+      "6: ROLLBACK",
+      "7: BEGIN",
+      "7: row 2",
+      "7: ROLLBACK",
+      "8: BEGIN",
+      "8: conditional",
+      "8: ROLLBACK",
+      "9: BEGIN",
+      "9: SAVEPOINT kern_1",
+      "9: fixture data",
+      "9: RELEASE SAVEPOINT kern_1",
+      "9: SAVEPOINT kern_1",
+      "9: fixture test",
+      "9: ROLLBACK TO SAVEPOINT kern_1",
+      "9: RELEASE SAVEPOINT kern_1",
+      "9: ROLLBACK",
+    ])
+    expect(lateResults).toEqual([
+      expect.stringContaining("Cannot execute a query: its transaction is already finished"),
+    ])
   })
 })
 

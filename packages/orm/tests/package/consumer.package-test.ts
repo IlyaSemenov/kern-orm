@@ -756,6 +756,51 @@ describe("test runners", () => {
     )
   }, 60_000)
 
+  test("node:test runs each test of a wrapped test function in a test transaction that the signal of the test rolls back", async () => {
+    const report = join(dbConsumer, "node-wrap-test.tap")
+    const statements = await runScenario(
+      "node-wrap-test",
+      [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        `--test-reporter-destination=${report}`,
+        "wrapped.mjs",
+      ],
+      { failing: true },
+    )
+
+    expect(readTapOutcomes(await readFile(report, "utf8"))).toEqual([
+      "without a fixture > times out: testTimeoutFailure",
+      "without a fixture > runs after the timed-out test: passed",
+      "without a fixture > is skipped # SKIP: passed",
+      "with a fixture > runs in the fixture of its describe block: passed",
+    ])
+    expect(statements).toEqual([
+      [
+        "BEGIN",
+        "timed out",
+        // The signal of the timed-out test rolls back its transaction before the next test starts.
+        "ROLLBACK",
+        "release",
+        "BEGIN",
+        "next",
+        "ROLLBACK",
+        "release",
+        "BEGIN",
+        "SAVEPOINT kern_1",
+        "file data",
+        "RELEASE SAVEPOINT kern_1",
+        "SAVEPOINT kern_1",
+        "test",
+        "ROLLBACK TO SAVEPOINT kern_1",
+        "RELEASE SAVEPOINT kern_1",
+        "ROLLBACK",
+        "release",
+      ],
+    ])
+  }, 60_000)
+
   test("Vitest runs each test with its hooks in a test transaction of aroundEach", async () => {
     const statements = await runScenario("vitest", [
       "node",

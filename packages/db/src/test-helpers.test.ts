@@ -284,3 +284,141 @@ describe("useTestFixture", () => {
     await after[1]!()
   })
 })
+
+describe("wrapTest", () => {
+  interface DeclaredTest {
+    name: string
+    fn: (...args: unknown[]) => unknown
+    args: unknown[]
+    options?: unknown
+  }
+
+  /** `test` of a runner that records the tests it declares, with a modifier that requires the runner as `this`, as modifiers of `bun:test` do. */
+  function createRunner() {
+    const declared: DeclaredTest[] = []
+    const test = (name: string, fn: (...args: unknown[]) => unknown, options?: unknown) => {
+      declared.push({ name, fn, args: [], options })
+    }
+    test.each = function <Row extends unknown[]>(this: unknown, table: Row[]) {
+      if (this !== test) {
+        throw new TypeError("Expected the test function as this")
+      }
+      return (name: string, fn: (...row: Row) => unknown) => {
+        for (const row of table) {
+          declared.push({ name, fn: fn as (...args: unknown[]) => unknown, args: row })
+        }
+      }
+    }
+    return { test, declared }
+  }
+
+  it("runs every test it declares in its own test transaction and keeps the options of the test", async () => {
+    const { database, statements, wrapTest } = createTestDatabase()
+    const { test, declared } = createRunner()
+
+    wrapTest(test)("runs", () => database.execute(createStatement("test")), 50)
+    expect(declared.map(({ name, options }) => ({ name, options }))).toEqual([
+      { name: "runs", options: 50 },
+    ])
+    await declared[0]!.fn()
+    await declared[0]!.fn()
+
+    expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
+      "1: BEGIN",
+      "1: test",
+      "1: ROLLBACK",
+      "2: BEGIN",
+      "2: test",
+      "2: ROLLBACK",
+    ])
+  })
+
+  it("wraps the modifiers of the runner and the test functions they return", async () => {
+    const { database, statements, wrapTest } = createTestDatabase()
+    const { test, declared } = createRunner()
+
+    wrapTest(test).each([["row 1"], ["row 2"]])("runs %s", text =>
+      database.execute(createStatement(text)),
+    )
+    for (const { fn, args } of declared) {
+      await fn(...args)
+    }
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      "row 1",
+      "ROLLBACK",
+      "BEGIN",
+      "row 2",
+      "ROLLBACK",
+    ])
+  })
+
+  it("rolls back the test transaction once the signal of the test context aborts, as of node:test", async () => {
+    const { database, statements, wrapTest } = createTestDatabase()
+    const { test, declared } = createRunner()
+    const { promise: started, resolve: start } = Promise.withResolvers<void>()
+    const controller = new AbortController()
+
+    wrapTest(test)("times out", async () => {
+      await database.execute(createStatement("test"))
+      start()
+      await new Promise<never>(() => {})
+    })
+    const running = declared[0]!.fn({ signal: controller.signal })
+    await started
+    controller.abort(new Error("The test timed out"))
+
+    // The runner awaits the test until its signal aborts, so the test rejects with its reason.
+    await expect(running).rejects.toEqual(new Error("The test timed out"))
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "test", "ROLLBACK"])
+  })
+
+  it("ignores a signal in a row of test.each, which belongs to the data of the test", async () => {
+    const { database, statements, wrapTest } = createTestDatabase()
+    const { test, declared } = createRunner()
+
+    wrapTest(test).each([[{ signal: AbortSignal.abort() }]])("runs %o", () =>
+      database.execute(createStatement("test")),
+    )
+    await declared[0]!.fn(...declared[0]!.args)
+
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "test", "ROLLBACK"])
+  })
+
+  it("rolls back the test transaction once onTestFinished reports that the runner has finished the test, ignoring a signal in the data of the test, and passes the failure of an unfinished test to the runner", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const database = createDatabase({ driver, test: true })
+    const finished: (() => void)[] = []
+    const { wrapTest } = createTestHelpers(database, {
+      ...createManualHooks().hooks,
+      onTestFinished: hook => finished.push(hook),
+    })
+    const { test, declared } = createRunner()
+    const { promise: started, resolve: start } = Promise.withResolvers<void>()
+
+    wrapTest(test)("times out", async () => {
+      await database.execute(createStatement("test"))
+      start()
+      await new Promise<never>(() => {})
+    })
+    wrapTest(test)("fails", () => Promise.reject(new Error("The test fails")))
+    // With onTestFinished, the first argument is the data of the test, such as a row of test.each.
+    const running = declared[0]!.fn({ signal: AbortSignal.abort() })
+    await started
+    await expect(declared[1]!.fn()).rejects.toEqual(new Error("The test fails"))
+    for (const hook of finished) {
+      hook()
+    }
+
+    // The runner has given up on the test, so its rejection would be reported as an error between tests.
+    await running
+    expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
+      "1: BEGIN",
+      "1: test",
+      "2: BEGIN",
+      "2: ROLLBACK",
+      "1: ROLLBACK",
+    ])
+  })
+})
