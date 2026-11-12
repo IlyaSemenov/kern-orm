@@ -113,7 +113,8 @@ export interface BaseType<
   /**
    * Narrows the values of this type to `T` in TypeScript, such as to a union of strings that a `CHECK` constraint allows, or to the shape of JSON values.
    *
-   * The values are not validated at runtime. `T` must be among the values that this type both returns and accepts, and `nullable` keeps `null` apart from it.
+   * The values are not validated at runtime.
+   * `T` must be among the values that this type both returns and accepts, and `nullable` keeps `null` apart from it.
    */
   of<T extends AcceptedValues<Exclude<Output, null>, Exclude<Input, null>>>(): Type<
     T | AcceptedNull<Input>,
