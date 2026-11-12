@@ -80,6 +80,19 @@ const form = await db.form.insert({ name: "Survey", published: false }).use(with
 
 A helper for a mutation can call only `select` and `map`: a mutation has no `where`, `orderBy`, or `take`.
 
+To name the type of the records that a helper selects, such as of the records that a function returns, pass the helper to [`ResultOf`](./reusable):
+
+```ts
+import type { ResultOf } from "kern-orm"
+
+const selectSummary = defineHelper(db.form, form => form.select("id", "name"))
+
+type FormSummary = ResultOf<typeof selectSummary>
+// FormSummary: { id: string; name: string }
+```
+
+It gives one record, with only the fields that the helper selects, or what its `map` gives.
+
 When the code that defines a helper has no `Db`, such as with dependency injection or in code [shared by several Dbs](../multiple-schemas#shared-code), define it with a table of the schema, such as `schema.form`.
 Pass the table returned by `defineTable`, such as `form`, when the helper does not need the relations of the table.
 

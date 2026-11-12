@@ -34,6 +34,7 @@ import type { KeyCheck, PrimaryKeyColumn, PrimaryKeyValues } from "./find"
 import { toKeyValues, toPrimaryKeyValues } from "./find"
 import type { GroupTerms, QueryHavingFilter } from "./group"
 import { addGroupKeys, addHaving } from "./group"
+import type { AnyHelper, Helper, HelperResult } from "./helper"
 import type { AnyQuery, QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { RowLockOptions } from "./lock"
@@ -1370,8 +1371,18 @@ export function requireDerived<R>(
 // oxlint-disable-next-line typescript/no-explicit-any -- any select query regardless of its result
 export type AnySelectQuery = SelectQuery<any, SelectQueryKind>
 
-/** Type of a record of a query result, also of a query of SQL text, or of its value for a query made by `get`, `pluck`, or an aggregate method. */
-export type ResultOf<Q extends AnyQuery | AnySqlQuery> = Q["types"]["result"]
+/**
+ * Type of a record of a query result, also of a query of SQL text, or of its value for a query made by `get`, `pluck`, or an aggregate method.
+ *
+ * Of a helper of `defineHelper`, it is the type of a record of the fields that the helper selects, or of what its `map` gives.
+ */
+export type ResultOf<Q extends AnyQuery | AnySqlQuery | AnyHelper> = Q extends
+  | AnyQuery
+  | AnySqlQuery
+  ? Q["types"]["result"]
+  : Q extends Helper<AnyTable, infer E, never>
+    ? HelperResult<E>
+    : never
 
 /** Binds a query to `db`, so that awaiting it executes it there. */
 export function bindQuery<S extends SelectQueryState>(

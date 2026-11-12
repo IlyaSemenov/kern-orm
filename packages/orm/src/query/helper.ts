@@ -187,6 +187,17 @@ export type Helper<T extends AnyTable, E extends HelperEffect, A extends unknown
   ...args: A
 ) => E extends HelperEffect ? SelectQuery<ApplyEffect<S, E>, Kind> : never
 
+/** Helper of any table, effect, and arguments. */
+// oxlint-disable-next-line typescript/no-explicit-any -- a helper of any effect and arguments
+export type AnyHelper = Helper<AnyTable, any, any>
+
+/** Type of a record of the fields that a helper of effect `E` selects, or of what its `map` gives, for each effect of a union. */
+export type HelperResult<E extends HelperEffect> = E extends HelperEffect
+  ? E["mapped"] extends true
+    ? E["output"]
+    : E["fields"]
+  : never
+
 /**
  * Defines a reusable helper of a table that filters, selects fields, converts them with `map`, and applies `take`, `optional`, `nullable`, and `required`, used with `use` or called with a query.
  *

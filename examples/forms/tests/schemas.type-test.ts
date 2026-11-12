@@ -26,6 +26,7 @@ import {
   listUserActivity,
   lockFieldWithForm,
   publishedForms,
+  selectForm,
   useFormsDb,
 } from "../src/queries"
 import { formsSchema, saasSchema, tenantSchema } from "../src/schemas"
@@ -267,5 +268,13 @@ describe("ResultOf", () => {
     const allColumns = saasSchema.form.select("*")
     const row: ResultOf<typeof allColumns> = { id: "id", name: "name", published: true }
     void row
+  })
+
+  test("has the fields that a helper selects", () => {
+    expectTypeOf<ResultOf<typeof selectForm>>().toEqualTypeOf<{
+      id: string
+      name: string
+      fields: { id: string; label: string }[]
+    }>()
   })
 })

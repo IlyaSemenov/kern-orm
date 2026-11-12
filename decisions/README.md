@@ -13,6 +13,7 @@ Query objects, their types, and the methods that choose rows.
 - [Row locks rejected by the state in types](queries/row-lock-state.md).
 - [Relations in the references of callbacks](queries/relations-in-callbacks.md).
 - [One parameter of `$execute` for every class of query](queries/execute-parameter.md).
+- [`ResultOf` of a helper](queries/result-of-a-helper.md): one type for the record of a query and of a helper, rather than a type of its own.
 - [Arrays of nodes not frozen](queries/unfrozen-node-arrays.md).
 
 ## Filters and expressions

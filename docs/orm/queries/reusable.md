@@ -10,13 +10,15 @@ const forms = await publishedForms
 
 Each `await` executes the query again.
 
-`ResultOf` gives the type of its records, or of its values with [`pluck`](./selecting#values) and [`get`](./selecting#one-value):
+`ResultOf` gives the type of each of its records, or of its values with [`pluck`](./selecting#values) and [`get`](./selecting#one-value):
 
 ```ts
 import type { ResultOf } from "kern-orm"
 
 type PublishedForm = ResultOf<typeof publishedForms>
 ```
+
+Of a [helper](./composing#helpers), `ResultOf` gives the type of the records that it selects.
 
 For reusable conditions and other expressions, see [`defineExpression`](./expressions#reusable-expressions), and for reusable clauses, [helpers](./composing#helpers).
 

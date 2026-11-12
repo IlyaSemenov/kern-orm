@@ -18,7 +18,7 @@ import type { QueryResult } from "./rows"
 import type { AnySelectQuery, ResultOf, SelectQuery } from "./select"
 import { from } from "./select"
 import type { NestedQuery } from "./selection"
-import type { InitialQueryState, QueryStateOf } from "./state"
+import type { EmptyRecord, InitialQueryState, QueryStateOf } from "./state"
 
 declare const flag: boolean
 
@@ -329,6 +329,31 @@ describe("defineHelper", () => {
     >()
   })
 
+  test("gives the type of a record of the fields that the helper selects with ResultOf", () => {
+    expectTypeOf<ResultOf<typeof withName>>().toEqualTypeOf<{ name: string }>()
+    expectTypeOf<ResultOf<typeof first>>().toEqualTypeOf<EmptyRecord>()
+
+    const one = defineHelper(schema.form, form => form.select("id", "name").take().optional())
+    expectTypeOf<ResultOf<typeof one>>().toEqualTypeOf<{ id: string; name: string }>()
+
+    const slug = defineHelper(schema.form, form =>
+      form.select("id", "name").map(row => ({ id: row.id, slug: row.name.toLowerCase() })),
+    )
+    expectTypeOf<ResultOf<typeof slug>>().toEqualTypeOf<{ id: string; slug: string }>()
+
+    const pick = defineHelper(schema.form, (form, named: boolean) =>
+      named ? form.select("name") : form.select("ownerId"),
+    )
+    expectTypeOf<ResultOf<typeof pick>>().toEqualTypeOf<{ name: string } | { ownerId: string }>()
+    const length = defineHelper(schema.form, (form, mapped: boolean) =>
+      mapped ? form.select("name").map(row => row.name.length) : form.select("name"),
+    )
+    expectTypeOf<ResultOf<typeof length>>().toEqualTypeOf<number | { name: string }>()
+
+    // @ts-expect-error ResultOf takes a query or a helper.
+    expectTypeOf<ResultOf<(query: number) => number>>().toBeNever()
+  })
+
   test("passes further arguments of the helper", () => {
     const ownedBy = defineHelper(schema.form, (form, ownerId: string) => form.where({ ownerId }))
 
@@ -536,6 +561,10 @@ describe("relations", () => {
         fields: columns.fields,
       })),
     )
+  })
+
+  test("gives the records of the relations that the helper selects with ResultOf", () => {
+    expectTypeOf<ResultOf<typeof withFields>>().toEqualTypeOf<{ fields: { id: string }[] }>()
   })
 
   test("selects the relations and the queries of the Db it is defined with", () => {

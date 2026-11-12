@@ -444,6 +444,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   - The marker starts with no selected keys and accumulates their union on every selection, including through another helper.
     The marker prevents a branch selecting extra keys from being reduced to one selecting fewer fields or none, preserving possible overwrites of input fields.
   - The public type of a helper holds the selected fields without the marker, so that the declarations of a module exporting a helper never name it.
+  - `ResultOf` of a helper reads its effect: the fields that its callback selects, or what its `map` gives, for each branch, without the fields of a query it is applied to and the narrowing of its aggregate fields on a query grouped before it ([decision](../decisions/queries/result-of-a-helper.md)).
   - Every branch of a helper must retain the marker and remain a record query; `clearSelect`, `get`, `pluck`, the aggregate methods, and `exists` are rejected because its effect cannot describe the discarded input fields, and so is `transform`, whose [query](#converting-results) takes no method that the effect could describe.
   - `map` in a helper replaces the marker, and the effect records what the callback gives, without the marker, which a record of the callback keeps through a spread, so a query the helper is applied to has that as its result, whatever fields it selected before the helper.
     The callback reads only the fields that the helper selects, while at runtime it also receives those selected before, which types do not tell.
