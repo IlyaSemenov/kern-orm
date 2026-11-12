@@ -1,8 +1,9 @@
 # Testing
 
 - **Test helpers** (`test-helpers.ts`, exported from `kern-db/testing`): test transactions and test fixtures of a database created with `test: true`, created once per project with the `before` and `after` hooks of a test runner.
+  `openTestFixture` opens a test fixture without the hooks, such as in a server that runs browser tests.
   They run through the transaction coordinator of the database, which they find by the object of the database, so they require the database that `createDatabase` created rather than a copy of it ([transactions](transactions.md)).
-  The coordinator keeps its [test fixtures](#test-fixtures) in a fixture stack (`transaction/fixture-stack.ts`).
+  The coordinator keeps its [test fixtures](#test-fixtures) in a fixture stack (`transaction/fixture-stack.ts`), and opens its [open test transactions](#open-test-transactions) in `transaction/open-test-transaction.ts`.
 - **Lock waits** (`lock-wait.ts`, exported from `kern-db/testing`): `waitForLock` and `waitForLockedStatement` poll an observer, any target with `execute`, until a backend waits for a lock, and reject after a timeout.
   They read the locks with `pg_blocking_pids`, which reads the current lock state even inside a transaction, and `waitForLockedStatement` clears the snapshot of `pg_stat_activity` before each check, which a transaction keeps from its first read.
 - **Test runners**: the test helpers support `bun:test` on Bun, and `node:test` and Vitest on Node.js.
@@ -73,3 +74,17 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
 - Closing an open fixture first closes the fixtures opening in it, since `node:test` runs the `after` hook of a preload module before the one of a test file, and a seed that never settles would hold the queue of the fixture stack.
   A fixture started after a closing of an open fixture is requested opens outside of the closed fixture, so a repeated closing of the closed fixture or a closing of a fixture nested in it leaves the new fixture open.
 - The `data` of a fixture throws while the fixture is not open, including after an enclosing fixture closes it.
+
+## Open test transactions
+
+- `openTestTransaction` opens a test level without a callback, which the callbacks of `run`, such as the requests of one browser test to a server, share until it closes.
+  In the innermost fixture, it is a nested level that preempts the active level of the fixture and that a later level preempts, as a test transaction; without a fixture, it is a transaction on a connection of its own, which closing the database rolls back ([lifecycle](transactions.md#lifecycle)).
+  Like a test transaction, it does not count for `isInTransaction`.
+- Its callbacks take turns on its connection, as [levels](transactions.md#levels) describe ([decision](../decisions/transactions/open-test-transactions.md)):
+  - A statement or a script of a callback outside a transaction runs as a nested level of its own, whose savepoint is released when it succeeds and rolled back when it fails, so that a failed statement undoes only itself, as outside a transaction in production.
+  - A nested level of a callback, such as of `transaction` or of a nested test transaction, holds the turn from before its `SAVEPOINT` until its cleanup completes.
+  - A nested test transaction aborted while it waits for its turn rejects at once and sends nothing.
+- `run` calls its callback in the context of the level, and rejects without calling it once the level is closed, and in the context of another level, where a transaction of the test transaction would wait for the turn that it holds itself; in the context of the level, it calls the callback as it is.
+- Closing it, preempting it, or closing its fixture ends it as any level ends: it stops accepting statements at once, its active nested level ends first, and a statement already sent completes before the rollback.
+  The waiters of the turns take them at once and reject without sending anything, and late statements of its callbacks fail and never run in another level or on the pool.
+  A repeated `close` returns the first closing.

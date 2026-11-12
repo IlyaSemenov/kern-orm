@@ -6,7 +6,7 @@ import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import { createDatabase } from "./database"
 import { createStatement } from "./driver"
 import type { TestHooks } from "./test-helpers"
-import { createTestHelpers } from "./test-helpers"
+import { createTestHelpers, openTestFixture, openTestTransaction } from "./test-helpers"
 import * as t from "./types"
 
 /** Hooks of a test runner that the test calls itself. */
@@ -284,6 +284,74 @@ describe("useTestFixture", () => {
     await after[1]!()
   })
 })
+
+describe("openTestFixture", () => {
+  it("opens a fixture in which test transactions run until it closes", async () => {
+    const { database, statements, releases, testTransaction } = createTestDatabase()
+
+    const fixture = await openTestFixture(database, async () => {
+      await database.execute(createStatement("seed"))
+      return "seeded"
+    })
+    await testTransaction(() => database.execute(createStatement("test")))
+    expect(fixture.data).toBe("seeded")
+    await fixture.close()
+
+    expect(() => fixture.data).toThrow("Test fixture is closed")
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "seed",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "test",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+    expect(releases).toEqual([{ connection: 1 }])
+  })
+
+  it("rejects a database not created for tests", async () => {
+    const { driver } = createRecordingDriver()
+
+    await expect(
+      openTestFixture(createDatabase({ driver }), () => Promise.resolve()),
+    ).rejects.toThrow("openTestFixture requires a database created with test: true")
+  })
+})
+
+describePostgres(
+  "openTestTransaction in PostgreSQL",
+  ({ database, testTransaction, useTestFixture }) => {
+    useTestFixture(() => database.script("CREATE TABLE test_request (id integer PRIMARY KEY)"))
+
+    const count = async () => await database.query`SELECT count(*) FROM test_request`.get(t.integer)
+
+    it("shares the changes of concurrent callbacks, keeps them after a failed statement, and rolls them back on closing", async () => {
+      const opened = await openTestTransaction(database)
+      try {
+        await opened.run(() => database.script("INSERT INTO test_request VALUES (1)"))
+        await Promise.all([
+          expect(
+            opened.run(() => database.script("INSERT INTO test_request VALUES (1)")),
+          ).rejects.toMatchObject({ code: "23505" }),
+          opened.run(() =>
+            database.transaction(async () => {
+              await database.script("INSERT INTO test_request VALUES (2)")
+              await database.script("INSERT INTO test_request VALUES (3)")
+            }),
+          ),
+          opened.run(() => database.script("INSERT INTO test_request VALUES (4)")),
+        ])
+        expect(await opened.run(count)).toBe(4)
+      } finally {
+        await opened.close()
+      }
+      expect(await testTransaction(count)).toBe(0)
+    })
+  },
+)
 
 describe("wrapTest", () => {
   interface DeclaredTest {

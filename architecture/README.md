@@ -52,7 +52,7 @@ Module paths are relative to the `src/` directory of their package: `packages/db
 - [Queries of SQL text](sql-queries.md): `sql/query.ts`, and `query` and `script` of `database.ts` of `kern-db`, and `$query` and the scripts of `execution/db.ts`.
 - [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, and `result/` of `kern-orm`, and `result.ts`, `identifier.ts`, and `builder.ts` of `kern-db`.
 - [Transactions](transactions.md): `database.ts` and `transaction/` of `kern-db`.
-- [Testing](testing.md): `test-helpers.ts`, `lock-wait.ts`, and `transaction/fixture-stack.ts` of `kern-db`, the test harness in `testing/` of the repository, and the package test in `packages/orm/tests/package/`.
+- [Testing](testing.md): `test-helpers.ts`, `lock-wait.ts`, `transaction/fixture-stack.ts`, `transaction/open-test-transaction.ts`, and `transaction/turns.ts` of `kern-db`, the test harness in `testing/` of the repository, and the package test in `packages/orm/tests/package/`.
 - [Drivers](drivers.md): `driver.ts`, `driver-error.ts`, `error-condition.ts`, `error-condition-codes.ts`, `driver-contract.ts`, and `drivers/` of `kern-db`.
 - [Migrations](migrations.md): `packages/migrations/`.
 - [Package compatibility](compatibility.md): the ranges by which the packages of the repository depend on each other.

@@ -7,12 +7,36 @@ export interface TestFixture<T = unknown> {
   readonly data: T
 }
 
-/** Test fixture opened by the transaction coordinator: an outer transaction of a database created for tests, which always rolls back when it closes. */
+/** Open test fixture of `openTestFixture`: an outer transaction of a database created for tests, which always rolls back when it closes. */
 export interface OpenedTestFixture<T = unknown> extends AsyncDisposable {
   /** Result of the seed of the fixture, such as the records it created; reading it after the fixture closes throws. */
   readonly data: T
   /** Rolls back the fixture and the fixtures opened inside it; closing a closed fixture does nothing. */
   close(): Promise<void>
+}
+
+/** Open test transaction of `openTestTransaction`, which the callbacks of `run`, such as the requests of one browser test to a server, share until it closes. */
+export interface OpenedTestTransaction extends AsyncDisposable {
+  /**
+   * Runs `callback` in the test transaction, so that its queries run there.
+   *
+   * Each query of the callback outside a transaction runs as a nested transaction of its own, so that a failed query undoes only itself, as in production.
+   * A transaction of a callback runs as a nested transaction that the queries and transactions of the other callbacks wait for.
+   * It rejects without calling `callback` once the test transaction is closed, and inside a transaction.
+   */
+  run<T>(callback: () => Promise<T>): Promise<T>
+  /** Rolls back the test transaction; the later queries of its callbacks fail, and closing it again returns the same closing. */
+  close(): Promise<void>
+}
+
+/** Options of `openTestTransaction`. */
+export interface OpenTestTransactionOptions {
+  /**
+   * Isolation level of the test transaction, such as `serializable`, for code under test that starts a transaction at that level.
+   *
+   * Inside a test fixture, the test transaction runs at the level of the fixture: given another level, it rejects.
+   */
+  isolation?: IsolationLevel
 }
 
 /** Test fixture that is being opened, with a `close` that can be called before it opens. */
@@ -56,7 +80,7 @@ export interface TestTransactionOptions {
   isolation?: IsolationLevel
 }
 
-/** Options of `useTestFixture`. */
+/** Options of `useTestFixture` and `openTestFixture`. */
 export interface TestFixtureOptions {
   /**
    * Isolation level of the transaction of the fixture, such as `serializable`, at which the test transactions and fixtures nested in it run.
@@ -172,6 +196,34 @@ export function createTestHelpers(database: Database, hooks: TestHooks): TestHel
       }
     },
   }
+}
+
+/**
+ * Opens a test fixture of a database created with `test: true` without the hooks of a test runner, such as in a server that runs browser tests, and runs `seed` in it.
+ *
+ * It resolves once `seed` resolves, with the fixture whose `close` rolls it back; a fixture whose `seed` rejects rolls back and closes.
+ * Closing the database closes the fixture too.
+ * Fixtures nest as with `useTestFixture`: a new one opens inside the innermost open one, and test transactions run in the innermost one.
+ */
+export function openTestFixture<T>(
+  database: Database,
+  seed: () => Promise<T>,
+  options?: TestFixtureOptions,
+): Promise<OpenedTestFixture<T>> {
+  return getCoordinator(database).createTestFixture(seed, options)
+}
+
+/**
+ * Opens a test transaction of a database created with `test: true` that callbacks share through `run` until it closes, such as the requests of one browser test to a server.
+ *
+ * Inside an open test fixture, it opens as a nested transaction of the innermost one, and rolls back a test transaction or another open test transaction running there; without a fixture, it opens on a connection of its own.
+ * Closing the database closes it too.
+ */
+export function openTestTransaction(
+  database: Database,
+  options?: OpenTestTransactionOptions,
+): Promise<OpenedTestTransaction> {
+  return getCoordinator(database).openTestTransaction(options)
 }
 
 /** Reads the abort signal of a test from the first argument of its function, the test context of `node:test`. */

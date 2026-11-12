@@ -12,6 +12,8 @@ import type { Connection, Driver, DriverResult, SqlStatement } from "../driver"
 import { ConnectionError } from "../driver-error"
 import type {
   OpenedTestFixture,
+  OpenedTestTransaction,
+  OpenTestTransactionOptions,
   PendingTestFixture,
   TestFixtureOptions,
   TestTransactionOptions,
@@ -37,10 +39,12 @@ import {
   getEndedOutcome,
   noLevelOptions,
   runLevel,
+  runStarted,
   startNestedLevel,
   suppress,
   suppressAbortReason,
 } from "./level"
+import { OpenTestTransactions, runInTurn, runStatementInTurn } from "./open-test-transaction"
 import type { ReleaseErrorHandler } from "./release"
 import { releaseConnection } from "./release"
 import { createSessionLevel, releaseSession } from "./session"
@@ -58,6 +62,7 @@ export class TransactionCoordinator {
   readonly #onReleaseError: ReleaseErrorHandler | undefined
   /** Closing of the database, set by the first `close`; from then on, operations outside a transaction reject. */
   #closed: Promise<void> | undefined
+  readonly #openTestTransactions: OpenTestTransactions
   /** Rejects statements and transactions outside a test transaction or the seed of a test fixture instead of running them on the pool. */
   readonly test: boolean
 
@@ -68,22 +73,39 @@ export class TransactionCoordinator {
     this.test = test
     this.#onReleaseError = onReleaseError
     this.#fixtures = new TestFixtureStack(driver, this.#storage, onReleaseError)
+    this.#openTestTransactions = new OpenTestTransactions(
+      driver,
+      this.#storage,
+      this.#fixtures,
+      onReleaseError,
+    )
   }
 
   execute(statement: SqlStatement): Promise<DriverResult> {
-    const target = this.#route("execute a query")
+    const level = this.#storage.getStore()
+    if (level?.turns) {
+      return runStatementInTurn(this.#storage, level, "execute a query", connection =>
+        connection.execute(statement),
+      )
+    }
+    const target = this.#route(level, "execute a query")
     return target instanceof Error ? Promise.reject(target) : target.execute(statement)
   }
 
   /** Executes a script of statements without parameters where `execute` executes a statement. */
   executeScript(text: string): Promise<void> {
-    const target = this.#route("execute a script")
+    const level = this.#storage.getStore()
+    if (level?.turns) {
+      return runStatementInTurn(this.#storage, level, "execute a script", connection =>
+        connection.executeScript(text),
+      )
+    }
+    const target = this.#route(level, "execute a script")
     return target instanceof Error ? Promise.reject(target) : target.executeScript(text)
   }
 
-  /** Returns the connection of the ambient transaction or session, or the driver of the pool, that runs `operation`, or the error that rejects it. */
-  #route(operation: string): Driver | Connection | Error {
-    const level = this.#storage.getStore()
+  /** Returns the connection of the ambient transaction or session `level`, or the driver of the pool, that runs `operation`, or the error that rejects it. */
+  #route(level: TransactionLevel | undefined, operation: string): Driver | Connection | Error {
     if (!level) {
       if (this.#closed) {
         return createDatabaseClosedError(operation)
@@ -281,9 +303,31 @@ export class TransactionCoordinator {
       .startTestLevel(options)
       .then(level =>
         level
-          ? this.#runStarted(level, callback, false, signal)
+          ? runStarted(this.#storage, level, callback, false, signal)
           : this.#runRoot(callback, false, options),
       )
+  }
+
+  /**
+   * Opens a test transaction that the callbacks of `run` share until it closes, see `OpenTestTransactions`.
+   *
+   * It rejects inside a transaction, and once closing the database is requested.
+   */
+  async openTestTransaction(options?: OpenTestTransactionOptions): Promise<OpenedTestTransaction> {
+    if (!this.test) {
+      throw new Error("openTestTransaction requires a database created with test: true")
+    }
+    // Late code of a finished level must not open a test transaction that outlives it.
+    if (this.#storage.getStore()) {
+      throw new Error("Cannot open a test transaction inside a transaction")
+    }
+    const getClosedError = () =>
+      this.#closed ? createDatabaseClosedError("open a test transaction") : undefined
+    const closedError = getClosedError()
+    if (closedError) {
+      throw closedError
+    }
+    return this.#openTestTransactions.open(options, getClosedError)
   }
 
   /**
@@ -312,7 +356,7 @@ export class TransactionCoordinator {
   /** Returns the error that rejects a test fixture created now, or `undefined` when it can open. */
   #getFixtureRefusal(): Error | undefined {
     if (!this.test) {
-      return new Error("createTestFixture requires a database created with test: true")
+      return new Error("openTestFixture requires a database created with test: true")
     }
     // Late code of a finished level must not reach the fixture stack.
     if (this.#storage.getStore()) {
@@ -326,10 +370,10 @@ export class TransactionCoordinator {
   }
 
   /**
-   * Closes the test fixtures, including those still opening, and then the driver, which waits for the running transactions and sessions to end.
+   * Closes the test fixtures, including those still opening, and the open test transactions on connections of their own, and then the driver, which waits for the running transactions and sessions to end.
    *
-   * A driver waits for every reserved connection, so closing it under an open fixture would wait forever.
-   * A failed closing of the driver suppresses the failures of closing the fixtures.
+   * A driver waits for every reserved connection, so closing it under an open fixture or test transaction would wait forever.
+   * A failed closing of the driver suppresses the failures of closing the fixtures and test transactions.
    * From the first call, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, while the levels already running can still end; a repeated call returns the same closing.
    */
   close(): Promise<void> {
@@ -346,13 +390,20 @@ export class TransactionCoordinator {
     return this.#closed
   }
 
-  /** Closes the test fixtures and then the driver, see `close`. */
+  /** Closes the test fixtures and the open test transactions on connections of their own, and then the driver, see `close`. */
   async #close(): Promise<void> {
     let rejection: Rejection | undefined
-    try {
-      await this.#fixtures.close()
-    } catch (error) {
-      rejection = { error }
+    for (const closing of await Promise.allSettled([
+      this.#fixtures.close(),
+      this.#openTestTransactions.close(),
+    ])) {
+      if (closing.status === "rejected") {
+        rejection = suppress(
+          closing.reason,
+          rejection,
+          "Closing a test fixture or transaction failed",
+        )
+      }
     }
     try {
       await this.driver.close()
@@ -484,30 +535,32 @@ export class TransactionCoordinator {
     commits: boolean,
     options?: LevelOptions,
   ): Promise<T> {
+    if (parent.turns) {
+      return runInTurn(
+        parent,
+        "start a nested transaction",
+        async () =>
+          runStarted(
+            this.#storage,
+            await startNestedLevel(parent, commits, options),
+            callback,
+            commits,
+            options?.signal,
+          ),
+        options?.signal,
+      )
+    }
     const unavailable = createUnavailableError(parent, "start a nested transaction")
     if (unavailable) {
       throw unavailable
     }
-    return this.#runStarted(
+    return runStarted(
+      this.#storage,
       await startNestedLevel(parent, commits, options),
       callback,
       commits,
       options?.signal,
     )
-  }
-
-  /** Runs `callback` in a started level, returning its result or throwing its rejection. */
-  async #runStarted<T>(
-    level: TransactionLevel,
-    callback: () => Promise<T>,
-    commits: boolean,
-    signal?: AbortSignal,
-  ): Promise<T> {
-    const { result, rejection } = await runLevel(this.#storage, level, callback, commits, signal)
-    if (rejection) {
-      throw rejection.error
-    }
-    return result as T
   }
 }
 

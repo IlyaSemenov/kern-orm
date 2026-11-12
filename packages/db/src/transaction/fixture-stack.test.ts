@@ -905,7 +905,7 @@ it("rejects test transactions and fixtures of a coordinator not created for test
     "testTransaction requires a database created with test: true",
   )
   await expect(coordinator.createTestFixture(seedNothing)).rejects.toThrow(
-    "createTestFixture requires a database created with test: true",
+    "openTestFixture requires a database created with test: true",
   )
   expect(statements).toEqual([])
 })

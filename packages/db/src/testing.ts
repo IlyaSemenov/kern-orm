@@ -4,6 +4,8 @@ export type { LockWaitOptions } from "./lock-wait"
 export { getBackendPid, waitForLock, waitForLockedStatement } from "./lock-wait"
 export type {
   OpenedTestFixture,
+  OpenedTestTransaction,
+  OpenTestTransactionOptions,
   PendingTestFixture,
   TestFixture,
   TestFixtureOptions,
@@ -11,4 +13,4 @@ export type {
   TestHooks,
   TestTransactionOptions,
 } from "./test-helpers"
-export { createTestHelpers } from "./test-helpers"
+export { createTestHelpers, openTestFixture, openTestTransaction } from "./test-helpers"

@@ -11,8 +11,9 @@ import type { SessionLocks } from "./advisory-lock"
 import { ConnectionWatch } from "./connection-loss"
 import type { LevelSetting } from "./settings"
 import { applySettings } from "./settings"
+import type { TurnQueue } from "./turns"
 
-/** Transaction, savepoint nested in it, or session, run by one callback in its own async context, or a test fixture without a context. */
+/** Transaction, savepoint nested in it, or session, run by one callback in its own async context, a test fixture without a context, or an open test transaction whose context the callbacks of `run` share. */
 export interface TransactionLevel {
   /** Connection of the level, which the watch of a transaction of `transaction` or of a session wraps for the levels nested in it too. */
   readonly connection: Connection
@@ -52,6 +53,12 @@ export interface TransactionLevel {
   isolation: string | undefined
   /** Advisory locks that a session took with `tryLock`, which it releases before its connection returns to the driver; `undefined` for every other level and for a session before its first `tryLock`. */
   locks: SessionLocks | undefined
+  /**
+   * Turns of the callbacks that share an open test transaction; `undefined` for every other level.
+   *
+   * Its statements and nested levels wait for their turn instead of rejecting while it has a nested level.
+   */
+  turns: TurnQueue | undefined
 }
 
 /** Options of starting a level; the options of a test transaction and of a test fixture pass as they are, so their fields keep these names. */
@@ -135,6 +142,7 @@ export function createLevel(
     restore: undefined,
     isolation: enclosing ? enclosing.isolation : isolation,
     locks: undefined,
+    turns: undefined,
   }
 }
 
@@ -299,6 +307,21 @@ export async function runLevel<T>(
   return { result, rejection: combineRejections(rejection, cleanup) }
 }
 
+/** Runs `callback` in a started `level` in `storage` with `runLevel`, returning its result or throwing its rejection. */
+export async function runStarted<T>(
+  storage: AsyncLocalStorage<TransactionLevel>,
+  level: TransactionLevel,
+  callback: () => Promise<T>,
+  commits: boolean,
+  signal?: AbortSignal,
+): Promise<T> {
+  const { result, rejection } = await runLevel(storage, level, callback, commits, signal)
+  if (rejection) {
+    throw rejection.error
+  }
+  return result as T
+}
+
 /**
  * Ends `level` once, whoever ends it: later calls return the cleanup already started.
  *
@@ -321,6 +344,8 @@ export function endLevel(
   }
   // Rejecting statements before COMMIT or ROLLBACK keeps late ones from queuing after it and running outside of the level.
   level.state = "closing"
+  // Its waiters take their turns at once and reject, since the level no longer accepts statements.
+  level.turns?.close()
   const nested = level.child && endLevel(level.child, false, "enclosing level")
   level.cleanup = cleanUpLevel(level, commit, nested)
   return level.cleanup

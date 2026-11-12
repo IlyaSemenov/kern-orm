@@ -14,6 +14,7 @@
 - Nested transactions use savepoints on the transaction connection, and every level run by a callback, the transaction or a savepoint, has its own context; a statement of a finished level fails and never runs in an enclosing level or on the pool.
   A level stops accepting statements before its `COMMIT`, `ROLLBACK`, `RELEASE`, or `ROLLBACK TO`.
 - A level has at most one active nested level, reserved before its `SAVEPOINT` is sent, and a level run by a callback rejects its own statements and another nested level while it has one, since PostgreSQL would run them inside the nested savepoint; a test fixture preempts it instead.
+- A level of an [open test transaction](testing.md#open-test-transactions), which the callbacks of `run` share, makes its statements and nested levels take turns instead of rejecting them while it has a nested level: each one waits until those that came before it end, and once the level ends, the waiters reject at once.
 - Closing a level closes all levels nested in it at once; a level whose callback settles while its nested level is still active closes it, rolls back, and rejects.
 - Every level has a single cleanup: whoever ends it, such as its callback, its enclosing level, a preemption, or the abort signal of a test, starts the cleanup or awaits the one already started.
   A level awaits the cleanup of its nested levels before its own.
@@ -110,7 +111,8 @@
 ## Lifecycle
 
 - Objects with an explicit lifecycle, such as a database and a test fixture, are async disposable.
-- Closing a database closes its test fixtures, including those still opening, and then closes the driver; closing it inside a transaction or a session rejects, since the driver would wait for that transaction or session forever.
+- Closing a database closes its test fixtures, including those still opening, and its [open test transactions](testing.md#open-test-transactions) on connections of their own, and then closes the driver; closing it inside a transaction or a session rejects, since the driver would wait for that transaction or session forever.
+  An open test transaction whose opening the closing overtakes rolls back, releases its connection, and rejects.
   From the first closing, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, so nothing opens after the fixtures close; the levels already running still end, and a repeated closing returns the first one.
 
 ## Open questions

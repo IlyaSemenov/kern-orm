@@ -185,6 +185,99 @@ Without a signal, as with `testTransaction` under `bun:test`, the transaction of
 A statement that the test has already sent runs to its end before the rollback.
 To limit how long such a statement delays the next test, set `statement_timeout` for the connections of the test database.
 
+## Browser tests
+
+To run browser tests, such as with Playwright, against a running server, run the requests of each test in a test transaction that the server opens when the test starts and rolls back when it ends.
+
+Start the server for browser tests with a database created with `test: true`, prepare the database in a fixture with `openTestFixture`, and add routes that open and close the test transaction of a test, and a middleware that runs every request of a test in its test transaction, such as with Hono:
+
+```ts
+import { Hono } from "hono"
+import type { OpenedTestTransaction } from "kern-db/testing"
+import { openTestFixture, openTestTransaction } from "kern-db/testing"
+
+await openTestFixture(database, async () => {
+  await migrate(database, migrations)
+  await createSharedData()
+})
+
+const tests = new Map<string, OpenedTestTransaction>()
+const app = new Hono()
+
+app.post("/test/begin", async c => {
+  const id = crypto.randomUUID()
+  tests.set(id, await openTestTransaction(database))
+  return c.json({ id })
+})
+
+app.post("/test/end/:id", async c => {
+  const id = c.req.param("id")
+  const transaction = tests.get(id)
+  tests.delete(id)
+  await transaction?.close()
+  return c.body(null, 204)
+})
+
+// Registered after the routes above, so that they run outside of test transactions.
+app.use(async (c, next) => {
+  const id = c.req.header("x-test-id")
+  if (id === undefined) {
+    return next()
+  }
+  const transaction = tests.get(id)
+  if (!transaction) {
+    return c.text("Unknown test", 409)
+  }
+  return transaction.run(next)
+})
+```
+
+In the browser tests, open the test transaction before each test, send its ID with every request of the browser, and close it after closing the browser, such as with an automatic fixture of Playwright:
+
+```ts
+import { test as base } from "@playwright/test"
+
+export const test = base.extend<{ testId: string }>({
+  testId: [
+    async ({ context, request }, use) => {
+      const response = await request.post("/test/begin")
+      const { id } = await response.json()
+      await context.setExtraHTTPHeaders({ "x-test-id": id })
+      await use(id)
+      // The browser sends no more requests once its context closes.
+      await context.close()
+      await request.post(`/test/end/${id}`)
+    },
+    { auto: true },
+  ],
+})
+```
+
+Send the ID also with the requests that a test sends to the server itself, such as to create its data:
+
+```ts
+test("lists the forms", async ({ page, request, testId }) => {
+  await request.post("/forms", { data: { name: "Survey" }, headers: { "x-test-id": testId } })
+  await page.goto("/forms")
+  // ...
+})
+```
+
+The ID ties a request to its test, so a request that comes late, after its test has ended, never runs in the test transaction of the next test.
+When the pages send requests to the server from another origin, allow the header in the CORS settings of the server.
+
+The requests of a test see the changes of its earlier requests, and the changes of all of them roll back when the test ends:
+
+- A statement of a request outside a transaction runs in a nested transaction of its own, so a failed statement, such as one that violates a unique constraint, undoes only itself, as in production.
+- The requests of a test share one connection, so the transactions of its requests run one at a time, and the statements of its other requests wait for a running transaction.
+  A transaction that waits for another request of the same test, such as for a request to the same server, waits until the test ends.
+- A statement of a request that keeps running after its test has ended fails.
+
+While a fixture is open, browser tests run one at a time: opening a test transaction rolls back the one still open, such as of a test that crashed.
+Without a fixture, each test transaction runs on a connection of its own, so tests can run in parallel workers, each creating its own data in its test transaction, on a database that has its migrations applied.
+
+Closing the database rolls back the fixture and the open test transactions.
+
 ## Statements that wait for a lock
 
 To check that a statement waits for a lock that another transaction holds, such as of a row that it updates, read the backend PID of its transaction with `getBackendPid`.
