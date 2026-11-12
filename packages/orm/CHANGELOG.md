@@ -1,5 +1,18 @@
 # kern-orm
 
+## 0.13.0
+
+### Minor Changes
+
+- b64ad58: Add `openTestFixture` and `openTestTransaction` to isolate browser tests against a running server in transactions that roll back after each test.
+- 6e281ac: `ResultOf` takes a helper of `defineHelper` and gives the type of the records that it selects, such as `ResultOf<typeof selectSummary>`.
+- fc7fcff: Fix test transactions failing every later query of a test once a query of the tested code outside a transaction failed, such as an insert that violates a unique constraint, and queries of a test failing beside a running transaction of the tested code; a test that passes also waits for the transactions that it started without awaiting them instead of failing.
+- feabf2f: Add `wrapTest` to run `node:test` and `bun:test` tests in test transactions, which roll back as soon as a test times out; under `bun:test`, pass `onTestFinished` to `createTestHelpers` for that.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.5.0
+
 ## 0.12.1
 
 ### Patch Changes
