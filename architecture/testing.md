@@ -4,7 +4,7 @@
   `openTestFixture` opens a test fixture without the hooks, such as in a server that runs browser tests.
   They run through the transaction coordinator of the database, which they find by the object of the database, so they require the database that `createDatabase` created rather than a copy of it ([transactions](transactions.md)).
   The coordinator keeps its [test fixtures](#test-fixtures) in a fixture stack (`transaction/test-levels/fixture-stack.ts`), and opens its [open test transactions](#open-test-transactions) in `transaction/test-levels/open-test-transaction.ts`.
-  The modules of the levels of the test helpers, which only a database created for tests uses, such as their abort signals and the turns of open test transactions, are in `transaction/test-levels/`.
+  The modules of the levels of the test helpers, which only a database created for tests uses, such as their abort signals and their turns, are in `transaction/test-levels/`.
 - **Lock waits** (`lock-wait.ts`, exported from `kern-db/testing`): `waitForLock` and `waitForLockedStatement` poll an observer, any target with `execute`, until a backend waits for a lock, and reject after a timeout.
   They read the locks with `pg_blocking_pids`, which reads the current lock state even inside a transaction, and `waitForLockedStatement` clears the snapshot of `pg_stat_activity` before each check, which a transaction keeps from its first read.
 - **Test runners**: the test helpers support `bun:test` on Bun, and `node:test` and Vitest on Node.js.
@@ -38,6 +38,13 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
   Runners take the location of a test from the caller of `test`, so they report the location of a test declared through the proxy inside kern-db, while the stack of its error points to the test.
   Vitest reads the fixtures of `test.extend` from the source of the test function, which the wrapper hides, so Vitest runs test transactions through `aroundEach` instead.
 - A test transaction and a test fixture take an [isolation level](transactions.md#isolation), which the transactions of code under test nested in them must match.
+- The levels of the test helpers that code runs in, a test transaction outside a transaction of code under test, the seed of a test fixture, and an [open test transaction](#open-test-transactions), emulate the pool for that code: its statements and nested levels take turns on their connection, as [levels](transactions.md#levels) describe ([decision](../decisions/transactions/test-levels-that-take-turns.md)).
+  - A statement or a script outside a transaction runs as a nested level of its own, whose savepoint is released when it succeeds and rolled back when it fails, so that a failed statement undoes only itself, as outside a transaction in production; PostgreSQL rejects in it a statement that changes the transaction itself, such as `SET TRANSACTION ISOLATION LEVEL`.
+  - It is sent right behind its `SAVEPOINT` when its turn is free, so that a statement that the code has called runs before a rollback of the level, as on a connection of its own.
+  - A nested level, such as of `transaction` or of a nested test transaction, holds the turn from before its `SAVEPOINT` until its cleanup completes; a nested test transaction aborted while it waits for its turn rejects at once and sends nothing.
+  - When its callback resolves, the level ends after the statements and nested levels that the callback started; an abort of its signal while it waits ends it at once.
+    When its callback rejects, the level ends at once, since the code that awaits it may be what those nested levels wait for.
+  - A client may refuse a `SAVEPOINT` without sending it and still send the statement behind it, which then runs in the level itself, so a failed `SAVEPOINT` of a statement leaves the level able only to roll back.
 - A database created for tests rejects every statement and transaction outside a test transaction or the seed of a test fixture instead of running them on the pool.
   It rejects a [session](transactions.md#sessions) everywhere, since none of its statements can run outside a transaction.
 - Late code of a timed-out test never runs in the transaction of another test, but it keeps running in its own level until that level ends, is aborted, or, in a fixture, is preempted.
@@ -49,7 +56,7 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
   - Aborted while its `BEGIN` or `SAVEPOINT` runs, its level ends once the statement completes, without calling its callback.
   - Aborted while its callback runs, its level stops accepting statements at once and ends without waiting for the callback, as closing a fixture does with its seed; the late rejection of the callback stays handled.
   - It rejects with the reason of the signal, once its level ends if it started one; a failure to start or end its level after the abort suppresses the reason in a `SuppressedError`.
-  - An abort after the callback settles does nothing: the level stops listening to the signal once the callback settles, since `node:test` aborts the signal after every test.
+  - An abort after the callback settles does nothing, unless the level still waits for the statements and nested levels that the callback started: the level stops listening to the signal once it has nothing left to wait for, since `node:test` aborts the signal after every test.
 - A statement already sent by a level that ends, whether by an abort, a preemption, or the closing of a fixture, completes before the rollback and delays the next level until then; `statement_timeout` of the connection bounds it.
   kern-db does not cancel it: a [cancel request](https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-CANCELING-REQUESTS) interrupts whatever the backend runs when it arrives, such as the rollback or a statement of the next test, and gives no reply on whether it did.
 
@@ -80,11 +87,7 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
 
 - `openTestTransaction` opens a test level without a callback, which the callbacks of `run`, such as the requests of one browser test to a server, share until it closes.
   In the innermost fixture, it is a nested level that preempts the active level of the fixture and that a later level preempts, as a test transaction; without a fixture, it is a transaction on a connection of its own, which closing the database rolls back ([lifecycle](transactions.md#lifecycle)).
-  Like a test transaction, it does not count for `isInTransaction`.
-- Its callbacks take turns on its connection, as [levels](transactions.md#levels) describe ([decision](../decisions/transactions/open-test-transactions.md)):
-  - A statement or a script of a callback outside a transaction runs as a nested level of its own, whose savepoint is released when it succeeds and rolled back when it fails, so that a failed statement undoes only itself, as outside a transaction in production.
-  - A nested level of a callback, such as of `transaction` or of a nested test transaction, holds the turn from before its `SAVEPOINT` until its cleanup completes.
-  - A nested test transaction aborted while it waits for its turn rejects at once and sends nothing.
+  Like a test transaction, it does not count for `isInTransaction`, and the statements and nested levels of its callbacks take turns on its connection as those of a [test transaction](#test-transactions) do.
 - `run` calls its callback in the context of the level, and rejects without calling it once the level is closed, and in the context of another level, where a transaction of the test transaction would wait for the turn that it holds itself; in the context of the level, it calls the callback as it is.
 - Closing it, preempting it, or closing its fixture ends it as any level ends: it stops accepting statements at once, its active nested level ends first, and a statement already sent completes before the rollback.
   The waiters of the turns take them at once and reject without sending anything, and late statements of its callbacks fail and never run in another level or on the pool.

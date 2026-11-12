@@ -96,6 +96,7 @@ export interface TestHelpers {
    * Runs `callback` in a transaction that always rolls back.
    *
    * Wrap the body of every test in it, so that every run of the test gets its own transaction.
+   * A query of the callback outside a transaction runs in a nested transaction of its own, so that a failed query undoes only itself, as in production.
    * Inside an existing transaction, it starts a nested transaction that always rolls back.
    */
   testTransaction<T>(callback: () => Promise<T>, options?: TestTransactionOptions): Promise<T>

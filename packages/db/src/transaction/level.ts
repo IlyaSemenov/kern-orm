@@ -54,7 +54,7 @@ export interface TransactionLevel {
   /** Advisory locks that a session took with `tryLock`, which it releases before its connection returns to the driver; `undefined` for every other level and for a session before its first `tryLock`. */
   locks: SessionLocks | undefined
   /**
-   * Turns of the callbacks that share an open test transaction; `undefined` for every other level.
+   * Turns on the connection of a level of the test helpers that code runs in, such as a test transaction; `undefined` for every other level.
    *
    * Its statements and nested levels wait for their turn instead of rejecting while it has a nested level.
    */
@@ -280,6 +280,17 @@ export async function runLevel<T>(
       rejection = { error }
     }
   }
+  if (!rejection && level.turns && !level.cleanup && !level.turns.tryTake()) {
+    // A level of the test helpers whose callback resolves ends after the statements and nested levels that the callback started, as a connection runs the statements sent before a rollback; its turn is never released, since ending the level grants the later turns, which reject.
+    // A callback that rejects ends the level at once, since the code that awaits it may be what those nested levels wait for.
+    // It listens to the signal while it waits, as while its callback runs; when nothing is left to wait for, an abort after the callback settles does nothing.
+    try {
+      await level.turns.take(signal)
+    } catch {
+      // Aborted while it waits, the level ends at once, as when aborted while its callback runs.
+      void endLevel(level, false, "abort")
+    }
+  }
   if (level.cleanup) {
     // Its enclosing level or the abort of its test ended it first and started its cleanup.
     return getEndedOutcome(
@@ -430,7 +441,7 @@ async function endSavepoint(level: TransactionLevel, commit: boolean): Promise<C
 }
 
 /** Name of the savepoint of a nested level; a level has at most one nested level, so the depth makes it unique. */
-function getSavepointName(level: TransactionLevel): string {
+export function getSavepointName(level: TransactionLevel): string {
   return `kern_${level.depth}`
 }
 

@@ -49,11 +49,8 @@ import type { LevelSetting } from "./settings"
 import { applySettings, getLevelSettings } from "./settings"
 import { acquireUnlessAborted } from "./test-levels/abort"
 import { TestFixtureStack } from "./test-levels/fixture-stack"
-import {
-  OpenTestTransactions,
-  runInTurn,
-  runStatementInTurn,
-} from "./test-levels/open-test-transaction"
+import { OpenTestTransactions } from "./test-levels/open-test-transaction"
+import { runInTurn, runStatementInTurn, TurnQueue } from "./test-levels/turns"
 
 /**
  * Routes statements and scripts to the ambient transaction or session of the current async context or to the pool.
@@ -88,7 +85,7 @@ export class TransactionCoordinator {
   execute(statement: SqlStatement): Promise<DriverResult> {
     const level = this.#storage.getStore()
     if (level?.turns) {
-      return runStatementInTurn(this.#storage, level, "execute a query", connection =>
+      return runStatementInTurn(level, "execute a query", connection =>
         connection.execute(statement),
       )
     }
@@ -100,7 +97,7 @@ export class TransactionCoordinator {
   executeScript(text: string): Promise<void> {
     const level = this.#storage.getStore()
     if (level?.turns) {
-      return runStatementInTurn(this.#storage, level, "execute a script", connection =>
+      return runStatementInTurn(level, "execute a script", connection =>
         connection.executeScript(text),
       )
     }
@@ -281,6 +278,7 @@ export class TransactionCoordinator {
    * Runs `callback` in a transaction that always rolls back, on a coordinator created for tests.
    *
    * Inside a transaction, it runs `callback` in a savepoint nested in it that always rolls back.
+   * Outside a transaction of `transaction`, the statements and nested levels of `callback` take turns on its connection, each statement in a savepoint of its own, see `runInTurn`; when `callback` resolves, the level ends after the statements and nested levels it started.
    * When `signal` aborts, the level stops accepting statements at once and ends without waiting for `callback`.
    * Once the level ends, the transaction rejects with the reason of the signal.
    * A failure to start or end the level after the abort suppresses the reason in a `SuppressedError`.
@@ -303,13 +301,13 @@ export class TransactionCoordinator {
     if (this.#closed) {
       return Promise.reject(createDatabaseClosedError("start a test transaction"))
     }
-    return this.#fixtures
-      .startTestLevel(options)
-      .then(level =>
-        level
-          ? runStarted(this.#storage, level, callback, false, signal)
-          : this.#runRoot(callback, false, options),
-      )
+    return this.#fixtures.startTestLevel(options).then(level => {
+      if (!level) {
+        return this.#runRoot(callback, false, options)
+      }
+      level.turns = new TurnQueue()
+      return runStarted(this.#storage, level, callback, false, signal)
+    })
   }
 
   /**
@@ -447,6 +445,9 @@ export class TransactionCoordinator {
     }
     // A level that commits is a transaction of `transaction`; test transactions roll back.
     const level = createLevel(connection, undefined, commits, options.isolation)
+    if (!commits) {
+      level.turns = new TurnQueue()
+    }
     const outcome = await this.#runTransaction(level, callback, commits, options)
     await releaseConnection(connection, this.#onReleaseError)
     return settleTransaction(level, outcome)
@@ -539,32 +540,22 @@ export class TransactionCoordinator {
     commits: boolean,
     options?: LevelOptions,
   ): Promise<T> {
+    const start = async () => {
+      const level = await startNestedLevel(parent, commits, options)
+      // A nested test transaction outside a transaction of the code under test emulates the pool as its parent does.
+      if (!level.inTransaction) {
+        level.turns = new TurnQueue()
+      }
+      return runStarted(this.#storage, level, callback, commits, options?.signal)
+    }
     if (parent.turns) {
-      return runInTurn(
-        parent,
-        "start a nested transaction",
-        async () =>
-          runStarted(
-            this.#storage,
-            await startNestedLevel(parent, commits, options),
-            callback,
-            commits,
-            options?.signal,
-          ),
-        options?.signal,
-      )
+      return runInTurn(parent, "start a nested transaction", start, options?.signal)
     }
     const unavailable = createUnavailableError(parent, "start a nested transaction")
     if (unavailable) {
       throw unavailable
     }
-    return runStarted(
-      this.#storage,
-      await startNestedLevel(parent, commits, options),
-      callback,
-      commits,
-      options?.signal,
-    )
+    return start()
   }
 }
 

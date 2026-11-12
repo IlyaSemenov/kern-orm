@@ -193,7 +193,11 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       return { keys, commands: statements.map(text => text.split(" ", 1)[0]) }
     })
 
-    expect(result).toEqual({ keys: [], commands: ["SELECT", "SELECT"] })
+    // A test transaction runs each statement outside a transaction in a savepoint of its own, while a transaction would wrap both in one.
+    expect(result).toEqual({
+      keys: [],
+      commands: ["SAVEPOINT", "SELECT", "RELEASE", "SAVEPOINT", "SELECT", "RELEASE"],
+    })
   })
 
   it("creates the target schema and the table of versions, and the table in an existing schema, without notices", async () => {
@@ -666,10 +670,11 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
         const statements = await recordStatements(async () => {
           keys = await rollback(db, defineMigrations({ "0001_create_form": createForm }))
         })
-        return { keys, statements: statements.length }
+        return { keys, commands: statements.map(text => text.split(" ", 1)[0]) }
       })
 
-      expect(result).toEqual({ keys: [], statements: 1 })
+      // A test transaction runs a statement outside a transaction in a savepoint of its own; a transaction would also take the lock of the target.
+      expect(result).toEqual({ keys: [], commands: ["SAVEPOINT", "SELECT", "RELEASE"] })
     })
 
     it("rejects an applied migration that the history lacks, since it cannot roll it back", async () => {

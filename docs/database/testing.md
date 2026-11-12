@@ -98,6 +98,12 @@ test("assigns the next position", () =>
   ))
 ```
 
+A statement of the tested code outside a transaction runs in a nested transaction of its own, so that a failed statement, such as one that violates a unique constraint, undoes only itself, as in production.
+A statement that sets the isolation level with `SET TRANSACTION` fails there, so pass the level as above.
+
+Statements and transactions that a test runs at once take turns on the connection of its test transaction: a statement waits while a transaction of the tested code runs, and a test that passes rolls back after the statements and transactions that it started without awaiting them.
+A transaction that waits for a statement started outside of it in the same test never ends on its own: it rolls back when the test times out, as [Tests that time out](#tests-that-time-out) describes, or, while a fixture is open, when the next test starts.
+
 A test transaction does not count as a transaction for [`isInTransaction()` and `ensureTransaction`](./transactions#joining-the-current-transaction), so that the tested code behaves as in production.
 To test how the code behaves inside a transaction, wrap the call in `database.transaction` in the test.
 
@@ -268,9 +274,8 @@ When the pages send requests to the server from another origin, allow the header
 
 The requests of a test see the changes of its earlier requests, and the changes of all of them roll back when the test ends:
 
-- A statement of a request outside a transaction runs in a nested transaction of its own, so a failed statement, such as one that violates a unique constraint, undoes only itself, as in production.
-- The requests of a test share one connection, so the transactions of its requests run one at a time, and the statements of its other requests wait for a running transaction.
-  A transaction that waits for another request of the same test, such as for a request to the same server, waits until the test ends.
+- The statements and transactions of the requests take turns on the connection of the test transaction, as those of any test do, so a failed statement of a request undoes only itself.
+  A transaction of a request that waits for another request of the same test, such as for a request to the same server, waits until the test ends.
 - A statement of a request that keeps running after its test has ended fails.
 
 While a fixture is open, browser tests run one at a time: opening a test transaction rolls back the one still open, such as of a test that crashed.

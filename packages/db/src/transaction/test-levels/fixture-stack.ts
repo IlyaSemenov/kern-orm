@@ -21,6 +21,7 @@ import type { ReleaseErrorHandler } from "../release"
 import { releaseConnection } from "../release"
 
 import { settleUnlessAborted } from "./abort"
+import { TurnQueue } from "./turns"
 
 /** Open test fixtures of a transaction coordinator and the queue of the changes of their stack. */
 export class TestFixtureStack {
@@ -259,10 +260,13 @@ export class TestFixtureStack {
    * Runs `seed` in a savepoint of a fixture that is released when it resolves, returning its result or rejection.
    *
    * The savepoint has its own context, so late code of `seed` cannot reach the fixture after it ends.
+   * Its statements and transactions take turns, as in a test transaction.
    */
   async #seedFixture<T>(fixture: TransactionLevel, seed: () => Promise<T>): Promise<Outcome<T>> {
     try {
-      return await runLevel(this.#storage, await startNestedLevel(fixture, false), seed, true)
+      const level = await startNestedLevel(fixture, false)
+      level.turns = new TurnQueue()
+      return await runLevel(this.#storage, level, seed, true)
     } catch (error) {
       return { rejection: { error } }
     }

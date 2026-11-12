@@ -1,20 +1,17 @@
-// Open test transactions of a database created for tests: test levels that the callbacks of `run`, such as the requests of one browser test to a server, share until they close, and the turns that those callbacks take on their connection.
+// Open test transactions of a database created for tests: test levels that the callbacks of `run`, such as the requests of one browser test to a server, share until they close.
 
 import type { AsyncLocalStorage } from "node:async_hooks"
 
 import type { IsolationLevel } from "../../database"
-import type { Connection, Driver } from "../../driver"
+import type { Driver } from "../../driver"
 import type { OpenedTestTransaction, OpenTestTransactionOptions } from "../../test-helpers"
 import type { Rejection, TransactionLevel } from "../level"
 import {
   closeStarting,
   createLevel,
-  createUnavailableError,
   endLevel,
   getBeginStatement,
   getEndedOutcome,
-  runStarted,
-  startNestedLevel,
   suppress,
 } from "../level"
 import type { ReleaseErrorHandler } from "../release"
@@ -161,47 +158,4 @@ export class OpenTestTransactions {
     }
     return level
   }
-}
-
-/**
- * Runs `start` on its turn on the connection of an open test transaction `level`, and passes the turn on once it settles, after the level it started has ended.
- *
- * The callbacks of an open test transaction share its connection, where PostgreSQL would run a statement of one callback inside the nested transaction of another, so they take turns rather than reject as the nested levels of one callback do.
- * It rejects without calling `start` when the level accepts no statements on its turn, and with the reason of `signal` when it aborts first.
- */
-export async function runInTurn<T>(
-  level: TransactionLevel,
-  operation: string,
-  start: () => Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  const turns = level.turns!
-  await turns.take(signal)
-  try {
-    signal?.throwIfAborted()
-    const unavailable = createUnavailableError(level, operation)
-    if (unavailable) {
-      throw unavailable
-    }
-    return await start()
-  } finally {
-    turns.release()
-  }
-}
-
-/**
- * Runs a statement of `run` on its turn in a savepoint of its own in an open test transaction `level`, released when it succeeds and rolled back when it fails.
- *
- * A statement outside a transaction commits or fails alone in production, so its failure must not abort the transaction that the other callbacks share.
- */
-export function runStatementInTurn<T>(
-  storage: AsyncLocalStorage<TransactionLevel>,
-  level: TransactionLevel,
-  operation: string,
-  run: (connection: Connection) => Promise<T>,
-): Promise<T> {
-  return runInTurn(level, operation, async () => {
-    const unit = await startNestedLevel(level, false)
-    return runStarted(storage, unit, () => run(unit.connection), true)
-  })
 }

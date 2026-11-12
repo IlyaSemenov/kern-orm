@@ -1087,7 +1087,7 @@ describe("isolation levels", () => {
   })
 
   it("ends a nested transaction whose transaction ends after the read of the isolation level, without the nested SAVEPOINT", async () => {
-    const { coordinator, driver, statements } = createTestCoordinator()
+    const { driver, statements } = createRecordingDriver()
     const read = Promise.withResolvers<DriverResult>()
     const acquire = driver.acquire.bind(driver)
     driver.acquire = async () => {
@@ -1099,16 +1099,18 @@ describe("isolation levels", () => {
       }
     }
 
+    const coordinator = new TransactionCoordinator(driver)
+
     const finished = Promise.withResolvers<void>()
     let nested: Promise<void> | undefined
-    const test = coordinator.testTransaction(() => {
+    const transaction = coordinator.transaction(() => {
       nested = markHandled(
         coordinator.transaction(() => Promise.resolve(), { isolation: "read committed" }),
       )
       return finished.promise
     })
     await settleCallbacks()
-    // Resolving the read before the callback ends the test transaction after the check and before the nested one continues.
+    // Resolving the read before the callback ends the transaction after the check and before the nested one continues.
     read.resolve({
       command: "SELECT",
       count: 1,
@@ -1117,7 +1119,7 @@ describe("isolation levels", () => {
     })
     finished.resolve()
 
-    await expect(test).rejects.toThrow("a nested transaction was still running")
+    await expect(transaction).rejects.toThrow("a nested transaction was still running")
     await expect(nested!).rejects.toThrow("its enclosing transaction ended first")
     expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "ROLLBACK"])
   })
@@ -1248,6 +1250,185 @@ describe("isolation levels", () => {
   })
 })
 
+describe("statements of a test transaction", () => {
+  const texts = (statements: readonly { text: string }[]) => statements.map(({ text }) => text)
+
+  it("runs the statements that a test runs at once one after another, each in a savepoint of its own", async () => {
+    const { coordinator, statements } = createTestCoordinator()
+
+    await coordinator.testTransaction(async () => {
+      await Promise.all([run(coordinator, "query 1")(), run(coordinator, "query 2")()])
+    })
+
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "query 1",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "query 2",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+
+  it("rolls back a failed statement to its own savepoint, so the next statement of the test runs", async () => {
+    const failure = new QueryError("duplicate key", { code: "23505" })
+    const { coordinator, statements } = createTestCoordinator({ respond: failOn("bad", failure) })
+
+    await coordinator.testTransaction(async () => {
+      await expect(run(coordinator, "bad")()).rejects.toBe(failure)
+      await run(coordinator, "good")()
+    })
+
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "bad",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "good",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+
+  it("makes a statement of the test wait for a transaction of the tested code instead of rejecting it", async () => {
+    const inside = holdOn("inside")
+    const { coordinator, statements } = createTestCoordinator({ respond: inside.respond })
+
+    await coordinator.testTransaction(async () => {
+      const transaction = coordinator.transaction(run(coordinator, "inside"))
+      await inside.reached
+      const beside = run(coordinator, "beside")()
+      await settleCallbacks()
+      expect(texts(statements)).toEqual(["BEGIN", "SAVEPOINT kern_1", "inside"])
+      inside.resume()
+      await Promise.all([transaction, beside])
+    })
+
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "inside",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "beside",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+
+  it("runs the statements and transactions that its callback started before it rolls back", async () => {
+    const inside = holdOn("inside")
+    const { coordinator, statements } = createTestCoordinator({ respond: inside.respond })
+
+    let transaction: Promise<void> | undefined
+    let statement: Promise<void> | undefined
+    const test = coordinator.testTransaction(async () => {
+      transaction = coordinator.transaction(run(coordinator, "inside"))
+      statement = run(coordinator, "after")()
+    })
+    await inside.reached
+    await settleCallbacks()
+    expect(texts(statements)).toEqual(["BEGIN", "SAVEPOINT kern_1", "inside"])
+    inside.resume()
+
+    await test
+    await Promise.all([transaction, statement])
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "inside",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "after",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+
+  it("rolls back at once when its callback rejects, without waiting for a transaction that the callback started", async () => {
+    const { coordinator, statements } = createTestCoordinator()
+    const failure = new Error("failure")
+
+    const test = coordinator.testTransaction(async () => {
+      markHandled(coordinator.transaction(() => new Promise<never>(() => {})))
+      await settleCallbacks()
+      throw failure
+    })
+
+    await expect(test).rejects.toBe(failure)
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+
+  it("rejects the later statements and the test once a client refuses the SAVEPOINT of a statement and sends the statement", async () => {
+    const refused = new ConnectionError("refused", { unsent: true })
+    const { coordinator, statements } = createTestCoordinator({
+      respond: failOn("SAVEPOINT kern_1", refused),
+    })
+
+    // The statement ran in the test transaction itself, so the test can only roll back.
+    const test = coordinator.testTransaction(async () => {
+      await expect(run(coordinator, "query")()).rejects.toBe(refused)
+      await expect(run(coordinator, "later")()).rejects.toThrow(
+        "Cannot execute a query: a nested transaction failed to end, so the transaction can only roll back",
+      )
+    })
+
+    await expect(test).rejects.toThrow(
+      "Transaction was rolled back: a nested transaction failed to end",
+    )
+
+    expect(texts(statements)).toEqual(["BEGIN", "SAVEPOINT kern_1", "query", "ROLLBACK"])
+  })
+
+  it("rolls back at once when aborted while it waits for a transaction that its callback started", async () => {
+    const { coordinator, statements } = createTestCoordinator()
+    const controller = new AbortController()
+    const reason = new Error("test aborted")
+
+    const test = coordinator.testTransaction(
+      async () => {
+        markHandled(coordinator.transaction(() => new Promise<never>(() => {})))
+      },
+      { signal: controller.signal },
+    )
+    await settleCallbacks()
+    controller.abort(reason)
+
+    await expect(test).rejects.toBe(reason)
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+
+  it("runs the statements of the tested code in its transaction without savepoints of their own", async () => {
+    const { coordinator, statements } = createTestCoordinator()
+
+    await coordinator.testTransaction(() => coordinator.transaction(run(coordinator, "inside")))
+
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "inside",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+})
+
 describe("abort signal of a test transaction", () => {
   /** Signal of a test and the function that aborts it with `reason`. */
   function createTestAbort() {
@@ -1312,7 +1493,9 @@ describe("abort signal of a test transaction", () => {
       "ROLLBACK TO SAVEPOINT kern_1",
       "RELEASE SAVEPOINT kern_1",
       "SAVEPOINT kern_1",
+      "SAVEPOINT kern_2",
       "active",
+      "RELEASE SAVEPOINT kern_2",
       "ROLLBACK TO SAVEPOINT kern_1",
       "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
@@ -1508,7 +1691,10 @@ describe("abort signal of a test transaction", () => {
     await expect(test).rejects.toBe(reason)
     expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
       "1: BEGIN",
+      "1: SAVEPOINT kern_1",
       "1: slow",
+      "1: ROLLBACK TO SAVEPOINT kern_1",
+      "1: RELEASE SAVEPOINT kern_1",
       "1: ROLLBACK",
     ])
     expect(releases).toEqual([{ connection: 1 }])
@@ -1533,7 +1719,9 @@ describe("abort signal of a test transaction", () => {
     await fixture.close()
     expect(statements.slice(6).map(({ text }) => text)).toEqual([
       "SAVEPOINT kern_1",
+      "SAVEPOINT kern_2",
       "next",
+      "RELEASE SAVEPOINT kern_2",
       "ROLLBACK TO SAVEPOINT kern_1",
       "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
@@ -1593,7 +1781,9 @@ describe("abort signal of a test transaction", () => {
       "SAVEPOINT kern_1",
       "ROLLBACK TO SAVEPOINT kern_1",
       "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
       "after",
+      "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
     ])
   })

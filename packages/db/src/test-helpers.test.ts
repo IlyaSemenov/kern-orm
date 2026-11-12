@@ -56,7 +56,9 @@ describe("testTransaction", () => {
     expect(result).toBe("done")
     expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
       "1: BEGIN",
+      "1: SAVEPOINT kern_1",
       "1: inside",
+      "1: RELEASE SAVEPOINT kern_1",
       "1: ROLLBACK",
     ])
     expect(releases).toEqual([{ connection: 1 }])
@@ -89,10 +91,14 @@ describe("testTransaction", () => {
     expect(statements.map(({ text }) => text)).toEqual([
       "BEGIN",
       "SAVEPOINT kern_1",
+      "SAVEPOINT kern_2",
       "nested",
+      "RELEASE SAVEPOINT kern_2",
       "ROLLBACK TO SAVEPOINT kern_1",
       "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
       "after",
+      "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
     ])
   })
@@ -140,6 +146,29 @@ describePostgres(
         "division by zero",
       )
       await testTransaction(() => database.script("INSERT INTO test_run VALUES (1)"))
+    })
+
+    it("keeps the changes of a test and runs its later statements after a statement of the tested code fails", async () => {
+      const count = await testTransaction(async () => {
+        await database.script("INSERT INTO test_run VALUES (1)")
+        await expect(database.script("SELECT 1 / 0")).rejects.toThrow("division by zero")
+        await database.script("INSERT INTO test_run VALUES (2)")
+        return await database.query`SELECT count(*) FROM test_run`.get(t.integer)
+      })
+      expect(count).toBe(2)
+    })
+
+    it("keeps the changes of a seed after a statement of it fails", async () => {
+      const fixture = await openTestFixture(database, async () => {
+        await database.script("INSERT INTO test_run VALUES (1)")
+        await expect(database.script("SELECT 1 / 0")).rejects.toThrow("division by zero")
+        return await database.query`SELECT count(*) FROM test_run`.get(t.integer)
+      })
+      try {
+        expect(fixture.data).toBe(1)
+      } finally {
+        await fixture.close()
+      }
     })
 
     it("rolls back an aborted test once its running statement completes, and the next test runs in the fixture", async () => {
@@ -201,6 +230,22 @@ describePostgres(
   },
 )
 
+describePostgres(
+  "test transactions without a fixture in PostgreSQL",
+  ({ database, testTransaction }) => {
+    it("rejects SET TRANSACTION of the tested code, whose statements run in savepoints of their own", async () => {
+      await testTransaction(
+        async () => {
+          await expect(
+            database.script("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"),
+          ).rejects.toMatchObject({ code: "25001" })
+        },
+        { isolation: "read committed" },
+      )
+    })
+  },
+)
+
 describe("useTestFixture", () => {
   it("opens the fixture in the before hook and closes it in the after hook", async () => {
     const { database, statements, releases, before, after, testTransaction, useTestFixture } =
@@ -221,10 +266,14 @@ describe("useTestFixture", () => {
     expect(statements.map(({ text }) => text)).toEqual([
       "BEGIN",
       "SAVEPOINT kern_1",
+      "SAVEPOINT kern_2",
       "seed",
+      "RELEASE SAVEPOINT kern_2",
       "RELEASE SAVEPOINT kern_1",
       "SAVEPOINT kern_1",
+      "SAVEPOINT kern_2",
       "test",
+      "RELEASE SAVEPOINT kern_2",
       "ROLLBACK TO SAVEPOINT kern_1",
       "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
@@ -301,10 +350,14 @@ describe("openTestFixture", () => {
     expect(statements.map(({ text }) => text)).toEqual([
       "BEGIN",
       "SAVEPOINT kern_1",
+      "SAVEPOINT kern_2",
       "seed",
+      "RELEASE SAVEPOINT kern_2",
       "RELEASE SAVEPOINT kern_1",
       "SAVEPOINT kern_1",
+      "SAVEPOINT kern_2",
       "test",
+      "RELEASE SAVEPOINT kern_2",
       "ROLLBACK TO SAVEPOINT kern_1",
       "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
@@ -393,10 +446,14 @@ describe("wrapTest", () => {
 
     expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
       "1: BEGIN",
+      "1: SAVEPOINT kern_1",
       "1: test",
+      "1: RELEASE SAVEPOINT kern_1",
       "1: ROLLBACK",
       "2: BEGIN",
+      "2: SAVEPOINT kern_1",
       "2: test",
+      "2: RELEASE SAVEPOINT kern_1",
       "2: ROLLBACK",
     ])
   })
@@ -414,10 +471,14 @@ describe("wrapTest", () => {
 
     expect(statements.map(({ text }) => text)).toEqual([
       "BEGIN",
+      "SAVEPOINT kern_1",
       "row 1",
+      "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
       "BEGIN",
+      "SAVEPOINT kern_1",
       "row 2",
+      "RELEASE SAVEPOINT kern_1",
       "ROLLBACK",
     ])
   })
@@ -439,7 +500,13 @@ describe("wrapTest", () => {
 
     // The runner awaits the test until its signal aborts, so the test rejects with its reason.
     await expect(running).rejects.toEqual(new Error("The test timed out"))
-    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "test", "ROLLBACK"])
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "test",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
   })
 
   it("ignores a signal in a row of test.each, which belongs to the data of the test", async () => {
@@ -451,7 +518,13 @@ describe("wrapTest", () => {
     )
     await declared[0]!.fn(...declared[0]!.args)
 
-    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "test", "ROLLBACK"])
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "test",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
   })
 
   it("rolls back the test transaction once onTestFinished reports that the runner has finished the test, ignoring a signal in the data of the test, and passes the failure of an unfinished test to the runner", async () => {
@@ -483,7 +556,9 @@ describe("wrapTest", () => {
     await running
     expect(statements.map(({ connection, text }) => `${connection}: ${text}`)).toEqual([
       "1: BEGIN",
+      "1: SAVEPOINT kern_1",
       "1: test",
+      "1: RELEASE SAVEPOINT kern_1",
       "2: BEGIN",
       "2: ROLLBACK",
       "1: ROLLBACK",
