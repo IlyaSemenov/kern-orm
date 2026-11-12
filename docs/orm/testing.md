@@ -128,7 +128,7 @@ describe("forms of an author", () => {
 })
 ```
 
-Put a fixture for all tests, such as one that applies [migrations](../migrations/), into a setup module:
+Put a fixture for all tests, such as one that applies [migrations](../migrations/applying), into a setup module:
 
 ```ts
 // test/setup.ts
@@ -315,4 +315,4 @@ Both reject when nothing waits within 2 seconds; pass `timeout` to wait longer o
 
 ## Test migrations
 
-To check that every migration applies and rolls back, and how migrations change existing rows, see [Test migrations](../migrations/#test-migrations).
+To check that every migration applies and rolls back, and how migrations change existing rows, see [Testing Migrations](../migrations/testing).

@@ -43,7 +43,7 @@ The package and the application record their applied migrations in separate tabl
 
 Keep released migrations unchanged, so that existing and new installations build the same tables, and add a migration for each further change.
 
-Test the migrations with [`verifyMigrations`](./#test-migrations).
+Test the migrations with [`verifyMigrations`](./testing).
 
 ## Apply the migrations
 
@@ -80,4 +80,4 @@ export async function migrateFormBuilder(driver: Driver) {
 To check the driver or database that the application passes before your package does anything else with it, call `isMigrationTarget`.
 `migrate` checks `schemaName` itself before any query, so pass an option of your package as `schemaName` without checking it.
 
-With a [PostgreSQL schema per tenant](./#tenants), apply the migrations of the package to the schema of each tenant, beside the migrations of the tenant.
+With a [PostgreSQL schema per tenant](./applying#tenants), apply the migrations of the package to the schema of each tenant, beside the migrations of the tenant.

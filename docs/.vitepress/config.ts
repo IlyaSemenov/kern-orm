@@ -83,7 +83,12 @@ export default defineConfig({
         text: "Migrations",
         items: [
           { text: "Getting Started", link: "/migrations/getting-started" },
-          { text: "Migrations", link: "/migrations/" },
+          { text: "Writing Migrations", link: "/migrations/writing" },
+          { text: "Helpers", link: "/migrations/helpers" },
+          { text: "Migrations Outside a Transaction", link: "/migrations/outside-transaction" },
+          { text: "Applying Migrations", link: "/migrations/applying" },
+          { text: "Command Line", link: "/migrations/cli" },
+          { text: "Testing Migrations", link: "/migrations/testing" },
           { text: "Custom Migration Helpers", link: "/migrations/custom-helpers" },
           { text: "Migrations in a Package", link: "/migrations/package-migrations" },
         ],

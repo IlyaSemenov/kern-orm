@@ -33,7 +33,7 @@ kern-orm is tested on PostgreSQL 18.
 
 ## Define tables
 
-kern-orm queries the tables that already exist in your database and does not create or alter them: create them with SQL, directly or in [migrations](../migrations/):
+kern-orm queries the tables that already exist in your database and does not create or alter them: create them with SQL, directly or in [migrations](../migrations/getting-started):
 
 ```sql
 CREATE TABLE form (

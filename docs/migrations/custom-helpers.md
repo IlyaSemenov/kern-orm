@@ -1,6 +1,6 @@
 # Custom Migration Helpers
 
-To build steps that the [helpers](./#helpers) do not cover, such as creating enum types, write a function that returns a step.
+To build steps that the [helpers](./helpers) do not cover, such as creating enum types, write a function that returns a step.
 Quote names with `quoteIdentifier` and string values with `quoteLiteral`:
 
 ```ts [src/migration-helpers.ts]
@@ -30,7 +30,7 @@ To change what a helper does, add a new helper or option.
 
 ## Undo a step
 
-To build a helper that undoes what another one does, pass its step to `invertStep`, which swaps `up` and `down`, also those of [`outsideTransaction`](./#your-own-changes-outside-a-transaction):
+To build a helper that undoes what another one does, pass its step to `invertStep`, which swaps `up` and `down`, also those of [`outsideTransaction`](./outside-transaction#your-own-changes-outside-a-transaction):
 
 ```ts
 import { invertStep } from "kern-migrations"
