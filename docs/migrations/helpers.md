@@ -11,7 +11,7 @@ export default defineMigration([
 ])
 ```
 
-Pass the names of tables, columns, indexes, constraints, and sequences without quotes: helpers quote them.
+Pass the names of tables, columns, indexes, constraints, sequences, and enum types without quotes: helpers quote them.
 Pass definitions, conditions, defaults, and the columns of an index as SQL, quoting a name in them where SQL needs it, such as `'"order"'`.
 When you build SQL text from values of your code, quote names with `quoteIdentifier` and strings with `quoteLiteral`, both from `kern-migrations`.
 
@@ -20,6 +20,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](./outside-transaction).
 - Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
 - Sequences: `createSequence(name, options)` and `dropSequence` with the same arguments, `renameSequence(from, to)`, and `changeSequence(name, from, to)`; the options are `type`, `increment`, `minValue`, `maxValue`, `start`, `cache`, and `cycle`.
+- Enum types: `createEnum(name, values)` and `dropEnum` with the same arguments; pass the values without quotes, such as `createEnum("user_role", ["admin", "member"])`.
 - Extensions: `createExtension(name, { schema })`.
 
 For a change that no helper covers, write a [step of SQL](./writing#sql-steps), or [a helper of your own](./custom-helpers) to reuse it in several migrations.
@@ -41,7 +42,7 @@ changeColumn(
 
 Applying converts the values with `using` of the second state, and rolling back with that of the first.
 
-## Drop a table, column, index, constraint, or sequence
+## Drop a table, column, index, constraint, sequence, or enum type
 
 Pass a drop helper the definition of what it drops: rolling back creates it again from the definition.
 

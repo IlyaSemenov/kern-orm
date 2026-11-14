@@ -136,6 +136,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   A new behavior requires a new helper or option; the helpers of a project must follow the same rule.
 - Helpers quote the names they take as arguments or keys and never qualify them with a schema, which the search path of the migration gives.
   They quote with `quoteIdentifier`, since a step is SQL text, which a fragment of `identifier` from `kern-db` is not.
+  They quote the values of an enum type with `quoteLiteral`.
   They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
 - They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
   The changes outside a transaction of `concurrently` check the catalog instead, since they must be safe to run again, so the `up` and `down` that a transaction runs catch such a mismatch.
