@@ -262,7 +262,7 @@ export class SelectQuery<
    * Filters the query by the values of the primary key of the table, in the order of its columns, and returns the row instead of an array, as `where` followed by `take`, but without a limit.
    *
    * A value is what `where` takes for its column, such as an expression, but never `null` or `undefined`.
-   * Without a row, it rejects with `NotFoundError` unless `optional` or `nullable` makes the query resolve to `undefined` or `null`.
+   * Without a row, it rejects with `NotFoundError` unless `optional` or `nullable` makes the query resolve to `undefined` or `null`; `exists` after it resolves to `false` instead.
    * To insert the record of the key or update the existing one, call `upsert` right after it.
    */
   find<S extends SelectQueryState, Kind extends SelectQueryKind>(
@@ -277,7 +277,7 @@ export class SelectQuery<
    * Filters the query by the values of the columns of one key of the table, primary or unique, and returns the row instead of an array, as `where` followed by `take`, but without a limit.
    *
    * A value is what `where` takes for its column, such as an expression, but never `null` or `undefined`.
-   * Without a row, it rejects with `NotFoundError` unless `optional` or `nullable` makes the query resolve to `undefined` or `null`.
+   * Without a row, it rejects with `NotFoundError` unless `optional` or `nullable` makes the query resolve to `undefined` or `null`; `exists` after it resolves to `false` instead.
    * To insert the record of the key or update the existing one, call `upsert` right after it.
    */
   findBy<
@@ -608,6 +608,7 @@ export class SelectQuery<
    * Replaces the selected fields with whether the query has a row and returns it instead of the rows, such as to filter by related records in `where`.
    *
    * It keeps the filters, the limit, and the offset, and ignores the order; after `groupBy`, it tells whether the query has a group, and after `distinct` and `distinctOn`, it checks the distinct rows and the first rows.
+   * After a method of one row, such as `find` or `take`, it resolves to `false` without the row rather than rejecting with `NotFoundError`.
    */
   exists<S extends UnaggregatedQueryState, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,

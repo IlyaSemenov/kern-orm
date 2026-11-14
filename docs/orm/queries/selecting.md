@@ -367,6 +367,13 @@ const hasPublished = await db.form.where({ published: true }).exists()
 
 `exists` keeps the filters of the query and ignores its selected fields, apart from those that [`distinct`](#distinct-rows) compares; with [`limit` and `offset`](./sorting#pagination), it checks the rows of the page.
 
+To check whether a record exists by its key, call `exists` after [`find` or `findBy`](#record-by-key), which resolves to `false` without the record rather than rejecting with `NotFoundError`:
+
+```ts
+const formExists = await db.form.find(formId).exists()
+// formExists: boolean
+```
+
 To filter records by whether related records exist, see [Filtering](./filtering#related-records).
 
 ## Several queries at once
