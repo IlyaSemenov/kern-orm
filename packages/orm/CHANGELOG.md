@@ -1,5 +1,17 @@
 # kern-orm
 
+## 0.16.0
+
+### Minor Changes
+
+- 3c4785e: Add `findTableMismatches` to `kern-orm/testing`, which checks the tables of a `Db` against its PostgreSQL schema, such as after migrating in a test.
+- ccc894e: `update` without a value to set, such as `update({})`, changes no record and resolves to the number or the selected fields of the records it chooses, instead of throwing.
+
+### Patch Changes
+
+- a8a91fc: Fix the type of `select()` without keys, which added every column of the table to the result.
+- Updated dependencies: kern-db@0.6.1
+
 ## 0.15.0
 
 ### Minor Changes

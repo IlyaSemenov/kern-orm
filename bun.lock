@@ -51,7 +51,7 @@
     },
     "packages/db": {
       "name": "kern-db",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "@types/pg": "catalog:",
@@ -84,9 +84,9 @@
     },
     "packages/orm": {
       "name": "kern-orm",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "dependencies": {
-        "kern-db": "^0.6.0",
+        "kern-db": "^0.6.1",
       },
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",

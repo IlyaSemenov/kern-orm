@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.6.1
+
+### Patch Changes
+
+- ccc894e: `describeDriverContract` also checks that a driver reports the number of rows of a `SELECT`.
+
 ## 0.6.0
 
 ### Minor Changes
