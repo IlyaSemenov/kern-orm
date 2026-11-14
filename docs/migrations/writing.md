@@ -25,6 +25,7 @@ Write names without a PostgreSQL schema, such as `form` rather than `app.form`: 
 
 Use the database names of tables and columns, such as `form_id` for the key `formId` mapped by a [naming convention](../orm/schemas#naming-conventions).
 Migration helpers and SQL use these names directly.
+In a test after migrating, check the database against the tables of your `Db` with [`findTableMismatches`](../orm/testing#tables-that-match-the-database).
 
 Do not import the tables, custom types, or database of your application into a migration: a migration must do the same on every database and in every later version of the application.
 

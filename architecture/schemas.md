@@ -12,7 +12,7 @@
     `defineTable` rejects several columns marked with `primaryKey`, a primary key both on a column and in the options, a key of the options with fewer than two columns or with an unknown or repeated column, a nullable column of the primary key, and two keys of the same columns in any order.
   - `keys` of a table holds the primary key, or `undefined`, and the unique keys, those of the columns in their order followed by those of the options, as frozen lists of column keys; a primary key of the options keeps its order.
   - Keys state what the database guarantees, by a constraint, a unique index, or the query of a view; kern-orm creates no constraints from them.
-  - A table declared with `singleton: true` in the options of `defineTable` holds at most one row, which a unique index of `(true)` must guarantee; kern-orm does not check it ([backlog](../backlog/checking-tables-against-the-database.md)), and queries of the table start as queries of that row ([queries](queries.md#queries-of-a-singleton-table)).
+  - A table declared with `singleton: true` in the options of `defineTable` holds at most one row, which a unique index of `(true)` must guarantee, which [the table check](#table-check) verifies, and queries of the table start as queries of that row ([queries](queries.md#queries-of-a-singleton-table)).
     - It is an option rather than a key without columns, such as `unique: [[]]`, which would read as a key that matches every row ([decision](../decisions/schemas/singleton-tables.md)).
     - `singleton` of a table tells it, and `defineTable` rejects an option that is not a boolean.
     - The type of a table tells it by its parameter `Singleton`: `true` or `false` of a literal option, `false` without it, and `boolean` where the types do not tell it: for an option that is not a literal, such as of a variable of type `TableOptions`, for a union of options of different values, which may include `undefined`, and for a table typed as `Table<Name, Columns>`.
@@ -65,6 +65,26 @@
 
 Members of schemas and `Db` other than tables start with `$`, and table keys must not.
 Column keys must not start with `$` either, which keeps such names free for members of the column references passed to query callbacks.
+
+## Table check
+
+`findTableMismatches` (`inspection/tables.ts`, exported from `kern-orm/testing`) resolves to the mismatches of the tables of a `Db` and its PostgreSQL schema, each with the key of its table in the schema and a message, so that a test compares them with an empty list in any test runner and filters out those of a table it accepts.
+
+- It reads `pg_catalog` through `$database` of the `Db`, so that it runs in the ambient transaction, such as a test transaction in which migrations have created the tables, and in the PostgreSQL schema that `$schemaName` gives, read once, or `current_schema()` for a `Db` bound without one.
+  `information_schema` omits unique indexes that no constraint creates, such as partial ones and those of expressions, and hides objects by privileges.
+- It requires PostgreSQL 17, for `to_regtypemod`, and rejects on an older server before reading the catalog.
+  It reads the columns of PostgreSQL 18, `conenforced` and `conperiod`, from the row of `pg_constraint` as JSON, so that the statement runs on PostgreSQL 17, which lacks them.
+- Each table exists as a table, ordinary, partitioned, or foreign, or as a view, ordinary or materialized, with each column under its physical name; columns of one physical name are each checked.
+- Each column is of its `sqlType`: `to_regtype` and `to_regtypemod` resolve it in the search path of the connection, as the casts of queries resolve a type, and `format_type` of the result is compared with that of the column, so that aliases, such as `int4` and `integer`, match, and type modifiers, such as of `varchar(255)`, must match.
+- Only the columns and their types of a view are checked, since the catalog tells neither the nullability of its columns nor what its query guarantees; a required relation of a view is not checked.
+- A column of a table whose type is nullable has no not-null constraint, and one whose type is not nullable has a valid one: on PostgreSQL 18, `attnotnull` is also true for a `NOT VALID` not-null constraint, which rejects `NULL` of new rows but not of existing ones.
+- A column marked with `hasDefault` has a default, an identity, or a generated value; a default of a column without it is not a mismatch, since it breaks no insert or query of the table.
+- A column of a table that the table does not define is a mismatch only when it has a not-null constraint, valid or not, and no such value, since every insert of the table fails on it.
+- Each key of a table is backed by the unique indexes that PostgreSQL infers as the arbiters of the target of `ON CONFLICT` that `onConflict` and `upsert` build for it: of the set of its columns in any order, ignoring `INCLUDE` columns and repeated columns, without expressions or a predicate, and valid ([decision](../decisions/schemas/backing-of-keys.md)).
+  One of them must exist, and none may be deferrable, since PostgreSQL rejects an insert with a deferrable arbiter even beside one that is not.
+  A singleton table is backed by such an index of the single expression `(true)`.
+- Each required relation `one` between tables is backed by a foreign key of the same pairs of columns, compared as a set, that is valid, enforced, not deferrable, and not of a period, since a deferrable one allows a missing record within a transaction.
+- A message names a column by its key, followed by its physical name when it differs, and a key by its column keys.
 
 ## Open questions
 

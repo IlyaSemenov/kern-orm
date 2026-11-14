@@ -21,6 +21,9 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [Django](https://github.com/django/django) 6.0.10.
 - [node-pg-migrate](https://github.com/salsita/node-pg-migrate) 9.0.0.
 - [Rails](https://github.com/rails/rails) 8.1.4.1, with its migrations of Active Record.
+- [Hibernate ORM](https://github.com/hibernate/hibernate-orm) 7.4.
+- [Doctrine ORM](https://github.com/doctrine/orm) 3.5.0.
+- [Alembic](https://github.com/sqlalchemy/alembic) 1.20.1.
 
 ## Topics
 

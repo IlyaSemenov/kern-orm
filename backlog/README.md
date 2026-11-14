@@ -53,7 +53,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [SQL fragments of users in pages after an offset](sql-fragments-of-users-in-pages-after-an-offset.md): whether a fragment of a user keeps a page on its table.
 - [Unions of queries of `find` and `findBy` by different keys](unions-of-queries-of-find-and-findby-by-different-keys.md): a type parameter of the key apart from the state.
 - [Schema views](schema-views.md): restricted views of schemas for shared business logic.
-- [Checking tables against the database](checking-tables-against-the-database.md): tables, keys, and relations that the database backs.
 - [Recurrent SQL of migrations](recurrent-sql-of-migrations.md): functions and views run again after every migration.
 - [Migration helpers of enums](migration-helpers-of-enums.md): changing enum types.
 - [Changes outside a transaction in verification](changes-outside-a-transaction-in-verification.md): checking the changes that run outside a transaction block.

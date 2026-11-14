@@ -313,6 +313,36 @@ Run such tests on a database created without `test: true`, since their transacti
 When the code under test runs the query on a connection that the test cannot reach, wait for it by a part of its SQL with `waitForLockedStatement`, which resolves to its backend PID.
 Both reject when nothing waits within 2 seconds; pass `timeout` to wait longer or shorter.
 
+## Tables that match the database
+
+To check that your migrations create the tables that your `Db` defines, such as each column under the name that its naming convention gives, call `findTableMismatches` in a test after the migrations and expect no mismatches:
+
+```ts
+import assert from "node:assert/strict"
+
+import { findTableMismatches } from "kern-orm/testing"
+
+import { db } from "#db"
+import { test } from "./helpers"
+
+test("the tables match the database", async () => {
+  assert.deepEqual(await findTableMismatches(db), [])
+})
+```
+
+It checks the PostgreSQL schema of the `Db`, such as of the current tenant, in the test transaction, and reports each mismatch with the key of its table in the schema and what does not match:
+
+- each table exists as a table or a view, with each column under its name and of its type;
+- each column of a table is nullable or `NOT NULL` as you define it, and has a default, an identity, or a generated value when you mark it with `hasDefault()`;
+- a table has no other `NOT NULL` column without a default, which every insert would have to give;
+- each key of a table has a unique index or constraint of its columns that is not partial, and none of them is deferrable;
+- a [table of one row](./schemas#tables-of-one-row) has a unique index of `(true)`;
+- each required relation `one` between tables has a foreign key of its columns that is valid and not deferrable.
+
+It checks only the columns and their types of a view, and requires PostgreSQL 17 or newer.
+
+To accept the mismatches of a table on purpose, such as a `NOT NULL` column of a table that your application only reads, filter them out by `table`.
+
 ## Test migrations
 
 To check that every migration applies and rolls back, and how migrations change existing rows, see [Testing Migrations](../migrations/testing).

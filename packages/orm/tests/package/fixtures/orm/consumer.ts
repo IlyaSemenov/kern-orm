@@ -14,8 +14,8 @@ import {
 import { defineType as defineDbType, identifier, param } from "kern-orm/db"
 import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import * as dbTypes from "kern-orm/db/types"
-import type { TestFixture } from "kern-orm/testing"
-import { createTestHelpers } from "kern-orm/testing"
+import type { TableMismatch, TestFixture } from "kern-orm/testing"
+import { createTestHelpers, findTableMismatches } from "kern-orm/testing"
 import * as t from "kern-orm/types"
 import postgres from "postgres"
 
@@ -45,6 +45,7 @@ const { useTestFixture } = createTestHelpers(createDatabase({ driver, test: true
   after: () => {},
 })
 useTestFixture(async () => ({ formId: "form-id" })) satisfies TestFixture<{ formId: string }>
+findTableMismatches satisfies (target: typeof db) => Promise<TableMismatch[]>
 
 const { text, parameters } = query.toSQL()
 console.log(

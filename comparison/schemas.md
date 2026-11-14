@@ -32,3 +32,11 @@ A naming convention is an option of the definition of tables, `createTableFactor
 A table declared with `singleton: true` holds at most one row, which a query of the table reads, upserts, updates, and deletes without a key or `all`.
 
 - Orchid ORM, lacks: a table of one row has no declaration of its own, so an application either passes a constant of a sentinel key column to every query, or reads the row of a unique index of `(true)` with `take` and changes it with `all`, whose reason needs a comment at every call, such as `all().take().upsert({ data, create })` ([orchid-orm#752](https://github.com/romeerez/orchid-orm/issues/752)).
+
+## Checking tables against the database
+
+`findTableMismatches` of `kern-orm/testing` finds the mismatches of the tables of a `Db` and its PostgreSQL schema, such as a missing column, a column of another type or nullability, a key without a unique index, and a required relation without a foreign key.
+
+- Hibernate ORM, same: `validate` of `hibernate.hbm2ddl.auto` checks the mapped tables and columns with their types, and settings of 7.3 add the validation of indexes and unique keys ([docs](https://docs.hibernate.org/orm/7.4/javadocs/org/hibernate/cfg/SchemaToolingSettings.html)).
+- Doctrine ORM, differs: `orm:validate-schema` fails when the schema that the mapping generates differs from the database in anything, as a schema diff, unless `--skip-sync` skips the check ([source](https://github.com/doctrine/orm/blob/3.5.0/src/Tools/Console/Command/ValidateSchemaCommand.php)).
+- Alembic, differs: `alembic check` fails when autogenerate would generate operations from the differences of the models and the database; it compares server defaults only with `compare_server_default` ([docs](https://alembic.sqlalchemy.org/en/latest/autogenerate.html)).
