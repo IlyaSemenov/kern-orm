@@ -13,7 +13,7 @@ import * as t from "../types"
 import { defineHelper } from "./helper"
 import type { SelectQueryKind } from "./kind"
 import type { ResultOf, SelectQuery } from "./select"
-import type { FoundKey, QueryStateOf } from "./state"
+import type { EmptyRecord, FoundKey, QueryStateOf } from "./state"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
 const post = defineTable("post", {
@@ -192,6 +192,13 @@ describe("results", () => {
     expectTypeOf(
       db.post.find("post-id").nullable().delete().select("title"),
     ).resolves.toEqualTypeOf<{ title: string } | null>()
+  })
+
+  test("gain no field from a selection without keys", () => {
+    expectTypeOf(db.post.find("post-id").delete().select()).resolves.toEqualTypeOf<EmptyRecord>()
+    expectTypeOf(db.post.insert({ title: "Hello" }).select("id").select()).resolves.toEqualTypeOf<{
+      id: string
+    }>()
   })
 
   test("are the values of get and pluck", () => {

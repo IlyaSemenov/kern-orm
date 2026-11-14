@@ -337,7 +337,7 @@ bench("count function", async () => {
   await tenantDb.form.select(() => ({
     total: count(),
   }))
-}).types([250, "instantiations"])
+}).types([251, "instantiations"])
 
 bench("aggregate function of a column", async () => {
   await tenantDb.form.select(form => ({
@@ -371,7 +371,7 @@ bench("aggregate function of an aggregate of a relation", async () => {
 
 bench("groupBy of a column", async () => {
   await tenantDb.form.groupBy("name").select("name")
-}).types([164, "instantiations"])
+}).types([165, "instantiations"])
 
 bench("groupBy of a selected field", async () => {
   await tenantDb.form
@@ -380,14 +380,14 @@ bench("groupBy of a selected field", async () => {
       total: count(),
     }))
     .groupBy((_form, selected) => selected.bucket)
-}).types([613, "instantiations"])
+}).types([614, "instantiations"])
 
 bench("having of an aggregate", async () => {
   await tenantDb.form
     .groupBy("name")
     .having(() => count().gt(1))
     .pluck("name")
-}).types([294, "instantiations"])
+}).types([295, "instantiations"])
 
 bench("having of a selected field", async () => {
   await tenantDb.form
@@ -397,7 +397,7 @@ bench("having of a selected field", async () => {
     }))
     .groupBy("name")
     .having((_form, selected) => selected.total.gt(1))
-}).types([777, "instantiations"])
+}).types([778, "instantiations"])
 
 bench("aggregate functions after groupBy", async () => {
   await tenantDb.form.groupBy("name").select(form => ({
@@ -405,7 +405,7 @@ bench("aggregate functions after groupBy", async () => {
     total: sum(form.name.length()),
     last: max(form.name),
   }))
-}).types([523, "instantiations"])
+}).types([524, "instantiations"])
 
 bench("groupBy after a select of aggregate functions", async () => {
   await tenantDb.form
@@ -415,15 +415,15 @@ bench("groupBy after a select of aggregate functions", async () => {
       last: max(form.name),
     }))
     .groupBy("name")
-}).types([655, "instantiations"])
+}).types([656, "instantiations"])
 
 bench("pluck of an aggregate function after groupBy", async () => {
   await tenantDb.form.groupBy("name").pluck(form => sum(form.name.length()))
-}).types([386, "instantiations"])
+}).types([387, "instantiations"])
 
 bench("distinctOn of a column", async () => {
   await tenantDb.form.distinctOn("name").orderBy("name").select("id")
-}).types([284, "instantiations"])
+}).types([285, "instantiations"])
 
 bench("distinctOn of a selected field", async () => {
   await tenantDb.form

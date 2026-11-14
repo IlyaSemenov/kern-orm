@@ -53,4 +53,4 @@ bench("first query of a deep relation graph", async () => {
         })),
       })),
     }))
-}).types([6848, "instantiations"])
+}).types([6842, "instantiations"])

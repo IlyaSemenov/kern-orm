@@ -231,7 +231,8 @@ export class MutationQuery<
   select<
     S extends RecordMutationState,
     Kind extends SelectQueryKind,
-    K extends keyof S["table"]["columns"] & string,
+    // Without keys, TypeScript would infer the constraint, every column, whereas the call adds no column.
+    K extends keyof S["table"]["columns"] & string = never,
   >(
     this: MutationQuery<S, Kind>,
     ...keys: K[]

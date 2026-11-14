@@ -106,6 +106,13 @@ describe("select", () => {
     }>()
   })
 
+  test("adds no field without keys", () => {
+    const query = from(post).select("id").select()
+
+    expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ id: string }>()
+    expectTypeOf(db.post.select()).resolves.toEqualTypeOf<EmptyRecord[]>()
+  })
+
   test("accepts any selection on a query of any result", () => {
     const query: SelectQuery<AnyResultState> = from(post).select("id")
     query.select(() => ({

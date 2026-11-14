@@ -189,7 +189,8 @@ export class SelectQuery<
   select<
     S extends RecordQueryState,
     Kind extends SelectQueryKind,
-    K extends keyof S["table"]["columns"] & string,
+    // Without keys, TypeScript would infer the constraint, every column, whereas the call adds no column.
+    K extends keyof S["table"]["columns"] & string = never,
   >(
     this: SelectQuery<S, Kind>,
     ...keys: K[]
