@@ -339,7 +339,7 @@ export interface ConflictUpdateNode {
 /** Update statement of the rows that its filters choose. */
 export interface UpdateNode<Field = ProjectionNode> extends MutationParts<Field> {
   readonly kind: "update"
-  /** Assignments of `SET`, at least one, with unique keys. */
+  /** Assignments of `SET`, with unique keys; without them, the update changes no row and compiles to a select of the rows that it would change. */
   readonly set: readonly AssignmentNode[]
   readonly filters: QueryFilters
 }

@@ -128,7 +128,7 @@ export function toInsertRows(
 /**
  * Returns the assignments of an update of the rows of `source` that `set` gives: the values of its columns, or a callback that receives the references of `source` with the relations of `context`, and those of `excluded` for `DO UPDATE` of a conflict, and returns them, read when it is called.
  *
- * A value of `undefined` keeps its column, and an update must set at least one column.
+ * A value of `undefined` keeps its column, so the assignments may be none.
  * It rejects a key that is not a column of the table of `source`, and a query other than of one value.
  */
 export function toAssignments(
@@ -155,11 +155,6 @@ export function toAssignments(
     if (value !== undefined) {
       assignments.push(Object.freeze({ key, value: resolveValue(table, key, value) }))
     }
-  }
-  if (assignments.length === 0) {
-    throw new Error(
-      `update takes the value of at least one column of table "${table.name}"; a column given as undefined keeps its value`,
-    )
   }
   return assignments
 }

@@ -139,7 +139,7 @@ To fail instead of waiting for a locked row, pass `noWait`: the query rejects wi
 Like any failed statement, it aborts the transaction, so to continue after it, run the query in a [nested transaction](#nested-transactions).
 
 Run a query that locks rows in `$transaction` or `$ensureTransaction`, also in code under test: outside a transaction, the locks would end with its statement, so the query rejects, and a [test transaction](./testing) alone does not count as one.
-An `update`, `delete`, or `insert` holds the locks of the queries in it while it changes the rows, so it needs no transaction, such as to take the next jobs in one statement:
+An `update` that sets a value, a `delete`, or an `insert` holds the locks of the queries in it while it changes the rows, so it needs no transaction, such as to take the next jobs in one statement:
 
 ```ts
 const jobIds = await db.job
@@ -156,6 +156,8 @@ const jobIds = await db.job
   .update({ status: "running" })
   .pluck("id")
 ```
+
+An [`update` without values](./queries/mutations#updating) changes no row, so it needs a transaction to hold the locks of the queries in it.
 
 A [nested transaction](#nested-transactions) that rolls back releases the locks it took.
 

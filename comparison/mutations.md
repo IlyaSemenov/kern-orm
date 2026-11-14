@@ -6,6 +6,12 @@
 
 - Orchid ORM, fails: `delete` and `update` with `{ notIn: [] }` changed all records ([orchid-orm#847](https://github.com/romeerez/orchid-orm/issues/847)), and `delete` with `join` and a `where` without conditions produced invalid SQL ([orchid-orm#854](https://github.com/romeerez/orchid-orm/issues/854)).
 
+## Update without values
+
+`update` without a column to set, such as of the empty values of a PATCH, changes no row and resolves as the update would: a select of the rows of its filters gives their number, or the fields selected after it.
+
+- Orchid ORM, differs: it turns such an update into a select of the rows, `SELECT count(*)` without selected fields, unless the table has its `updatedAt` timestamp, which the update sets even without values ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/update.md#empty-set)).
+
 ## Related records selected by a mutation
 
 A mutation reads the related records that it selects in its own statement, atomic without a transaction or a savepoint.

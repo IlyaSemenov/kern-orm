@@ -216,6 +216,12 @@ describe("conflicts", () => {
     )
   })
 
+  it("rejects update without a column to set", () => {
+    expect(() => from(vote).insert(record).onConflict("id").update({ note: undefined })).toThrow(
+      'update of onConflict takes the value of at least one column of table "vote"; to skip the rows that conflict, use doNothing()',
+    )
+  })
+
   it("rejects merge and update of a conflict on any key", () => {
     const anyKey = from(vote).insert(record).onConflict()
 
@@ -490,6 +496,27 @@ describe("update", () => {
       text: 'UPDATE "form" AS "form" SET "name" = $1 WHERE "form"."id" = $2',
       parameters: ["Survey", "1"],
     })
+  })
+
+  it("selects the rows that it would update, changing none, without a column to set", () => {
+    expect(schema.form.find(1).update({}).toSQL()).toEqual({
+      text: 'SELECT FROM "form" AS "form" WHERE "form"."id" = $1',
+      parameters: ["1"],
+    })
+    expect(
+      schema.form
+        .where({ name: "Survey" })
+        .update(() => ({ note: undefined }))
+        .select(columns => ({
+          id: columns.id,
+          name: sql(t.text)`left(${columns.name}, ${1})`,
+        }))
+        .toSQL(),
+    ).toEqual({
+      text: 'SELECT "form"."id" AS "id", left("form"."name", $1) AS "name" FROM "form" AS "form" WHERE "form"."name" = $2',
+      parameters: ["1", "Survey"],
+    })
+    expect(schema.form.all().update({}).select().toSQL().text).toBe('SELECT FROM "form" AS "form"')
   })
 })
 
@@ -904,6 +931,26 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
     ])
 
     expect(counts).toEqual([2, 2, 1, 2])
+  })
+
+  it("changes no row without a column to set, resolving to the rows it would update", async () => {
+    const results = await testTransaction(async () => {
+      const missing = db.form.find(1).update({})
+      await expect(Promise.resolve(missing)).rejects.toThrow(NotFoundError)
+      return {
+        missingCount: await db.form.find(1).optional().update({}),
+        count: await db.form.find(100).update({ note: undefined }),
+        record: await db.form.find(100).update({}).select("name", "note"),
+        records: await db.form.all().update({}).select(),
+      }
+    })
+
+    expect(results).toEqual({
+      missingCount: 0,
+      count: 1,
+      record: { name: "Survey", note: null },
+      records: [{}],
+    })
   })
 
   it("sets the values of queries of one value in its statement, NULL without a row", async () => {

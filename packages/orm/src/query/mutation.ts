@@ -611,6 +611,12 @@ export class ConflictTarget<
     const node = this.insertNode()
     const excluded = createExcluded(insert.table)
     const assignments = toAssignments(node.target, set, insert.context, excluded)
+    // PostgreSQL rejects `DO UPDATE SET` without assignments.
+    if (assignments.length === 0) {
+      throw new Error(
+        `update of onConflict takes the value of at least one column of table "${insert.table.name}"; to skip the rows that conflict, use doNothing()`,
+      )
+    }
     return this.derive(
       Object.freeze({ target, update: Object.freeze({ set: assignments, excluded }) }),
       node.rows,

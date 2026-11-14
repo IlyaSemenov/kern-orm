@@ -156,12 +156,12 @@ describe("toAssignments", () => {
     ])
   })
 
-  it("rejects values without a column to set, a value that is not an object, a key that is not a column, and a query other than of one value", () => {
-    const message =
-      'update takes the value of at least one column of table "form"; a column given as undefined keeps its value'
+  it("gives no assignments for values without a column to set", () => {
+    expect(toAssignments(source, {}, noContext)).toEqual([])
+    expect(toAssignments(source, () => ({ name: undefined }), noContext)).toEqual([])
+  })
 
-    expect(() => toAssignments(source, {}, noContext)).toThrow(message)
-    expect(() => toAssignments(source, { name: undefined }, noContext)).toThrow(message)
+  it("rejects a value that is not an object, a key that is not a column, and a query other than of one value", () => {
     expect(() => toAssignments(source, () => "Survey", noContext)).toThrow(
       'update takes the values of the columns of table "form" or a callback that returns them',
     )

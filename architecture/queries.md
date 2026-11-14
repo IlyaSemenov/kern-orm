@@ -246,7 +246,7 @@ Queries come in two kinds that share the query methods and differ only by execut
     PostgreSQL rejects a lock beside an aggregate, `DISTINCT`, and `GROUP BY`, and takes it in `EXISTS`, where it would lock only the first row found.
   - [Mutations](mutations.md#rows-to-change) reject a query with a lock.
 - `$execute` rejects a select statement that locks rows at any depth without a statement where `isInTransaction` is `false`, as [`$lock`](transactions.md#locks) does; `compileStatement` tells it in `locksRows`.
-  - A mutation holds the locks of its queries while it changes rows, so it runs without a transaction, such as to take the next jobs of a queue in one statement of `in` and `skipLocked`.
+  - A mutation holds the locks of its queries while it changes rows, so it runs without a transaction, such as to take the next jobs of a queue in one statement of `in` and `skipLocked`; an [update without values](mutations.md#values) changes no row, so it is rejected as a select statement.
   - kern-orm does not read the text of a statement of SQL text, which may change rows too, so it runs a query with a lock interpolated into it.
 
 ## Aggregates

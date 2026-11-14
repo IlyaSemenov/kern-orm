@@ -115,8 +115,11 @@ await db.form.find(formId).update({ published: true })
 ```
 
 Omitted columns, and columns given as `undefined`, keep their values, so you can pass a partial object, such as the fields that a request changes.
-`update` takes at least one value other than `undefined`.
 A value is anything that [`insert`](#inserting) takes, such as a query of one value.
+
+Values without a column to set, such as of a request that changes nothing, change no record: `update` reads the records it chooses instead and resolves to their number or the fields that you select.
+A query of `find` still rejects with `NotFoundError` without its record.
+It does not lock the records, as an update that sets a value does, so lock them with [`forUpdate`](../transactions#locking-rows) when a transaction relies on the lock.
 
 To compute a value from the columns of the record, pass a callback:
 

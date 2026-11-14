@@ -17,6 +17,7 @@ import type {
   StatementNode,
   TableNameNode,
   TableSourceNode,
+  UpdateNode,
 } from "../../ast/nodes"
 import { findValueProjection } from "../../ast/projections"
 import type { AnyDb } from "../../execution/db"
@@ -86,8 +87,8 @@ export function compileStatement(
         // PostgreSQL rejects `RETURNING` without fields, so a mutation that returns records without fields counts them.
         counted:
           returning === undefined ? "number" : returning.length === 0 ? "records" : undefined,
-        // A lock in a query of its values or filters holds the row for the change of the statement.
-        locksRows: false,
+        // A lock in a query of its values or filters holds the row for the change of the statement, whereas an update without assignments changes no row and is a select statement; the text above finds its locks.
+        locksRows: node.kind === "update" && node.set.length === 0 && context.locksRows,
       }
     }
   }
@@ -123,6 +124,9 @@ function compileMutation(context: CompileContext, node: MutationStatementNode): 
       text = `INSERT INTO ${target}${compileValues(context, node)}${compileConflict(context, scope, node)}`
       break
     case "update": {
+      if (node.set.length === 0) {
+        return compileUnchangedRows(context, scope, target, node)
+      }
       text = `UPDATE ${target} SET${compileAssignments(context, scope, node.target, node.set)}`
       text += compileWhere(context, scope, node.filters)
       break
@@ -138,6 +142,20 @@ function compileMutation(context: CompileContext, node: MutationStatementNode): 
     text += ` RETURNING${compileProjections(context, scope, returning)}`
   }
   return text
+}
+
+// PostgreSQL rejects `SET` without assignments, and a select of the rows reports their number in its command tag, as the update would; it takes no row lock, since it changes no row.
+/** Compiles an update without assignments, which changes no row, as a select of the rows that it would change, with its returned fields as the select list, so that it resolves to their number or their fields. */
+function compileUnchangedRows(
+  context: CompileContext,
+  scope: Scope,
+  target: string,
+  node: UpdateNode,
+): string {
+  const { returning } = node
+  // The select list precedes `WHERE`, so its parameters come first.
+  const fields = returning === undefined ? "" : compileProjections(context, scope, returning)
+  return `SELECT${fields} FROM ${target}${compileWhere(context, scope, node.filters)}`
 }
 
 /** Compiles the columns and the rows of `VALUES` of an insert, or `DEFAULT VALUES` for one row of the defaults of every column. */

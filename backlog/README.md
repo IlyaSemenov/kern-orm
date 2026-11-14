@@ -11,7 +11,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Arithmetic operators](arithmetic-operators.md): `+`, `-`, and the increment of a column.
 - [Updating records with values of each](updating-records-with-values-of-each.md): `UPDATE ... FROM (VALUES ...)` matched by a key.
 - [Computed columns](computed-columns.md): columns defined as expressions, and fields computed at runtime.
-- [Empty changes and `none()`](empty-changes-and-none.md): mutations without values that change nothing, and queries known to be empty without a statement.
+- [Empty changes and `none()`](empty-changes-and-none.md): `upsert` without values and `insertMany` without records that change nothing, and queries known to be empty without a statement.
 - [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
 - [Unions and common table expressions](unions-and-common-table-expressions.md): `UNION ALL`, `WITH`, and derived sources.
 - [pgvector type](pgvector-type.md): `vector` with the operators of its distances.

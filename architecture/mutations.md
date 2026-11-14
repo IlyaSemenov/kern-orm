@@ -37,7 +37,12 @@
   - One record without values inserts `DEFAULT VALUES`, and several insert the `DEFAULT` of the first column of the table, since `DEFAULT VALUES` inserts one row.
   - The values of an insert see no source, so they cannot refer to a column.
   - `insertMany` rejects an array without records, which has no statement to compile.
-- `update` takes the values of its columns or a callback that receives the columns and the relations of the changed rows and returns them, and rejects values without a column to set, which have no statement to compile.
+- `update` takes the values of its columns or a callback that receives the columns and the relations of the changed rows and returns them.
+  - Values without a column to set change no row: PostgreSQL rejects `SET` without assignments, so the update compiles to `SELECT` of its returned fields from the rows of its filters, whose command tag gives their number, and the rows checks of the mutation apply to them, such as `NotFoundError` of a query of `find` without its row.
+    - The select takes no row lock of its own, since it changes no row, so it does not hold the rows until the transaction ends, as an update does ([decision](../decisions/mutations/update-without-values.md)).
+      A lock in a query of its filters or of its returned fields requires a transaction, as of a select statement ([row locks](queries.md#row-locks)).
+    - It reads the rows under the row security policies of `SELECT`, so it may give a row that a policy of `UPDATE` would hide from the update.
+  - `update` of `onConflict` rejects values without a column to set, since `DO UPDATE SET` requires one; `doNothing` skips the rows instead.
   - A query of a relation among the values of the callback is correlated with the changed row.
     It reads the snapshot of the statement, apart from a row that its [row lock](queries.md#row-locks) waited for, so a relation of the table of the update reads the rows as they were before it, under an alias of its own.
   - The queries among the values of the callback add their relations to the state of the mutation, as the nested queries of a selection do, so types reject them where the `Db` lacks them; an expression, such as of `expr` or `coalesce`, does not carry them, and only lowering rejects them, at any depth of the statement ([queries of a Db](queries.md#queries-of-a-db)).
@@ -75,7 +80,7 @@
   - At runtime, it rejects a query whose node keeps no values of the key, such as with `where` before or after `find`, `optional`, a relation, selected fields, an order, or a row lock, also on a singleton table, such as after `take` or `where`.
 - Its values are those of an insert without the columns of the key, `UpsertValues`, a mapped type of its own ([decision](../decisions/mutations/upsert-types.md)).
   - A column that they omit or give as `undefined` gets its default in an inserted record and keeps its value in an updated one.
-  - At runtime, it rejects values that are no object, a value of a column of the key, and values without a value other than `undefined`, as `update` does ([backlog](../backlog/empty-changes-and-none.md)).
+  - At runtime, it rejects values that are no object, a value of a column of the key, and values without a value other than `undefined` ([backlog](../backlog/empty-changes-and-none.md)).
 - It changes rows `one`, since the statement inserts or updates the record, so it resolves to `1`, and the fields selected after it are those of the record, inserted or updated.
 
 ## Results

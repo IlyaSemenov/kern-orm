@@ -188,10 +188,13 @@ export function describeDriverContract(
         const updated = await database.execute(
           createStatement("UPDATE pg_count_test SET id = id + 1 WHERE id > 1"),
         )
-        return [created.count, inserted.count, updated.count]
+        const selected = await database.execute(
+          createStatement("SELECT FROM pg_count_test WHERE id > 2"),
+        )
+        return [created.count, inserted.count, updated.count, selected.count]
       })
 
-      assert.deepEqual(counts, [0, 3, 2])
+      assert.deepEqual(counts, [0, 3, 2, 2])
     })
 
     it("reports the names of the result columns, also without rows", async () => {

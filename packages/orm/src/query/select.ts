@@ -1032,6 +1032,8 @@ export class SelectQuery<
    * A value is what `insert` takes as a value, such as a query of an aggregate of related records.
    * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
    * A query without a filter must call `all` to update every row, unless it is a query of a singleton table, which updates its row.
+   *
+   * Values without a column to set change no row and lock none: the query reads the rows that it chooses instead, and resolves to their number or the fields selected after it.
    * Select the fields that it returns after it, with their values after the update, such as `update(callback).select("id")`.
    */
   update<
@@ -1059,6 +1061,8 @@ export class SelectQuery<
    * A value is what `insert` takes as a value.
    * A query of `find` or `findBy` rejects with `NotFoundError` without its row, unless `optional` or `nullable` allows it.
    * A query without a filter must call `all` to update every row, unless it is a query of a singleton table, which updates its row.
+   *
+   * Values without a column to set change no row and lock none: the query reads the rows that it chooses instead, and resolves to their number or the fields selected after it.
    * Select the fields that it returns after it, with their values after the update, such as `update(set).select("id")`.
    */
   update<S extends SelectQueryState, Kind extends SelectQueryKind>(

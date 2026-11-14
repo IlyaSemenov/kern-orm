@@ -425,6 +425,21 @@ describe("row locks", () => {
     expect(db.$compile(locked).text).toEndWith("FOR UPDATE")
   })
 
+  it("rejects an update without values that locks rows outside a transaction, since it changes no row", async () => {
+    const { db, statements } = connectRecorded()
+    const lockedId = db.post.orderBy("id").take().get("id").forUpdate()
+    const update = db.post.where(post => post.id.eq(lockedId)).update({})
+
+    await expect(Promise.resolve(update)).rejects.toThrow(message)
+    expect(statements).toEqual([])
+    await db.$transaction(async () => await update)
+    expect(statements.map(({ text }) => text)).toEqual([
+      "BEGIN",
+      'SELECT FROM "app"."post" AS "post" WHERE "post"."id" = (SELECT "post_2"."id" AS "id" FROM "app"."post" AS "post_2" ORDER BY "post_2"."id" LIMIT 1 FOR UPDATE)',
+      "COMMIT",
+    ])
+  })
+
   it("rejects it in a test transaction alone, which code under test does not rely on, so that the lock is held in production too", async () => {
     const { driver, statements } = createRecordingDriver({
       respond: () => ({ rows: [["post-id"]] }),
