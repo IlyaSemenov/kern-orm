@@ -30,7 +30,7 @@ features:
   - title: SQL when you need it
     details: Add SQL conditions to queries, or run any SQL statement and get typed rows.
   - title: Migrations
-    details: Write migrations with helpers or SQL, and apply them to any PostgreSQL schema, such as the schema of each tenant.
+    details: Write migrations with schema helpers, SQL, or TypeScript functions, ship them in a package, and test them.
 ---
 
 Load forms with their fields in one SQL statement:

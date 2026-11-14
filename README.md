@@ -14,7 +14,7 @@ kern-orm is in early development, and the API changes between minor versions.
 - **Ambient transactions**: queries join the current transaction without passing it around.
 - **Tests in transactions**: run each test in a transaction that rolls back, with `node:test`, `bun:test`, or Vitest.
 - **SQL when you need it**: add SQL conditions to queries, or run any SQL statement and get typed rows.
-- **Migrations**: apply SQL migrations to any PostgreSQL schema, such as the schema of each tenant.
+- **Migrations**: write migrations with schema helpers, SQL, or TypeScript functions, ship them in a package, and test them.
 
 See the [documentation](https://ilyasemenov.github.io/kern-orm/).
 

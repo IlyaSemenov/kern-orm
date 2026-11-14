@@ -1,6 +1,6 @@
 # kern-migrations
 
-Migrations of PostgreSQL schemas for [kern-orm](https://github.com/IlyaSemenov/kern-orm) and its database layer `kern-db`: write each change of the database with helpers, SQL, or code, and apply the pending ones to a schema, such as the schema of each tenant.
+Migrations of PostgreSQL schemas for [kern-orm](https://github.com/IlyaSemenov/kern-orm) and its database layer `kern-db`: write each change of the database with schema helpers, SQL, or TypeScript functions, apply the pending ones, ship them in a package, and test them.
 
 ## Install
 
