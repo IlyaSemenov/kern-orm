@@ -1,5 +1,11 @@
 # kern-migrations
 
+## 0.5.0
+
+### Minor Changes
+
+- ebcb27d: Add the migration helpers `createEnum(name, values)` and `dropEnum(name, values)`, which create and drop an enum type.
+
 ## 0.4.3
 
 ### Patch Changes

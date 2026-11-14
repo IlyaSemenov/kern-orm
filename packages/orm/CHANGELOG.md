@@ -1,5 +1,11 @@
 # kern-orm
 
+## 0.17.0
+
+### Minor Changes
+
+- 4d75439: Add `default()` of types and columns, such as `t.text.default("draft")` or `t.uuid.default(() => randomUUID())`: inserts may omit such a column, and kern-orm inserts the value, the `sql` fragment, or the result of the function instead.
+
 ## 0.16.0
 
 ### Minor Changes
