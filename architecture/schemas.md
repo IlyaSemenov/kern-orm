@@ -1,10 +1,14 @@
 # Tables, schemas, and Db
 
-- **Column** (`table/column.ts`): a type with column attributes: its physical name, the key that it forms alone, the primary key or a unique key, and whether the database gives it a value when an insert omits it, as `hasDefault` marks it.
+- **Column** (`table/column.ts`): a type with column attributes: its physical name, the key that it forms alone, the primary key or a unique key, whether the database gives it a value when an insert omits it, as `hasDefault` marks it, and its default of kern-orm, as `default` gives it.
   A column is not a type: SQL fragments and parameters accept only types, and type changes such as `nullable` and `transform` precede column attributes.
   Its type tells the kind of that key: `"primaryKey"` after `primaryKey`, `"unique"` after `unique`, `undefined` for a type without attributes or after `columnName` of a type, and a union where the type does not tell, such as `Column<T>`.
   A column forms one key at most: `primaryKey` and `unique` reject a column that forms a key, in types and at runtime, and in types also a column whose type does not tell its key.
-  Its type tells whether it has a default: `true` after `hasDefault`, `false` for a type without attributes, and `boolean` where the type does not tell, such as `Column<T>`, which an insert requires unless the column is nullable.
+  Its type tells whether it has a default of either kind: `true` after `hasDefault` or `default`, `false` for a type without attributes, and `boolean` where the type does not tell, such as `Column<T>`, which an insert requires unless the column is nullable.
+  The type tells it by a member of its own, absent at runtime, since the attribute `hasDefault` tells only a default of the database, which [the table check](#table-check) verifies.
+  - A default of kern-orm is a value of the type of the column or an expression of its values, or a function that returns one, which [an insert](mutations.md#values) calls for each record that omits the column; a function is always called, also for a type whose values may be functions.
+  - `default` rejects `undefined`, in types and at runtime, since it would give no default; a later `default` replaces an earlier one.
+  - A column may have both kinds; an insert then gives the default of kern-orm.
 - **Table** (`table/`): immutable descriptor of a physical table name, its columns, and its keys, with no relations, PostgreSQL schema, or database connection.
   `defineTable` accepts types and columns and turns each type into a column without attributes.
   A column is found only under an own key of the columns: a lookup ignores properties inherited from the object prototype, such as `toString`.
@@ -79,6 +83,7 @@ Column keys must not start with `$` either, which keeps such names free for memb
 - Only the columns and their types of a view are checked, since the catalog tells neither the nullability of its columns nor what its query guarantees; a required relation of a view is not checked.
 - A column of a table whose type is nullable has no not-null constraint, and one whose type is not nullable has a valid one: on PostgreSQL 18, `attnotnull` is also true for a `NOT VALID` not-null constraint, which rejects `NULL` of new rows but not of existing ones.
 - A column marked with `hasDefault` has a default, an identity, or a generated value; a default of a column without it is not a mismatch, since it breaks no insert or query of the table.
+  A default of kern-orm requires no default of the database, since an insert gives its value.
 - A column of a table that the table does not define is a mismatch only when it has a not-null constraint, valid or not, and no such value, since every insert of the table fails on it.
 - Each key of a table is backed by the unique indexes that PostgreSQL infers as the arbiters of the target of `ON CONFLICT` that `onConflict` and `upsert` build for it: of the set of its columns in any order, ignoring `INCLUDE` columns and repeated columns, without expressions or a predicate, and valid ([decision](../decisions/schemas/backing-of-keys.md)).
   One of them must exist, and none may be deferrable, since PostgreSQL rejects an insert with a deferrable arbiter even beside one that is not.

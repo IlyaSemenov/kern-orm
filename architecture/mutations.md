@@ -32,9 +32,13 @@
 - A value may be a query of one value, such as of `get`, of an aggregate, or of `exists`, which is a scalar subquery or `EXISTS` in `VALUES` or `SET`, as an operand of an expression is ([queries](queries.md#queries-in-expressions)), and other queries are rejected, in types and at runtime.
   - Types take it by its value in an expression or `NULL`, so a column that is not nullable takes a query that is `NULL` without its row, such as of `get`, unlike an expression that may be `NULL`: PostgreSQL rejects the statement without the row, which is how such a value requires it.
   - A query among the values of an insert or of an object of an update does not add its relations to the state of the mutation, as a condition does not, so only lowering rejects a relation that the `Db` lacks, at runtime.
-- An insert may omit a column marked with `hasDefault` and a nullable column, which get their defaults, `NULL` for a nullable column without one; types require the other columns, and the database rejects a record that misses one.
-  - The columns of the statement are those that some record gives a value other than `undefined`, in the order that the records first give them, and a record that lacks one inserts `DEFAULT`.
-  - One record without values inserts `DEFAULT VALUES`, and several insert the `DEFAULT` of the first column of the table, since `DEFAULT VALUES` inserts one row.
+- An insert may omit a column with a default, of the database or of kern-orm, and a nullable column, which get their defaults, `NULL` for a nullable column without one; types require the other columns, and the database rejects a record that misses one.
+  - Lowering adds the default of kern-orm of a column to each record that omits it, each time the insert runs, calling a function of a default record by record in the order of the columns, and adds the columns that no record gives after the others ([decision](../decisions/mutations/runtime-defaults-when-the-insert-runs.md)).
+    The node of the mutation keeps the records as given, so `merge` sees such a column as one that a record does not give.
+    A function that returns `undefined`, which types reject, leaves `DEFAULT` of the database.
+    The value or expression of a default is a value of its column, as one of a record is, so a query in it is lowered and checked as in the values of the insert.
+  - The columns of the mutation are those that some record gives a value other than `undefined`, in the order that the records first give them, and a record that lacks one inserts `DEFAULT`; the statement adds the columns that only defaults of kern-orm give after them.
+  - Without such columns, one record without values inserts `DEFAULT VALUES`, and several insert the `DEFAULT` of the first column of the table, since `DEFAULT VALUES` inserts one row.
   - The values of an insert see no source, so they cannot refer to a column.
   - `insertMany` rejects an array without records, which has no statement to compile.
 - `update` takes the values of its columns or a callback that receives the columns and the relations of the changed rows and returns them.
@@ -79,7 +83,7 @@
   - Types reject it on a query whose state has no part `foundKey`, such as after `optional`, `select`, or `get`, but not after the methods that keep the state, such as `where`, `orderBy`, the row locks, and `use`.
   - At runtime, it rejects a query whose node keeps no values of the key, such as with `where` before or after `find`, `optional`, a relation, selected fields, an order, or a row lock, also on a singleton table, such as after `take` or `where`.
 - Its values are those of an insert without the columns of the key, `UpsertValues`, a mapped type of its own ([decision](../decisions/mutations/upsert-types.md)).
-  - A column that they omit or give as `undefined` gets its default in an inserted record and keeps its value in an updated one.
+  - A column that they omit or give as `undefined` gets its default in an inserted record, also a default of kern-orm, and keeps its value in an updated one.
   - At runtime, it rejects values that are no object, a value of a column of the key, and values without a value other than `undefined` ([backlog](../backlog/empty-changes-and-none.md)).
 - It changes rows `one`, since the statement inserts or updates the record, so it resolves to `1`, and the fields selected after it are those of the record, inserted or updated.
 

@@ -12,7 +12,7 @@ import * as t from "../types"
 
 import { noContext } from "./column-refs"
 import { from, SelectQuery } from "./select"
-import { toAssignments, toInsertRows } from "./values"
+import { addColumnDefaults, toAssignments, toInsertRows } from "./values"
 
 const form = defineTable("form", {
   id: t.uuid.primaryKey().hasDefault(),
@@ -103,6 +103,68 @@ describe("toInsertRows", () => {
     expect(() => toInsertRows(form, [{ name: from(form).pluck("name") }], "insert")).toThrow(
       "An expression takes a query of one value",
     )
+  })
+})
+
+describe("addColumnDefaults", () => {
+  it("returns the rows as they are for a table without defaults of kern-orm", () => {
+    const rows = toInsertRows(form, [{ name: "Survey" }], "insert")
+
+    expect(addColumnDefaults(form, rows)).toBe(rows)
+  })
+
+  it("gives each record that omits a column its default, calling a function record by record, and adds the columns that no record gives", () => {
+    const calls: string[] = []
+    const task = defineTable("task", {
+      id: t.integer.primaryKey().hasDefault(),
+      state: t.text.default("draft"),
+      token: t.text.default(() => {
+        calls.push("token")
+        return `token-${calls.length}`
+      }),
+      rank: t.integer.default(() => {
+        calls.push("rank")
+        return calls.length
+      }),
+    })
+    const rows = toInsertRows(task, [{ token: "given" }, { state: "done" }, {}], "insertMany")
+
+    expect(addColumnDefaults(task, rows)).toEqual({
+      columns: ["token", "state", "rank"],
+      values: [
+        [createValue("given", t.text), createValue("draft", t.text), createValue(1, t.integer)],
+        [createValue("token-2", t.text), createValue("done", t.text), createValue(3, t.integer)],
+        [createValue("token-4", t.text), createValue("draft", t.text), createValue(5, t.integer)],
+      ],
+    })
+    expect(calls).toEqual(["rank", "token", "rank", "token", "rank"])
+    expect(rows.columns).toEqual(["token", "state"])
+  })
+
+  it("keeps a value of null, and DEFAULT where a function returns undefined", () => {
+    const task = defineTable("task", {
+      note: t.text.nullable().default("note"),
+      label: t.text.default(() => undefined as unknown as string),
+    })
+    const rows = toInsertRows(task, [{ note: null }], "insert")
+
+    expect(addColumnDefaults(task, rows)).toEqual({
+      columns: ["note", "label"],
+      values: [[createValue(null, task.columns.note.type), undefined]],
+    })
+  })
+
+  it("keeps an expression as its node", () => {
+    const createdAt = sql<string>`now()`
+    const task = defineTable("task", {
+      createdAt: t.timestamptz.default(createdAt),
+      dueAt: t.timestamptz.default(() => createdAt),
+    })
+
+    expect(addColumnDefaults(task, toInsertRows(task, [{}], "insert"))).toEqual({
+      columns: ["createdAt", "dueAt"],
+      values: [[toNode(createdAt), toNode(createdAt)]],
+    })
   })
 })
 

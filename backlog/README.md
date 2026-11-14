@@ -31,7 +31,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Columns of a violated unique constraint](columns-of-a-violated-unique-constraint.md): the keys of its columns on `QueryError`.
 - [Integer keys of advisory locks](integer-keys-of-advisory-locks.md): beside the string keys of `$lock` and `$tryLock`.
 - [Migrating every tenant](migrating-every-tenant.md): a migration command for every schema of a target.
-- [Runtime defaults of columns](runtime-defaults-of-columns.md): `.default(value)` and `.default(() => value)`.
 - [Generated columns](generated-columns.md): columns that inserts and updates must not set.
 - [Bulk inserts beyond the parameter limit](bulk-inserts-beyond-the-parameter-limit.md): `unnest` of arrays, or statements in a transaction.
 - [Comparison with other projects](comparison-with-other-projects.md): a "Why kern-orm" section of the README and a page of the site.

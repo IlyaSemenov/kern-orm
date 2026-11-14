@@ -1,5 +1,12 @@
 # Mutations
 
+## Defaults of columns in code
+
+`default` of a column gives a value, an expression, or a function that returns one for each record, which an insert adds for a record that omits the column, each time it runs.
+
+- Orchid ORM, differs: it takes a value or a `sql` fragment of `.default` as a default of the database, which its migrations declare, and only a callback as a default at runtime ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#default)).
+- Drizzle ORM, same: `$defaultFn` returns a value or a SQL fragment, which it calls for each record that omits the column when it builds the statement of the insert ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/dialect.ts#L541-L546)).
+
 ## Update and delete without a restriction
 
 `update` and `delete` reject a query whose filters combine into `TRUE`, such as of `where({})`, unless `all` allows it, and a filter that matches no row, such as `in([])`, restricts the rows.

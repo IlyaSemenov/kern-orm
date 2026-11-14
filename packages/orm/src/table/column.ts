@@ -1,4 +1,5 @@
-import type { AnyType, TypeInput } from "../type/type"
+import type { AnyExpression } from "../expression/expression"
+import type { AnyType, TypeInput, TypeOutput } from "../type/type"
 
 /** Kind of a key of a table: its primary key, or a unique key. */
 export type KeyKind = "primaryKey" | "unique"
@@ -23,21 +24,32 @@ interface StrictNullChecksRequired {
 /**
  * Attributes that a column adds to its type in a table.
  *
- * `Key` is the kind of the key that the column forms alone, or `undefined` for none, and `Default` tells whether the database gives the column a value when an insert omits it.
+ * `Key` is the kind of the key that the column forms alone, or `undefined` for none.
  */
-export interface ColumnAttributes<
-  Key extends KeyKind | undefined = KeyKind | undefined,
-  Default extends boolean = boolean,
-> {
+export interface ColumnAttributes<Key extends KeyKind | undefined = KeyKind | undefined> {
   /** Physical column name; the column key is used when it is not set. */
   readonly name: string | undefined
   readonly keyKind: Key
-  /** Whether the database gives the column a value when an insert omits it, such as by `DEFAULT` or an identity. */
-  readonly hasDefault: Default
+  /** Whether the database gives the column a value when an insert omits it, such as by `DEFAULT` or an identity, as `hasDefault` marks it. */
+  readonly hasDefault: boolean
+  /** Value or expression that kern-orm inserts when an insert omits the column, or a function that returns it for each inserted record, as `default` gives it; `undefined` for none. */
+  readonly default: unknown
 }
 
+/** Attributes of a column of a type without attributes. */
+export const noColumnAttributes: ColumnAttributes<undefined> = /* @__PURE__ */ Object.freeze({
+  name: undefined,
+  keyKind: undefined,
+  hasDefault: false,
+  default: undefined,
+})
+
+declare const columnDefault: unique symbol
+
+export type { columnDefault }
+
 /**
- * Column of a table: a type with column attributes, forming a key of kind `Key` alone, or no key for `undefined`, with a value of the database when an insert omits it if `Default` is `true`.
+ * Column of a table: a type with column attributes, forming a key of kind `Key` alone, or no key for `undefined`, which an insert may omit if `Default` is `true`, since it has a default of the database or of kern-orm.
  *
  * A column is not a type, so SQL fragments and parameters reject it; its methods add attributes and return a new column.
  */
@@ -46,9 +58,12 @@ export class Column<
   Key extends KeyKind | undefined = KeyKind | undefined,
   Default extends boolean = boolean,
 > {
+  /** Whether the column has a default of the database or of kern-orm, so that an insert may omit it; absent at runtime. */
+  declare readonly [columnDefault]: Default
+
   constructor(
     readonly type: T,
-    readonly attributes: ColumnAttributes<Key, Default>,
+    readonly attributes: ColumnAttributes<Key>,
   ) {
     Object.freeze(attributes)
     Object.freeze(this)
@@ -76,6 +91,33 @@ export class Column<
   hasDefault(): Column<T, Key, true> {
     return new Column(this.type, { ...this.attributes, hasDefault: true })
   }
+
+  /**
+   * Gives the column a default of kern-orm, so that inserts may omit it.
+   *
+   * `value` is a value of the type of the column, an expression of its values, such as a `sql` fragment, or a function that returns one.
+   * An insert calls the function for each record that omits the column, each time it runs.
+   * The default is inserted as a value of the record, so the database needs no default of its own.
+   */
+  default(value: ColumnDefault<TypeOutput<T>, TypeInput<T>>): Column<T, Key, true> {
+    return new Column(this.type, { ...this.attributes, default: checkDefault(value) })
+  }
+}
+
+/** Default of kern-orm of a column of values `Output` that accepts values `Input`: a value or an expression of the values, or a function that returns one for each inserted record. */
+export type ColumnDefault<Output, Input> =
+  | Input
+  | AnyExpression<Output>
+  | (() => Input | AnyExpression<Output>)
+
+/** Returns `value` of `default`, rejecting `undefined`, which gives no default. */
+export function checkDefault(value: unknown): unknown {
+  if (value === undefined) {
+    throw new TypeError(
+      "default takes a value or a function that returns it, not undefined; omit default to insert the default of the database",
+    )
+  }
+  return value
 }
 
 /** Creates a column of `column` that forms a key of kind `keyKind` alone, rejecting a column that already forms a key. */

@@ -18,8 +18,8 @@ import type {
   OperatorDefinitions,
 } from "../expression/operators/definitions"
 import { isGenericOperator } from "../expression/operators/generic"
-import type { NullablePrimaryKey } from "../table/column"
-import { Column } from "../table/column"
+import type { ColumnDefault, NullablePrimaryKey } from "../table/column"
+import { checkDefault, Column, noColumnAttributes } from "../table/column"
 
 /** Runtime mark of types, which tells them apart from columns, types of kern-db without operators, and other objects. */
 const typeBrand = Symbol("kern-orm.type")
@@ -28,7 +28,7 @@ const typeBrand = Symbol("kern-orm.type")
  * SQL type: a PostgreSQL type, the JavaScript representation of its values, and the operators of its expressions.
  *
  * A type is a type of kern-db, shared by columns, parameters, and SQL expressions, so the same value is encoded and decoded identically everywhere.
- * In a table, a type is a column; `columnName`, `primaryKey`, `unique`, and `hasDefault` create a column of the type with these attributes.
+ * In a table, a type is a column; `columnName`, `primaryKey`, `unique`, `hasDefault`, and `default` create a column of the type with these attributes.
  * A type with PostgreSQL type parameters, such as the length of `varchar(255)`, has `with`.
  */
 export type Type<
@@ -132,6 +132,16 @@ export interface BaseType<
   unique(): Column<Type<Output, Input, Operators, Parameters>, "unique", false>
   /** Creates a column of this type that the database gives a value when an insert omits it, such as by `DEFAULT` or an identity, so that inserts may omit it. */
   hasDefault(): Column<Type<Output, Input, Operators, Parameters>, undefined, true>
+  /**
+   * Creates a column of this type with a default of kern-orm, so that inserts may omit it.
+   *
+   * `value` is a value of this type, an expression of its values, such as a `sql` fragment, or a function that returns one.
+   * An insert calls the function for each record that omits the column, each time it runs.
+   * The default is inserted as a value of the record, so the database needs no default of its own.
+   */
+  default(
+    value: ColumnDefault<Output, Input>,
+  ): Column<Type<Output, Input, Operators, Parameters>, undefined, true>
 }
 
 /** Members of a type with PostgreSQL type parameters; see `Type`. */
@@ -252,11 +262,12 @@ function createType(dbType: AnyDerivableType, operators: OperatorDefinitions): A
     nullable: () => derive(dbType.nullable()),
     // The narrowed values exist only in TypeScript.
     of: () => type,
-    columnName: (name: string) => new Column(type, { name, keyKind: undefined, hasDefault: false }),
-    primaryKey: () =>
-      new Column(type, { name: undefined, keyKind: "primaryKey", hasDefault: false }),
-    unique: () => new Column(type, { name: undefined, keyKind: "unique", hasDefault: false }),
-    hasDefault: () => new Column(type, { name: undefined, keyKind: undefined, hasDefault: true }),
+    columnName: (name: string) => new Column(type, { ...noColumnAttributes, name }),
+    primaryKey: () => new Column(type, { ...noColumnAttributes, keyKind: "primaryKey" }),
+    unique: () => new Column(type, { ...noColumnAttributes, keyKind: "unique" }),
+    hasDefault: () => new Column(type, { ...noColumnAttributes, hasDefault: true }),
+    default: (value: unknown) =>
+      new Column(type, { ...noColumnAttributes, default: checkDefault(value) }),
   }) as unknown as AnyType
   return type
 }

@@ -507,7 +507,7 @@ bench("helper of map", async () => {
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
-}).types([1014, "instantiations"])
+}).types([1012, "instantiations"])
 
 bench("transform of the number of the rows", async () => {
   await tenantDb.form
@@ -526,7 +526,7 @@ bench("helper of relations", async () => {
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
-}).types([1213, "instantiations"])
+}).types([1211, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -636,7 +636,7 @@ bench("$select", async () => {
 
 bench("insert", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).get("id")
-}).types([528, "instantiations"])
+}).types([526, "instantiations"])
 
 bench("insert with onConflict", async () => {
   await tenantDb.form
@@ -644,14 +644,14 @@ bench("insert with onConflict", async () => {
     .onConflict("id")
     .doNothing()
     .get("id")
-}).types([648, "instantiations"])
+}).types([646, "instantiations"])
 
 bench("insert with merge", async () => {
   await tenantDb.form
     .insert({ id: "x", name: "x", published: true })
     .onConflict("id")
     .merge("name", "published")
-}).types([579, "instantiations"])
+}).types([577, "instantiations"])
 
 bench("insert with update of a callback", async () => {
   await tenantDb.form
@@ -661,11 +661,11 @@ bench("insert with update of a callback", async () => {
       name: excluded.name,
       published: form.published,
     }))
-}).types([777, "instantiations"])
+}).types([775, "instantiations"])
 
 bench("upsert", async () => {
   await tenantDb.form.find("x").upsert({ name: "x", published: true }).get("id")
-}).types([460, "instantiations"])
+}).types([458, "instantiations"])
 
 bench("upsert of a singleton table", async () => {
   await settingsDb.settings.upsert({ locale: "x" }).get("id")

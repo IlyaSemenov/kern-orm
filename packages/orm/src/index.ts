@@ -258,7 +258,14 @@ export type {
 export { many, one } from "./schema/relation"
 export type { SqlTemplate } from "./expression/sql"
 export { identifier, param, sql } from "./expression/sql"
-export type { AnyColumn, Column, ColumnAttributes, KeyKind, ToColumn } from "./table/column"
+export type {
+  AnyColumn,
+  Column,
+  ColumnAttributes,
+  ColumnDefault,
+  KeyKind,
+  ToColumn,
+} from "./table/column"
 export type {
   AnyTable,
   AnyTableKeys,

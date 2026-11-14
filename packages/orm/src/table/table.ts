@@ -5,7 +5,7 @@ import { describeRejectedDbType, isType } from "../type/type"
 import type { IsUnion } from "../utils/type-helpers"
 
 import type { AnyColumn, ToColumn } from "./column"
-import { Column } from "./column"
+import { Column, noColumnAttributes } from "./column"
 
 /** Column definitions by their keys: types or columns; a key must not start with `$`, which is reserved for members of column references in queries. */
 export type ColumnDefinitions = Record<string, AnyType | AnyColumn>
@@ -544,7 +544,5 @@ function toColumn(definition: unknown): AnyColumn | undefined {
   if (definition instanceof Column) {
     return definition
   }
-  return isType(definition)
-    ? new Column(definition, { name: undefined, keyKind: undefined, hasDefault: false })
-    : undefined
+  return isType(definition) ? new Column(definition, noColumnAttributes) : undefined
 }

@@ -51,6 +51,7 @@ Filters, queries in expressions, and SQL fragments.
 - [Actions of a conflict as methods of `onConflict`](mutations/conflict-actions.md).
 - [Types of `upsert`](mutations/upsert-types.md): the state of `find` as an interface, and values of a mapped type of their own.
 - [Update without values as a select without a lock](mutations/update-without-values.md).
+- [Defaults of kern-orm added when the insert runs](mutations/runtime-defaults-when-the-insert-runs.md).
 
 ## Queries of SQL text
 

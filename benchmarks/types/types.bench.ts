@@ -74,7 +74,7 @@ bench("table of derived types", () => {
     amount: t.numeric.with(10, 2).transform({ decode: value => Number(value) }),
     kind: t.text.of<"a" | "b">(),
   })
-}).types([415, "instantiations"])
+}).types([412, "instantiations"])
 
 bench("param of a type", () => {
   return param(t.uuid, "x")

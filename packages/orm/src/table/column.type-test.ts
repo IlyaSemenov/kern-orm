@@ -1,5 +1,6 @@
 import { expectTypeOf, test } from "bun:test"
 
+import { sql } from "../expression/sql"
 import * as t from "../types"
 
 import type { Column } from "./column"
@@ -24,6 +25,25 @@ test("types a column with a default, keeping it after the other attributes", () 
     Column<typeof t.uuid, "primaryKey", true>
   >()
   expectTypeOf(t.text.unique().hasDefault()).toEqualTypeOf<Column<typeof t.text, "unique", true>>()
+})
+
+test("types a column with a default of kern-orm, keeping its key", () => {
+  expectTypeOf(t.text.default("draft")).toEqualTypeOf<Column<typeof t.text, undefined, true>>()
+  expectTypeOf(t.doublePrecision.unique().default(() => Math.random())).toEqualTypeOf<
+    Column<typeof t.doublePrecision, "unique", true>
+  >()
+  expectTypeOf(t.timestamptz.default(() => sql`now()`)).toEqualTypeOf<
+    Column<typeof t.timestamptz, undefined, true>
+  >()
+})
+
+test("rejects a default that the type of the column does not take", () => {
+  // @ts-expect-error A default is a value of the type of the column.
+  t.integer.default("1")
+  // @ts-expect-error A function returns a value of the type of the column.
+  t.integer.columnName("count").default(() => "1")
+  // @ts-expect-error An expression of a column that is not nullable is not NULL.
+  t.text.default(sql<string | null>`NULL`)
 })
 
 test("rejects marking a column that forms a key or whose type does not tell its key", () => {

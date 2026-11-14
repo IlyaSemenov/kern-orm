@@ -289,16 +289,19 @@ describe("createTableFactory", () => {
       name: "id",
       keyKind: "primaryKey",
       hasDefault: true,
+      default: undefined,
     })
     expect(field.columns.formId.attributes).toEqual({
       name: "form_id",
       keyKind: undefined,
       hasDefault: false,
+      default: undefined,
     })
     expect(field.columns.createdAt.attributes).toEqual({
       name: "created_at",
       keyKind: "unique",
       hasDefault: false,
+      default: undefined,
     })
   })
 

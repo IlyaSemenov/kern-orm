@@ -21,6 +21,7 @@ const post = defineTable("post", {
   title: t.text,
   subtitle: t.text.nullable(),
   publishedAt: t.timestamptz.hasDefault(),
+  status: t.text.default("draft"),
   commentCount: t.integer.nullable(),
   hasComments: t.boolean.nullable(),
 })
@@ -60,11 +61,17 @@ const votes = bindSchema(
 describe("values", () => {
   test("require the columns without a default that are not nullable", () => {
     expectTypeOf<keyof InsertValues<typeof post>>().toEqualTypeOf<
-      "id" | "title" | "subtitle" | "publishedAt" | "commentCount" | "hasComments"
+      "id" | "title" | "subtitle" | "publishedAt" | "status" | "commentCount" | "hasComments"
     >()
 
     blog.post.insert({ title: "Hello" })
-    blog.post.insert({ title: "Hello", subtitle: null, publishedAt: new Date(), id: undefined })
+    blog.post.insert({
+      title: "Hello",
+      subtitle: null,
+      publishedAt: new Date(),
+      status: "published",
+      id: undefined,
+    })
     // @ts-expect-error A column without a default that is not nullable is required.
     blog.post.insert({ subtitle: "World" })
     // @ts-expect-error `undefined` omits a column, so a required column rejects it.

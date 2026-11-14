@@ -7,6 +7,7 @@ import type {
   MutationStatementNode,
 } from "../ast/nodes"
 import type { MutationNode } from "../query/node"
+import { addColumnDefaults } from "../query/values"
 
 import type { LoweringContext } from "./context"
 import { lowerEach, lowerExpression, lowerFilters, lowerValue } from "./expression"
@@ -20,16 +21,18 @@ export function lowerMutation(node: MutationNode, context: LoweringContext): Mut
     returning === undefined ? undefined : lowerProjections(dropLiterals(returning), context)
   switch (node.kind) {
     case "insert": {
-      const values = lowerEach(node.values, context, lowerRow)
+      // Defaults of kern-orm are added when the insert runs, as the database adds its own, so that the mutation keeps the records as given, which `merge` reads.
+      const inserted = addColumnDefaults(target.table, node)
+      const values = lowerEach(inserted.values, context, lowerRow)
       const conflict = lowerConflict(node.conflict, context)
-      // Without queries and literals, the fields are already projections and the node is the statement.
+      // Without defaults of kern-orm, queries, and literals, the fields are already projections and the node is the statement.
       if (lowered === returning && values === node.values && conflict === node.conflict) {
         return node as MutationStatementNode
       }
       return Object.freeze({
         kind: "insert",
         target,
-        columns: node.columns,
+        columns: inserted.columns,
         values,
         conflict,
         returning: lowered,

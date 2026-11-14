@@ -56,6 +56,19 @@ const vote = defineTable(
   { unique: [["formId", "userId"]] },
 )
 
+const task = defineTable(
+  "task",
+  {
+    id: t.integer.primaryKey().hasDefault(),
+    name: t.text,
+    state: t.text.default("draft"),
+    token: t.text.default(() => `token-${++tokens}`),
+  },
+  { unique: [["name", "state"]] },
+)
+
+let tokens = 0
+
 const license = defineTable(
   "license",
   {
@@ -94,6 +107,27 @@ describe("insert", () => {
   it("takes an expression as a value", () => {
     expect(schema.form.insert({ name: sql<string>`upper(${"survey"})` }).toSQL().text).toBe(
       'INSERT INTO "form" AS "form" ("name") VALUES (upper($1))',
+    )
+  })
+
+  it("inserts the defaults of kern-orm of the columns that a record omits, new each time it runs", () => {
+    tokens = 0
+    const query = from(task).insertMany([{ name: "Write", token: "given" }, { name: "Read" }])
+
+    expect(query.toSQL()).toEqual({
+      text: 'INSERT INTO "task" AS "task" ("name", "token", "state") VALUES ($1, $2, $3), ($4, $5, $6)',
+      parameters: ["Write", "given", "draft", "Read", "token-1", "draft"],
+    })
+    expect(query.toSQL().parameters).toEqual([
+      "Write",
+      "given",
+      "draft",
+      "Read",
+      "token-2",
+      "draft",
+    ])
+    expect(from(task).insert({ name: "Write" }).toSQL().text).toBe(
+      'INSERT INTO "task" AS "task" ("name", "state", "token") VALUES ($1, $2, $3)',
     )
   })
 
@@ -216,6 +250,25 @@ describe("conflicts", () => {
     )
   })
 
+  it("leave a column out of merge without columns when no record gives it, and reject merge of it when a record takes its default of kern-orm", () => {
+    tokens = 0
+    const missing = (key: string) =>
+      `merge cannot set "${key}", which a record does not give, so that its default would replace the value of the record; give it in every record or leave it out of merge`
+
+    expect(from(task).insert({ name: "Write" }).onConflict("id").merge().toSQL().text).toBe(
+      'INSERT INTO "task" AS "task" ("name", "state", "token") VALUES ($1, $2, $3) ON CONFLICT ("id") DO UPDATE SET "name" = "excluded"."name"',
+    )
+    expect(() => from(task).insert({ name: "Write" }).onConflict("id").merge("token")).toThrow(
+      missing("token"),
+    )
+    expect(() =>
+      from(task)
+        .insertMany([{ name: "Write", token: "given" }, { name: "Read" }])
+        .onConflict("id")
+        .merge(),
+    ).toThrow(missing("token"))
+  })
+
   it("rejects update without a column to set", () => {
     expect(() => from(vote).insert(record).onConflict("id").update({ note: undefined })).toThrow(
       'update of onConflict takes the value of at least one column of table "vote"; to skip the rows that conflict, use doNothing()',
@@ -322,6 +375,21 @@ describe("upsert", () => {
     expect(from(vote).find(5).upsert({ formId: 1, userId: 2, votes: 3 }).toSQL().text).toBe(
       'INSERT INTO "vote" AS "vote" ("id", "form_id", "user_id", "votes") VALUES ($1, $2, $3, $4) ON CONFLICT ("id") DO UPDATE SET "form_id" = "excluded"."form_id", "user_id" = "excluded"."user_id", "votes" = "excluded"."votes"',
     )
+  })
+
+  it("inserts the defaults of kern-orm of the columns that the values omit, keeping them out of the update", () => {
+    tokens = 0
+
+    expect(
+      from(task).findBy({ name: "Write", state: "done" }).upsert({ token: "given" }).toSQL(),
+    ).toEqual({
+      text: 'INSERT INTO "task" AS "task" ("name", "state", "token") VALUES ($1, $2, $3) ON CONFLICT ("name", "state") DO UPDATE SET "token" = "excluded"."token"',
+      parameters: ["Write", "done", "given"],
+    })
+    expect(from(task).find(5).upsert({ name: "Write" }).toSQL()).toEqual({
+      text: 'INSERT INTO "task" AS "task" ("id", "name", "state", "token") VALUES ($1, $2, $3, $4) ON CONFLICT ("id") DO UPDATE SET "name" = "excluded"."name"',
+      parameters: ["5", "Write", "draft", "token-1"],
+    })
   })
 
   it("inserts the row of a singleton table, updating the columns of the values on a conflict on its row", () => {
@@ -479,6 +547,25 @@ describe("values of queries", () => {
     expect(() =>
       db.$compile(db.form.insert({ name: "Survey", note: other.form.get("note") })),
     ).toThrow("A query in an expression is bound to another Db")
+  })
+  it("are scalar subqueries in a default of kern-orm, which a Db checks", () => {
+    const { driver } = createRecordingDriver()
+    const other = bindSchema(schema, createDatabase({ driver }))
+    const draft = defineTable("draft", {
+      name: t.text.default(sql<string>`upper(${value})`),
+    })
+    const copy = defineTable("copy", {
+      note: t.text.nullable().default(() => sql<string | null>`${other.form.get("note")}`),
+    })
+    const db = bindSchema(defineSchema({ copy }), createDatabase({ driver }))
+
+    expect(from(draft).insert({}).toSQL()).toEqual({
+      text: 'INSERT INTO "draft" AS "draft" ("name") VALUES (upper((SELECT "form"."note" AS "note" FROM "form" AS "form" WHERE "form"."id" = $1)))',
+      parameters: ["2"],
+    })
+    expect(() => db.$compile(db.copy.insert({}))).toThrow(
+      "A query in an expression is bound to another Db",
+    )
   })
 })
 
@@ -1268,6 +1355,79 @@ describePostgres("upsert in PostgreSQL", ({ database, testTransaction, useTestFi
     })
   })
 })
+
+describePostgres(
+  "defaults of kern-orm in PostgreSQL",
+  ({ database, testTransaction, useTestFixture }) => {
+    useTestFixture(() =>
+      database.script(`
+        CREATE TABLE task (
+          id integer PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
+          name text NOT NULL,
+          state text NOT NULL,
+          token text NOT NULL,
+          UNIQUE (name, state)
+        );
+        CREATE TABLE reminder (id integer PRIMARY KEY, due_at timestamptz NOT NULL);
+      `),
+    )
+
+    let urgent: boolean
+    const reminder = defineTable("reminder", {
+      id: t.integer.primaryKey(),
+      dueAt: t.timestamptz
+        .columnName("due_at")
+        .default(() => (urgent ? sql`now()` : sql`now() + interval '1 day'`)),
+    })
+    const db = bindSchema(defineSchema({ task, reminder }), database)
+
+    it("inserts the defaults of the columns that records omit, keeping them out of the update of upsert", async () => {
+      tokens = 0
+      const result = await testTransaction(async () => ({
+        inserted: await db.task
+          .insertMany([{ name: "Write" }, { name: "Read", state: "done" }])
+          .select("name", "state", "token"),
+        upserted: await db.task
+          .findBy({ name: "Write", state: "draft" })
+          .upsert({ token: "given" })
+          .select("token"),
+        kept: await db.task.findBy({ name: "Read", state: "done" }).upsert({ id: 50 }).get("token"),
+      }))
+
+      expect(result).toEqual({
+        inserted: expect.arrayContaining([
+          { name: "Write", state: "draft", token: "token-1" },
+          { name: "Read", state: "done", token: "token-2" },
+        ]),
+        upserted: { token: "given" },
+        kept: "token-2",
+      })
+    })
+
+    it("inserts an expression of a default, which its function chooses when the insert runs", async () => {
+      urgent = false
+      const result = await testTransaction(async () => {
+        const insert = db.reminder.insert({ id: 1 })
+        // `now()` is the start of the transaction, so a comparison with it tells the expression.
+        const due = db.reminder.find(1).select(columns => ({
+          later: sql(t.boolean)`${columns.dueAt} = now() + interval '1 day'`,
+          now: sql(t.boolean)`${columns.dueAt} = now()`,
+        }))
+        await insert
+        const later = await due
+        await db.reminder.find(1).delete()
+        urgent = true
+        await insert
+        return { later, urgent: await due }
+      })
+
+      expect(result).toEqual({
+        later: { later: true, now: false },
+        urgent: { later: false, now: true },
+      })
+    })
+  },
+)
 
 describePostgres(
   "singleton tables in PostgreSQL",

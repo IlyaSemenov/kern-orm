@@ -972,7 +972,7 @@ export class SelectQuery<
   /**
    * Inserts a record into the table of a query without clauses, such as a table of a `Db`, and resolves to the number of the inserted rows, `1`.
    *
-   * A column omitted or given as `undefined` gets its default, so only columns marked with `hasDefault` and nullable columns may be omitted.
+   * A column omitted or given as `undefined` gets its default, so only columns with a default, of `hasDefault` or `default`, and nullable columns may be omitted.
    * A value is what the type of its column takes, `null` for `NULL`, an expression, such as a `sql` fragment, or a query of one value, which gives `NULL` without its row.
    * Select the fields that it returns after it, such as `insert(values).get("id")`.
    * To handle a conflict of the record with an existing one on a key, call `onConflict` right after `insert`.
