@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 
 import type {
   Database,
+  DriverResult,
   InitialSqlQueryState,
   PollLockOptions,
   SessionOptions,
@@ -19,6 +20,7 @@ import { lowerStatement, lowerTextStatement } from "../lowering/lower"
 import type { TransformedQuery, TransformedQueryState } from "../query/conversion"
 import type { SelectQueryKind } from "../query/kind"
 import type { MutationQuery, MutationQueryState } from "../query/mutation"
+import { isNoneStatement } from "../query/none"
 import type { RecordQuery, RecordQueryState, SelectionState } from "../query/record"
 import { startRecordQuery } from "../query/record"
 import { createQueryContexts } from "../query/relations"
@@ -266,7 +268,9 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
           "Cannot lock the rows of a query outside a transaction, where the locks would end with its statement; a test transaction alone does not count",
         )
       }
-      return decodeStatement(compiled, await database.execute(compiled)) as QueryResult<Q["types"]>
+      // A query of `none` is compiled and checked as one that runs, so that it rejects what the same query without `none` rejects, such as a row lock outside a transaction.
+      const result = isNoneStatement(query.node) ? noRows : await database.execute(compiled)
+      return decodeStatement(compiled, result) as QueryResult<Q["types"]>
     },
     $select: selection => startRecordQuery(selection, db),
     $query(strings, ...values) {
@@ -310,6 +314,14 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
   )
   return db
 }
+
+/** Empty driver result, which `$execute` decodes instead of running a statement that `isNoneStatement` takes. */
+const noRows: DriverResult = /* @__PURE__ */ Object.freeze({
+  command: null,
+  count: 0,
+  columns: [],
+  rows: [],
+})
 
 /** Resolution of the database of a `Db`, which tracks the database of the callbacks of its transactions and sessions. */
 interface DatabaseResolver {

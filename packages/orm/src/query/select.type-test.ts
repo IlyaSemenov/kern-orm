@@ -55,6 +55,15 @@ interface AnyResultState extends InitialQueryState<typeof post> {
 /** Result of executing query `Q`. */
 type Executed<Q extends AnySelectQuery> = QueryResult<Q["types"]>
 
+describe("none", () => {
+  test("keeps the state of a query, also of a union of queries", () => {
+    const query = flag ? db.post.select("id") : db.post.select("id").take()
+
+    expectTypeOf(query.none()).toEqualTypeOf(query)
+    expectTypeOf<Awaited<typeof query>>().toEqualTypeOf<{ id: string } | { id: string }[]>()
+  })
+})
+
 describe("select", () => {
   test("types fields by the values of the selected expressions", () => {
     const query = from(post).select(columns => ({

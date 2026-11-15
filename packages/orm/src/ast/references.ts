@@ -76,8 +76,10 @@ function bindsSource(declared: SourceNode | undefined, source: SourceNode): bool
 /**
  * Calls `visit` for `node` and each expression node in it at any depth, including the queries nested in it.
  * When supplied, `queries` holds the nested queries enclosing each node passed to `visit`.
+ *
+ * Before lowering, a query in an expression, a `nestedQuery` node, is passed to `visit` without its nodes, which are of a semantic query rather than of a statement, and the `nestedQuery` node of the query of `inQuery` is not passed at all: `visit` reads it from the `inQuery` node.
  */
-function visitNodes(
+export function visitNodes(
   node: ExpressionNode,
   visit: (node: ExpressionNode) => void,
   queries?: SelectNode[],

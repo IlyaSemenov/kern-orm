@@ -6,6 +6,15 @@
 
 - Orchid ORM, fails: a user `OR` bypassed the relation condition ([orchid-orm#845](https://github.com/romeerez/orchid-orm/issues/845)).
 
+## A query known to find no records
+
+`none()` filters a query by `FALSE`, and a `Db` resolves a query of its rows, and an update or a delete of them, from a result without rows without running the statement; a statement that may return a row without matching records, such as of an aggregate, runs.
+
+- Orchid ORM, same: `none` resolves a query without querying the database by what it returns, such as an empty array, `undefined` after `findOptional`, and `NotFoundError` after `find`, and compiles a nested query with `false` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/query-methods.md#none), [source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/extra-features/none/none.ts#L37-L57)).
+  It also applies after `insert`, `update`, and `delete`, which then resolve to `0` without a statement.
+- Rails, same: `none` adds `1=0` to the conditions, the records and `exists?` of the relation resolve without a query, and `update_all` and `delete_all` resolve to `0` without one ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/relation/query_methods.rb#L1310-L1320), [source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/relation.rb#L1455-L1461), [source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/relation/finder_methods.rb#L357-L358), [source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/relation.rb#L602-L605), [source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/relation.rb#L1037-L1038)).
+- Django, same: `none` adds a `NothingNode` to the conditions, whose compilation raises `EmptyResultSet`, so iterating the query set and `update` resolve without a query ([source](https://github.com/django/django/blob/6.0.10/django/db/models/query.py#L1519-L1523), [source](https://github.com/django/django/blob/6.0.10/django/db/models/sql/compiler.py#L1610-L1617)).
+
 ## A related value and a column under one key
 
 A field of a nested query under the key of a column replaces the column in the result, and filters and `get` keep reading the column.

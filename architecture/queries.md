@@ -80,6 +80,8 @@ Queries come in two kinds that share the query methods and differ only by execut
   - They check the object by its own keys, so that a further call does not pay for a constraint of the values of every column ([decision](../decisions/expressions/matches-checks-own-keys.md)).
   - The result is `boolean`, with `null` when a matched column or value can be `NULL`, or a custom `eq` returns it; matching `null` is `IS NULL`, which is never `NULL`.
 - Query filters are kept as separate `relation`, `scope`, and `user` predicates combined with `AND` at compilation; `where` adds only to `user`, so a user `OR` never bypasses the relation filter.
+- `none` is a filter of the query, as `where` is: it sets `user` to `FALSE`, which absorbs the conditions of `where` before and after it, ends the guarantee of a row as `where` does, and marks the filters with `none`, which [a `Db`](#queries-of-a-db) reads.
+  Its SQL, such as of `toSQL`, `$compile`, and a nested query, filters by `FALSE`, so an update and a delete of its rows have their restriction; a filter that is `FALSE` for another reason, such as of `in([])`, has no mark ([backlog](../backlog/empty-changes-and-none.md)).
 - A condition rejects, also at runtime, a value that is not an object of column values, such as `false` or an array, and an object without keys that is not plain, such as a `Date` or an instance whose values are getters: without keys it would read as an empty object, which is `TRUE`, and `where(false)` would select every row.
   An instance of a class with fields stays an object of column values, as types take it, since the compiler checks its keys against the columns, and an empty plain object, of any realm, stays `TRUE`.
 - The callback of `where` types a literal that it returns by its column, such as of an enum, so `where` takes its filter as `QueryWhereFilter`, a conditional type of the state of the query, which TypeScript resolves before it types the body of the callback, once for every overload ([decision](../decisions/expressions/where-filter-type.md)).
@@ -432,6 +434,11 @@ Queries come in two kinds that share the query methods and differ only by execut
   A condition or another expression, such as of `expr`, does not carry the relations of its queries, so they stay out of the state, and only lowering rejects a relation of one that the `Db` lacks, at runtime.
   The relations of a query only accumulate in its state: `clearSelect`, `get`, `pluck`, the aggregate methods, and replacing a field keep them in types after the runtime drops their nested queries, which never under-approximates the relations that its selections need.
   An awaited query of a `Db` is checked only at runtime: the references of its `select` give the relations of the `Db`, but a nested query of another schema can select others.
+- `$execute` of a query whose filters `none` marks compiles and checks the statement, such as for a row lock outside a transaction, and decodes the result of no rows without running the statement where the statement returns and changes no row: of a query of rows, of an update, and of a delete (`isNoneStatement` of `query/none.ts`).
+  - The statement of an aggregate query and of a query of `exists` returns one row, so it runs, and so does a statement that holds a query of `none`, such as of `$select` or of a parent query.
+  - Without groups, a statement aggregates its rows into one row when its select list or order holds an aggregate, also of a query nested in it whose arguments refer only to the statement, so it runs when its fields, its sort keys, or the keys of `distinctOn` hold an `aggregate` node or a SQL fragment, or a nested query holds one that refers to a column of its table or holds a query; the check is conservative, as SQL fragments are not parsed.
+    A query of groups has no group without rows, so it does not run.
+  - An update or a delete runs when its fields hold such a node: PostgreSQL rejects an aggregate in `RETURNING`, and an update without values compiles to a select, which may aggregate its rows.
 
 ## Helpers
 

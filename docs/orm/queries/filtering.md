@@ -63,6 +63,20 @@ const forms = await db.form.select(form => ({
 // forms: { id: string; isPublishedSurvey: boolean }[]
 ```
 
+## No records
+
+To make a query find no records in some cases, such as for a visitor who may see no forms, call `none` in that case:
+
+```ts
+const forms = await db.form
+  .use(form => (canView ? form.where({ published: true }) : form.none()))
+  .select("id", "name")
+// forms: { id: string; name: string }[]
+```
+
+The query then resolves as if no record matched, without querying the database, and so do its updates and deletes.
+`count`, `exists`, and queries with aggregate functions or SQL fragments in their fields still query the database.
+
 ## Related records
 
 To find records that have related records, such as the forms that have fields, call `exists` on the [relation](../schemas#relations) in the callback of `where`:

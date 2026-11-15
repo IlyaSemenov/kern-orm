@@ -48,6 +48,29 @@ it("leaves the query it derives from unchanged", () => {
   expect(compile(base).fields.map(field => field.key)).toEqual(["id"])
 })
 
+describe("none", () => {
+  it("filters by FALSE, which absorbs the conditions of where before and after it", () => {
+    const query = from(post)
+      .where({ title: "First" })
+      .none()
+      .where({ title: "Second" })
+      .select("id")
+
+    expect(query.toSQL()).toEqual({
+      text: 'SELECT "post"."id" AS "id" FROM "post" AS "post" WHERE FALSE',
+      parameters: [],
+    })
+  })
+
+  it("keeps the rows mode of a query whose row is not guaranteed", () => {
+    expect(compile(from(post).select("id").take().none())).toMatchObject({ rows: "one" })
+    expect(compile(from(post).get("id").optional().none())).toMatchObject({
+      rows: "optional",
+      value: true,
+    })
+  })
+})
+
 describe("select", () => {
   it("adds fields to the fields selected earlier, in the order of the calls", () => {
     const query = from(post)

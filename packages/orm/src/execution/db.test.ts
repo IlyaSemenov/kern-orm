@@ -126,6 +126,68 @@ it("executes a query of $select of its schema in its PostgreSQL schema", async (
   expect(statements[0]!.text).toContain('FROM "app"."post"')
 })
 
+describe("none", () => {
+  it("resolves a query of rows in its rows mode without a statement, converting the result", async () => {
+    const { db, statements } = connectRecorded()
+
+    expect(await db.post.none().select("id")).toEqual([])
+    expect(await db.post.select("id").take().optional().none()).toBeUndefined()
+    expect(await db.post.select("id").take().nullable().none()).toBeNull()
+    expect(
+      await db.post
+        .pluck("id")
+        .none()
+        .transform(ids => ids.length),
+    ).toBe(0)
+    expect(await db.$execute(schema.post.none().pluck("id"))).toEqual([])
+    await expect(Promise.resolve(db.post.none().take())).rejects.toThrow(NotFoundError)
+    expect(statements).toEqual([])
+  })
+
+  it("resolves an update and a delete of its rows without a statement", async () => {
+    const { db, statements } = connectRecorded()
+
+    expect(await db.post.none().update({ title: "Draft" })).toBe(0)
+    expect(await db.post.none().delete().select("id")).toEqual([])
+    expect(statements).toEqual([])
+  })
+
+  it("runs the statement of an aggregate, of exists, and of $select, which return one row", async () => {
+    const rows = [["0"], ["f"], ["[]"]]
+    const { driver, statements } = createRecordingDriver({
+      respond: () => ({ rows: [rows.shift()!] }),
+    })
+    const db = bindSchema(schema, createDatabase({ driver }))
+
+    expect(await db.post.none().count()).toBe(0)
+    expect(await db.post.none().exists()).toBe(false)
+    expect(
+      await db.$select({
+        ids: db.post.none().pluck("id"),
+      }),
+    ).toEqual({ ids: [] })
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      'SELECT count(*) AS "count" FROM "post" AS "post" WHERE FALSE',
+      'SELECT EXISTS (SELECT FROM "post" AS "post" WHERE FALSE) AS "exists"',
+      expect.stringContaining("WHERE FALSE"),
+    ])
+  })
+
+  it("compiles and rejects a query as it would run it", async () => {
+    const { db, statements } = connectRecorded()
+
+    expect(db.$compile(db.post.none().select("id"))).toEqual({
+      text: 'SELECT "post"."id" AS "id" FROM "app"."post" AS "post" WHERE FALSE',
+      parameters: [],
+    })
+    await expect(db.$execute(db.post.none().forUpdate())).rejects.toThrow(
+      "Cannot lock the rows of a query outside a transaction",
+    )
+    expect(statements).toEqual([])
+  })
+})
+
 describe("$query", () => {
   /** Db of the schema in the PostgreSQL schema of `tenant.name`, read when a query compiles, over a recording driver that answers every statement with `result`. */
   function connectTenant(result: Partial<DriverResult> = {}) {

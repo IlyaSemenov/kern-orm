@@ -8,7 +8,7 @@ import type {
 } from "kern-db"
 import { toValueRows } from "kern-db/builder"
 
-import type { ExpressionNode, NestedQueryNode, ScalarProjection } from "../ast/nodes"
+import type { ExpressionNode, NestedQueryNode, QueryFilters, ScalarProjection } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
@@ -43,6 +43,7 @@ import type { AnyMutationQuery, InitialInsertState, InitialMutationState } from 
 import { createDelete, createInsert, createUpdate, createUpsert, MutationQuery } from "./mutation"
 import type { QueryNode } from "./node"
 import { createQueryNode, isTableQuery } from "./node"
+import { addNoneFilter } from "./none"
 import type {
   ExpressionQueryState,
   OperandUses,
@@ -166,6 +167,21 @@ export class SelectQuery<
   ): SelectQuery<FilteredState<S>, Kind>
   where(filter: WhereFilter<AnyTable>): unknown {
     return this.derive(this.addFilter(filter))
+  }
+
+  /**
+   * Makes the query choose no row, such as in a branch that knows that no record matches: an executed query of rows, and an update or a delete of its rows, resolve as without rows, without querying the database.
+   *
+   * Its SQL, such as of `toSQL` or of the query nested in another, filters by `FALSE`, and `where` after it chooses no row either.
+   * A statement that may return a row without matching records runs, such as of an aggregate, `exists`, or a field of an aggregate function or a SQL fragment, and so does the statement of another query that nests it.
+   * A query of the record of a required relation, such as `field.form`, resolves to `null`, or to `undefined` after `get` or `pluck`.
+   */
+  none<Q extends QueryOf<UnguaranteedQueryState>>(this: Q): Q
+  none<S extends SelectQueryState, Kind extends SelectQueryKind>(
+    this: SelectQuery<S, Kind>,
+  ): SelectQuery<FilteredState<S>, Kind>
+  none(): unknown {
+    return this.derive(this.toFilteredChanges(addNoneFilter(this.node.filters)))
   }
 
   /** Selects all columns of the table, replacing fields under their keys. */
@@ -1254,11 +1270,12 @@ export class SelectQuery<
   /** Returns the changes of the node that add `filter` with `AND`, ending the guarantee of the row as `FilteredState` does in types. */
   private addFilter(filter: WhereFilter<AnyTable>): NodeChanges {
     const { node } = this
-    return {
-      filters: addUserFilter(node.filters, filter, node.from, this.context),
-      rows: this.getFilteredRows(),
-      guaranteed: false,
-    }
+    return this.toFilteredChanges(addUserFilter(node.filters, filter, node.from, this.context))
+  }
+
+  /** Returns the changes of the node that replace its filters with `filters` and end the guarantee of the row, as `FilteredState` does in types. */
+  private toFilteredChanges(filters: QueryFilters): NodeChanges {
+    return { filters, rows: this.getFilteredRows(), guaranteed: false }
   }
 
   /** Returns the rows mode of this query after a filter, as `FilteredStateRows` gives it in types. */

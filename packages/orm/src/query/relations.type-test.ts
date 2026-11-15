@@ -204,6 +204,7 @@ describe("select", () => {
       filtered: field.form.where({ name: "Survey" }).select("name"),
       found: field.form.find("form-id").select("name"),
       foundBy: field.form.findBy({ id: "form-id" }).select("name"),
+      none: field.form.none().select("name"),
       nameAfterFilter: field.form.where({ name: "Survey" }).get("name"),
       nameBeforeFilter: field.form.get("name").where({ name: "Survey" }),
       namesAfterFilter: field.form.where({ name: "Survey" }).pluck("name"),
@@ -223,6 +224,7 @@ describe("select", () => {
         filtered: { name: string } | null
         found: { name: string } | null
         foundBy: { name: string } | null
+        none: { name: string } | null
         nameAfterFilter: string | undefined
         nameBeforeFilter: string | undefined
         namesAfterFilter: string | undefined

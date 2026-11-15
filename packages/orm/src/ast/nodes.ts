@@ -221,6 +221,12 @@ export interface QueryFilters {
   readonly scope?: ExpressionNode
   /** Conditions added with `where`. */
   readonly user?: ExpressionNode
+  /**
+   * Whether `none` filters out every row, with `FALSE` as `user`, which absorbs the conditions of `where` before and after it.
+   *
+   * The statement compiles with the filters, whereas a `Db` resolves a statement of it that returns and changes no row without running it, as `isNoneStatement` tells; a filter that is `FALSE` for another reason, such as of `in([])`, does not have it.
+   */
+  readonly none?: true
 }
 
 /**

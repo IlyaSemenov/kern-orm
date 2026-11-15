@@ -503,7 +503,7 @@ bench("relation many of map", async () => {
 
 bench("helper of map", async () => {
   await tenantDb.form.use(withMappedName)
-}).types([841, "instantiations"])
+}).types([847, "instantiations"])
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
@@ -518,11 +518,11 @@ bench("transform of the number of the rows", async () => {
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
-}).types([1140, "instantiations"])
+}).types([1143, "instantiations"])
 
 bench("helper of relations", async () => {
   await tenantDb.form.select("id").use(withFieldIds)
-}).types([1266, "instantiations"])
+}).types([1269, "instantiations"])
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
