@@ -7,8 +7,8 @@ import { describePooledPostgres, describePostgres } from "../../testing/postgres
 import type { MigrationChange } from "../migration"
 import { runChange } from "../migration"
 
-import { createIndex, dropIndex } from "./indexes"
-import { applyStep, describeHelperSchema, inHelperSession } from "./testing"
+import { createIndex, createSingletonIndex, dropIndex, dropSingletonIndex } from "./indexes"
+import { applyStep, describeHelperSchema, inHelperSchema, inHelperSession } from "./testing"
 
 describe("createIndex", () => {
   it("creates an index of the name that PostgreSQL gives it, and drops it", () => {
@@ -106,6 +106,48 @@ describe("dropIndex", () => {
   })
 })
 
+describe("createSingletonIndex", () => {
+  it("creates a unique index of (true) named after its table, and drops it", () => {
+    expect(createSingletonIndex("license")).toEqual({
+      up: 'CREATE UNIQUE INDEX "license_singleton_idx" ON "license" ((true))',
+      down: 'DROP INDEX "license_singleton_idx"',
+    })
+  })
+
+  it("creates the index of its name", () => {
+    expect(createSingletonIndex("license", { name: "license_one_row" }).up).toBe(
+      'CREATE UNIQUE INDEX "license_one_row" ON "license" ((true))',
+    )
+  })
+
+  it("requires a name when its own would be longer than PostgreSQL keeps", () => {
+    const longest = "l".repeat(49)
+    const tooLong = `${"l".repeat(48)}\u00e9`
+
+    expect(createSingletonIndex(longest).up).toBe(
+      `CREATE UNIQUE INDEX "${longest}_singleton_idx" ON "${longest}" ((true))`,
+    )
+    expect(() => createSingletonIndex(`${longest}l`)).toThrow(
+      `Cannot name the singleton index of table ${longest}l: ${longest}l_singleton_idx is longer than 63 bytes, so pass name`,
+    )
+    expect(() => createSingletonIndex(tooLong)).toThrow(
+      `Cannot name the singleton index of table ${tooLong}: ${tooLong}_singleton_idx is longer than 63 bytes, so pass name`,
+    )
+    expect(createSingletonIndex(`${longest}l`, { name: "license_one_row" }).up).toBe(
+      `CREATE UNIQUE INDEX "license_one_row" ON "${longest}l" ((true))`,
+    )
+  })
+})
+
+describe("dropSingletonIndex", () => {
+  it("drops the index that createSingletonIndex creates, and creates it again", () => {
+    expect(dropSingletonIndex("license", { name: "license_one_row" })).toEqual({
+      up: 'DROP INDEX "license_one_row"',
+      down: 'CREATE UNIQUE INDEX "license_one_row" ON "license" ((true))',
+    })
+  })
+})
+
 describePostgres("index helpers in PostgreSQL", ({ database, testTransaction }) => {
   const createFormField =
     "CREATE TABLE form_field (form_id integer, position integer, label text, deleted_at timestamptz)"
@@ -150,6 +192,31 @@ describePostgres("index helpers in PostgreSQL", ({ database, testTransaction }) 
 
     expect(result.up).toEqual(result.before.filter(line => !line.startsWith("index ")))
     expect(result.down).toEqual(result.before)
+  })
+
+  it("createSingletonIndex creates a unique index of (true), and its rollback drops it", async () => {
+    const result = await testTransaction(() =>
+      applyStep(database, createSingletonIndex("license"), "CREATE TABLE license (token text)"),
+    )
+
+    expect(result.up).toContain(
+      "index CREATE UNIQUE INDEX license_singleton_idx ON migrations_helpers.license USING btree ((true))",
+    )
+    expect(result.down).toEqual(result.before)
+  })
+
+  it("createSingletonIndex rejects a second row", async () => {
+    const insert = testTransaction(() =>
+      inHelperSchema(database, async () => {
+        await database.script("CREATE TABLE license (token text)")
+        await runChange(database, createSingletonIndex("license").up)
+        await database.script("INSERT INTO license (token) VALUES ('first'), ('second')")
+      }),
+    )
+
+    await expect(insert).rejects.toThrow(
+      'duplicate key value violates unique constraint "license_singleton_idx"',
+    )
   })
 })
 

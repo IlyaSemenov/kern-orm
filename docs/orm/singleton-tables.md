@@ -93,10 +93,10 @@ const licenseId = await db.license.required().update({ expiresAt }).get("id")
 
 ## The table in a migration
 
-Create a unique index of `(true)` of the table in its migration, so that the database rejects a second row; `upsert` finds the existing row by it too:
+Create the singleton index of the table in its migration with `createSingletonIndex`, a unique index of `(true)`, so that the database rejects a second row; `upsert` finds the existing row by it too:
 
 ```ts
-import { createIndex, createTable, defineMigration } from "kern-migrations"
+import { createSingletonIndex, createTable, defineMigration } from "kern-migrations"
 
 export default defineMigration([
   createTable("license", {
@@ -104,7 +104,7 @@ export default defineMigration([
     token: "text NOT NULL",
     expires_at: "timestamptz",
   }),
-  createIndex("license", ["(true)"], { unique: true, name: "license_singleton_idx" }),
+  createSingletonIndex("license"),
 ])
 ```
 

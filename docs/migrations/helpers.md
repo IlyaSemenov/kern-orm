@@ -18,6 +18,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Tables: `createTable(table, columns, { constraints })`, `dropTable` with the same arguments, and `renameTable(from, to)`.
 - Columns: `addColumn(table, column, definition)`, `dropColumn` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
 - Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](./outside-transaction).
+- Singleton indexes: `createSingletonIndex(table, { name })` and `dropSingletonIndex` with the same arguments, a unique index of `(true)` that keeps a table to at most one row, such as a [singleton table](../orm/singleton-tables) of the ORM.
 - Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
 - Sequences: `createSequence(name, options)` and `dropSequence` with the same arguments, `renameSequence(from, to)`, and `changeSequence(name, from, to)`; the options are `type`, `increment`, `minValue`, `maxValue`, `start`, `cache`, and `cycle`.
 - Enum types: `createEnum(name, values)` and `dropEnum` with the same arguments; pass the values without quotes, such as `createEnum("user_role", ["admin", "member"])`.
@@ -75,6 +76,9 @@ Rolling back a dropped sequence creates it again from its `start` rather than fr
 
 `createIndex` names an index as PostgreSQL names an index without a name, such as `form_name_idx`, and `dropIndex` with the same arguments finds it.
 Pass `name` for an index of expressions, such as `["lower(email)"]`.
+
+`createSingletonIndex` names an index `<table>_singleton_idx`.
+Pass `name` when the name that a helper gives would be longer than 63 bytes, which PostgreSQL truncates.
 
 ## Extensions
 

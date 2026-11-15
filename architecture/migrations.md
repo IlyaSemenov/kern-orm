@@ -153,6 +153,9 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - It reads an element as PostgreSQL does: words separated by the whitespace of SQL only, since PostgreSQL reads another space, such as U+00A0, as a character of a name, and the keywords of an ordering in ASCII letters of any case.
   - It never appends the number that PostgreSQL appends to a name that exists, so that a collision fails.
   - Elements of `include` must be columns, since PostgreSQL accepts neither expressions nor orderings there.
+- `createSingletonIndex` builds the unique index of `(true)` that the ORM requires of a singleton table, since `upsert` finds the row by it.
+  Without `name`, it names the index `<table>_singleton_idx`, and requires `name` when that name would be longer than 63 bytes.
+  It has no `concurrently`, since the table has at most one row.
 - `createIndex` and `dropIndex` with `concurrently` keep `up` and `down`, and add [changes outside a transaction](#changes-outside-a-transaction) of `CREATE INDEX CONCURRENTLY` and `DROP INDEX CONCURRENTLY`, each a statement of its own.
   - They find the index and the table by their names with `to_regclass`, through the search path as `DROP INDEX` and `CREATE INDEX` find them, and check in `pg_index` that the index belongs to the table, so that dropping drops the index that the check found.
     `to_regclass` truncates a name to 63 bytes, as PostgreSQL truncates the name of an index.

@@ -89,6 +89,45 @@ export function dropIndex(
   return invertStep(createIndex(table, columns, options))
 }
 
+/** Options of `createSingletonIndex` and `dropSingletonIndex`. */
+export interface SingletonIndexOptions {
+  /**
+   * Name of the index.
+   *
+   * Without it, the name is `<table>_singleton_idx`; the name is required when that would be longer than 63 bytes.
+   */
+  name?: string
+}
+
+/**
+ * Builds a step that creates the singleton index of a table, a unique index of `(true)`, which keeps the table to at most one row, and drops it on rollback.
+ *
+ * Every row has the key `true` in the index, so a second row has a duplicate key.
+ */
+export function createSingletonIndex(
+  table: string,
+  options: SingletonIndexOptions = {},
+): MigrationStep {
+  let name = options.name
+  if (name === undefined) {
+    name = `${table}_singleton_idx`
+    if (!fitsIndexName(name)) {
+      throw new Error(
+        `Cannot name the singleton index of table ${table}: ${name} is longer than ${maxNameBytes} bytes, so pass name`,
+      )
+    }
+  }
+  return createIndex(table, ["(true)"], { name, unique: true })
+}
+
+/** Builds a step that drops the singleton index of a table, and creates it again on rollback as `createSingletonIndex` of the same arguments does. */
+export function dropSingletonIndex(
+  table: string,
+  options: SingletonIndexOptions = {},
+): MigrationStep {
+  return invertStep(createSingletonIndex(table, options))
+}
+
 /**
  * Returns the change that builds index `name` of `table` with `create`, a `CREATE INDEX CONCURRENTLY`, unless the table has a valid index of the name.
  *
@@ -202,10 +241,15 @@ function getIndexName(
     throw describe(`column ${repeated} repeats, so pass name`)
   }
   const name = `${table}_${names.join("_")}_idx`
-  if (new TextEncoder().encode(name).length > maxNameBytes) {
+  if (!fitsIndexName(name)) {
     throw describe(`${name} is longer than ${maxNameBytes} bytes, so pass a shorter name`)
   }
   return name
+}
+
+/** Returns whether PostgreSQL keeps `name` whole, without truncating it to `maxNameBytes`. */
+function fitsIndexName(name: string): boolean {
+  return new TextEncoder().encode(name).length <= maxNameBytes
 }
 
 /** Returns the column of an element of an index that is a plain column with an optional ordering, such as `position DESC`, or `undefined` for another element. */
