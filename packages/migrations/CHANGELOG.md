@@ -1,5 +1,12 @@
 # kern-migrations
 
+## 0.6.0
+
+### Minor Changes
+
+- 14cab7a: Add `createSingletonIndex` and `dropSingletonIndex`, which create and drop a unique index of `(true)` that keeps a table to at most one row.
+- e7c4ba4: Add `singleton` to `createTable` and `dropTable`, which creates the table with its singleton index.
+
 ## 0.5.0
 
 ### Minor Changes
