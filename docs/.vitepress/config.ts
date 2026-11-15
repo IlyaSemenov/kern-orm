@@ -39,6 +39,7 @@ export default defineConfig({
           text: "ORM",
           items: [
             { text: "Getting Started", link: "/orm/getting-started" },
+            { text: "Comparison", link: "/orm/comparison" },
             { text: "Tables and Schemas", link: "/orm/schemas" },
             { text: "Types", link: "/orm/types" },
             {

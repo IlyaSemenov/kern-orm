@@ -243,6 +243,7 @@ Describe the user-visible change.
 - Also record a scenario that another project fails while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>`.
 - Keep a capability that another project has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of [backlog/](backlog/README.md) that would add it, and move it to comparison/ when the item is deleted.
 - Mention another project in a decision only when its design is an alternative that the decision weighs.
+- Keep `docs/orm/comparison.md` a summary of comparison/ for choosing a library, with the reviewed versions and review date and a link to the evidence of each claim about another project; update it when a record that it summarizes changes.
 - Add a scenario worth comparing that comparison/ does not cover yet to "Scenarios to compare" in [comparison/README.md](comparison/README.md).
 
 ## Checks

@@ -13,8 +13,8 @@ hero:
       text: SQL with kern-db
       link: /database/getting-started
     - theme: alt
-      text: GitHub
-      link: https://github.com/IlyaSemenov/kern-orm
+      text: Compare
+      link: /orm/comparison
 
 features:
   - title: Related records in one query

@@ -15,7 +15,7 @@ kern-orm is in early development, and the API changes between minor versions.
 - **SQL when you need it**: add SQL conditions to queries, or run any SQL statement and get typed rows.
 - **Migrations**: write migrations with schema helpers, SQL, or TypeScript functions, ship them in a package, and test them.
 
-See the [documentation](https://ilyasemenov.github.io/kern-orm/).
+See the [documentation](https://ilyasemenov.github.io/kern-orm/), and how kern-orm [compares](https://ilyasemenov.github.io/kern-orm/orm/comparison) with Drizzle ORM, Kysely, Prisma ORM, and Orchid ORM.
 
 ## Install
 

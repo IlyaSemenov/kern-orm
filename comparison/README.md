@@ -16,7 +16,10 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [Orchid ORM](https://github.com/romeerez/orchid-orm) 1.78.47, with its query builder pqb 0.73.36 and its migrator rake-db 2.37.48.
 - [Drizzle ORM](https://github.com/drizzle-team/drizzle-orm) 0.45.4.
 - [Kysely](https://github.com/kysely-org/kysely) 0.29.8.
+- [Prisma ORM](https://github.com/prisma/prisma) 7.10.1.
 - [rake-db-testing](https://github.com/IlyaSemenov/rake-db-testing) 0.3.0.
+- [jest-prisma](https://github.com/Quramy/jest-prisma) 1.8.2, tests of Prisma ORM in transactions.
+- [kysely-codegen](https://github.com/RobinBlomberg/kysely-codegen) 0.20.0, TypeScript types for Kysely generated from the database.
 - [Slonik](https://github.com/gajus/slonik) 49.13.0.
 - [Django](https://github.com/django/django) 6.0.10.
 - [node-pg-migrate](https://github.com/salsita/node-pg-migrate) 9.0.0.
@@ -45,10 +48,6 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 
 Scenarios worth comparing that the topics do not cover yet:
 
-- Related records in one statement.
-- Ambient transactions.
-- Tables and queries reused across PostgreSQL schemas.
-- Tests in transactions that roll back.
 - Errors of drivers classified as a statement that PostgreSQL rejected or a lost connection, across clients.
 - A connection returned to the pool in a transaction, such as after a failed `COMMIT` or a `BEGIN` sent outside a transaction.
 - A transaction whose connection fails: whether it may have been committed, and whether it commits after its callback caught the error.

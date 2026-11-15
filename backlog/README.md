@@ -33,7 +33,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Migrating every tenant](migrating-every-tenant.md): a migration command for every schema of a target.
 - [Generated columns](generated-columns.md): columns that inserts and updates must not set.
 - [Bulk inserts beyond the parameter limit](bulk-inserts-beyond-the-parameter-limit.md): `unnest` of arrays, or statements in a transaction.
-- [Comparison with other projects](comparison-with-other-projects.md): a "Why kern-orm" section of the README and a page of the site.
 - [Keyset pagination](keyset-pagination.md): pages after the sort keys of the last row.
 - [Helpers of a mutation in types](helpers-of-a-mutation-in-types.md): what `use` of a mutation rejects only at runtime.
 - [Index in the callback of `map`](index-in-the-callback-of-map.md): the arguments of `Array.map`.

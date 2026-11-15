@@ -27,6 +27,15 @@ A naming convention is an option of the definition of tables, `createTableFactor
 - Drizzle ORM, differs: `user_i_ds` of `userIDs` and `ap_is` of `APIs` ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/casing.ts)).
 - Kysely with its defaults, differs: `jsondata` of `JSONData` and `parse_htmldoc` of `parseHTMLDoc` ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/plugin/camel-case/camel-case.ts)).
 
+## PostgreSQL schemas chosen at runtime
+
+`bindSchema` takes a function of the PostgreSQL schema, which a `Db` calls for each statement, so one `db` serves the schema of each request, such as of its tenant.
+
+- Drizzle ORM, lacks: a table belongs to the schema of its definition, with no override at runtime ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/schema.ts#L9-L24)), and dynamic schemas were requested in [drizzle-orm#423](https://github.com/drizzle-team/drizzle-orm/issues/423) and [drizzle-orm#1807](https://github.com/drizzle-team/drizzle-orm/issues/1807).
+- Kysely, differs: `withSchema` gives an instance whose unqualified tables are in the schema, and the shared tables are qualified in the types of the database ([docs](https://github.com/kysely-org/kysely/blob/v0.29.8/site/docs/recipes/0007-schemas.md), [source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/kysely.ts#L478)).
+- Prisma ORM, lacks: a model with `@@schema` belongs to that schema ([docs](https://www.prisma.io/docs/orm/v7/prisma-schema/data-model/multi-schema)), and a model without it to the default schema of the client, which the `schema` option of `PrismaPg` sets, so a schema per tenant requires a client per schema ([source](https://github.com/prisma/prisma/blob/7.10.1/packages/adapter-pg/src/pg.ts#L171-L173)), and schemas per tenant were requested in [prisma#12420](https://github.com/prisma/prisma/issues/12420).
+- Orchid ORM, same: the `schema` option of `orchidORM` takes a function, which it calls for every query and subquery ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/orm-setup.md#global-db-schema)).
+
 ## Tables of one row
 
 A table declared with `singleton: true` holds at most one row, which a query of the table reads, upserts, updates, and deletes without a key or `all`.
@@ -39,4 +48,7 @@ A table declared with `singleton: true` holds at most one row, which a query of 
 
 - Hibernate ORM, same: `validate` of `hibernate.hbm2ddl.auto` checks the mapped tables and columns with their types, and settings of 7.3 add the validation of indexes and unique keys ([docs](https://docs.hibernate.org/orm/7.4/javadocs/org/hibernate/cfg/SchemaToolingSettings.html)).
 - Doctrine ORM, differs: `orm:validate-schema` fails when the schema that the mapping generates differs from the database in anything, as a schema diff, unless `--skip-sync` skips the check ([source](https://github.com/doctrine/orm/blob/3.5.0/src/Tools/Console/Command/ValidateSchemaCommand.php)).
+- Prisma ORM, differs: `prisma migrate diff` with `--exit-code` fails when the structure of the database differs from the schema of its models in anything that it supports, as a schema diff ([docs](https://www.prisma.io/docs/cli/v7/migrate/diff)).
+- Kysely, differs: kysely-codegen generates TypeScript types from the database, and its `--verify` fails when the generated file is out of date ([docs](https://github.com/RobinBlomberg/kysely-codegen/blob/0.20.0/README.md)).
+- Drizzle ORM, lacks: `drizzle-kit check` checks the files of its migrations, not the database ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-kit/src/cli/commands/check.ts#L4-L17)).
 - Alembic, differs: `alembic check` fails when autogenerate would generate operations from the differences of the models and the database; it compares server defaults only with `compare_server_default` ([docs](https://alembic.sqlalchemy.org/en/latest/autogenerate.html)).
