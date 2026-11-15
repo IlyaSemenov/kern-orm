@@ -4,7 +4,7 @@
 
 Fully typed relational query builder for PostgreSQL with ambient transactions and single-query relation loading.
 
-Read [README.md](README.md) completely before changing the public API, package behavior, supported runtimes, or user documentation.
+Before changing the public API, package behavior, supported runtimes, or user documentation, read the pages of the user documentation in [docs/](docs/) that the change affects.
 
 Before changing a module, read [architecture/README.md](architecture/README.md) and the files that its map lists for the module, and keep them in sync with the code.
 Keep [architecture/](architecture/README.md) to the code as it is: record a contract in the file of its topic and unresolved design of the code in its Open questions; list a new file in the map.
