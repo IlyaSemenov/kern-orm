@@ -38,6 +38,8 @@ When the row must exist, add `required` to reject with `NotFoundError` without i
 const { token } = await db.license.required().select("token")
 ```
 
+When the row always exists, define this query [once](#a-row-that-always-exists).
+
 To get `null` instead of `undefined` without the row, add `nullable`, as for [one row](./queries/selecting#one-row) of another table.
 
 To tell whether the row exists, call `exists`:
@@ -115,3 +117,35 @@ To make a table that exists a singleton table, create its index with `createSing
 
 The index stores `true` for every row, so a second row has a duplicate key.
 Any unique index of `(true)` serves, whatever its name; kern-orm does not check that the database has one.
+
+## A row that always exists
+
+When the application relies on the row, such as a configuration that it reads without defaults of its own, insert the row in the migration that creates the table:
+
+```ts
+import { createTable, defineMigration } from "kern-migrations"
+
+export default defineMigration([
+  createTable(
+    "config",
+    {
+      max_form_fields: "integer NOT NULL DEFAULT 100",
+    },
+    { singleton: true },
+  ),
+  { up: "INSERT INTO config DEFAULT VALUES" },
+])
+```
+
+Then define the query of the row with `required` once, and read and save the row through it:
+
+```ts
+export const config = db.config.required()
+
+const maxFormFields = await config.get("maxFormFields")
+// maxFormFields: number
+
+await config.update({ maxFormFields: 200 })
+```
+
+Each `await` runs the query again, as of any [reusable query](./queries/reusable), and rejects with `NotFoundError` if the row has been deleted.
