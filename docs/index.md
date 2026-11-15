@@ -10,22 +10,20 @@ hero:
       text: Get Started
       link: /orm/getting-started
     - theme: alt
-      text: Database without the ORM
+      text: SQL with kern-db
       link: /database/getting-started
     - theme: alt
       text: GitHub
       link: https://github.com/IlyaSemenov/kern-orm
 
 features:
-  - title: Fully typed
-    details: Query results and filters are inferred from table definitions.
   - title: Related records in one query
-    details: Select the related records of each row, at any depth, in a single SQL statement.
+    details: Select the related records of each row, at any depth, in a single SQL statement, with the shape of the result inferred.
+  - title: Transactions across function calls
+    details: Queries join the current transaction without passing a transaction object through your code.
   - title: Schema per tenant
     details: Reuse table definitions and queries across PostgreSQL schemas, such as tenant schemas and a shared application schema.
-  - title: Ambient transactions
-    details: Queries join the current transaction without passing it around.
-  - title: Tests in transactions
+  - title: Tests that roll back
     details: Run each test in a transaction that rolls back, with node:test, bun:test, or Vitest.
   - title: SQL when you need it
     details: Add SQL conditions to queries, or run any SQL statement and get typed rows.
@@ -45,4 +43,18 @@ const forms = await db.form
 // forms: { id: string; name: string; fields: { id: string; label: string }[] }[]
 ```
 
-See [Related Records](./orm/queries/relations) for filtering, nesting, and reusing related records.
+Insert a form with its fields in a transaction, which the queries of called functions join as well:
+
+```ts
+await db.$transaction(async () => {
+  const formId = await db.form.insert({ name: "Survey", published: false }).get("id")
+  await db.field.insertMany([
+    { formId, label: "Name" },
+    { formId, label: "Email" },
+  ])
+})
+```
+
+See [Related Records](./orm/queries/relations) and [Transactions](./orm/transactions), or start with [Getting Started](./orm/getting-started).
+
+kern-orm is part of [Kern](./ecosystem), a family of PostgreSQL libraries for TypeScript, alongside migrations and background jobs.

@@ -4,15 +4,14 @@
 [![Test](https://github.com/IlyaSemenov/kern-orm/actions/workflows/test.yml/badge.svg)](https://github.com/IlyaSemenov/kern-orm/actions/workflows/test.yml)
 [![License](https://img.shields.io/npm/l/kern-orm)](LICENSE)
 
-Fully typed relational query builder for PostgreSQL with ambient transactions and single-query relation loading.
+Fully typed query builder for PostgreSQL: load related records in one SQL statement, run transactions without passing them around, and reuse tables across tenant schemas.
 
 kern-orm is in early development, and the API changes between minor versions.
 
-- **Fully typed**: query results and filters are inferred from table definitions.
-- **Related records in one query**: select the related records of each row, at any depth, in a single SQL statement.
+- **Related records in one query**: select the related records of each row, at any depth, in a single SQL statement, with the shape of the result inferred.
+- **Transactions across function calls**: queries join the current transaction without passing a transaction object through your code.
 - **Schema per tenant**: reuse table definitions and queries across PostgreSQL schemas, such as tenant schemas and a shared application schema.
-- **Ambient transactions**: queries join the current transaction without passing it around.
-- **Tests in transactions**: run each test in a transaction that rolls back, with `node:test`, `bun:test`, or Vitest.
+- **Tests that roll back**: run each test in a transaction that rolls back, with `node:test`, `bun:test`, or Vitest.
 - **SQL when you need it**: add SQL conditions to queries, or run any SQL statement and get typed rows.
 - **Migrations**: write migrations with schema helpers, SQL, or TypeScript functions, ship them in a package, and test them.
 
@@ -28,9 +27,34 @@ See [Getting Started](https://ilyasemenov.github.io/kern-orm/orm/getting-started
 
 ## Usage
 
-Describe the tables and their relations, then load forms with their fields in one SQL statement, and insert a form with its fields in a transaction:
+Load forms with their fields in one SQL statement, and insert a form with its fields in a transaction:
 
 ```ts
+import { db } from "./db"
+
+const forms = await db.form
+  .where({ published: true })
+  .select("id", "name")
+  .select(form => ({
+    fields: form.fields.select("id", "label"),
+  }))
+// forms: { id: string; name: string; fields: { id: string; label: string }[] }[]
+
+// Queries in the callback, including in called functions, join the transaction.
+await db.$transaction(async () => {
+  const formId = await db.form.insert({ name: "Survey", published: false }).get("id")
+  await db.field.insertMany([
+    { formId, label: "Name" },
+    { formId, label: "Email" },
+  ])
+})
+```
+
+`db` comes from the definitions of your tables and their relations, bound to a database.
+The definitions describe tables that already exist: create and change them with SQL or [migrations](https://ilyasemenov.github.io/kern-orm/migrations/getting-started).
+
+```ts
+// db.ts
 import { bindSchema, createDatabase, defineSchema, defineTable, many } from "kern-orm"
 import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import * as t from "kern-orm/types"
@@ -57,31 +81,18 @@ const schema = defineSchema({ form, field }).$relations({
 const database = createDatabase({
   driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)),
 })
-const db = bindSchema(schema, database)
 
-const forms = await db.form
-  .where({ published: true })
-  .select("id", "name")
-  .select(form => ({
-    fields: form.fields.select("id", "label"),
-  }))
-// forms: { id: string; name: string; fields: { id: string; label: string }[] }[]
-
-// Queries in the callback, including in called functions, join the transaction.
-await db.$transaction(async () => {
-  const formId = await db.form.insert({ name: "Survey", published: false }).get("id")
-  await db.field.insertMany([
-    { formId, label: "Name" },
-    { formId, label: "Email" },
-  ])
-})
+export const db = bindSchema(schema, database)
 ```
 
-## Packages
+## Kern libraries
 
-- [`kern-orm`](packages/orm): tables, schemas, relations, queries, and the SQL compiler.
-- [`kern-db`](packages/db): databases with ambient transactions, queries of SQL text, types, the drivers of [postgres.js](https://github.com/porsager/postgres) and [node-postgres](https://node-postgres.com/), and test transactions, which work without the ORM.
-- [`kern-migrations`](packages/migrations): migrations of PostgreSQL schemas.
+kern-orm is part of [Kern](https://ilyasemenov.github.io/kern-orm/ecosystem), a family of PostgreSQL libraries for TypeScript:
+
+- [`kern-orm`](packages/orm): typed relational queries, including related records.
+- [`kern-db`](packages/db): SQL statements with typed rows, ambient transactions, and test transactions, without the ORM; kern-orm runs on it.
+- [`kern-migrations`](packages/migrations): migrations of PostgreSQL schemas in SQL and TypeScript, applied through kern-orm or kern-db.
+- [`kern-jobs`](https://github.com/IlyaSemenov/kern-jobs): background jobs stored in PostgreSQL, with any supported PostgreSQL client.
 
 ## Development
 

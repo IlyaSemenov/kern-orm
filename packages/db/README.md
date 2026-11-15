@@ -1,7 +1,7 @@
 # kern-db
 
-PostgreSQL database layer with ambient transactions, typed SQL queries, and test transactions.
-It is the database layer of [kern-orm](https://github.com/IlyaSemenov/kern-orm), and it works without the ORM.
+SQL queries for PostgreSQL with typed results and ambient transactions: run SQL statements, decode their rows, share transactions across function calls without passing them around, and run tests in transactions that roll back.
+[kern-orm](https://github.com/IlyaSemenov/kern-orm) runs on it, and it works without the ORM.
 
 kern-db is in early development, and the API changes between minor versions.
 
@@ -33,3 +33,7 @@ await database.transaction(async () => {
   await database.query`UPDATE form SET published = true WHERE id = ${id}`
 })
 ```
+
+## Kern libraries
+
+kern-db is part of [Kern](https://ilyasemenov.github.io/kern-orm/ecosystem), a family of PostgreSQL libraries for TypeScript, alongside [kern-migrations](https://ilyasemenov.github.io/kern-orm/migrations/getting-started) and [kern-jobs](https://ilyasemenov.github.io/kern-jobs/).

@@ -10,7 +10,7 @@
     "postgresql",
     "schema"
   ],
-  "homepage": "https://ilyasemenov.github.io/kern-orm/",
+  "homepage": "https://ilyasemenov.github.io/kern-orm/migrations/getting-started",
   "bugs": "https://github.com/IlyaSemenov/kern-orm/issues",
   "license": "MIT",
   "author": "Ilya Semenov",

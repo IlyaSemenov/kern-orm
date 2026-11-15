@@ -48,7 +48,7 @@ To check how a migration changes existing rows, write a migration test beside it
 import { expect } from "bun:test"
 
 import { defineMigrationTest } from "kern-migrations/testing"
-import * as t from "kern-orm/db/types"
+import * as t from "kern-orm/db/types" // "kern-db/types" without the ORM
 
 export default defineMigrationTest("fills slugs from names", {
   setup: async database => {

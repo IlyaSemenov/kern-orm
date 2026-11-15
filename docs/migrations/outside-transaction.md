@@ -41,7 +41,7 @@ The step has no `outsideTransaction.down`, since PostgreSQL cannot drop the inde
 ```ts
 import type { MigrationDatabase } from "kern-migrations"
 import { defineMigration, quoteIdentifier } from "kern-migrations"
-import * as t from "kern-orm/db/types"
+import * as t from "kern-orm/db/types" // "kern-db/types" without the ORM
 
 const indexJob = (concurrently: boolean) => async (database: MigrationDatabase) => {
   const mode = concurrently ? "CONCURRENTLY " : ""

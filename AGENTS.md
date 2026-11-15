@@ -132,7 +132,7 @@ Do not catalog files or restate information evident from their names and locatio
   - Dev, under `dev/`, from `main`, built with `DOCS_TRACK=dev`.
 - Test a change of the workflow with `gh workflow run docs.yml --ref <branch>`, which builds the site of that branch without deploying it.
 - Keep the build of a commit of Release in the Actions cache under `docs-release-<commit>`, which a run rebuilds when it is missing; delete it with `gh cache delete` to rebuild it on purpose.
-- Add every new page to the sidebar in `docs/.vitepress/config.ts`.
+- Add every new page of a group to the sidebar of its group in `docs/.vitepress/config.ts`.
 - Write every column of a `defineTable` call on its own line, even a single column, in documentation, examples, and tests.
 - Write every field returned from the callback of `select`, such as an expression or a relation, on its own line, even a single field, in documentation, examples, and tests.
 - In user documentation, name the `Db` `db`, the schema `schema`, and other such values by their kind, such as `database`, unless the page uses several of one kind; then name each by its role, such as `tenantDb` and `saasDb`.
@@ -150,7 +150,8 @@ Do not catalog files or restate information evident from their names and locatio
 - Write a rule of how users must do something as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
 - State a limitation, something that users cannot do, as a description, such as "A query with `distinct` cannot select related records", rather than as an instruction to avoid it, unless the description loses clarity.
 - In [architecture/](architecture/README.md), state what users must do as a requirement of the contract, such as "must be split" or "requires a key", rather than as a description of what users do, such as "users split".
-- Group the pages of the site in the sidebar by the package they document, ORM, Database, and Migrations, and keep the pages of each group in its directory: `docs/orm/`, `docs/database/`, and `docs/migrations/`, each starting with its Getting Started page.
+- Group the pages of the site by the package they document, ORM, Database, and Migrations, each with a sidebar of its own, and keep the pages of each group in its directory: `docs/orm/`, `docs/database/`, and `docs/migrations/`, each starting with its Getting Started page.
+- Keep the overview of the Kern libraries, including kern-jobs, which has its own repository, in `docs/ecosystem.md`, outside the groups, and update it, together with the Kern libraries sections of the READMEs, when a package of the family is added or changes what it is for.
 - Write the pages of the ORM group for an application of kern-orm, with a `Db` and imports from `kern-orm` and its subpaths, and the pages of the Database group for code without the ORM, with a `database` and imports from `kern-db` and its subpaths.
 - Document types, transactions, test helpers, and errors, which both packages give, on a page of each group with examples of its own API, and update both pages with a change of what they share; document drivers and custom drivers in the Database group alone.
 - Open a page of the Database group that has a counterpart in the ORM group, such as Transactions, with an `info` box titled `Using the ORM?` that links the counterpart; give every `info` box a title of its own, since VitePress titles it `INFO` otherwise.

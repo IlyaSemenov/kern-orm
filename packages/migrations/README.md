@@ -1,6 +1,9 @@
 # kern-migrations
 
-Migrations of PostgreSQL schemas for [kern-orm](https://github.com/IlyaSemenov/kern-orm) and its database layer `kern-db`: write each change of the database with schema helpers, SQL, or TypeScript functions, apply the pending ones, ship them in a package, and test them.
+PostgreSQL migrations in SQL and TypeScript: write schema changes with helpers, SQL, or TypeScript functions, apply and roll them back, ship them in a package, and test them against PostgreSQL.
+It applies migrations through [kern-orm](https://github.com/IlyaSemenov/kern-orm) or its database layer `kern-db`.
+
+kern-migrations is in early development, and the API changes between minor versions.
 
 ## Install
 
@@ -36,3 +39,7 @@ await migrate(db, migrations)
 ```
 
 See [the documentation](https://ilyasemenov.github.io/kern-orm/migrations/getting-started) for the helpers, steps of SQL and code, listing migrations, tenants, rolling back, the command line, and testing migrations.
+
+## Kern libraries
+
+kern-migrations is part of [Kern](https://ilyasemenov.github.io/kern-orm/ecosystem), a family of PostgreSQL libraries for TypeScript, alongside [kern-orm](https://ilyasemenov.github.io/kern-orm/), [kern-db](https://ilyasemenov.github.io/kern-orm/database/getting-started), and [kern-jobs](https://ilyasemenov.github.io/kern-jobs/).

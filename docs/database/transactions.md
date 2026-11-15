@@ -64,7 +64,10 @@ A failed callback that joined a transaction does not roll back its own changes: 
 To roll back only the changes of the callback, use a [nested transaction](#nested-transactions) instead.
 
 To check whether the code runs in a transaction, call `database.isInTransaction()`.
-For example, enqueue a job that reads the written data only outside a transaction: a job enqueued in one can start before the transaction commits, or after it rolls back, and miss the data.
+For example, call another service, such as a payment provider, only outside a transaction: a transaction that rolls back after the call cannot undo it.
+
+A job enqueued through another connection or service does not join the transaction either, so it can start before the transaction commits, or after it rolls back, and miss the data.
+To enqueue a job in the transaction, so that it starts only once the transaction commits, keep the jobs in the same database, such as with [kern-jobs](https://ilyasemenov.github.io/kern-jobs/database-clients#kern-orm-and-kern-db), whose enqueues join `database.transaction`.
 
 A [test transaction](./testing) does not itself count as a transaction for `isInTransaction` or `ensureTransaction`, so that the tested code runs as in production: outside a `database.transaction` of the test, `database.isInTransaction()` returns `false`, and `database.ensureTransaction` starts a nested transaction.
 

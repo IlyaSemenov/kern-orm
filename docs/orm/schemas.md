@@ -13,16 +13,7 @@ export const form = defineTable("form", {
   name: t.text,
   published: t.boolean,
 })
-```
 
-See [Types](./types) for the built-in types, column attributes, and custom types.
-
-## Column names
-
-A column is named after its key.
-To name it differently, set the name with `columnName`:
-
-```ts
 export const field = defineTable("form_field", {
   id: t.uuid.primaryKey(),
   formId: t.uuid.columnName("form_id"),
@@ -30,40 +21,9 @@ export const field = defineTable("form_field", {
 })
 ```
 
-### Naming conventions
+See [Types](./types) for the built-in types, column attributes, and custom types, and [Column names](#column-names) for `columnName`.
 
-To name the columns of your tables in snake case, such as `form_id` for `formId`, create your own `defineTable` with `createTableFactory` and use it to define your tables:
-
-```ts
-// db/define-table.ts
-import { createTableFactory, toSnakeCase } from "kern-orm"
-
-export const defineTable = createTableFactory({ columnName: toSnakeCase })
-```
-
-```ts
-import * as t from "kern-orm/types"
-
-import { defineTable } from "./db/define-table"
-
-export const field = defineTable("form_field", {
-  id: t.uuid.primaryKey(),
-  formId: t.uuid, // form_id
-  createdAt: t.timestamptz, // created_at
-})
-```
-
-A run of capital letters is one word, such as `user_id` for `userID` and `json_data` for `JSONData`, and digits stay in their word, such as `line2`.
-`columnName` overrides the derived name of a column, such as `t.text.columnName("line_2")`.
-
-For another convention, pass your own function, which gets the key of each column and returns its name:
-
-```ts
-export const defineTable = createTableFactory({
-  // personCategoryId for person_category_id
-  columnName: key => key.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase()),
-})
-```
+The definitions describe tables that already exist: create and change them with SQL or [migrations](../migrations/getting-started), and check in a test that they [match the database](./testing#tables-that-match-the-database).
 
 ## Keys
 
@@ -95,23 +55,6 @@ export const membership = defineTable(
 
 Declare the keys that the database guarantees, such as by a constraint, a unique index, or the query of a view: [relations](#relations) and [`find` and `findBy`](./queries/selecting#record-by-key) rely on them, and a query of a relation `one` fails when it finds several records.
 
-## Tables of one row
-
-To keep a table to one row, such as the settings of an application, declare it with `singleton: true` in the options of `defineTable`, and give it a unique index of `(true)` in its migration:
-
-```ts
-export const settings = defineTable(
-  "settings",
-  {
-    id: t.uuid.primaryKey().hasDefault(),
-    locale: t.text,
-  },
-  { singleton: true },
-)
-```
-
-A query of the table is then a query of its row, such as `await db.settings.upsert({ locale })`; see [Singleton Tables](./singleton-tables).
-
 ## Schemas
 
 Put the tables you query in a schema and bind it to the [database](./getting-started#connect) with `bindSchema`:
@@ -137,62 +80,6 @@ await db.$database.close()
 ```
 
 To reuse tables in several schemas, such as tenant schemas and a shared application schema, include one schema in another; see [Multiple Schemas](./multiple-schemas).
-
-### Database of the current context
-
-When your application gets its database from dependency injection, such as to give tests a database of their own, pass a function that returns it instead of the database, such as with [Ripple DI](https://github.com/IlyaSemenov/ripple-di):
-
-```ts [src/db.ts]
-import { bindSchema, createDatabase } from "kern-orm"
-import { postgresJsDriver } from "kern-orm/db/postgres-js"
-import postgres from "postgres"
-import { defineDependency } from "ripple-di"
-
-export const useDatabase = defineDependency(
-  () => createDatabase({ driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)) }),
-  { dispose: database => database.close() },
-)
-
-export const db = bindSchema(schema, () => useDatabase())
-```
-
-Import `db` and query it as usual.
-In the setup of your tests, provide the test database:
-
-```ts
-// test/setup.ts
-import { install, provide } from "ripple-di"
-
-install(provide(useDatabase, testDatabase))
-```
-
-`db` calls the function for each statement, and at the start of `$transaction`, `$session`, and `$lock`, in the async context of the caller; building a query does not call it.
-`$isInTransaction()` and `$database` call it too, so that test helpers and [migrations](../migrations/applying) given `db.$database` or `db` use the database of the context.
-
-The function must return the same database within a transaction or session, such as by providing the database for a whole request or test.
-
-### PostgreSQL schemas
-
-To query tables in a specific PostgreSQL schema, pass `schemaName`; without it, PostgreSQL finds them through `search_path`, which you can override for a [transaction](./transactions#search-path):
-
-```ts
-export const db = bindSchema(schema, database, { schemaName: "app" })
-```
-
-For a PostgreSQL schema per tenant, pass a function that returns the schema of the current request; one `db` then serves every tenant, since the function is called on every query:
-
-```ts
-// useTenant() returns the tenant of the current request
-export const db = bindSchema(schema, database, { schemaName: () => useTenant().schema })
-
-await db.form.select("id") // FROM "tenant_1"."form"
-```
-
-Read the PostgreSQL schema of a `Db` with `$schemaName`, which calls the function, if any; without `schemaName`, it is `undefined` rather than the schema that `search_path` finds:
-
-```ts
-db.$schemaName // "tenant_1"
-```
 
 ## Relations
 
@@ -233,3 +120,116 @@ Relate columns of the same SQL type, such as two `uuid` columns; `smallint`, `in
 A [custom type](./custom-types#operators) needs the operators of `equalityOperators` to be related.
 
 To share relations between schemas, see [Multiple Schemas](./multiple-schemas#schemas).
+
+## Column names
+
+A column is named after its key.
+To name it differently, set the name with `columnName`, as `formId` of `field` [above](#tables) does.
+
+### Naming conventions
+
+To name the columns of your tables in snake case, such as `form_id` for `formId`, create your own `defineTable` with `createTableFactory` and use it to define your tables:
+
+```ts
+// db/define-table.ts
+import { createTableFactory, toSnakeCase } from "kern-orm"
+
+export const defineTable = createTableFactory({ columnName: toSnakeCase })
+```
+
+```ts
+import * as t from "kern-orm/types"
+
+import { defineTable } from "./db/define-table"
+
+export const field = defineTable("form_field", {
+  id: t.uuid.primaryKey(),
+  formId: t.uuid, // form_id
+  createdAt: t.timestamptz, // created_at
+})
+```
+
+A run of capital letters is one word, such as `user_id` for `userID` and `json_data` for `JSONData`, and digits stay in their word, such as `line2`.
+`columnName` overrides the derived name of a column, such as `t.text.columnName("line_2")`.
+
+For another convention, pass your own function, which gets the key of each column and returns its name:
+
+```ts
+export const defineTable = createTableFactory({
+  // personCategoryId for person_category_id
+  columnName: key => key.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase()),
+})
+```
+
+## Tables of one row
+
+To keep a table to one row, such as the settings of an application, declare it with `singleton: true` in the options of `defineTable`, and give it a unique index of `(true)` in its migration:
+
+```ts
+export const settings = defineTable(
+  "settings",
+  {
+    id: t.uuid.primaryKey().hasDefault(),
+    locale: t.text,
+  },
+  { singleton: true },
+)
+```
+
+A query of the table is then a query of its row, such as `await db.settings.upsert({ locale })`; see [Singleton Tables](./singleton-tables).
+
+## Database of the current context
+
+When your application gets its database from dependency injection, such as to give tests a database of their own, pass a function that returns it instead of the database, such as with [Ripple DI](https://github.com/IlyaSemenov/ripple-di):
+
+```ts [src/db.ts]
+import { bindSchema, createDatabase } from "kern-orm"
+import { postgresJsDriver } from "kern-orm/db/postgres-js"
+import postgres from "postgres"
+import { defineDependency } from "ripple-di"
+
+export const useDatabase = defineDependency(
+  () => createDatabase({ driver: postgresJsDriver(postgres(process.env.DATABASE_URL!)) }),
+  { dispose: database => database.close() },
+)
+
+export const db = bindSchema(schema, () => useDatabase())
+```
+
+Import `db` and query it as usual.
+In the setup of your tests, provide the test database:
+
+```ts
+// test/setup.ts
+import { install, provide } from "ripple-di"
+
+install(provide(useDatabase, testDatabase))
+```
+
+`db` calls the function for each statement, and at the start of `$transaction`, `$session`, and `$lock`, in the async context of the caller; building a query does not call it.
+`$isInTransaction()` and `$database` call it too, so that test helpers and [migrations](../migrations/applying) given `db.$database` or `db` use the database of the context.
+
+The function must return the same database within a transaction or session, such as by providing the database for a whole request or test.
+
+## PostgreSQL schemas
+
+To query tables in a specific PostgreSQL schema, pass `schemaName`; without it, PostgreSQL finds them through `search_path`, which you can override for a [transaction](./transactions#search-path):
+
+```ts
+export const db = bindSchema(schema, database, { schemaName: "app" })
+```
+
+For a PostgreSQL schema per tenant, pass a function that returns the schema of the current request; one `db` then serves every tenant, since the function is called on every query:
+
+```ts
+// useTenant() returns the tenant of the current request
+export const db = bindSchema(schema, database, { schemaName: () => useTenant().schema })
+
+await db.form.select("id") // FROM "tenant_1"."form"
+```
+
+Read the PostgreSQL schema of a `Db` with `$schemaName`, which calls the function, if any; without `schemaName`, it is `undefined` rather than the schema that `search_path` finds:
+
+```ts
+db.$schemaName // "tenant_1"
+```

@@ -80,6 +80,21 @@ export const db = bindSchema(schema, database)
 
 Close the database with `database.close()` when the application stops; it waits for the running transactions to end.
 
+## Query
+
+Import `db` wherever you query the database and start queries from its tables:
+
+```ts
+import { db } from "./db"
+
+await db.form.insert({ name: "Survey", published: true })
+
+const forms = await db.form.where({ published: true }).select("id", "name")
+// forms: { id: string; name: string }[]
+```
+
+## Other ways to connect
+
 In a script, declare the database with `await using` to close it at the end of the scope:
 
 ```ts
@@ -98,23 +113,13 @@ export const db = bindSchema(schema, () => useDatabase())
 
 See [Database of the current context](./schemas#database-of-the-current-context).
 
-## Query
-
-Import `db` wherever you query the database and start queries from its tables:
-
-```ts
-import { db } from "./db"
-
-const forms = await db.form.where({ published: true }).select("id", "name")
-// forms: { id: string; name: string }[]
-```
-
 ## Next steps
 
 - [Tables and Schemas](./schemas): keys of tables, schemas, and relations between tables.
 - [Types](./types): column types, nullable columns, and your own types.
 - [Queries](./queries/): select, filter, and sort records, load their related records, and insert, update, and delete them.
+- [Related Records](./queries/relations): load the related records of each row in the same query.
 - [Transactions](./transactions): run queries in a transaction without passing it around.
 - [Testing](./testing): run each test in a transaction that rolls back.
-- [Errors](./errors): statements that PostgreSQL rejects and lost connections.
 - [Multiple Schemas](./multiple-schemas): reuse tables across tenant schemas and a shared schema.
+- [Errors](./errors): statements that PostgreSQL rejects and lost connections.
