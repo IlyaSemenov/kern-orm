@@ -113,7 +113,7 @@ export function createSingletonIndex(
     name = `${table}_singleton_idx`
     if (!fitsIndexName(name)) {
       throw new Error(
-        `Cannot name the singleton index of table ${table}: ${name} is longer than ${maxNameBytes} bytes, so pass name`,
+        `Cannot name the singleton index of table ${table}: ${name} is longer than ${maxNameBytes} bytes, so pass name to createSingletonIndex`,
       )
     }
   }

@@ -23,6 +23,13 @@ describe("createTable", () => {
       down: 'DROP TABLE "form"',
     })
   })
+
+  it("creates a singleton table with its singleton index, and drops them", () => {
+    expect(createTable("license", { token: "text" }, { singleton: true })).toEqual({
+      up: 'CREATE TABLE "license" (\n  "token" text\n)\n;\nCREATE UNIQUE INDEX "license_singleton_idx" ON "license" ((true))',
+      down: 'DROP INDEX "license_singleton_idx"\n;\nDROP TABLE "license"',
+    })
+  })
 })
 
 describe("dropTable", () => {
@@ -72,6 +79,24 @@ describePostgres("table helpers in PostgreSQL", ({ database, testTransaction }) 
       ),
     )
 
+    expect(result.up).toEqual([])
+    expect(result.down).toEqual(result.before)
+  })
+
+  it("dropTable of a singleton table drops it, and its rollback creates it again with its singleton index", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        dropTable("license", { token: "text" }, { singleton: true }),
+        "CREATE TABLE license (token text); CREATE UNIQUE INDEX license_singleton_idx ON license ((true))",
+      ),
+    )
+
+    expect(result.before).toEqual([
+      "column license.token text",
+      "index CREATE UNIQUE INDEX license_singleton_idx ON migrations_helpers.license USING btree ((true))",
+      "table license",
+    ])
     expect(result.up).toEqual([])
     expect(result.down).toEqual(result.before)
   })

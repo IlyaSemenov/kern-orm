@@ -128,10 +128,10 @@ describe("createSingletonIndex", () => {
       `CREATE UNIQUE INDEX "${longest}_singleton_idx" ON "${longest}" ((true))`,
     )
     expect(() => createSingletonIndex(`${longest}l`)).toThrow(
-      `Cannot name the singleton index of table ${longest}l: ${longest}l_singleton_idx is longer than 63 bytes, so pass name`,
+      `Cannot name the singleton index of table ${longest}l: ${longest}l_singleton_idx is longer than 63 bytes, so pass name to createSingletonIndex`,
     )
     expect(() => createSingletonIndex(tooLong)).toThrow(
-      `Cannot name the singleton index of table ${tooLong}: ${tooLong}_singleton_idx is longer than 63 bytes, so pass name`,
+      `Cannot name the singleton index of table ${tooLong}: ${tooLong}_singleton_idx is longer than 63 bytes, so pass name to createSingletonIndex`,
     )
     expect(createSingletonIndex(`${longest}l`, { name: "license_one_row" }).up).toBe(
       `CREATE UNIQUE INDEX "license_one_row" ON "${longest}l" ((true))`,

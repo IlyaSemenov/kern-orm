@@ -1,12 +1,15 @@
 import type { MigrationStep } from "../migration"
 import { quoteIdentifier } from "../sql"
 
-import { invertStep } from "./step"
+import { createSingletonIndex } from "./indexes"
+import { combineSteps, invertStep } from "./step"
 
 /** Options of `createTable` and `dropTable`. */
 export interface TableOptions {
   /** Constraints of the table by name, each a SQL definition, such as `{ form_field_position_key: "UNIQUE (form_id, position)" }`. */
   constraints?: Readonly<Record<string, string>>
+  /** Keeps the table to at most one row with its singleton index, as `createSingletonIndex` of the table without `name` creates it. */
+  singleton?: boolean
 }
 
 /**
@@ -26,10 +29,11 @@ export function createTable(
   for (const [name, definition] of Object.entries(options.constraints ?? {})) {
     lines.push(`CONSTRAINT ${quoteIdentifier(name)} ${definition}`)
   }
-  return {
+  const step: MigrationStep = {
     up: `CREATE TABLE ${quoteIdentifier(table)} (\n  ${lines.join(",\n  ")}\n)`,
     down: `DROP TABLE ${quoteIdentifier(table)}`,
   }
+  return options.singleton ? combineSteps(step, createSingletonIndex(table)) : step
 }
 
 /**

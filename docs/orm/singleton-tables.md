@@ -93,20 +93,25 @@ const licenseId = await db.license.required().update({ expiresAt }).get("id")
 
 ## The table in a migration
 
-Create the singleton index of the table in its migration with `createSingletonIndex`, a unique index of `(true)`, so that the database rejects a second row; `upsert` finds the existing row by it too:
+Create the table in its migration with `singleton: true`, which creates its singleton index, a unique index of `(true)`, so that the database rejects a second row; `upsert` finds the existing row by it too:
 
 ```ts
-import { createSingletonIndex, createTable, defineMigration } from "kern-migrations"
+import { createTable, defineMigration } from "kern-migrations"
 
 export default defineMigration([
-  createTable("license", {
-    id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
-    token: "text NOT NULL",
-    expires_at: "timestamptz",
-  }),
-  createSingletonIndex("license"),
+  createTable(
+    "license",
+    {
+      id: "uuid PRIMARY KEY DEFAULT gen_random_uuid()",
+      token: "text NOT NULL",
+      expires_at: "timestamptz",
+    },
+    { singleton: true },
+  ),
 ])
 ```
+
+To make a table that exists a singleton table, create its index with `createSingletonIndex("license")`.
 
 The index stores `true` for every row, so a second row has a duplicate key.
 Any unique index of `(true)` serves, whatever its name; kern-orm does not check that the database has one.

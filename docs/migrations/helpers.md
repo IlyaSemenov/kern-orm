@@ -15,7 +15,7 @@ Pass the names of tables, columns, indexes, constraints, sequences, and enum typ
 Pass definitions, conditions, defaults, and the columns of an index as SQL, quoting a name in them where SQL needs it, such as `'"order"'`.
 When you build SQL text from values of your code, quote names with `quoteIdentifier` and strings with `quoteLiteral`, both from `kern-migrations`.
 
-- Tables: `createTable(table, columns, { constraints })`, `dropTable` with the same arguments, and `renameTable(from, to)`.
+- Tables: `createTable(table, columns, options)` and `dropTable` with the same arguments, and `renameTable(from, to)`; the options are `constraints` and `singleton`, which creates the singleton index of the table too.
 - Columns: `addColumn(table, column, definition)`, `dropColumn` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
 - Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](./outside-transaction).
 - Singleton indexes: `createSingletonIndex(table, { name })` and `dropSingletonIndex` with the same arguments, a unique index of `(true)` that keeps a table to at most one row, such as a [singleton table](../orm/singleton-tables) of the ORM.
