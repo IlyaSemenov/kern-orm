@@ -1,21 +1,10 @@
 import { defineConfig } from "vitepress"
 
-// The site serves the docs of the last release, Release, at its root and the docs of `main`, Dev, under dev/.
-// The switch names them Release and Development rather than by a version, since the packages of the site have versions of their own.
-const origin = "https://ilyasemenov.github.io"
-const releaseBase = "/kern-orm/"
-const devBase = `${releaseBase}dev/`
-const isDev = process.env.DOCS_TRACK === "dev"
-const releaseLabel = "Release"
-const devLabel = "Development"
-
 export default defineConfig({
   title: "kern-orm",
   description:
     "Fully typed relational query builder for PostgreSQL with ambient transactions and single-query relation loading",
-  base: isDev ? devBase : releaseBase,
-  // Search engines should send users to the docs of the version they can install.
-  head: isDev ? [["meta", { name: "robots", content: "noindex" }]] : [],
+  base: "/kern-orm/",
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
@@ -24,14 +13,6 @@ export default defineConfig({
       { text: "Database", link: "/database/getting-started", activeMatch: "^/database/" },
       { text: "Migrations", link: "/migrations/getting-started", activeMatch: "^/migrations/" },
       { text: "Jobs", link: "https://ilyasemenov.github.io/kern-jobs/" },
-      {
-        text: isDev ? devLabel : releaseLabel,
-        // An absolute URL, since the other track is outside `base`, and a target, which makes the router load it as another site.
-        items: [
-          { text: releaseLabel, link: `${origin}${releaseBase}`, target: "_self" },
-          { text: devLabel, link: `${origin}${devBase}`, target: "_self" },
-        ],
-      },
     ],
     sidebar: {
       "/orm/": [

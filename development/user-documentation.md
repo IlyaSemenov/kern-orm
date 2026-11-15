@@ -16,11 +16,8 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
 
 ## Publishing
 
-- Each run of `.github/workflows/docs.yml` on `main` publishes the whole site from the current state of the repository, so run `gh workflow run docs.yml` to repair or redeploy it:
-  - Release, at the root, from the commit of the last published non-prerelease GitHub Release of any package; such a release starts a run on `main`.
-  - Dev, under `dev/`, from `main`, built with `DOCS_TRACK=dev`.
+- Each run of `.github/workflows/docs.yml` on `main` publishes the site from `main`, so run `gh workflow run docs.yml` to repair or redeploy it.
 - Test a change of the workflow with `gh workflow run docs.yml --ref <branch>`, which builds the site of that branch without deploying it.
-- Keep the build of a commit of Release in the Actions cache under `docs-release-<commit>`, which a run rebuilds when it is missing; delete it with `gh cache delete` to rebuild it on purpose.
 
 ## Content
 
