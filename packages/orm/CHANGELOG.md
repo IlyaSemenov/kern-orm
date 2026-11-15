@@ -1,5 +1,11 @@
 # kern-orm
 
+## 0.18.0
+
+### Minor Changes
+
+- 833d542: Add `none()` to queries, which makes a query find no records and skips the database where the result is known without it.
+
 ## 0.17.0
 
 ### Minor Changes
