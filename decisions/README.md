@@ -116,3 +116,13 @@ The SQL that loads nested queries and relations.
 ## Packages
 
 - [The database layer as the package `kern-db`](packages/database-package.md): a package of one repository with the drivers as its subpaths, a public entry point for query builders on top of it, a regular dependency of `kern-orm`, a peer dependency of the migrator, and ranges of one minor line.
+
+## Writing a decision
+
+- Write each decision in a file of its own under its topic directory, such as `decisions/nested-rows/`, and list it in that topic's section of this index; add a topic only when none fits.
+- Write in it the chosen design, the alternatives it weighs, their measured costs, and the other projects that chose an alternative.
+- Mention another project only when its design is an alternative that the decision weighs, and name it as [comparison/README.md](../comparison/README.md#writing-a-record) describes.
+- Add readable code examples where they make the designs easier to compare, such as the calls that users write or the SQL that the compiler builds.
+- Record the ratios and counts that a decision relies on rather than absolute times, measured for a decision made for speed or size by a benchmark that [development/benchmarks.md](../development/benchmarks.md) describes.
+- Link a decision from the contract of its design in architecture/, and keep there only that design and a reason of one clause; do not link decisions/ back to architecture/.
+- In a comment beside the code of a decision, state its reason, with a measurement only when the reason rests on it, such as a cost of an order of magnitude rather than of a few percent.

@@ -1,0 +1,41 @@
+# User documentation
+
+How to write the user documentation of kern-orm, the VitePress site in `docs/`, published to GitHub Pages.
+
+## Site
+
+- Keep package READMEs short and link to the site.
+- Group the pages of the site by the package they document, ORM, Database, and Migrations, each with a sidebar of its own, and keep the pages of each group in its directory: `docs/orm/`, `docs/database/`, and `docs/migrations/`, each starting with its Getting Started page.
+- Add every new page of a group to the sidebar of its group in `docs/.vitepress/config.ts`.
+- Write the pages of the ORM group for an application of kern-orm, with a `Db` and imports from `kern-orm` and its subpaths, and the pages of the Database group for code without the ORM, with a `database` and imports from `kern-db` and its subpaths.
+- Document types, transactions, test helpers, and errors, which both packages give, on a page of each group with examples of its own API, and update both pages with a change of what they share; document drivers and custom drivers in the Database group alone.
+- Open a page of the Database group that has a counterpart in the ORM group, such as Transactions, with an `info` box titled `Using the ORM?` that links the counterpart; give every `info` box a title of its own, since VitePress titles it `INFO` otherwise.
+- Keep material for authors of extensions, such as custom types and operators, custom drivers, and custom migration helpers, on pages of their own in the group of their package, separate from the guides for using the API.
+- Keep the overview of the Kern libraries, including kern-jobs, which has its own repository, in `docs/ecosystem.md`, outside the groups, and update it, together with the Kern libraries sections of the READMEs, when a package of the family is added or changes what it is for.
+- Keep `docs/orm/comparison.md` a summary of [comparison/](../comparison/README.md) for choosing a library, with the reviewed versions and review date and a link to the evidence of each claim about another project.
+
+## Publishing
+
+- Each run of `.github/workflows/docs.yml` on `main` publishes the whole site from the current state of the repository, so run `gh workflow run docs.yml` to repair or redeploy it:
+  - Release, at the root, from the commit of the last published non-prerelease GitHub Release of any package; such a release starts a run on `main`.
+  - Dev, under `dev/`, from `main`, built with `DOCS_TRACK=dev`.
+- Test a change of the workflow with `gh workflow run docs.yml --ref <branch>`, which builds the site of that branch without deploying it.
+- Keep the build of a commit of Release in the Actions cache under `docs-release-<commit>`, which a run rebuilds when it is missing; delete it with `gh cache delete` to rebuild it on purpose.
+
+## Content
+
+- Write user documentation as a guide to using the API in plain terms: what to call and what it does, not how it is typed or implemented.
+- Start each page and section from what users want to achieve in their application, such as sharing tables between tenant and SaaS schemas, rather than from a description of the project or its concepts.
+  Name only a task that users really have; when none fits, state plainly what the API does instead of inventing a task for a "To …" opening.
+  Open with a short statement of the common case and its example, and put details, alternatives, and edge cases after the example.
+- Other things being equal, write the happy path as an instruction of what to do, such as "Pass the values to `where`", rather than as a description of the API, such as "`where` takes values".
+  This is a preference, not a rule: keep a description wherever it reads more clearly.
+- Do not restate in prose what users see in their editor's types or learn from a TypeScript or runtime error.
+- Document every guarantee that the application relies on, such as of transactions, the results of queries, and migrations.
+  Mention another edge case only when users must write different code because of it; record other edge cases, typing rules, and invariants in [architecture/](../architecture/README.md) and cover them with tests.
+- Write a rule of how users must do something as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
+- State a limitation, something that users cannot do, as a description, such as "A query with `distinct` cannot select related records", rather than as an instruction to avoid it, unless the description loses clarity.
+
+## Examples
+
+- Name the `Db` `db`, the schema `schema`, and other such values by their kind, such as `database`, unless the page uses several of one kind; then name each by its role, such as `tenantDb` and `saasDb`.

@@ -65,3 +65,10 @@ Ideas that wait for an application that needs them, or that are not planned.
 - [Several records of a relation `one`](several-records-of-a-relation-one.md): an error that names the field.
 - [Union of queries of several tables](union-of-queries-of-several-tables.md): one query typed from `cond ? db.foo : db.bar`.
 - [Relation-aware mutations](relation-aware-mutations.md): a separate project.
+
+## Keeping the backlog
+
+- Give each item a file of its own with its preliminary decisions and open questions, and list it in this index under the bucket of its importance with a short summary.
+- In Next and Later, add a new item where its importance roughly fits, without reordering other items to place it exactly.
+  In Without a use case, add it at the end.
+- Delete an item, its file and its line in this index, once it is done, moving its lasting contracts to [architecture/](../architecture/README.md), or once it is decided against, moving the decision to [decisions/](../decisions/README.md).

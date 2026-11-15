@@ -53,3 +53,18 @@ Scenarios worth comparing that the topics do not cover yet:
 - A transaction whose connection fails: whether it may have been committed, and whether it commits after its callback caught the error.
 - The isolation level of a nested transaction, which PostgreSQL sets only for a whole transaction.
 - Statements that PostgreSQL rejects in a transaction block, such as `CREATE INDEX CONCURRENTLY`, on one connection with its search path.
+
+## Writing a record
+
+- Record a scenario in the file of its topic, under a heading of the scenario.
+  - Open the scenario with a sentence of what kern-orm does.
+  - Give each project an item with its name, a link to its issue, documentation, or source, and a verdict.
+  - State what the project does in the scenario, such as the SQL that it builds or the rows that a query returns, rather than a judgment such as a loss of data.
+  - Cite an issue or a pull request only for behavior of the listed version, such as a missing feature, never for a defect that the listed version fixes.
+- Name another project, here and in decisions/, as [Projects](#projects) lists it, without a link to the project and without a version unless it differs from the listed one; write a record of an issue or a pull request in the past tense.
+  List a new project there with its link and the version you checked.
+- Do not link comparison/ back to architecture/.
+- Also record a scenario that another project fails while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>`.
+- Keep a capability that another project has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of [backlog/](../backlog/README.md) that would add it, and move it here when the item is deleted.
+- Update [docs/orm/comparison.md](../docs/orm/comparison.md), a summary of comparison/ for choosing a library, when a record that it summarizes changes; it gives the reviewed versions and review date and a link to the evidence of each claim about another project.
+- Add a scenario worth comparing that the topics do not cover yet to [Scenarios to compare](#scenarios-to-compare).

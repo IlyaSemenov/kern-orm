@@ -1,6 +1,6 @@
 # Profiling the type-check cost
 
-How to find what makes code that uses the API expensive to type-check; the Benchmarks section of [AGENTS.md](../../AGENTS.md) describes the benchmarks and their commands.
+How to find what makes code that uses the API expensive to type-check; [development/benchmarks.md](../../development/benchmarks.md) describes the benchmarks and their commands.
 
 ## Choose the measurement
 
