@@ -26,6 +26,13 @@ Write a benchmark of the time of the JavaScript of a hot path, without PostgreSQ
   Rename a scenario whose work changes, so that the runner does not compare different work.
 - Treat a change whose confidence interval includes no change as inconclusive, and rerun it with more pairs through `--runs` before relying on it.
 
+## Orchid interoperability
+
+The [Orchid interop suite](../benchmarks/suites/orchid-interop.ts) measures real queries from native Orchid and the Kern adapter against the same data.
+Its header gives the commands for timing, PostgreSQL protocol exchanges, and peak client RSS under Bun and Node.js.
+It creates and drops a schema shared by the compared clients in the test database.
+See the [measurements](../benchmarks/suites/orchid-interop.md) for timings, exchange counts, and memory use.
+
 ## Type-check cost
 
 Measure the type-check cost of the API with the Attest benchmarks `benchmarks/types/*.bench.ts`: `bench(...).types()` counts the instantiations that its callback adds to its file, checked against the declarations of the built packages.

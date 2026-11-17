@@ -27,6 +27,9 @@ The package test (`packages/orm/tests/package/`) checks the packed packages as c
 - A third consumer of `kern-orm`, which npm installs with `--install-strategy=nested`, cannot resolve `kern-db`, as in a strict layout such as of pnpm, so its declarations name the types of `kern-db` only through the entry points of `kern-orm`, also from a module that imports only its root.
 - A bundled consumer of `kern-db` includes no module but its own and those of `kern-db`.
 
+- The Orchid adapter consumer installs the packed `@kern-orm/orchid-interop` and the installed Orchid dependency tree from the local registry, emits declarations, and checks shared transactions under Bun and Node.js.
+  It uses `skipLibCheck: true` for the declarations of Orchid ORM; the Kern-only consumers retain library checking.
+
 ## Test transactions
 
 - Test transactions reuse the ambient transaction coordinator and always roll back.

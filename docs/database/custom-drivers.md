@@ -94,6 +94,10 @@ Follow these rules in the driver:
   Read the status of the transaction that PostgreSQL reported in `ReadyForQuery` after the last statement, also when PostgreSQL rejected that statement.
 - In `close`, reject new statements and scripts on the pool and new connections at once with `ConnectionError` whose `unsent` is `true`, wait for the statements already sent, for the reserved connections, and for those still waiting for a connection, and then close the connections.
 
+`database.execute` passes its statement to the driver as the same object.
+A driver written for your query builder can read fields that the builder adds to the statement, such as values that its client serializes itself; `database.execute` routes the statement to the connection of the current transaction as any other.
+The postgres.js driver reads such values with its [`getNativeParameters` option](./query-builders#values-that-postgres-js-serializes).
+
 ## Test the driver
 
 Call `describeDriverContract` from a test file to check the driver in PostgreSQL, with the functions of your test runner:

@@ -22,6 +22,8 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [kysely-codegen](https://github.com/RobinBlomberg/kysely-codegen) 0.20.0, TypeScript types for Kysely generated from the database.
 - [Slonik](https://github.com/gajus/slonik) 49.13.0.
 - [Bun SQL](https://bun.com/docs/runtime/sql) 1.4.4.
+- [Postgres.js](https://github.com/porsager/postgres) 4.1.0.
+- [node-postgres](https://github.com/brianc/node-postgres) 8.23.1.
 - [Django](https://github.com/django/django) 6.0.10.
 - [node-pg-migrate](https://github.com/salsita/node-pg-migrate) 9.0.0.
 - [Rails](https://github.com/rails/rails) 8.1.4.1, with its migrations of Active Record.

@@ -98,6 +98,8 @@ The SQL that loads nested queries and relations.
 - [Phase of a connection failure watched on every statement](transactions/connection-failure-phase.md): through a wrapper of the connection of a transaction, rather than a flag of the driver or the rejection of the callback.
 - [Sessions for statements outside a transaction](transactions/sessions.md): a level on a reserved connection, rather than a transaction that holds a lock beside the pool or access to the driver.
 - [Levels of the test helpers that take turns on their connection](transactions/test-levels-that-take-turns.md): the transactions of the tested code one at a time and each statement outside a transaction in a savepoint of its own, rather than rejecting beside a running transaction, a turn for a whole request of a browser test, statements without savepoints, or truncating tables between browser tests.
+- [Orchid transactions as a facade over Kern](transactions/orchid-adapter.md): per-instance state projection and one transaction owner instead of independent Orchid bookkeeping.
+- [Transaction control in Orchid SQL rejected by its leading keywords](transactions/orchid-transaction-control.md): in the adapter before the statement runs, rather than unchecked, detected after it, or checked by kern-db for every statement.
 
 ## Drivers
 
@@ -108,6 +110,9 @@ The SQL that loads nested queries and relations.
 - [Release decided by the driver](drivers/release-by-driver.md): by what the driver saw on the connection and the status of its transaction, rather than by a failure that the caller passes.
 - [Drivers recognized by their methods, databases by a brand](drivers/recognizing-drivers-and-databases.md): `isDriver` accepts a driver written by hand, and `isDatabase` only a database of `createDatabase`, of any copy of `kern-db`.
 - [`QueryError` told by the conditions of PostgreSQL](drivers/error-conditions.md): one predicate of every condition by its name, without a constraint argument, rather than a predicate of each condition, constants of the codes, or a member of `QueryError`.
+- [Native parameters of the postgres.js driver](drivers/native-parameters.md): an option of the built-in driver that returns the values of a statement that postgres.js serializes, rather than a driver of the Orchid adapter, a field of every statement that every driver honors, or exported parts of the driver.
+- [Orchid values serialized by postgres.js](drivers/orchid-values.md): JavaScript values in a field of the statement, rather than an operation of kern-db that encodes by the server types with a patch of postgres.js.
+- [Reusing Orchid's postgres.js codecs](drivers/orchid-codecs.md): the configured registries of the client, rather than handwritten codecs.
 
 ## Migrations
 

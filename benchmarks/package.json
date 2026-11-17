@@ -8,13 +8,17 @@
     "bench": "bun --env-file=../.env.test.local run.ts",
     "bench:runtime": "bun run --cwd .. build && bun runtime/run.ts",
     "bench:types": "bun run --cwd .. build && node types/run.ts",
-    "profile:types": "bun run --cwd .. build && bun types/profile.ts"
+    "profile:types": "bun run --cwd .. build && bun types/profile.ts",
+    "bench:orchid": "bun --env-file=../.env.test.local --tsconfig-override=runtime/tsconfig.worker.json suites/orchid-interop.ts"
   },
   "devDependencies": {
     "@ark/attest": "^0.58.0",
+    "@kern-orm/orchid-interop": "workspace:*",
     "@types/pg": "catalog:",
+    "kern-db": "workspace:*",
     "kern-orm": "workspace:*",
     "mitata": "^1.0.34",
+    "orchid-orm": "1.78.61",
     "pg": "catalog:",
     "postgres": "catalog:",
     "typescript-6": "catalog:"

@@ -59,6 +59,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Branded types of columns](branded-types-of-columns.md): an opt-in `brand()` that rejects a mixed-up identifier.
 - [Singleton tables whose row always exists](singleton-tables-whose-row-always-exists.md): an option of the table whose queries start in rows `one`.
 - [Other vector types of pgvector](other-vector-types-of-pgvector.md): `halfvec`, `sparsevec`, and the distances of `bit`.
+- [Orchid transaction interoperability](orchid-transaction-interop.md): shared transaction ownership, legacy codecs, and test isolation for gradual migration.
 
 ## Without a use case
 

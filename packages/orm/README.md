@@ -76,4 +76,4 @@ export const db = bindSchema(schema, database)
 
 ## Kern libraries
 
-kern-orm is part of [Kern](https://ilyasemenov.github.io/kern-orm/ecosystem), a family of PostgreSQL libraries for TypeScript, alongside [kern-migrations](https://ilyasemenov.github.io/kern-orm/migrations/getting-started) and [kern-jobs](https://ilyasemenov.github.io/kern-jobs/).
+kern-orm is part of [Kern](https://ilyasemenov.github.io/kern-orm/ecosystem), a family of PostgreSQL libraries for TypeScript, alongside [kern-migrations](https://ilyasemenov.github.io/kern-orm/migrations/getting-started) and [kern-jobs](https://ilyasemenov.github.io/kern-jobs/); [@kern-orm/orchid-interop](https://ilyasemenov.github.io/kern-orm/orm/orchid-interop) lets you migrate an application from Orchid ORM one function at a time.

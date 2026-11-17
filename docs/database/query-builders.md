@@ -178,6 +178,43 @@ try {
 
 When your users choose the keys of the records, reject a key for which `isRecordKey` returns `false`, such as `__proto__`: assigning it would change the prototype of the record instead of adding a field.
 
+## Values that postgres.js serializes
+
+A builder whose statements take JavaScript values that postgres.js serializes, rather than PostgreSQL text, can run them on the postgres.js driver.
+Put the values in a field that your builder adds to the statement, and return them from the `getNativeParameters` option of `postgresJsDriver`:
+
+```ts
+import type { SqlStatement } from "kern-db"
+import { createDatabase } from "kern-db"
+import { postgresJsDriver } from "kern-db/postgres-js"
+import postgres from "postgres"
+
+const values = Symbol("values")
+
+interface NativeStatement extends SqlStatement {
+  readonly [values]?: readonly unknown[]
+}
+
+export const database = createDatabase({
+  driver: postgresJsDriver(postgres(process.env.DATABASE_URL!), {
+    getNativeParameters: (statement: NativeStatement) => statement[values],
+  }),
+})
+
+const statement: NativeStatement = {
+  text: "SELECT $1::jsonb ->> 'name'",
+  parameters: [],
+  [values]: [{ name: "Kern" }],
+}
+const { rows } = await database.execute(statement)
+// rows: [["Kern"]]
+```
+
+postgres.js serializes each value with the serializers of the client, by the type that PostgreSQL resolves for its parameter, as for a query of the client itself.
+`database.execute` passes the statement to the driver as it is, so the values run in the current transaction like any other statement.
+A statement for which the option returns `undefined`, such as of a query of SQL text, sends its text `parameters`.
+A value that postgres.js fails to serialize rejects with `ConnectionError`, so a transaction rolls back even if its callback catches it.
+
 ## Depending on kern-db
 
 Require `kern-db` in `peerDependencies` of your package, by a range of one minor line, such as `^0.1.0`:

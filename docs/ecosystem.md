@@ -8,6 +8,7 @@ Use each of them on its own, or several in one application:
   kern-orm runs on it, so an application of kern-orm has it already.
 - [kern-migrations](./migrations/getting-started): change the schema of your database with helpers, SQL, or TypeScript functions, roll the changes back, and test them.
   It applies migrations through the `db` of kern-orm, the `database` of kern-db, or a driver of kern-db.
+- [@kern-orm/orchid-interop](./orm/orchid-interop): run existing Orchid ORM queries and new kern-orm queries on one connection pool and in the same transactions, to move an application from Orchid ORM to kern-orm one function at a time.
 - [kern-jobs](https://ilyasemenov.github.io/kern-jobs/): run background jobs stored in PostgreSQL, and enqueue them in the transaction that writes their data.
   It works with postgres.js, node-postgres, Orchid ORM, kern-orm, kern-db, and [other clients](https://ilyasemenov.github.io/kern-jobs/database-clients#other-clients).
 
