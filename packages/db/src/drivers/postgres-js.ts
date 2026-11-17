@@ -3,7 +3,7 @@ import type { ISql, Sql } from "postgres"
 import type { Driver, DriverResult, SqlStatement, TextValue } from "../driver"
 import { ConnectionError, toDriverError } from "../driver-error"
 
-/** OID of the PostgreSQL `unknown` pseudo-type; postgres.js sends such parameters as they are, and PostgreSQL infers their types. */
+/** OID of the PostgreSQL `unknown` pseudo-type, which the driver declares for text parameters so that PostgreSQL infers their types. */
 const unknownType = 705
 
 /**
@@ -46,13 +46,26 @@ function toPostgresJsError(error: unknown) {
   })
 }
 
+/** Options of `postgresJsDriver`. */
+export interface PostgresJsDriverOptions {
+  /**
+   * Returns the values of the parameters of a statement that postgres.js serializes itself, or `undefined` to send the text of its `parameters`.
+   *
+   * postgres.js serializes each value with the serializers of the client, by the type that PostgreSQL resolves for its parameter on the connection that runs the statement, as when the client runs it.
+   * A query builder of postgres.js values sets them in a field that it adds to the statement, which `database.execute` passes to the driver as the same object.
+   * When postgres.js cannot serialize a value, the statement rejects with `ConnectionError`.
+   * When the function throws, the statement rejects with `ConnectionError` whose `unsent` is `true` and whose `cause` is the thrown error.
+   */
+  getNativeParameters?: (statement: SqlStatement) => readonly unknown[] | undefined
+}
+
 /**
  * Creates a kern-db driver over a postgres.js client; the client keeps managing its pool.
  *
  * It throws a `TypeError` for a client that transforms the column names or rows of results, such as with `postgres.camel`.
  * Closing the driver ends the supplied client.
  */
-export function postgresJsDriver(sql: Sql): Driver {
+export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}): Driver {
   // postgres.js applies these transforms also to the results of `.raw()`, which would rename the result columns that kern-db reads values by, or replace the rows; it skips the transform of values there.
   const { column, row } = sql.options.transform
   if (column.from !== undefined || row.from !== undefined) {
@@ -61,18 +74,37 @@ export function postgresJsDriver(sql: Sql): Driver {
     )
   }
 
+  // Declares each text parameter with the type `unknown` (OID 705), whose default serializer of postgres.js keeps the text, so that PostgreSQL infers the type of the parameter from the statement.
+  // When every parameter, also `null`, has a declared type, postgres.js sends the values with the statement instead of waiting for PostgreSQL to describe its parameters, so the statement runs in one round trip.
+  const toTextParameters = (statement: SqlStatement): readonly unknown[] =>
+    statement.parameters.map(value => sql.typed(value as never, unknownType))
+  const { getNativeParameters } = options
+  // Chosen once, so that a driver without the option sends text parameters without checking for it on every statement.
+  const toParameters = getNativeParameters
+    ? (statement: SqlStatement): readonly unknown[] => {
+        let native
+        try {
+          native = getNativeParameters(statement)
+        } catch (error) {
+          throw new ConnectionError("Could not read the native parameters of the statement", {
+            cause: error,
+            unsent: true,
+          })
+        }
+        return native ?? toTextParameters(statement)
+      }
+    : toTextParameters
   let closing: Promise<void> | undefined
 
   async function execute(client: ISql, statement: SqlStatement): Promise<DriverResult> {
-    // postgres.js would otherwise serialize parameters and parse results by their types, such as timestamps through Date.
-    // A parameter of a known type, including `null`, also lets postgres.js prepare and run a statement in one round trip.
-    const parameters = statement.parameters.map(value => sql.typed(value as never, unknownType))
+    const parameters = toParameters(statement)
     const rows: TextValue[][] = []
     let result
     try {
       // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
       result = await client
         .unsafe(statement.text, parameters as never[], { simple: false })
+        // Keeps the values as PostgreSQL returns them, without the parsers of postgres.js by their types, such as of timestamps into Date.
         .raw()
         .forEach(source => {
           // Convert each row on arrival so that the raw buffers do not accumulate alongside the text rows.

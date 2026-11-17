@@ -6,6 +6,7 @@ import postgres from "postgres"
 import { createStatement } from "../driver"
 import { ConnectionError, QueryError } from "../driver-error"
 
+import type { PostgresJsDriverOptions } from "./postgres-js"
 import { postgresJsDriver } from "./postgres-js"
 
 /**
@@ -16,7 +17,8 @@ import { postgresJsDriver } from "./postgres-js"
 function createFakeClient({
   failure,
   reserveFailure,
-}: { failure?: unknown; reserveFailure?: unknown } = {}) {
+  options: driverOptions,
+}: { failure?: unknown; reserveFailure?: unknown; options?: PostgresJsDriverOptions } = {}) {
   const sent: unknown[][] = []
   const options: unknown[] = []
   const scripts: string[] = []
@@ -45,7 +47,7 @@ function createFakeClient({
       reserveFailure ? Promise.reject(reserveFailure) : Promise.resolve({ release() {} }),
     end: () => Promise.resolve(),
   }
-  return { driver: postgresJsDriver(sql as unknown as Sql), sent, options, scripts }
+  return { driver: postgresJsDriver(sql as unknown as Sql, driverOptions), sent, options, scripts }
 }
 
 it("sends every parameter, including null, with the unknown type", async () => {
@@ -59,6 +61,51 @@ it("sends every parameter, including null, with the unknown type", async () => {
       { value: null, type: 705 },
     ],
   ])
+})
+
+describe("native parameters", () => {
+  const values = Symbol("values")
+  const options: PostgresJsDriverOptions = {
+    getNativeParameters: statement => (statement as { [values]?: unknown[] })[values],
+  }
+
+  it("sends the values that getNativeParameters returns as they are", async () => {
+    const { driver, sent } = createFakeClient({ options })
+    const date = new Date(0)
+
+    await driver.execute({
+      text: "SELECT $1, $2",
+      parameters: [],
+      [values]: [date, [1, 2]],
+    } as never)
+
+    expect(sent).toEqual([[date, [1, 2]]])
+  })
+
+  it("sends the text parameters of a statement for which getNativeParameters returns undefined", async () => {
+    const { driver, sent } = createFakeClient({ options })
+
+    await driver.execute(createStatement("SELECT $1", ["1"]))
+
+    expect(sent).toEqual([[{ value: "1", type: 705 }]])
+  })
+
+  it("wraps an exception of getNativeParameters in an unsent ConnectionError", async () => {
+    const failure = new TypeError("no values")
+    const { driver, sent } = createFakeClient({
+      options: {
+        getNativeParameters: () => {
+          throw failure
+        },
+      },
+    })
+
+    const error = await driver.execute(createStatement("SELECT 1")).catch((error: unknown) => error)
+
+    expect(error).toBeInstanceOf(ConnectionError)
+    expect(error).toMatchObject({ unsent: true, cause: failure })
+    expect(sent).toEqual([])
+  })
 })
 
 it("sends a statement without parameters with the extended protocol", async () => {

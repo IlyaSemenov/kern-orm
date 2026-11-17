@@ -2,8 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import type { AddressInfo } from "node:net"
 import { createServer } from "node:net"
 
-import type { Driver } from "kern-db"
-import { ConnectionError, createStatement } from "kern-db"
+import type { Database, Driver, SqlStatement } from "kern-db"
+import {
+  ConnectionError,
+  createDatabase,
+  createStatement,
+  TransactionConnectionError,
+} from "kern-db"
 import { postgresJsDriver } from "kern-db/postgres-js"
 import { describeDriverContract } from "kern-db/testing"
 import type { Sql } from "postgres"
@@ -219,5 +224,53 @@ describe.skipIf(!DATABASE_URL)("postgresJsDriver", () => {
     } finally {
       await driver.close()
     }
+  })
+
+  describe("native parameters", () => {
+    const values = Symbol("values")
+    let database: Database
+    beforeAll(() => {
+      database = createDatabase({
+        driver: postgresJsDriver(postgres(DATABASE_URL!), {
+          getNativeParameters: statement => (statement as { [values]?: unknown[] })[values],
+        }),
+      })
+    })
+    afterAll(() => database?.close())
+
+    function createNativeStatement(text: string, parameters: unknown[]): SqlStatement {
+      return { text, parameters: [], [values]: parameters } as SqlStatement
+    }
+
+    it("serializes values by the types that PostgreSQL resolves for their parameters", async () => {
+      // The same value is a JSON array or a PostgreSQL array only by the type of its parameter.
+      const statement = createNativeStatement(
+        "SELECT ($1::jsonb)->>1 AS json, ($2::int[])[2] AS integers",
+        [
+          [1, 2],
+          [1, 2],
+        ],
+      )
+      expect((await database.execute(statement)).rows).toEqual([["2", "2"]])
+    })
+
+    it("runs on the connection of the transaction", async () => {
+      await database.transaction(async () => {
+        await database.query`SELECT set_config('kern.native_parameters', 'transaction', true)`
+        const statement = createNativeStatement("SELECT current_setting($1)", [
+          "kern.native_parameters",
+        ])
+        expect((await database.execute(statement)).rows).toEqual([["transaction"]])
+      })
+    })
+
+    it("rejects a value that the client cannot serialize with ConnectionError, which rolls back the transaction", async () => {
+      const statement = createNativeStatement("SELECT $1::jsonb", [{ amount: 1n }])
+      await expect(
+        database.transaction(async () => {
+          await expect(database.execute(statement)).rejects.toBeInstanceOf(ConnectionError)
+        }),
+      ).rejects.toBeInstanceOf(TransactionConnectionError)
+    })
   })
 })

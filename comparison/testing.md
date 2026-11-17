@@ -9,6 +9,12 @@ Test helpers run each test in a transaction that rolls back, and the transaction
 - Prisma ORM, lacks: its guide of integration tests deletes the data after the tests instead of rolling back ([docs](https://www.prisma.io/docs/orm/v7/prisma-client/testing/integration-testing)), and jest-prisma runs each Jest test in a transaction that rolls back ([docs](https://github.com/Quramy/jest-prisma/blob/v1.8.2/README.md#transaction-rollback)).
 - Orchid ORM, same: `testTransaction` runs each test in a transaction that rolls back, and the transactions of the code under test in it as savepoints ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/transactions.md#testtransaction)).
 
+## Statements outside a user transaction during a test
+
+Kern runs each statement outside a user transaction inside a savepoint, so a PostgreSQL rejection rolls back only the statement and the test transaction remains usable.
+
+- Orchid ORM 1.78.61 with pqb 0.73.50, differs: `testTransaction` routes a plain query directly to the test transaction's adapter, so an ordinary statement outside a user transaction uses no savepoint of its own ([test transaction and query execution](https://unpkg.com/pqb@0.73.50/dist/index.mjs)).
+
 ## Late work of a finished test
 
 Work that outlives its test transaction, such as of a timed-out test, rejects instead of running in the next test, and a fixture whose seed never settles closes before the next scope opens its fixture.

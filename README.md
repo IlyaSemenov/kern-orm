@@ -92,6 +92,7 @@ kern-orm is part of [Kern](https://ilyasemenov.github.io/kern-orm/ecosystem), a 
 - [`kern-orm`](packages/orm): typed relational queries, including related records.
 - [`kern-db`](packages/db): SQL statements with typed rows, ambient transactions, and test transactions, without the ORM; kern-orm runs on it.
 - [`kern-migrations`](packages/migrations): migrations of PostgreSQL schemas in SQL and TypeScript, applied through kern-orm or kern-db.
+- [`@kern-orm/orchid-interop`](packages/orchid-interop): Orchid ORM and kern-orm queries on one pool and in the same transactions, to move an application from Orchid ORM.
 - [`kern-jobs`](https://github.com/IlyaSemenov/kern-jobs): background jobs stored in PostgreSQL, with any supported PostgreSQL client.
 
 ## Development

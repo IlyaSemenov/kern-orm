@@ -55,4 +55,5 @@ Module paths are relative to the `src/` directory of their package: `packages/db
 - [Testing](testing.md): `test-helpers.ts`, `lock-wait.ts`, and `transaction/test-levels/` of `kern-db`, the test harness in `testing/` of the repository, and the package test in `packages/orm/tests/package/`.
 - [Drivers](drivers.md): `driver.ts`, `driver-error.ts`, `error-condition.ts`, `error-condition-codes.ts`, `driver-contract.ts`, and `drivers/` of `kern-db`.
 - [Migrations](migrations.md): `packages/migrations/`.
+- [Orchid interoperability](orchid-interop.md): the `packages/orchid-interop/` adapter.
 - [Package compatibility](compatibility.md): the ranges by which the packages of the repository depend on each other.

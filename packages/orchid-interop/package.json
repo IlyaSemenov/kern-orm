@@ -1,0 +1,55 @@
+{
+  "name": "@kern-orm/orchid-interop",
+  "version": "0.0.0",
+  "description": "Run Orchid ORM and kern-orm queries in the same transactions while moving an application to kern-orm",
+  "keywords": [
+    "kern-db",
+    "kern-orm",
+    "orchid-orm",
+    "postgres",
+    "transactions"
+  ],
+  "homepage": "https://ilyasemenov.github.io/kern-orm/orm/orchid-interop",
+  "bugs": "https://github.com/IlyaSemenov/kern-orm/issues",
+  "license": "MIT",
+  "author": "Ilya Semenov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IlyaSemenov/kern-orm.git",
+    "directory": "packages/orchid-interop"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@kern-orm/test-harness": "workspace:*",
+    "kern-db": "workspace:*",
+    "kern-orm": "workspace:*",
+    "orchid-orm": "1.78.61",
+    "postgres": "catalog:"
+  },
+  "peerDependencies": {
+    "kern-db": "^0.7.0",
+    "orchid-orm": "^1.78.61",
+    "postgres": "^4.0.0"
+  },
+  "engines": {
+    "bun": ">=1.4",
+    "node": ">=24"
+  }
+}
