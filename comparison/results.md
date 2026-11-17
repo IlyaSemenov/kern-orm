@@ -1,5 +1,11 @@
 # Converting results
 
+## Result column metadata
+
+Kern returns result columns as readonly objects with `name` and PostgreSQL type OID in `type`.
+
+- Bun SQL, same: PostgreSQL results expose `columns` as objects with `name` and `type`, alongside the source table OID in `table` and column number in `number` ([documentation](https://bun.com/blog/release-notes/bun-v1.4.4#result-columns-and-result-statement)).
+
 ## `map` of a `NULL` value
 
 `map` converts each row that a query returns, so it calls its callback with `null` for a `NULL` value, such as of an aggregate without rows, and not for a missing row.

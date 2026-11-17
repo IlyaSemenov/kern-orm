@@ -61,7 +61,12 @@ const decoding: Topic = {
 
 /** Result of a `SELECT` of `rows` with result `columns`. */
 function createResult(columns: string[], rows: TextValue[][]): DriverResult {
-  return { command: "SELECT", count: rows.length, columns, rows }
+  return {
+    command: "SELECT",
+    count: rows.length,
+    columns: columns.map(name => ({ name, type: 25 })),
+    rows,
+  }
 }
 
 /** Columns of the table of events in their order, which name the result columns of `select("*")`. */

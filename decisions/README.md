@@ -59,6 +59,7 @@ Filters, queries in expressions, and SQL fragments.
 ## Queries of SQL text
 
 - [Columns of SQL text checked after the statement](sql-queries/columns-of-sql-text.md).
+- [Indexing wide result column lookups](sql-queries/result-column-lookup.md): scans for small lookups, an index of selected names for larger ones, resolved once per result.
 
 ## SQL generation
 
@@ -100,6 +101,7 @@ The SQL that loads nested queries and relations.
 
 ## Drivers
 
+- [Result columns as metadata objects](drivers/result-type-oids.md): names and required PostgreSQL type OIDs together, with values kept as text.
 - [Errors of drivers recognized by `instanceof`](drivers/error-recognition.md): the classes recognize the errors of another copy of `kern-db` by a brand, rather than by predicates.
 - [Error classes of `kern-db` in drivers](drivers/error-classes-of-kern-db.md): every driver rejects with them, and a custom driver imports them at runtime, rather than define classes of its own.
 - [Release decided by the driver](drivers/release-by-driver.md): by what the driver saw on the connection and the status of its transaction, rather than by a failure that the caller passes.

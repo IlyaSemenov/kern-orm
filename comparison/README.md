@@ -21,6 +21,7 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [jest-prisma](https://github.com/Quramy/jest-prisma) 1.8.2, tests of Prisma ORM in transactions.
 - [kysely-codegen](https://github.com/RobinBlomberg/kysely-codegen) 0.20.0, TypeScript types for Kysely generated from the database.
 - [Slonik](https://github.com/gajus/slonik) 49.13.0.
+- [Bun SQL](https://bun.com/docs/runtime/sql) 1.4.4.
 - [Django](https://github.com/django/django) 6.0.10.
 - [node-pg-migrate](https://github.com/salsita/node-pg-migrate) 9.0.0.
 - [Rails](https://github.com/rails/rails) 8.1.4.1, with its migrations of Active Record.

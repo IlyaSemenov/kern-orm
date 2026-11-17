@@ -74,16 +74,12 @@ export function postgresJsDriver(sql: Sql): Driver {
     } catch (error) {
       throw toPostgresJsError(error)
     }
-    const { columns } = rows
-    const names: string[] = []
-    for (let index = 0; index < columns.length; index++) {
-      names.push(columns[index]!.name)
-    }
     return {
       command: rows.command,
       // postgres.js gives `null` for a command tag without a number of rows, such as `BEGIN`.
       count: rows.count ?? 0,
-      columns: names,
+      // The client's metadata already has the public shape; the readonly contract lets it be shared.
+      columns: rows.columns,
       rows: rows.map(row => row.map(value => (value === null ? null : value.toString("utf8")))),
     }
   }

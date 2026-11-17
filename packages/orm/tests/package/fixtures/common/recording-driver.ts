@@ -28,7 +28,12 @@ export function createRecordingDriver(
     }) => {
       statements.push({ connection, text: statement.text, parameters: statement.parameters })
       const { columns, rows } = respond(statement.text)
-      return { command: statement.text.split(" ", 1)[0]!, count: rows.length, columns, rows }
+      return {
+        command: statement.text.split(" ", 1)[0]!,
+        count: rows.length,
+        columns: columns.map(name => ({ name, type: 25 })),
+        rows,
+      }
     }
   const executeScript = (connection: RecordedStatement["connection"]) => async (text: string) => {
     statements.push({ connection, text, parameters: [] })

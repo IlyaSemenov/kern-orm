@@ -221,7 +221,13 @@ describe("$query", () => {
   })
 
   it("decodes the fields of the rows of its statement by the types of select", async () => {
-    const { db } = connectTenant({ columns: ["title", "id"], rows: [["Draft", "post-id"]] })
+    const { db } = connectTenant({
+      columns: [
+        { name: "title", type: 25 },
+        { name: "id", type: 25 },
+      ],
+      rows: [["Draft", "post-id"]],
+    })
 
     expect(
       await db.$query`SELECT * FROM ${db.post}`.select({

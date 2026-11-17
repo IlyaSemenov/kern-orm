@@ -13,14 +13,22 @@ export function createStatement(text: string, parameters: readonly TextValue[] =
   return { text, parameters }
 }
 
+/** Metadata of a result column, as PostgreSQL reports it, also when the statement returns no rows. */
+export interface DriverColumn {
+  /** Name of the result column. */
+  readonly name: string
+  /** PostgreSQL type OID of the result column; an array reports its array type OID, not its element type OID. */
+  readonly type: number
+}
+
 /** Result of a statement. */
 export interface DriverResult {
   /** Command of the tag that PostgreSQL completed the statement with, such as `SELECT` or `ROLLBACK` for a `COMMIT` of a failed transaction; a driver may give only the first word of a tag of several words, such as `CREATE` of `CREATE TABLE`; `null` for a statement that PostgreSQL completes without a tag, such as an empty text or only a comment. */
   readonly command: string | null
   /** Number of rows that the command tag reports, such as the rows that an `UPDATE` changes, also without `RETURNING`; `0` when PostgreSQL reports none, such as for `BEGIN` or a statement without a command tag. */
   readonly count: number
-  /** Names of the result columns in their order, also when the statement returns no rows; none for a statement without result columns, such as `BEGIN` or an `UPDATE` without `RETURNING`. */
-  readonly columns: readonly string[]
+  /** Metadata of the result columns in their order, also when the statement returns no rows; empty for a statement without result columns, such as `BEGIN` or an `UPDATE` without `RETURNING`. */
+  readonly columns: readonly DriverColumn[]
   /** Rows as PostgreSQL text representations of their values, in the order of the result columns. */
   readonly rows: readonly (readonly TextValue[])[]
 }

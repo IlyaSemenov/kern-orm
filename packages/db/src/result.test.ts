@@ -57,7 +57,7 @@ describe("flat results", () => {
     rows: DriverResult["rows"] = [],
     columns: readonly string[] = [],
   ): DriverResult {
-    return { command: "SELECT", count, columns, rows }
+    return { command: "SELECT", count, columns: columns.map(name => ({ name, type: 25 })), rows }
   }
 
   /** Flat plan of records of `fields` in rows mode `rows`. */
@@ -95,6 +95,59 @@ describe("flat results", () => {
     expect(() =>
       decodeFlatResult(createRecordsPlan(), createDriverResult(0, [], ["id", "title", "id"])),
     ).toThrow('Statement returned column "id" more than once')
+  })
+
+  it.each([1, 4, 8, 16, 128])(
+    "resolve %i selected fields of a wide result and ignore duplicate unselected names",
+    count => {
+      const columns = Array.from({ length: 128 }, (_, index) => `c${127 - index}`)
+      const values = columns.map(name => name.slice(1))
+      columns.push("unused", "unused")
+      values.push("ignored", "ignored")
+      const selected = Array.from({ length: count }, (_, index) => ({
+        key: `c${Math.floor(((count - index - 1) * 128) / count)}`,
+        type: integer,
+      }))
+      const plan: FlatResultPlan = { fields: selected, rows: "many", value: false }
+      const expected: Record<string, number> = {}
+      for (const { key } of selected) expected[key] = Number(key.slice(1))
+
+      expect(decodeFlatResult(plan, createDriverResult(1, [values], columns))).toEqual([expected])
+
+      const first = selected[0]!.key
+      expect(() => decodeFlatResult(plan, createDriverResult(0, [], [...columns, first]))).toThrow(
+        `Statement returned column "${first}" more than once`,
+      )
+      expect(() =>
+        decodeFlatResult(
+          plan,
+          createDriverResult(
+            0,
+            [],
+            columns.filter(name => name !== first),
+          ),
+        ),
+      ).toThrow(`Statement returned no column "${first}"`)
+    },
+  )
+
+  it("report invalid columns in selection order, including when an unused column is duplicated", () => {
+    const selected = Array.from({ length: 16 }, (_, index) => ({ key: `c${index}`, type: integer }))
+    const plan: FlatResultPlan = { fields: selected, rows: "many", value: false }
+    const columns = selected.slice(2).map(field => field.key)
+
+    expect(() =>
+      decodeFlatResult(
+        plan,
+        createDriverResult(0, [], ["unused", "unused", "c1", ...columns, "c1"]),
+      ),
+    ).toThrow('Statement returned no column "c0"')
+    expect(() =>
+      decodeFlatResult(
+        plan,
+        createDriverResult(0, [], ["unused", "unused", "c0", ...columns, "c0"]),
+      ),
+    ).toThrow('Statement returned column "c0" more than once')
   })
 
   it("read a value from the only column, whatever its name, and reject other numbers of columns", () => {

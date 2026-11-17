@@ -120,6 +120,23 @@ Give each call of `bind` a placeholder of its own: PostgreSQL types a parameter 
 When your builder returns results that a query of SQL text does not decode, such as related records nested as JSON, execute the statement with `database.execute` and decode its rows yourself.
 It runs the statement in the current transaction and returns its rows as the PostgreSQL text representations of their values, with `null` for `NULL`; decode a value with `decode` of its type.
 
+For a builder with its own codecs, `columns` of the result gives the `name` and PostgreSQL type OID (`type`) of each column, in the same order as the values in each row.
+The metadata is available even when the query returns no rows:
+
+```ts
+const result = await database.execute({
+  text: "SELECT 42::integer AS id, '42'::text AS label WHERE false",
+  parameters: [],
+})
+// result.columns: [{ name: "id", type: 23 }, { name: "label", type: 25 }]
+// result.rows: []
+```
+
+Use each OID to select the codec for that result column; values remain text or `null` regardless of the OID.
+An array column reports the OID of its array type, not of its element type.
+For types defined by the application, resolve the OID against `pg_catalog.pg_type` in the same database; it is not a portable identifier across databases.
+These are the result types reported by PostgreSQL, not a description of the source table's columns or the custom parsers of another client.
+
 Return the rows of a query in a rows mode of `ResultMode`, as kern-db does: `many` as an array, and one row in `one`, `nullable`, or `optional`.
 For a query of one row, take the row with `takeOnlyRow`.
 It rejects several rows, and rejects a missing row with `NotFoundError` in `one`.

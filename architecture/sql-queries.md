@@ -17,7 +17,9 @@
   - `take` adds no limit, since kern-db does not change the text of a statement, so a query of one row rejects several rows.
   - Types cannot check what the statement returns: the type of a field declares the values of its column, including whether it is nullable, as `sql(type)` does, and decoding keeps `NULL` as `null` whatever the type.
 - The database layer decodes the result by a flat plan (`decodeFlatResult` of `result.ts`), which has no nested rows, literals, or conversions.
-- Records are read from the result columns by the keys of their fields, as the driver names the columns, rather than by position: the statement chooses the order of its columns, and two columns of one type in another order would decode silently.
+- Records are read by matching the keys of their fields to `name` of each result column, rather than by position: the statement chooses the order of its columns, and two columns of one type in another order would decode silently.
+  - The positions are resolved once per result, before its rows are decoded.
+    Up to four fields, or fewer than 256 field-to-column comparisons, use scans; larger lookups build a result-local index of only the selected names ([decision](../decisions/sql-queries/result-column-lookup.md)).
   - A missing column, or a column that the result has twice, rejects with `ResultDecodeError`; other columns are ignored, such as those of `RETURNING *`.
   - A value of `get` and `pluck` is read from the only column, whatever its name, and another number of columns rejects.
   - Decoding fails after the statement, so a statement that changes rows has made its change, as a mutation has ([decision](../decisions/sql-queries/columns-of-sql-text.md)).

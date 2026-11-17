@@ -87,7 +87,7 @@ describe("statements", () => {
 })
 
 describe("rows", () => {
-  const columns = ["name", "id", "note"]
+  const columns = ["name", "id", "note"].map(name => ({ name, type: 25 }))
 
   it("decode the result columns of the keys of select by their types, adding fields to those selected earlier", async () => {
     const { database } = createRecordedDatabase({
@@ -118,7 +118,10 @@ describe("rows", () => {
   })
 
   it("of select include a field that is not enumerable", async () => {
-    const { database } = createRecordedDatabase({ columns: ["id"], rows: [["1"]] })
+    const { database } = createRecordedDatabase({
+      columns: [{ name: "id", type: 25 }],
+      rows: [["1"]],
+    })
     const fields = Object.defineProperty({}, "id", { value: integer, enumerable: false })
 
     expect(await database.query`SELECT`.select(fields as { id: typeof integer })).toEqual([
@@ -164,12 +167,18 @@ describe("rows", () => {
   })
 
   it("decode the value of the only column with get and pluck", async () => {
-    const values = createRecordedDatabase({ columns: ["count"], rows: [["1"], ["2"]] }).database
-    const none = createRecordedDatabase({ columns: ["count"] }).database
+    const values = createRecordedDatabase({
+      columns: [{ name: "count", type: 25 }],
+      rows: [["1"], ["2"]],
+    }).database
+    const none = createRecordedDatabase({ columns: [{ name: "count", type: 25 }] }).database
 
     expect(await values.query`SELECT`.pluck(integer)).toEqual([1, 2])
     expect(
-      await createRecordedDatabase({ columns: ["count"], rows: [["1"]] }).database.query`SELECT`
+      await createRecordedDatabase({
+        columns: [{ name: "count", type: 25 }],
+        rows: [["1"]],
+      }).database.query`SELECT`
         .take()
         .pluck(integer),
     ).toBe(1)

@@ -129,7 +129,7 @@ export function describeDriverContract(
     })
 
     it("returns every value as text", async () => {
-      const { rows } = await driver.execute(
+      const { rows, columns } = await driver.execute(
         createStatement(
           `SELECT 42::integer, 12345678901234::bigint, true, '{"a":1}'::jsonb, NULL::text, ARRAY['a', 'b'], '2030-01-01 12:00'::timestamp`,
         ),
@@ -138,6 +138,10 @@ export function describeDriverContract(
       assert.deepEqual(rows, [
         ["42", "12345678901234", "t", '{"a": 1}', null, "{a,b}", "2030-01-01 12:00:00"],
       ])
+      assert.deepEqual(
+        columns.map(column => column.type),
+        [23, 20, 16, 3802, 25, 1009, 1114],
+      )
     })
 
     it("keeps the values of a statement as text without the parsers of the client", async () => {
@@ -197,7 +201,7 @@ export function describeDriverContract(
       assert.deepEqual(counts, [0, 3, 2, 2])
     })
 
-    it("reports the names of the result columns, also without rows", async () => {
+    it("reports the names and type OIDs of the result columns, also without rows", async () => {
       const { created, selected } = await database.transaction(async () => ({
         created: await database.execute(
           createStatement(
@@ -208,8 +212,71 @@ export function describeDriverContract(
       }))
 
       assert.deepEqual(created.columns, [])
-      assert.deepEqual(selected.columns, ["id", "label"])
+      assert.deepEqual(
+        selected.columns.map(column => column.name),
+        ["id", "label"],
+      )
+      assert.deepEqual(
+        selected.columns.map(column => column.type),
+        [23, 25],
+      )
       assert.deepEqual(selected.rows, [])
+    })
+
+    it("keeps result type OIDs positional for repeated column names and repeated executions", async () => {
+      const statement = createStatement(
+        "SELECT $1::integer AS value, $2::text AS value WHERE false",
+        ["42", "42"],
+      )
+      for (let run = 0; run < 2; run++) {
+        const result = await driver.execute(statement)
+        assert.deepEqual(
+          result.columns.map(column => column.name),
+          ["value", "value"],
+        )
+        assert.deepEqual(
+          result.columns.map(column => column.type),
+          [23, 25],
+        )
+        assert.deepEqual(result.rows, [])
+      }
+      const connection = await driver.acquire()
+      try {
+        const result = await connection.execute(statement)
+        assert.deepEqual(
+          result.columns.map(column => column.type),
+          [23, 25],
+        )
+        assert.deepEqual(result.rows, [])
+      } finally {
+        await connection.release()
+      }
+    })
+
+    it("reports database-assigned OIDs for a composite type and its array without rows", async () => {
+      await database.transaction(async () => {
+        // A temporary table owns both types, so dropping it at commit removes them too.
+        await runStatement("CREATE TEMP TABLE pg_type_oid_test (id integer) ON COMMIT DROP")
+        const types = await database.execute(
+          createStatement(
+            "SELECT oid, typarray FROM pg_catalog.pg_type WHERE oid = 'pg_temp.pg_type_oid_test'::regtype",
+          ),
+        )
+        const result = await database.execute(
+          createStatement(
+            "SELECT ROW(1)::pg_temp.pg_type_oid_test AS record, ARRAY[ROW(1)::pg_temp.pg_type_oid_test] AS records WHERE false",
+          ),
+        )
+        assert.deepEqual(
+          result.columns.map(column => column.name),
+          ["record", "records"],
+        )
+        assert.deepEqual(
+          result.columns.map(column => column.type),
+          [Number(types.rows[0]![0]), Number(types.rows[0]![1])],
+        )
+        assert.deepEqual(result.rows, [])
+      })
     })
 
     it("reports no command for a statement without a command tag", async () => {

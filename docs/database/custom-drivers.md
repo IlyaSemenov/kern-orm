@@ -30,7 +30,7 @@ async function execute(
   return {
     command: result.command,
     count: result.rowCount ?? 0,
-    columns: result.fields.map(field => field.name),
+    columns: result.fields.map(field => ({ name: field.name, type: field.typeOid })),
     rows: result.rows,
   }
 }
@@ -75,6 +75,10 @@ Follow these rules in the driver:
 
 - Send parameters as text without declared types, so that PostgreSQL infers their types from the statement.
 - Return values as their text without the parsers of your client, and `NULL` as `null`.
+- Return each result column as `{ name, type }` in `columns`, in the order of the values in a row, including when the result has no rows.
+  `type` is the PostgreSQL type OID of that column.
+  Read the OIDs from the result metadata of the client, not from the returned values or the table definitions.
+  Return an empty array for `columns` when a statement has no result columns.
 - Return `null` as the `command` of a statement that PostgreSQL completes without a command tag, such as an empty text.
 - Send a statement with the extended protocol also without parameters, so that PostgreSQL rejects a text of several statements, and a script with the simple protocol.
 - Run the statements and scripts of a reserved connection one at a time in the order of calls.

@@ -106,7 +106,10 @@ it("returns the command, the number of rows, the columns, and the rows of a stat
     Promise.resolve({
       command: "SELECT",
       rowCount: 1,
-      fields: [{ name: "id" }, { name: "label" }],
+      fields: [
+        { name: "id", dataTypeID: 23 },
+        { name: "label", dataTypeID: 25 },
+      ],
       rows: [["1", null]],
     }),
   )
@@ -114,7 +117,10 @@ it("returns the command, the number of rows, the columns, and the rows of a stat
   expect(await driver.execute(createStatement("SELECT 1"))).toEqual({
     command: "SELECT",
     count: 1,
-    columns: ["id", "label"],
+    columns: [
+      { name: "id", type: 23 },
+      { name: "label", type: 25 },
+    ],
     rows: [["1", null]],
   })
 })

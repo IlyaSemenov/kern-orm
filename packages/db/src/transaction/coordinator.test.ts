@@ -1114,7 +1114,7 @@ describe("isolation levels", () => {
     read.resolve({
       command: "SELECT",
       count: 1,
-      columns: ["current_setting"],
+      columns: [{ name: "current_setting", type: 25 }],
       rows: [["read committed"]],
     })
     finished.resolve()

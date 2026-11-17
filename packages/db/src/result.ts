@@ -1,6 +1,6 @@
 // Results of statements: how rows modes make the rows of a statement its result, the keys that a decoded record can have, the errors of a result that breaks its contract, and the decoding of flat results, whose rows hold no nested rows.
 
-import type { DriverResult, TextValue } from "./driver"
+import type { DriverColumn, DriverResult, TextValue } from "./driver"
 import type { AnyType } from "./type/type"
 
 /**
@@ -150,6 +150,7 @@ export function decodeFlatResult(plan: FlatResultPlan, result: DriverResult): un
   if (fields === undefined) {
     return decodeCount(plan, result.count)
   }
+  // Resolve names once per result; every row below reads its values by the resulting positions.
   const columns = findColumns(plan, fields, result.columns)
   const width = result.columns.length
   const { rows } = result
@@ -198,7 +199,7 @@ const onlyColumn: readonly number[] = /* @__PURE__ */ Object.freeze([0])
 function findColumns(
   plan: ResultMode,
   fields: readonly FlatField[],
-  columns: readonly string[],
+  columns: readonly DriverColumn[],
 ): readonly number[] {
   if (plan.value) {
     if (columns.length !== 1) {
@@ -209,19 +210,57 @@ function findColumns(
     }
     return onlyColumn
   }
+  // Keep up to four scans, or fewer than 256 comparisons, free of Map allocation; wider selections use an indexed pass.
+  // The cutoff and the trade-off against a full-column Map are measured in decisions/sql-queries/result-column-lookup.md.
+  const byName =
+    fields.length > 4 && fields.length * columns.length >= 256
+      ? indexSelectedColumns(fields, columns)
+      : undefined
   const indexes: number[] = []
-  for (let index = 0; index < fields.length; index++) {
-    const { key } = fields[index]!
-    const column = columns.indexOf(key)
+  for (const { key } of fields) {
+    let column = -1
+    if (byName) {
+      column = byName.get(key)!
+    } else {
+      // A match is not enough: a later column can make the requested name ambiguous.
+      for (let candidate = 0; candidate < columns.length; candidate++) {
+        if (columns[candidate]!.name === key) {
+          if (column !== -1) {
+            column = -2
+            break
+          }
+          column = candidate
+        }
+      }
+    }
     if (column === -1) {
       throw new ResultDecodeError(`Statement returned no column "${key}"`, undefined)
     }
-    if (columns.indexOf(key, column + 1) !== -1) {
+    if (column === -2) {
       throw new ResultDecodeError(`Statement returned column "${key}" more than once`, undefined)
     }
     indexes.push(column)
   }
   return indexes
+}
+
+/**
+ * Indexes only requested names, marking missing columns with -1 and duplicate names with -2.
+ *
+ * It records ambiguity without throwing, so the caller reports the first invalid field in selection order and ignores duplicate unselected columns.
+ */
+function indexSelectedColumns(
+  fields: readonly FlatField[],
+  columns: readonly DriverColumn[],
+): Map<string, number> {
+  const byName = new Map<string, number>()
+  for (const { key } of fields) byName.set(key, -1)
+  for (let index = 0; index < columns.length; index++) {
+    const name = columns[index]!.name
+    const column = byName.get(name)
+    if (column !== undefined) byName.set(name, column === -1 ? index : -2)
+  }
+  return byName
 }
 
 /** Failure to decode the value of a field of a row, which the result turns into its error once it adds the index of the row. */

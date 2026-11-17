@@ -1,6 +1,13 @@
 import type { CustomTypesConfig, Pool, PoolClient, QueryArrayConfig } from "pg"
 
-import type { Connection, Driver, DriverResult, SqlStatement, TextValue } from "../driver"
+import type {
+  Connection,
+  Driver,
+  DriverColumn,
+  DriverResult,
+  SqlStatement,
+  TextValue,
+} from "../driver"
 import { ConnectionError, QueryError, toDriverError } from "../driver-error"
 
 /** Config of a query with its protocol; `pg` reads `queryMode`, though its types omit it. */
@@ -81,9 +88,9 @@ async function execute(client: PoolClient, statement: SqlStatement): Promise<Dri
     throw toNodePostgresError(error)
   }
   const { fields } = result
-  const columns: string[] = []
-  for (let index = 0; index < fields.length; index++) {
-    columns.push(fields[index]!.name)
+  const columns: DriverColumn[] = []
+  for (const field of fields) {
+    columns.push({ name: field.name, type: field.dataTypeID })
   }
   return {
     command: result.command,

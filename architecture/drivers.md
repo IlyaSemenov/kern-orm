@@ -3,7 +3,11 @@
 - **Driver** (`drivers/` of kern-db, or a custom driver): transport, pooling, and connections.
   It sends parameters as text without declared types and returns result values as text, so that types alone define how values are represented and the statement text alone determines the types of parameters.
   It returns the number of rows of the command tag beside the rows, which a mutation without `RETURNING` resolves to, and the names of the result columns, which a query of SQL text reads its fields by.
-  A statement without a command, such as an empty text or only a comment, which PostgreSQL completes with `EmptyQueryResponse` instead of a command tag, gives `command: null`, `count: 0`, and neither columns nor rows; `execute` does not reject it, since telling it apart takes parsing the SQL.
+  `columns` contains readonly `DriverColumn` objects with `name` and `type`, the PostgreSQL result type OID, in the order of the values in a row, also for a result with no rows; the array is empty when the statement has no result columns.
+  The driver must read OIDs from result metadata, including those of expressions and database-defined types; an array reports its array type OID, not its element type OID.
+  Each object keeps its name and OID together, so they cannot get out of step ([decision](../decisions/drivers/result-type-oids.md)).
+  The values remain text: the metadata lets another query builder choose its codecs and does not change decoding by Kern's types.
+  A statement without a command, such as an empty text or only a comment, which PostgreSQL completes with `EmptyQueryResponse` instead of a command tag, gives `command: null`, `count: 0`, and empty `columns` and `rows`; `execute` does not reject it, since telling it apart takes parsing the SQL.
   It also executes a script of several statements without parameters, which a statement with parameters cannot hold, since PostgreSQL takes several statements only in a query of its simple protocol; it ignores the results of a script.
   A connection runs its statements and scripts one at a time in the order of calls, so a statement sent before `COMMIT` or `ROLLBACK` completes before it.
   It rejects a statement or script with the [errors](#errors) of `driver-error.ts`: with `QueryError` when PostgreSQL rejected it, and the connection stays usable, and with `ConnectionError` after any other failure, after which the connection may be lost or in an unknown state of its transaction.
@@ -76,6 +80,7 @@ A custom driver relies on the contract of `driver.ts`, and on `QueryError`, `Con
   postgres.js runs the pool of a client with `max: 1` as one session and lets such a statement through, so the transaction stays open for the next statements on the pool; the driver cannot tell, since postgres.js gives no status of a connection of its pool.
 - Closing it rejects a new statement, script, or connection by itself and calls `sql.end()` at once: `sql.end()` ends the pool only after a few microtasks, and the pool queues and runs a statement sent before then.
   `sql.end()` waits for the reserved connections to be released and for the statements already sent to the pool, and gives the pending `sql.reserve()` calls a connection first.
+- It reuses the client's `columns` metadata, whose `name` and `type` fields already match `DriverColumn`; consumers must treat it as readonly, and additional client fields are outside the driver contract.
 - It sends every parameter, including `null`, with OID 705 (`unknown`), which postgres.js sends as it is instead of serializing it by the type PostgreSQL describes, and reads the bytes of text-format results through `.raw()` instead of parsing them.
 - It sends a statement with the extended protocol also without parameters, `simple: false` of `unsafe`, since postgres.js would send it with the simple protocol, which runs several statements of one text, such as of `$query`; the extended protocol rejects them before running any.
 - It executes a script with `.simple()` of `unsafe` without parameters, and reads its results through `.raw()`, so that the parsers of the client never run on them.
@@ -112,5 +117,6 @@ It sends statements and reads results as follows:
 - It sends a statement with the extended protocol also without parameters, `queryMode: "extended"`, since `pg` would send it with the simple protocol, which runs several statements of one text, such as of `$query`; the extended protocol rejects them before running any.
 - It sends parameters as strings and `null`, which `pg` binds as text without declared types.
 - It reads rows as arrays with `types` of a query whose parser keeps every value as text, whatever parsers the client has.
+- It maps each result field's `name` and `dataTypeID` to the `name` and `type` of a `DriverColumn`.
 - It executes a script as a query without `values`, which `pg` sends with the simple protocol, with the same `types`, so that the parsers of the client never run on its ignored results.
 - It gives only the first word of a command tag as `command`, such as `CREATE` of `CREATE TABLE`, as `pg` parses it.
