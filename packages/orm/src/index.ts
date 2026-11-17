@@ -34,6 +34,15 @@ export type {
 export { equalityOperators } from "./expression/operators/equality"
 export { orderingOperators } from "./expression/operators/ordering"
 export type {
+  ArithmeticOperator,
+  ArithmeticOperators,
+  ArithmeticResult,
+  ArithmeticSignature,
+  ArithmeticValue,
+  ExactArithmeticOperators,
+} from "./expression/operators/arithmetic"
+export { arithmeticOperators, exactArithmeticOperators } from "./expression/operators/arithmetic"
+export type {
   PatternSignature,
   TextConversionSignature,
   TextLengthSignature,
@@ -84,7 +93,7 @@ export {
   stringAgg,
   sum,
 } from "./expression/aggregates"
-export type { NumberTypeOperators } from "./type/number"
+export type { ExactNumberTypeOperators, NumberTypeOperators } from "./type/number"
 export type {
   BaseDerivableType,
   DerivableType,

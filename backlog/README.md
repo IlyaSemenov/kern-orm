@@ -5,7 +5,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 
 ## Next
 
-- [Arithmetic operators](arithmetic-operators.md): `+`, `-`, and the increment of a column.
 - [JSON operators](json-operators.md): `->`, `->>`, and functions of JSON paths typed by the shape.
 - [Updating records with values of each](updating-records-with-values-of-each.md): `UPDATE ... FROM (VALUES ...)` matched by a key.
 - [Through and many-to-many relations](through-and-many-to-many-relations.md): relations through other relations and through a join table.
@@ -18,9 +17,11 @@ Within Next and Later, items run roughly from the most important; the order is a
 
 ## Later
 
+- [Arithmetic of dates and intervals](arithmetic-of-dates-and-intervals.md): `+` and `-` of dates, times, and intervals, whose operands and results differ in type.
 - [Irreversible migrations in verification](irreversible-migrations-in-verification.md): migrations whose `down` cannot restore the structure, such as of an added enum value.
 - [Upsert](upsert.md): telling an inserted row from an updated one, partial unique indexes, and a condition of the update.
 - [Scopes and soft delete](scopes-and-soft-delete.md): predicates that a table applies to its queries, and `delete` that sets a column.
+- [Concatenation of text](concatenation-of-text.md): `||`, and `concat` and `concat_ws`, which skip `NULL`, such as of a full name.
 - [Inserting the records of a query](inserting-the-records-of-a-query.md): `INSERT ... SELECT`.
 - [Queries repeated in a statement](queries-repeated-in-a-statement.md): a key of groups that holds a query, in `HAVING` and `ORDER BY`.
 - [Parameters of keys without `param`](parameters-of-keys-without-param.md): binding every parameter once in a query of groups.

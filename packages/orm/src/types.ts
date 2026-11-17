@@ -10,6 +10,12 @@ export { char, text, varchar } from "./type/builtins/text"
 export { uuid } from "./type/builtins/uuid"
 // The types that the declarations of these values name, so that a module that imports only this entry point emits its declarations: TypeScript names a type only through a module that the program loads.
 export type { AnyExpression } from "./expression/expression"
+export type {
+  ArithmeticOperator,
+  ArithmeticOperators,
+  ArithmeticSignature,
+  ExactArithmeticOperators,
+} from "./expression/operators/arithmetic"
 export type { ComparisonSignature } from "./expression/operators/comparison"
 export type { MergeOperators, NoOperators } from "./expression/operators/definitions"
 export type {
@@ -20,5 +26,5 @@ export type {
 export type { GenericOperator } from "./expression/operators/generic"
 export type { TextOperators, TextTypeOperators } from "./expression/operators/text"
 export type { Column } from "./table/column"
-export type { NumberTypeOperators } from "./type/number"
+export type { ExactNumberTypeOperators, NumberTypeOperators } from "./type/number"
 export type { BaseType, Type } from "./type/type"

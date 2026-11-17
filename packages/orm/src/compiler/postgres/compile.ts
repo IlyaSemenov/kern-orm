@@ -28,7 +28,7 @@ import { requireColumn } from "../../table/table"
 import { CompileContext } from "./context"
 import { nameProjection } from "./identifier"
 import type { OperandPosition } from "./parentheses"
-import { needsParentheses } from "./parentheses"
+import { getBinaryPositions, needsParentheses } from "./parentheses"
 import type { Scope } from "./scope"
 import { declareSource, resolveSource } from "./scope"
 
@@ -443,7 +443,7 @@ function compileExpression(
       const value =
         operand.kind === "param"
           ? context.bindParam(node, encodeParameter(operand.value, operand.type))
-          : compileOperand(context, scope, operand, "value")
+          : compileOperand(context, scope, operand, "cast")
       return `${value}::${node.type.castType}`
     }
     case "boolean":
@@ -461,6 +461,10 @@ function compileExpression(
       throw new Error("A query in an expression must be lowered before compilation")
     case "comparison":
       return `${compileOperand(context, scope, node.left, "value")} ${node.operator} ${compileOperand(context, scope, node.right, "value")}`
+    case "binary": {
+      const positions = getBinaryPositions(node.operator)
+      return `${compileOperand(context, scope, node.left, positions.left)} ${node.operator} ${compileOperand(context, scope, node.right, positions.right)}`
+    }
     case "in": {
       let text = `${compileOperand(context, scope, node.operand, "value")} IN (${compileOperand(context, scope, node.list[0]!, "value")}`
       for (let index = 1; index < node.list.length; index++) {
@@ -538,5 +542,5 @@ function compileOperand(
   position: OperandPosition,
 ): string {
   const sql = compileExpression(context, scope, node)
-  return needsParentheses(node.kind, position) ? `(${sql})` : sql
+  return needsParentheses(node, position) ? `(${sql})` : sql
 }

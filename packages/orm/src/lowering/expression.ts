@@ -63,6 +63,13 @@ export function lowerExpression(node: ExpressionNode, context: LoweringContext):
         ? node
         : createNode({ kind: "comparison", operator: node.operator, left, right })
     }
+    case "binary": {
+      const left = lowerExpression(node.left, context)
+      const right = lowerExpression(node.right, context)
+      return left === node.left && right === node.right
+        ? node
+        : createNode({ kind: "binary", operator: node.operator, left, right })
+    }
     case "in": {
       const operand = lowerExpression(node.operand, context)
       const list = lowerEach(node.list, context, lowerExpression)

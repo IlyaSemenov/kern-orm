@@ -114,6 +114,14 @@ export interface ComparisonNode {
   readonly right: ExpressionNode
 }
 
+/** Binary SQL operator of a value, such as `+`, whose precedence decides the parentheses of its operands. */
+export interface BinaryNode {
+  readonly kind: "binary"
+  readonly operator: string
+  readonly left: ExpressionNode
+  readonly right: ExpressionNode
+}
+
 export interface InNode {
   readonly kind: "in"
   readonly operand: ExpressionNode
@@ -197,6 +205,7 @@ export type ExpressionNode =
   | ValuesNode
   | NestedQueryNode
   | ComparisonNode
+  | BinaryNode
   | InNode
   | InQueryNode
   | IsNullNode

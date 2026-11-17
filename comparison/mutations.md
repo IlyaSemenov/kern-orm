@@ -7,6 +7,14 @@
 - Orchid ORM, differs: it takes a value or a `sql` fragment of `.default` as a default of the database, which its migrations declare, and only a callback as a default at runtime ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#default)).
 - Drizzle ORM, same: `$defaultFn` returns a value or a SQL fragment, which it calls for each record that omits the column when it builds the statement of the insert ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/dialect.ts#L541-L546)).
 
+## Increment of a column
+
+An update increments a column with `add` in its callback, such as `update(form => ({ viewCount: form.viewCount.add(1) }))`.
+
+- Orchid ORM, differs: `increment` and `decrement` of a query take a column, or an object of columns and their steps ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/update.md#increment)).
+- Prisma ORM, differs: `increment`, `decrement`, `multiply`, and `divide` are values of a number field in `update`, one of them for each field ([docs](https://www.prisma.io/docs/orm/v7/reference/prisma-client-reference#atomic-number-operations)).
+- Kysely, same: `set` takes `eb('age', '+', 1)` ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/expression/expression-builder.ts#L125-L141)).
+
 ## Update and delete without a restriction
 
 `update` and `delete` reject a query whose filters combine into `TRUE`, such as of `where({})`, unless `all` allows it, and a filter that matches no row, such as `in([])`, restricts the rows.

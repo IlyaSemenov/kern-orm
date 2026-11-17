@@ -1,17 +1,15 @@
 import * as dbTypes from "kern-db/types"
 
-import { orderingOperators } from "../../expression/operators/ordering"
-import { defineNumberType, getIntegerType } from "../number"
-import { defineType } from "../type"
+import { defineExactNumberType, defineNumberType, getIntegerType } from "../number"
 
 /** 2-byte integer as a `number`. */
-export const smallint = /* @__PURE__ */ defineNumberType(dbTypes.smallint)
+export const smallint = /* @__PURE__ */ defineExactNumberType(dbTypes.smallint)
 
 /** 4-byte integer as a `number`. */
 export const integer = /* @__PURE__ */ getIntegerType()
 
 /** 8-byte integer as a `bigint`, which keeps values beyond `Number.MAX_SAFE_INTEGER`; accepts a `number` too. */
-export const bigint = /* @__PURE__ */ defineType(dbTypes.bigint).withOperators(orderingOperators)
+export const bigint = /* @__PURE__ */ defineExactNumberType(dbTypes.bigint)
 
 /** 4-byte floating-point number as a `number`. */
 export const real = /* @__PURE__ */ defineNumberType(dbTypes.real)
@@ -20,4 +18,4 @@ export const real = /* @__PURE__ */ defineNumberType(dbTypes.real)
 export const doublePrecision = /* @__PURE__ */ defineNumberType(dbTypes.doublePrecision)
 
 /** Exact number as a decimal string, so that no precision is lost; `numeric.with(precision, scale)` constrains it. */
-export const numeric = /* @__PURE__ */ defineType(dbTypes.numeric).withOperators(orderingOperators)
+export const numeric = /* @__PURE__ */ defineExactNumberType(dbTypes.numeric)

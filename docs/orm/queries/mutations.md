@@ -100,7 +100,7 @@ await db.formView
   .insert({ formId, day, count: 1 })
   .onConflict("formId", "day")
   .update((view, excluded) => ({
-    count: sql(t.integer)`${view.count} + ${excluded.count}`,
+    count: view.count.add(excluded.count),
   }))
 ```
 
@@ -122,15 +122,15 @@ Values without a column to set, such as of a request that changes nothing, chang
 A query of `find` still rejects with `NotFoundError` without its record.
 It does not lock the records, as an update that sets a value does, so lock them with [`forUpdate`](../transactions#locking-rows) when a transaction relies on the lock.
 
-To compute a value from the columns of the record, pass a callback:
+To compute a value from the columns of the record, such as to increment a column, pass a callback:
 
 ```ts
-import * as t from "kern-orm/types"
-
 await db.field.where({ formId }).update(field => ({
-  position: sql(t.integer)`${field.position} + 1`,
+  position: field.position.add(1),
 }))
 ```
+
+The callback can use any [operator](./operators) or [`sql` fragment](./filtering#sql-fragments).
 
 To compute a value from [related records](./relations), such as the number of fields of each form, return a query of one value from the callback:
 

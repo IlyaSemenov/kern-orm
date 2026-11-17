@@ -42,7 +42,7 @@
   An object condition matches a column by calling the `eq` operator of its type, whichever operator it is, and accepts the values of its single operand; it matches `null` with `IS NULL` without calling operators.
   It is typed by the values it returns and the values it accepts in comparisons, which differ for types such as `timestamptz`, which also accepts a `Date`.
   An operator defined as a function receives expressions of the type that `withOperators` was called on, even on a type derived from it, so its arguments keep that encoding and its `self` has the operators its definition was typed with.
-  A generic operator from `defineGenericOperator`, such as `lt` of `orderingOperators`, receives the expression with its own type; its method is typed by an `OperatorSignature` interface that reads the value types of the expression from `this`, because TypeScript cannot instantiate a generic function type.
+  A generic operator from `defineGenericOperator`, such as `lt` of `orderingOperators`, receives the expression with its own type; its method is typed by an `OperatorSignature` interface that reads the value types of the expression and the operators of its type from `this`, because TypeScript cannot instantiate a generic function type.
   Its `Self` constraint checks which types can receive it through `withOperators`, independently of its method signature on derived types; the implementation accepts any expression because `transform` can change the value representation.
   An expression without a type, such as `sql<T>`, has `isNull` and the operators of `equalityOperators`, because a TypeScript type does not determine a SQL type.
 
@@ -122,6 +122,20 @@
 - `trim` removes only spaces, as `btrim` of one argument does, rather than all whitespace.
 - `length` counts what PostgreSQL stores: the characters of the text encoded by the type, without the trailing spaces of `char`.
 - `type/text.ts` and `type/number.ts` create `text` and `integer` on first use, as `type/boolean.ts` creates `boolean`, since text operators and these types depend on each other.
+
+## Arithmetic operators
+
+- `add`, `sub`, `mul`, and `div` of `arithmeticOperators` (`expression/operators/arithmetic.ts`) are the SQL `+`, `-`, `*`, and `/` of an expression with an operand, and `exactArithmeticOperators` add `mod`, the SQL `%`.
+  - The built-in integer types and `numeric` have `exactArithmeticOperators`, and `real` and `doublePrecision` `arithmeticOperators`, since PostgreSQL has no `%` of floating-point types.
+  - They are generic operators of a binary node, of any SQL operator of a value, which the compiler parenthesizes by the precedence of its operator in PostgreSQL rather than as a raw node, which a page after an offset would take for a fragment of a user.
+  - They can be added only to types of numbers, bigints, or strings, which types check without telling a string of a decimal number from text.
+- The result has the type of the expression the operator is called on, as the first operand of a [function](#functions-of-expressions) gives it, so it decodes the result, gives it its operators, and encodes a plain operand, which takes no cast, as a compared value; it is not read from the types of both operands ([decision](../decisions/expressions/arithmetic-result-type.md)).
+  - An operand is what an operand of `lt` is: a value that the type accepts, or an expression or a query of one value of the values of the expression.
+    Types check the values of an operand rather than its SQL type, as for the operands of functions, so they take `doublePrecision` beside `integer`, whose values are both numbers, and reject `bigint` beside `integer`, which requires `sql`.
+  - PostgreSQL computes the result in the common type of the operands, so dividing integers truncates the quotient, and the type of the expression reads the value in that type, as the first operand of a function does.
+  - Its values widen the literals of the values of the expression to `number`, `bigint`, or `string`, since a result is not one of the literals that `of` narrowed them to; a value of `transform` of another kind stays as it is, and so does `undefined` that its decoder returns.
+  - It is `NULL` when the expression or the operand can be.
+- An increment of a column is `add` in the callback of `update`, without a method of a mutation of its own ([decision](../decisions/mutations/increment-as-an-operator.md)).
 
 ## Parameters and SQL fragments
 

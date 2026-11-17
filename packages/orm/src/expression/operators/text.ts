@@ -1,6 +1,6 @@
 import type { ComparisonNode } from "../../ast/nodes"
 import { createList } from "../../ast/nodes"
-import type { NumberTypeOperators } from "../../type/number"
+import type { ExactNumberTypeOperators } from "../../type/number"
 import { getIntegerType } from "../../type/number"
 import { getTextType } from "../../type/text"
 import type { AnyType } from "../../type/type"
@@ -33,7 +33,7 @@ export interface TextConversionSignature extends OperatorSignature {
 export interface TextLengthSignature extends OperatorSignature {
   readonly method: () => Expression<
     number | (null extends this["T"] ? null : never),
-    NumberTypeOperators
+    ExactNumberTypeOperators
   >
 }
 

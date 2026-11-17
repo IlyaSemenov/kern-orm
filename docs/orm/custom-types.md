@@ -42,6 +42,8 @@ Add the operators that PostgreSQL has for the type with `withOperators`, reusing
 - `equalityOperators`: `eq`, `ne`, and `in`, for a type with SQL `=`.
 - `orderingOperators`: those of `equalityOperators`, and `lt`, `lte`, `gt`, and `gte`, for an ordered type.
 - `textOperators`: `like`, `ilike`, `lower`, `upper`, `trim`, and `length`, for a type of strings.
+- `arithmeticOperators`: `add`, `sub`, `mul`, and `div`, for a type of numbers; their results have the type of the expression.
+- `exactArithmeticOperators`: those of `arithmeticOperators`, and `mod`, for a type of integers or exact numbers.
 
 ```ts
 import { defineType, orderingOperators, textOperators } from "kern-orm"
@@ -103,7 +105,7 @@ Types derived with `transform` keep the operators, which work with the values of
 - An operator defined as a function works with the values of the type it was added to: `isWithin` takes `number[]` on every type derived from `embedding`.
 - A generic operator works with the values of the expression it is called on, including those of a derived type, as the built-in operators do.
 
-The signature of a generic operator is an interface extending `OperatorSignature`, whose `method` takes the values of the expression as `this["T"]` and the values it accepts as `this["I"]`.
+The signature of a generic operator is an interface extending `OperatorSignature`, whose `method` takes the values of the expression as `this["T"]` and the values it accepts as `this["I"]`, and can return an expression with the operators of the type of the expression, `this["O"]`.
 `BooleanResult` makes the result `boolean | null` when the expression or an operand can be `NULL`, like the results of the built-in comparisons:
 
 ```ts
@@ -131,7 +133,7 @@ await db.event.where(event => event.rank.between(1, 10)).select("day")
 await db.event.where(event => event.day.between("2026-01-01", "2026-01-31")).select("rank")
 ```
 
-`ComparisonSignature`, `InSignature`, and `PatternSignature` are the signatures of the built-in operators, such as `lt`, `in`, and `like`.
+`ComparisonSignature`, `InSignature`, `PatternSignature`, and `ArithmeticSignature` are the signatures of the built-in operators, such as `lt`, `in`, `like`, and `add`.
 The second type argument of `defineGenericOperator` restricts the types it can be added to, such as `AnyExpression<string | null>` for the types of strings.
 
 ## Types defined without the ORM

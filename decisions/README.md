@@ -28,6 +28,7 @@ Filters, queries in expressions, and SQL fragments.
 - [`matches` checks its object by its own keys](expressions/matches-checks-own-keys.md).
 - [Recognizing an operand by one lookup](expressions/operand-recognition.md).
 - [Operand of an object condition read from the column type](expressions/object-condition-operand.md).
+- [Result of arithmetic of the type of the expression](expressions/arithmetic-result-type.md): not read from the types of both operands.
 
 ## Aggregates and groups
 
@@ -52,6 +53,7 @@ Filters, queries in expressions, and SQL fragments.
 - [Types of `upsert`](mutations/upsert-types.md): the state of `find` as an interface, and values of a mapped type of their own.
 - [Update without values as a select without a lock](mutations/update-without-values.md).
 - [Defaults of kern-orm added when the insert runs](mutations/runtime-defaults-when-the-insert-runs.md).
+- [An increment as an operator](mutations/increment-as-an-operator.md): `add` in the callback of `update` rather than `increment`.
 
 ## Queries of SQL text
 

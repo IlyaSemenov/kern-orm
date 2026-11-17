@@ -32,7 +32,7 @@
   - The lowering of expressions and projections reaches the lowering of a query and of a query of `exists`, which nested queries recurse into, only through the context of the statement (`lowering/context.ts`), so that the modules of `lowering/` import one another without cycles.
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
-  Whether an operand needs parentheses depends only on its node kind and its position in the parent, decided in one place.
+  Whether an operand needs parentheses depends only on its node kind, the precedence of its operator, and its position in the parent, decided in one place (`parentheses.ts`), so that the SQL keeps the structure of the tree with the fewest parentheses.
 - **Result** (`result/`): decodes driver rows and packed nested rows by the result plan of a compiled query, or the number of the rows of the command tag of a mutation without `RETURNING`, and converts the result as the plan tells.
   The database layer (`result.ts`) holds the rows modes, how a query of one row takes its row, the keys that a record can have, and `NotFoundError` and `ResultDecodeError`, which the ORM throws too; `RequiredRelationError` is of the ORM.
   The layer also decodes the flat results of [queries of SQL text](sql-queries.md#results), from the result columns of the keys of their fields.

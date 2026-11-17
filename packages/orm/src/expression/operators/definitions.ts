@@ -20,7 +20,7 @@ export type MergeOperators<A extends OperatorDefinitions, O extends OperatorDefi
 /** Operator methods of an expression of type `T` accepting values of type `I`, without the expression parameter of their definitions. */
 export type BoundOperators<O extends OperatorDefinitions, T, I = T> = {
   [K in keyof O]: O[K] extends GenericOperatorSignature<infer S>
-    ? ApplySignature<S, T, I>
+    ? ApplySignature<S, T, I, O>
     : // oxlint-disable-next-line typescript/no-explicit-any -- matches any operator definition
       O[K] extends (self: any, ...args: infer A) => infer R
       ? (...args: A) => R

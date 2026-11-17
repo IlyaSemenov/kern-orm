@@ -107,6 +107,7 @@ export function visitNodes(
       }
       return
     case "comparison":
+    case "binary":
       visitNodes(node.left, visit, queries)
       visitNodes(node.right, visit, queries)
       return

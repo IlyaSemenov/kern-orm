@@ -38,7 +38,7 @@ bench("transform with encode", () => {
     decode: value => Number(value),
     encode: (value: number) => String(value),
   })
-}).types([113, "instantiations"])
+}).types([124, "instantiations"])
 
 bench("transform of decode", () => {
   return t.timestamptz.transform({ decode: value => new Date(value) })
@@ -50,14 +50,14 @@ bench("of", () => {
 
 bench("with", () => {
   return t.numeric.with(10, 2)
-}).types([37, "instantiations"])
+}).types([45, "instantiations"])
 
 bench("chain of nullable, transform, and with", () => {
   return t.numeric
     .nullable()
     .transform({ decode: value => Number(value) })
     .with(10, 2)
-}).types([139, "instantiations"])
+}).types([150, "instantiations"])
 
 bench("array", () => {
   return t.array(t.text)
@@ -74,7 +74,7 @@ bench("table of derived types", () => {
     amount: t.numeric.with(10, 2).transform({ decode: value => Number(value) }),
     kind: t.text.of<"a" | "b">(),
   })
-}).types([412, "instantiations"])
+}).types([431, "instantiations"])
 
 bench("param of a type", () => {
   return param(t.uuid, "x")
@@ -90,4 +90,4 @@ bench("custom type with an operator", () => {
     .withOperators({
       isAncestorOf: (self, other: string) => sql(t.boolean)`${self} @> ${param(self, other)}`,
     })
-}).types([155, "instantiations"])
+}).types([157, "instantiations"])

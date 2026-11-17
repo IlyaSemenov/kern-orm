@@ -171,6 +171,7 @@ function refersToSource(node: ExpressionNode, source: SourceNode): boolean {
     case "or":
       return node.operands.some(operand => refersToSource(operand, source))
     case "comparison":
+    case "binary":
       return refersToSource(node.left, source) || refersToSource(node.right, source)
     case "in":
       return (

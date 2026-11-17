@@ -18,6 +18,13 @@ The operators of the value of a query are those of the expression that `expr` gi
 
 - Orchid ORM 1.78.37, differs: the operators are methods of the query, such as `q.sum("points").gt(0)` ([docs](https://github.com/romeerez/orchid-orm/blob/c4d62ea0e82f6d06c3b715fcf790113b2921a7ba/docs/src/guide/aggregate.md)).
 
+## Arithmetic of expressions
+
+Number types have `add`, `sub`, `mul`, and `div`, and integers and `numeric` also `mod`, whose result has the type of the expression they are called on, such as `item.price.mul(item.quantity)`.
+
+- Kysely, same: `eb(lhs, op, rhs)` takes an arithmetic operator, such as `eb('age', '+', 1)`, and types the result by the reference on the left ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/expression/expression-builder.ts#L172-L190)).
+- Drizzle ORM, lacks: its operators compare values, and a `sql` fragment writes arithmetic ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/sql/expressions/conditions.ts)).
+
 ## Identifiers in SQL fragments
 
 `identifier` is a function of its own, as `sql` and `param` are.

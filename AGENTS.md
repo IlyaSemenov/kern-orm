@@ -42,7 +42,8 @@ Do not catalog files or restate information evident from their names and locatio
 
 - With every change, look for refactorings that reduce the complexity of the code it touches, such as duplicated logic or a concept spread over several modules.
   Make those that ease the change, and propose the others in the final report, listed apart from its fixes.
-  Do not reshape code for a feature of the backlog before its work starts.
+  Do not reshape existing code for a feature of the backlog before its work starts.
+  When a change introduces a concept that a feature of the backlog will extend, such as a node kind or an operator set, name and shape it for that feature too.
 - Give a domain rule or contract a function of its own at its first use, such as the keys a record can have, operator precedence, or result decoding, so that the next use finds it; give it a module of its own only when several modules use it.
   Do not extract code that only looks alike.
 - Before adding a helper, search for an existing one that does the same.

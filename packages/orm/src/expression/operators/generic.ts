@@ -1,30 +1,39 @@
 import type { AnyExpression } from "../expression"
 
+import type { OperatorDefinitions } from "./definitions"
+
 declare const operatorSignature: unique symbol
 
 /** Runtime mark of generic operators. */
 const genericOperatorBrand = Symbol("kern-orm.genericOperator")
 
 /**
- * Signature of a generic operator: its method on an expression of values `T` that accepts compared values `I`.
+ * Signature of a generic operator: its method on an expression of values `T` that accepts compared values `I`, of a type with operators `O`.
  *
- * An interface extending it declares `method` with `this["T"]` and `this["I"]`, such as `(value: Operand<this["T"], this["I"]>) => Expression<boolean>`.
+ * An interface extending it declares `method` with `this["T"]`, `this["I"]`, and `this["O"]`, such as `(value: Operand<this["T"], this["I"]>) => Expression<boolean>`.
  */
 export interface OperatorSignature {
   readonly T: unknown
   readonly I: unknown
+  readonly O: OperatorDefinitions
   // oxlint-disable-next-line typescript/no-explicit-any -- methods take and return arbitrary values
   readonly method: (...args: any[]) => unknown
 }
 
 /**
- * Method of signature `S` on an expression of values `T` accepting values `I`.
+ * Method of signature `S` on an expression of values `T` accepting values `I`, of a type with operators `O`.
  *
  * A signature reads the value types from `this`, because TypeScript cannot instantiate a generic function type with type arguments.
  */
-export type ApplySignature<S extends OperatorSignature, T, I> = (S & {
+export type ApplySignature<
+  S extends OperatorSignature,
+  T,
+  I,
+  O extends OperatorDefinitions = OperatorDefinitions,
+> = (S & {
   readonly T: T
   readonly I: I
+  readonly O: O
 })["method"]
 
 /** Implementation of a generic operator of signature `S`: the expression it is called on, followed by the call arguments. */
