@@ -15,6 +15,13 @@ Queries of a `Db` or a `Database` run in the transaction of the current async co
 
 - Orchid ORM, same: `$ensureTransaction` ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/transactions.md#ensuretransaction)).
 
+## Integrating another query builder
+
+`Database.execute` routes a compiled statement through the ambient transaction coordinator and returns PostgreSQL text values; the other query builder must adapt its parameter encoding and result decoding to that contract.
+
+- Orchid ORM at commit `381b51ffbb85efd6e4defd4170ba79f360f2a9f1`, differs: its `Adapter` accepts parameters as JavaScript values and exposes object and array results, while `TransactionAdapter` also exposes savepoints ([source](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/adapters/adapter.ts)).
+  Its query methods consult its async storage for `ensureTransaction`, `isInTransaction`, and `afterCommit`, so replacing statement execution alone does not delegate those behaviors to another coordinator ([source](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/query/basic-features/transaction/transaction.ts)).
+
 ## Whether code runs in a transaction
 
 `isInTransaction` tells whether the current level or an enclosing one is a level of `transaction`; a test transaction is no such level, so code under test starts a transaction of its own where it does in production.
@@ -35,3 +42,23 @@ Settings of a level, such as its search path, are statements on its connection, 
 A nested transaction whose callback throws, also synchronously, rolls back to its savepoint and keeps the enclosing transaction.
 
 - Orchid ORM, fails: it kept the state of such a nested transaction in its enclosing one after it ended ([orchid-orm#804](https://github.com/romeerez/orchid-orm/pull/804)).
+
+## Adapting existing Orchid queries
+
+@kern-orm/orchid-interop keeps Orchid's query builder and delegates execution and callback transactions to a Kern database.
+
+- Orchid ORM 1.78.60 / pqb 0.73.49, differs: `orchidORMWithAdapter` builds table instances with a supplied `Adapter` and one instance-local `AsyncStateStorage` ([factory](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/orm/src/orm-instance/orm-instance.ts)).
+  The published pqb declarations have circular aliases and incompatible duplicated private types across entry points; a strict NodeNext consumer of this version needs `skipLibCheck: true` ([declaration inputs](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/index.ts)).
+  Query clones inherit their `baseQuery`, so per-instance methods can be installed on those bases without modifying global prototypes ([clone](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/query/basic-features/clone/clone.ts)).
+  `ensureTransaction` treats any async storage state as a transaction, including a state created by `withOptions`; an adapter that delegates transaction ownership must replace that test ([transaction methods](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/query/basic-features/transaction/transaction.ts)).
+  Its `catch` and `catchUniqueError` of a query, unlike those of a promise, and its `recoverable` mark the query for recovery: in a transaction, it runs the statements of the query in a savepoint of its own, and outside one it runs them as usual ([then](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/query/then/then.ts)); a nested Kern transaction around the query gives it the same savepoint.
+  Its test helper records levels under a private `trxForTest` symbol before calling the query's `transaction`, then installs fallback storage and rewrites adapter methods; rejecting only the fallback assignment is too late for its start promise to reject reliably ([test helper](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/testTransaction.ts)).
+
+## Round trips for a recoverable query
+
+Kern opens a savepoint for a recoverable Orchid query in a transaction, rolls back to it on error, and releases it after either outcome.
+
+- Orchid ORM 1.78.61 with pqb 0.73.50 and postgres.js 4.0.0, differs.
+  `setCatchingSavepoint` marks the start of the scope and `execQuery` uses a driver savepoint, with `hackySavepoint` deferring completion when later statements still need that scope ([query execution](https://unpkg.com/pqb@0.73.50/dist/index.mjs), [adapter](https://unpkg.com/pqb@0.73.50/dist/postgres-js.mjs)).
+  postgres.js sends `SAVEPOINT` and sends `ROLLBACK TO` on a failure inside the scope.
+  Its successful savepoint scope sends no `RELEASE`, and `find` reports a missing row after the single-statement scope succeeds ([postgres.js](https://unpkg.com/postgres@4.0.0/src/index.js)).

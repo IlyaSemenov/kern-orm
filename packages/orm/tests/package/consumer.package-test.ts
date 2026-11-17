@@ -13,8 +13,9 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { tmpdir } from "node:os"
-import { basename, join, relative } from "node:path"
+import { basename, dirname, join, relative } from "node:path"
 
 import { getReleasePlan } from "@changesets/get-release-plan"
 import { build } from "esbuild"
@@ -26,7 +27,12 @@ const root = join(import.meta.dir, "../../../..")
 const fixtures = join(import.meta.dir, "fixtures")
 
 /** Directories of the published packages. */
-const packageDirs = ["packages/db", "packages/orm", "packages/migrations"]
+const packageDirs = [
+  "packages/db",
+  "packages/orm",
+  "packages/migrations",
+  "packages/orchid-interop",
+]
 
 /** Fields of a manifest that require other packages. */
 const dependencyFields = ["dependencies", "peerDependencies", "optionalDependencies"] as const
@@ -69,6 +75,8 @@ let ormConsumer: string
 let dbConsumer: string
 /** Consumer of `kern-orm` that cannot resolve `kern-db`, which npm installs under `kern-orm`, as a strict layout such as of pnpm does; it emits the declarations of the fixtures that export values. */
 let isolatedOrmConsumer: string
+/** Consumer of the Orchid adapter, with its pinned legacy packages. */
+let orchidConsumer: string
 
 /** Returns the directory of a packed package of the repository extracted in `work`. */
 function getPackedDir(name: string): string {
@@ -101,6 +109,25 @@ function pack(dir: string): string {
 async function serve(manifest: Manifest, tarball: string): Promise<void> {
   const hash = new Bun.CryptoHasher("sha512").update(await Bun.file(tarball).bytes())
   served.set(manifest.name, { manifest, tarball, integrity: `sha512-${hash.digest("base64")}` })
+}
+
+/** Serves an installed dependency and its runtime dependencies without contacting the public registry. */
+async function serveDependency(dir: string): Promise<void> {
+  const manifest = (await Bun.file(join(dir, "package.json")).json()) as Manifest
+  if (served.has(manifest.name)) return
+  await serve(manifest, pack(dir))
+  const require = createRequire(join(dir, "package.json"))
+  for (const name of Object.keys(manifest.dependencies ?? {})) {
+    if (served.has(name)) continue
+    let dependency: string
+    try {
+      dependency = dirname(require.resolve(`${name}/package.json`))
+    } catch {
+      dependency = dirname(require.resolve(name))
+      while (!existsSync(join(dependency, "package.json"))) dependency = dirname(dependency)
+    }
+    await serveDependency(dependency)
+  }
 }
 
 /**
@@ -173,6 +200,8 @@ function startRegistry(): ReturnType<typeof Bun.serve> {
 
 /** Options of a consumer project that differs from the others of its fixtures. */
 interface ConsumerOptions {
+  /** Skips upstream declaration diagnostics for consumers whose legacy dependencies require it. */
+  skipLibCheck?: boolean
   /** Name of its directory instead of `<name>-consumer`. */
   dir?: string
   /** Layout of the installed packages: `nested` installs each dependency of a package under it, so that the consumer cannot resolve the dependencies of a package, as in a strict layout such as of pnpm. */
@@ -234,7 +263,8 @@ async function createConsumer(
     { path: "node_modules/vitest", name: "vitest" },
     ...linked,
   ]) {
-    await symlink(join(root, path), join(dir, "node_modules", packageName))
+    const target = join(dir, "node_modules", packageName)
+    if (!existsSync(target)) await symlink(join(root, path), target)
   }
   await writeFile(
     join(dir, "tsconfig.json"),
@@ -245,6 +275,7 @@ async function createConsumer(
         strict: true,
         declaration: true,
         emitDeclarationOnly: true,
+        skipLibCheck: options.skipLibCheck ?? false,
         // A fixture imports the modules of the project by their file names, as Node.js requires.
         allowImportingTsExtensions: true,
         outDir: "declarations",
@@ -260,7 +291,7 @@ async function createConsumer(
       compilerOptions: {
         noEmit: true,
         emitDeclarationOnly: false,
-        skipLibCheck: false,
+        skipLibCheck: options.skipLibCheck ?? false,
       },
       include: ["declarations/*.d.ts"],
       exclude: [],
@@ -303,6 +334,15 @@ beforeAll(async () => {
   )
   dbConsumer = await createConsumer("db", ["kern-db", "kern-migrations"], [], {
     programs: { types: ["types-helper.ts"] },
+  })
+  await serveDependency(
+    await realpath(join(root, "packages/orchid-interop/node_modules/orchid-orm")),
+  )
+  await serveDependency(await realpath(join(root, "packages/db/node_modules/pg")))
+  // The declarations of pqb 0.73.50, which Orchid ORM 1.78.61 requires, contain circular aliases and duplicate private types across entry points.
+  // Keep this requirement confined to the legacy consumer; all Kern-only consumers still check libraries.
+  orchidConsumer = await createConsumer("orchid", ["kern-db", "@kern-orm/orchid-interop"], [], {
+    skipLibCheck: true,
   })
   isolatedOrmConsumer = await createConsumer("orm", ["kern-orm"], [], {
     dir: "orm-isolated-consumer",
@@ -367,6 +407,15 @@ afterAll(async () => {
   await rm(work, { recursive: true, force: true })
 })
 
+describe.each(["bun", "node"])("Orchid adapter package on %s", runtime => {
+  test.skipIf(!process.env.DATABASE_URL)("shares real transactions from the packed adapter", () => {
+    expect(JSON.parse(run([runtime, "runtime.ts"], orchidConsumer, 10_000))).toEqual({
+      rolledBack: true,
+      committed: true,
+    })
+  })
+})
+
 describe("manifests", () => {
   test("publish dependencies without the catalog: and workspace: protocols", () => {
     const protocols: string[] = []
@@ -403,6 +452,7 @@ describe("manifests", () => {
 
     expect(unsatisfied).toEqual([])
     expect(required.toSorted()).toEqual([
+      "@kern-orm/orchid-interop peerDependencies kern-db",
       "kern-migrations peerDependencies kern-db",
       "kern-orm dependencies kern-db",
     ])
@@ -437,6 +487,11 @@ describe.each([
   // The minimum version that consumers need, as the install sections of the Getting Started pages of the site state.
   ["minimum", ["node", Bun.resolveSync("typescript-6/lib/tsc.js", import.meta.dir)]],
 ])("TypeScript %s", (_, tsc) => {
+  test("emits and checks declarations of a consumer of the Orchid adapter", () => {
+    run([...tsc, "-p", orchidConsumer], orchidConsumer)
+    run([...tsc, "-p", "tsconfig.declarations.json"], orchidConsumer)
+  }, 60_000)
+
   test("emits declarations of a consumer of kern-orm and type-checks their consumer with Node.js module resolution", () => {
     run([...tsc, "-p", ormConsumer], ormConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], ormConsumer)

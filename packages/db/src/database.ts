@@ -29,7 +29,11 @@ export interface Database extends AsyncDisposable {
    * It interpolates SQL fragments, such as a name of `identifier`, as SQL, and other values as parameters, as `sql` does.
    */
   query(strings: TemplateStringsArray, ...values: SqlValue[]): SqlQuery<InitialSqlQueryState>
-  /** Executes a compiled statement, such as of `$compile` of a `Db`, in the ambient transaction or session, or on the pool outside of one unless the database was created with `test: true`. */
+  /**
+   * Executes a compiled statement, such as of `$compile` of a `Db`, in the ambient transaction or session, or on the pool outside of one unless the database was created with `test: true`.
+   *
+   * It passes `statement` to the driver as the same object, so that a query builder can pass fields of its own to a driver, such as the values that `getNativeParameters` of the postgres.js driver reads.
+   */
   execute(statement: SqlStatement): Promise<DriverResult>
   /**
    * Runs `callback` in a transaction that queries of every bound schema join automatically.

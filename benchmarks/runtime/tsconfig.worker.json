@@ -1,6 +1,6 @@
 {
   // The root tsconfig maps the workspace packages to their sources, which Bun applies also to the imports of the built packages.
-  // `run.ts` runs a worker of Bun with this config instead, so that the topics and the built packages import the builds, as on Node.js.
+  // Bun benchmarks use this config to load the built workspace packages, including their transitive imports.
   "compilerOptions": {
     "paths": {}
   }

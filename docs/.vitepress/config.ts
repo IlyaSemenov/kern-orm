@@ -45,7 +45,13 @@ export default defineConfig({
             { text: "Multiple Schemas", link: "/orm/multiple-schemas" },
             { text: "Singleton Tables", link: "/orm/singleton-tables" },
             { text: "Errors", link: "/orm/errors" },
-            { text: "Custom Types", link: "/orm/custom-types" },
+            {
+              text: "Advanced",
+              items: [
+                { text: "Custom Types", link: "/orm/custom-types" },
+                { text: "Orchid ORM Interop", link: "/orm/orchid-interop" },
+              ],
+            },
           ],
         },
       ],

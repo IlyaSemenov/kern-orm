@@ -6,10 +6,12 @@ import postgres from "postgres"
 
 import type { Database, IsolationLevel } from "./database"
 import { createDatabase, isDatabase } from "./database"
+import type { Driver, SqlStatement } from "./driver"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
 import { postgresJsDriver } from "./drivers/postgres-js"
 import { identifier, param, sql } from "./sql/fragment"
+import { createTestHelpers } from "./test-helpers"
 import { TransactionConnectionError } from "./transaction/connection-loss"
 import * as t from "./types"
 
@@ -52,6 +54,41 @@ it("closes the driver when disposed", async () => {
   }
 
   expect(closed).toBe(true)
+})
+
+it("passes the statement of execute to the driver as it is, on the pool, in a transaction, and in a test transaction", async () => {
+  // A statement with a field of its own, which a query builder can pass to its driver.
+  const statement = { text: "SELECT 1", parameters: [], own: true }
+  const received: SqlStatement[] = []
+  const createDriver = (): Driver => {
+    const { driver } = createRecordingDriver()
+    return {
+      ...driver,
+      execute(executed) {
+        received.push(executed)
+        return driver.execute(executed)
+      },
+      async acquire() {
+        const connection = await driver.acquire()
+        return {
+          ...connection,
+          execute(executed) {
+            received.push(executed)
+            return connection.execute(executed)
+          },
+        }
+      },
+    }
+  }
+  const database = createDatabase({ driver: createDriver() })
+  const testDatabase = createDatabase({ driver: createDriver(), test: true })
+  const { testTransaction } = createTestHelpers(testDatabase, { before() {}, after() {} })
+
+  await database.execute(statement)
+  await database.transaction(() => database.execute(statement))
+  await testTransaction(() => testDatabase.execute(statement))
+
+  expect(received.filter(executed => executed === statement)).toHaveLength(3)
 })
 
 it("executes a script of its text or of a template, which interpolates fragments without parameters, in the ambient transaction", async () => {
