@@ -5,16 +5,16 @@ Within Next and Later, items run roughly from the most important; the order is a
 
 ## Next
 
-- [Moving from rake-db](moving-from-rake-db.md): the applied versions of rake-db and a baseline of the schema.
-- [Through and many-to-many relations](through-and-many-to-many-relations.md): relations through other relations and through a join table.
-- [JSON operators](json-operators.md): `->`, `->>`, and functions of JSON paths typed by the shape.
 - [Arithmetic operators](arithmetic-operators.md): `+`, `-`, and the increment of a column.
+- [JSON operators](json-operators.md): `->`, `->>`, and functions of JSON paths typed by the shape.
 - [Updating records with values of each](updating-records-with-values-of-each.md): `UPDATE ... FROM (VALUES ...)` matched by a key.
-- [Computed columns](computed-columns.md): columns defined as expressions, and fields computed at runtime.
+- [Through and many-to-many relations](through-and-many-to-many-relations.md): relations through other relations and through a join table.
 - [Empty changes and `none()`](empty-changes-and-none.md): `upsert` without values and `insertMany` without records that change nothing, and queries known to be empty without a statement.
-- [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
+- [Computed columns](computed-columns.md): columns defined as expressions, and fields computed at runtime.
 - [Unions and common table expressions](unions-and-common-table-expressions.md): `UNION ALL`, `WITH`, and derived sources.
+- [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
 - [pgvector type](pgvector-type.md): `vector` with the operators of its distances.
+- [Moving from rake-db](moving-from-rake-db.md): the applied versions of rake-db and a baseline of the schema.
 
 ## Later
 
