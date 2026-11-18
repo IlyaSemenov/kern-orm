@@ -40,14 +40,19 @@ export function createResultDriver(
     table: 0,
     number: 0,
   }))
-  const result = Object.assign(
-    rows.map(row => row.map(value => (value === null ? null : Buffer.from(value)))),
-    { command: "SELECT", count: rows.length, columns },
-  )
+  const rawRows = rows.map(row => row.map(value => (value === null ? null : Buffer.from(value))))
+  const result = Object.assign([], { command: "SELECT", count: rows.length, columns })
   const sql = {
     options: { transform: { column: {}, value: {}, row: {} } },
     typed: (value: unknown, type: number) => ({ value, type }),
-    unsafe: () => ({ raw: () => Promise.resolve(result) }),
+    unsafe: () => ({
+      raw: () => ({
+        async forEach(visit: (row: (Buffer | null)[]) => void) {
+          for (const row of rawRows) visit(row)
+          return result
+        },
+      }),
+    }),
     end: () => Promise.resolve(),
   }
   return postgresJsDriver(sql as unknown as Parameters<typeof postgresJsDriver>[0])

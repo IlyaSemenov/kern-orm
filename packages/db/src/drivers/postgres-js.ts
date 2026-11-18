@@ -1,6 +1,6 @@
 import type { ISql, Sql } from "postgres"
 
-import type { Driver, DriverResult, SqlStatement } from "../driver"
+import type { Driver, DriverResult, SqlStatement, TextValue } from "../driver"
 import { ConnectionError, toDriverError } from "../driver-error"
 
 /** OID of the PostgreSQL `unknown` pseudo-type; postgres.js sends such parameters as they are, and PostgreSQL infers their types. */
@@ -67,20 +67,32 @@ export function postgresJsDriver(sql: Sql): Driver {
     // postgres.js would otherwise serialize parameters and parse results by their types, such as timestamps through Date.
     // A parameter of a known type, including `null`, also lets postgres.js prepare and run a statement in one round trip.
     const parameters = statement.parameters.map(value => sql.typed(value as never, unknownType))
-    let rows
+    const rows: TextValue[][] = []
+    let result
     try {
       // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
-      rows = await client.unsafe(statement.text, parameters as never[], { simple: false }).raw()
+      result = await client
+        .unsafe(statement.text, parameters as never[], { simple: false })
+        .raw()
+        .forEach(source => {
+          // Convert each row on arrival so that the raw buffers do not accumulate alongside the text rows.
+          const row = new Array<TextValue>(source.length)
+          for (let index = 0; index < source.length; index++) {
+            const value = source[index]!
+            row[index] = value === null ? null : value.toString("utf8")
+          }
+          rows.push(row)
+        })
     } catch (error) {
       throw toPostgresJsError(error)
     }
     return {
-      command: rows.command,
+      command: result.command,
       // postgres.js gives `null` for a command tag without a number of rows, such as `BEGIN`.
-      count: rows.count ?? 0,
+      count: result.count ?? 0,
       // The client's metadata already has the public shape; the readonly contract lets it be shared.
-      columns: rows.columns,
-      rows: rows.map(row => row.map(value => (value === null ? null : value.toString("utf8")))),
+      columns: result.columns,
+      rows,
     }
   }
 

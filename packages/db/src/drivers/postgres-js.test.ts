@@ -26,11 +26,13 @@ function createFakeClient({
     typed: (value: unknown, type: number) => ({ value, type }),
     unsafe(text: string, parameters?: unknown[], queryOptions?: unknown) {
       return {
-        raw() {
-          sent.push(parameters!)
-          options.push(queryOptions)
-          return answer(Object.assign([], { command: "SELECT", columns: [] }))
-        },
+        raw: () => ({
+          forEach() {
+            sent.push(parameters!)
+            options.push(queryOptions)
+            return answer(Object.assign([], { command: "SELECT", columns: [] }))
+          },
+        }),
         simple: () => ({
           raw() {
             scripts.push(text)
