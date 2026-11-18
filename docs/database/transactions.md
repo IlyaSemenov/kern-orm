@@ -185,6 +185,7 @@ await database.transaction(
 At `repeatable read` and `serializable`, PostgreSQL rejects a transaction that conflicts with a concurrent one with a [`serialization_failure` error](./errors): run the transaction again then.
 
 A nested transaction runs at the isolation level of its transaction, which PostgreSQL sets for the whole transaction, so a nested transaction with another `isolation` rejects without running its callback.
+When you pass `isolation`, do not change the level in the transaction from SQL, such as with `SET TRANSACTION`: a nested transaction is checked against the `isolation` that you passed.
 
 ## Search path
 

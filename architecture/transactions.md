@@ -106,6 +106,7 @@
 
 - A transaction, a test transaction, or a test fixture that is not nested runs at the isolation level of its options.
 - A nested level runs at the isolation level of its transaction, which PostgreSQL sets for the whole transaction, and one whose options give another level rejects without starting.
+  It compares the level of the options of its transaction when they give one, and otherwise reads it from the connection once per transaction, so SQL that changes the level of a transaction started with a level, such as `SET TRANSACTION`, must not run in it.
 - At `repeatable read` and `serializable`, the snapshot of a transaction with [settings](#settings) comes from the statement of its settings, so it is taken before the callback starts.
 
 ## Lifecycle
