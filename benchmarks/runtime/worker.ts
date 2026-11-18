@@ -1,15 +1,11 @@
-// Measures the scenarios of a topic against one build of kern-orm and prints their times as JSON; `run.ts` starts it on Bun and on Node.js.
-// Arguments: the path of the topic, and the directory of the build, such as `packages/orm/dist`.
+// Measures the scenarios of a topic against the build of kern-orm of its checkout and prints their times as JSON; `run.ts` starts it on Bun and on Node.js.
+// Argument: the name of the topic.
 // Every function is called once as a check, warmed up untimed, and measured by mitata, which collects garbage before it.
 // The times of a scenario differ more between processes than within one, so a worker measures each briefly, and `run.ts` runs several workers.
 
-import { join } from "node:path"
-import { pathToFileURL } from "node:url"
-
 import { do_not_optimize, measure } from "mitata"
 
-import type { Build, Measured, Topic } from "./scenario.ts"
-import { Unsupported } from "./scenario.ts"
+import type { Measured, Topic } from "./scenario.ts"
 
 /** Time of the untimed calls before a measurement, in milliseconds, which give the JIT time to optimize the code that the measurement times. */
 const warmUpTime = 200
@@ -17,21 +13,17 @@ const warmUpTime = 200
 /** Minimum time of the calls that a measurement times, in milliseconds. */
 const measurementTime = 250
 
-/** Times of the scenarios that a worker prints: the average time of a call in nanoseconds, or what the build lacks. */
+/** Times of the scenarios that a worker prints: the average time of a call in nanoseconds. */
 export interface WorkerResult {
   runtime: string
-  scenarios: Record<string, { time: number } | { unsupported: string }>
+  scenarios: Record<string, number>
 }
 
-const [topicPath, buildPath] = process.argv.slice(2)
-if (topicPath === undefined || buildPath === undefined) {
-  throw new Error("Pass the path of a topic and the directory of a build of kern-orm")
+const [topicName] = process.argv.slice(2)
+if (topicName === undefined) {
+  throw new Error("Pass the name of a topic")
 }
-const build: Build = {
-  orm: await import(pathToFileURL(join(buildPath, "index.mjs")).href),
-  types: await import(pathToFileURL(join(buildPath, "types.mjs")).href),
-}
-const topic: Topic = (await import(pathToFileURL(topicPath).href)).default
+const topic: Topic = (await import(`./${topicName}.bench.ts`)).default
 
 const result: WorkerResult = {
   runtime:
@@ -40,14 +32,9 @@ const result: WorkerResult = {
       : `Bun ${process.versions.bun}`,
   scenarios: {},
 }
-for (const [name, scenario] of Object.entries(topic(build))) {
+for (const [name, scenario] of Object.entries(topic)) {
   try {
-    const measured = await scenario()
-    if (measured instanceof Unsupported) {
-      result.scenarios[name] = { unsupported: measured.reason }
-      continue
-    }
-    result.scenarios[name] = { time: await measureScenario(measured) }
+    result.scenarios[name] = await measureScenario(await scenario())
   } catch (error) {
     throw new Error(`Scenario "${name}" failed`, { cause: error })
   }

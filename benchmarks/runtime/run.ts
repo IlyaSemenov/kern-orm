@@ -1,49 +1,29 @@
 // Runs the runtime benchmark `<topic>.bench.ts` of this directory on Bun and on Node.js against the built kern-orm, and prints the median time of each scenario.
-// With `--base <ref>`, it also builds kern-orm of the commit in a temporary worktree and prints the change of each scenario from it: the median of its ratios over pairs of worker processes, one of each build, run in alternating order, with a confidence interval of the median.
+// `--base <directory>` names another checkout of the repository with its packages built, such as a worktree of another commit; a relative directory resolves against the current directory, which is `benchmarks/` under `bun run --cwd benchmarks`.
+// With it, the runner also runs the worker and the topic of that checkout against the build of that checkout, and matches the scenarios of both by name.
+// It runs pairs of worker processes, one of each checkout, in alternating order, and prints the change of each scenario of both checkouts: the median of the ratios of the time of this checkout to the time of the base over the pairs, with a confidence interval of the median.
+// It prints a scenario of one checkout with its median time and the checkout that has it.
+// The worker of the base must take the name of a topic and print a `WorkerResult`, as the worker of this checkout does.
 // `--runs <n>` sets the number of worker processes, or of pairs, per runtime.
 
-import type { ChildProcess } from "node:child_process"
-import { spawn, spawnSync } from "node:child_process"
-import { once } from "node:events"
-import { mkdtempSync, readdirSync, rmSync } from "node:fs"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { spawn } from "node:child_process"
+import { existsSync, readdirSync } from "node:fs"
+import { join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 
 import { findIntervalRank, findMedian, findMedianInterval } from "../statistics.ts"
 
 import type { WorkerResult } from "./worker.ts"
 
-const root = join(import.meta.dirname, "../..")
-
 /** Probability with which the interval of a change covers its median, unless there are too few pairs for it. */
 const confidence = 0.95
 
 const runtimes = [
-  { command: process.execPath, args: [] },
+  // The worker of each checkout runs in its directory, so that Bun reads its config there.
+  { command: process.execPath, args: ["--tsconfig-override=tsconfig.worker.json"] },
   // mitata collects garbage before each measurement through `gc` that the flag exposes.
   { command: "node", args: ["--expose-gc"] },
 ]
-
-/** Process that runs now, which an interruption stops before it removes the worktree. */
-let running: ChildProcess | undefined
-/** Temporary worktree of the base commit, removed when the run ends. */
-let worktree: string | undefined
-
-for (const [signal, code] of [
-  ["SIGINT", 130],
-  ["SIGTERM", 143],
-] as const) {
-  process.on(signal, async () => {
-    const child = running
-    if (child !== undefined && child.exitCode === null && child.signalCode === null) {
-      child.kill()
-      await once(child, "close")
-    }
-    removeWorktree()
-    process.exit(code)
-  })
-}
 
 const { values: options, positionals } = parseArgs({
   allowPositionals: true,
@@ -66,68 +46,57 @@ if (!Number.isInteger(runs) || runs < 1) {
   process.exit(1)
 }
 
-try {
-  const current = join(root, "packages/orm/dist")
-  const base = options.base === undefined ? undefined : await buildBase(options.base)
-  console.log(
-    base === undefined
-      ? `${topic}: ${runs} processes per runtime`
-      : `${topic}: the current build against ${base.commit}, ${runs} pairs of processes per runtime, intervals of ${formatPercent(findIntervalRank(runs, confidence).coverage)} confidence`,
-  )
-  for (const runtime of runtimes) {
-    const currentResults: WorkerResult[] = []
-    const baseResults: WorkerResult[] = []
-    for (let index = 0; index < runs; index++) {
-      process.stderr.write(`Run ${index + 1} of ${runs}\r`)
-      if (base === undefined) {
-        currentResults.push(await runWorker(runtime, current))
-      } else if (index % 2 === 0) {
-        baseResults.push(await runWorker(runtime, base.build))
-        currentResults.push(await runWorker(runtime, current))
-      } else {
-        currentResults.push(await runWorker(runtime, current))
-        baseResults.push(await runWorker(runtime, base.build))
-      }
+const current = import.meta.dirname
+const base = options.base === undefined ? undefined : findBase(options.base)
+console.log(
+  base === undefined
+    ? `${topic}: ${runs} processes per runtime`
+    : `${topic}: this checkout against ${options.base}, ${runs} pairs of processes per runtime, intervals of ${formatPercent(findIntervalRank(runs, confidence).coverage)} confidence`,
+)
+for (const runtime of runtimes) {
+  const currentResults: WorkerResult[] = []
+  const baseResults: WorkerResult[] = []
+  for (let index = 0; index < runs; index++) {
+    process.stderr.write(`Run ${index + 1} of ${runs}\r`)
+    if (base === undefined) {
+      currentResults.push(await runWorker(runtime, current))
+    } else if (index % 2 === 0) {
+      baseResults.push(await runWorker(runtime, base))
+      currentResults.push(await runWorker(runtime, current))
+    } else {
+      currentResults.push(await runWorker(runtime, current))
+      baseResults.push(await runWorker(runtime, base))
     }
-    printResults(currentResults, base === undefined ? undefined : baseResults)
   }
-} finally {
-  removeWorktree()
+  printResults(currentResults, base === undefined ? undefined : baseResults)
 }
 
-/** Builds kern-orm of commit `ref` in a temporary worktree and returns the directory of the build and the abbreviated commit. */
-async function buildBase(ref: string): Promise<{ build: string; commit: string }> {
-  const commit = (
-    await execute("git", ["rev-parse", "--verify", "--short", `${ref}^{commit}`], root)
-  ).trim()
-  worktree = mkdtempSync(join(tmpdir(), "kern-orm-base-"))
-  await execute("git", ["worktree", "add", "--detach", worktree, commit], root)
-  // Lifecycle scripts, such as `prepare` that installs Git hooks, do not run for a build.
-  await execute(process.execPath, ["install", "--frozen-lockfile", "--ignore-scripts"], worktree)
-  // The build of kern-orm imports the build of kern-db.
-  await execute(process.execPath, ["run", "build"], worktree)
-  return { build: join(worktree, "packages/orm/dist"), commit }
-}
-
-function removeWorktree(): void {
-  if (worktree !== undefined) {
-    spawnSync("git", ["worktree", "remove", "--force", worktree], { cwd: root })
-    rmSync(worktree, { recursive: true, force: true })
-    worktree = undefined
+/** Directory of the runtime benchmarks of the checkout `directory`, after checking that it has the topic and a build of kern-orm. */
+function findBase(directory: string): string {
+  const checkout = resolve(directory)
+  const benchmarks = join(checkout, "benchmarks/runtime")
+  if (!existsSync(join(benchmarks, `${topic}.bench.ts`))) {
+    console.error(`The base has no topic ${topic}: ${benchmarks}`)
+    process.exit(1)
   }
+  if (!existsSync(join(checkout, "packages/orm/dist"))) {
+    console.error(
+      `Build the packages of the base with \`bun run build\` in its directory: ${checkout}`,
+    )
+    process.exit(1)
+  }
+  return benchmarks
 }
 
-/** Runs a worker of the topic against `build` with `runtime` and returns its result. */
-async function runWorker(runtime: (typeof runtimes)[number], build: string): Promise<WorkerResult> {
+/** Runs the worker of the runtime benchmarks in `directory` with `runtime` and returns its result. */
+async function runWorker(
+  runtime: (typeof runtimes)[number],
+  directory: string,
+): Promise<WorkerResult> {
   const output = await execute(
     runtime.command,
-    [
-      ...runtime.args,
-      join(import.meta.dirname, "worker.ts"),
-      join(import.meta.dirname, `${topic}.bench.ts`),
-      build,
-    ],
-    import.meta.dirname,
+    [...runtime.args, join(directory, "worker.ts"), topic!],
+    directory,
   )
   return JSON.parse(output.trim().split("\n").at(-1)!)
 }
@@ -136,14 +105,12 @@ async function runWorker(runtime: (typeof runtimes)[number], build: string): Pro
 function execute(command: string, args: readonly string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"] })
-    running = child
     let output = ""
     let errors = ""
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => (output += chunk))
     child.stderr.setEncoding("utf8").on("data", (chunk: string) => (errors += chunk))
     child.on("error", reject)
     child.on("close", code => {
-      running = undefined
       if (code === 0) {
         resolve(output)
       } else {
@@ -157,24 +124,33 @@ function execute(command: string, args: readonly string[], cwd: string): Promise
   })
 }
 
-/** Prints the median time of each scenario of the current build and, with the results of the base build, the median of the ratios of the pairs with its confidence interval. */
+/** Prints the median time of each scenario and, for a scenario of both checkouts, the median of the ratios of the pairs with its confidence interval. */
 function printResults(currentResults: WorkerResult[], baseResults?: WorkerResult[]): void {
   console.log(currentResults[0]!.runtime)
   const names = Object.keys(currentResults[0]!.scenarios)
+  const baseNames = baseResults === undefined ? [] : Object.keys(baseResults[0]!.scenarios)
+  for (const name of baseNames) {
+    if (!names.includes(name)) {
+      names.push(name)
+    }
+  }
   const width = Math.max(...names.map(name => name.length))
   for (const name of names) {
-    const currentTimes = collectTimes(currentResults, name)
-    if (typeof currentTimes === "string") {
-      console.log(`  ${name.padEnd(width)}  unsupported: ${currentTimes}`)
+    const label = name.padEnd(width)
+    if (!Object.hasOwn(currentResults[0]!.scenarios, name)) {
+      console.log(
+        `  ${label}  only in the base: ${formatTime(findMedian(collectTimes(baseResults!, name)))}`,
+      )
       continue
     }
+    const currentTimes = collectTimes(currentResults, name)
     const currentTime = formatTime(findMedian(currentTimes))
-    const baseTimes = baseResults === undefined ? undefined : collectTimes(baseResults, name)
-    if (baseTimes === undefined) {
-      console.log(`  ${name.padEnd(width)}  ${currentTime}`)
-    } else if (typeof baseTimes === "string") {
-      console.log(`  ${name.padEnd(width)}  ${currentTime}, unsupported by the base: ${baseTimes}`)
+    if (baseResults === undefined) {
+      console.log(`  ${label}  ${currentTime}`)
+    } else if (!baseNames.includes(name)) {
+      console.log(`  ${label}  ${currentTime}, not in the base`)
     } else {
+      const baseTimes = collectTimes(baseResults, name)
       const ratios = currentTimes.map((time, index) => time / baseTimes[index]!)
       const { low, high, coverage } = findMedianInterval(ratios, confidence)
       // An interval that includes no change does not tell the direction of the change, nor does one of too few pairs for the confidence.
@@ -185,24 +161,20 @@ function printResults(currentResults: WorkerResult[], baseResults?: WorkerResult
             ? ", inconclusive"
             : ""
       console.log(
-        `  ${name.padEnd(width)}  ${formatTime(findMedian(baseTimes))} → ${currentTime}  ${formatChange(findMedian(ratios))} (${formatChange(low)} … ${formatChange(high)})${inconclusive}`,
+        `  ${label}  ${formatTime(findMedian(baseTimes))} → ${currentTime}  ${formatChange(findMedian(ratios))} (${formatChange(low)} … ${formatChange(high)})${inconclusive}`,
       )
     }
   }
 }
 
-/** Times of scenario `name` in `results`, or the reason why the build does not support it. */
-function collectTimes(results: WorkerResult[], name: string): number[] | string {
+/** Times of scenario `name` in `results`. */
+function collectTimes(results: WorkerResult[], name: string): number[] {
   const times: number[] = []
   for (const result of results) {
-    const scenario = result.scenarios[name]
-    if (scenario === undefined) {
+    if (!Object.hasOwn(result.scenarios, name)) {
       throw new Error(`The worker did not measure scenario "${name}"`)
     }
-    if ("unsupported" in scenario) {
-      return scenario.unsupported
-    }
-    times.push(scenario.time)
+    times.push(result.scenarios[name]!)
   }
   return times
 }

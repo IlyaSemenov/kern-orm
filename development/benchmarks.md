@@ -17,11 +17,13 @@ How to write and run the benchmarks of kern-orm in `benchmarks/`.
 
 Write a benchmark of the time of the JavaScript of a hot path, without PostgreSQL, as a runtime benchmark `benchmarks/runtime/<topic>.bench.ts`, which mitata runs on Bun and Node.js against the built package.
 
-- Export from it by default a `Topic` of `benchmarks/runtime/scenario.ts`, a function of the modules of a build of `kern-orm` that returns the scenarios, and import only types from `kern-orm` in it, so that it also runs against the build of another commit.
+- Use a `Topic` of `benchmarks/runtime/scenario.ts` as its default export; its keys are the names of the scenarios.
   Write its relative imports with their `.ts` extensions, since Node.js runs it.
-- Return `unsupported(reason)` from a scenario that needs an API that the build lacks, after checking the API.
 - Measure through the public API; attribute time to an internal step with a CPU profile rather than by importing internals.
-- Run it with `bun run --cwd benchmarks bench:runtime <topic>`, and compare the current build with another commit with `--base <ref>`, such as `--base HEAD` for uncommitted changes.
+- Run it with `bun run --cwd benchmarks bench:runtime <topic>`.
+- Compare it with another checkout, such as a worktree of another commit or of an alternative, with `--base <directory>`, absolute or relative to `benchmarks/`, after `bun install` and `bun run build` in that checkout.
+  Each checkout runs its own worker and topic, and the runner matches their scenarios by name, so the worker of the base must take the name of a topic, as this one does.
+  Rename a scenario whose work changes, so that the runner does not compare different work.
 - Treat a change whose confidence interval includes no change as inconclusive, and rerun it with more pairs through `--runs` before relying on it.
 
 ## Type-check cost

@@ -9,13 +9,13 @@ import type { DriverResult, TextValue } from "kern-orm"
 import { createEvent, createFixture, createUuid } from "./fixture.ts"
 import type { Topic } from "./scenario.ts"
 
-const decoding: Topic = build => ({
+const decoding: Topic = {
   "1000 records of 10 columns": async () => {
     const rows: TextValue[][] = []
     for (let index = 0; index < 1000; index++) {
       rows.push(createEventRow(index))
     }
-    const { db } = createFixture(build, createResult(eventColumns, rows))
+    const { db } = createFixture(createResult(eventColumns, rows))
     const query = db.event.select("*")
     const records = await db.$execute(query)
     assert.equal(records.length, 1000)
@@ -44,7 +44,7 @@ const decoding: Topic = build => ({
       }
       rows.push([createUuid(form), `Form ${form}`, JSON.stringify(fields)])
     }
-    const { db } = createFixture(build, createResult(["id", "name", "fields"], rows))
+    const { db } = createFixture(createResult(["id", "name", "fields"], rows))
     const query = db.form.select("id", "name").select(form => ({
       fields: form.fields.orderBy("position").select("id", "position", "label"),
     }))
@@ -57,7 +57,7 @@ const decoding: Topic = build => ({
     assert.deepEqual(record.fields[2], { id: createUuid(12), position: 2, label: "Field 2" })
     return () => db.$execute(query)
   },
-})
+}
 
 /** Result of a `SELECT` of `rows` with result `columns`. */
 function createResult(columns: string[], rows: TextValue[][]): DriverResult {

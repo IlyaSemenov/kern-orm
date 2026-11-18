@@ -4,42 +4,40 @@
 import { createEvent, createFixture, createUuid } from "./fixture.ts"
 import type { Topic } from "./scenario.ts"
 
-const building: Topic = build => {
-  const { db } = createFixture(build)
+const { db } = createFixture()
 
-  return {
-    "1000 chains of 5 clauses": () => {
-      const id = createUuid(0)
-      return () => {
-        let query: unknown
-        for (let index = 0; index < 1000; index++) {
-          query = db.form.where({ id }).select("id").select("name").orderBy("id").limit(1)
-        }
-        return query
-      }
-    },
-    "in of 1000 strings": () => {
-      const ids: string[] = []
+const building: Topic = {
+  "1000 chains of 5 clauses": () => {
+    const id = createUuid(0)
+    return () => {
+      let query: unknown
       for (let index = 0; index < 1000; index++) {
-        ids.push(createUuid(index))
+        query = db.form.where({ id }).select("id").select("name").orderBy("id").limit(1)
       }
-      return () => db.form.where(form => form.id.in(ids))
-    },
-    "in of 1000 dates": () => {
-      const dates: Date[] = []
-      for (let index = 0; index < 1000; index++) {
-        dates.push(new Date(Date.UTC(2026, 0, 1) + index * 1000))
-      }
-      return () => db.event.where(event => event.createdAt.in(dates))
-    },
-    "insert of 1000 events": () => {
-      const events: ReturnType<typeof createEvent>[] = []
-      for (let index = 0; index < 1000; index++) {
-        events.push(createEvent(index))
-      }
-      return () => db.event.insertMany(events)
-    },
-  }
+      return query
+    }
+  },
+  "in of 1000 strings": () => {
+    const ids: string[] = []
+    for (let index = 0; index < 1000; index++) {
+      ids.push(createUuid(index))
+    }
+    return () => db.form.where(form => form.id.in(ids))
+  },
+  "in of 1000 dates": () => {
+    const dates: Date[] = []
+    for (let index = 0; index < 1000; index++) {
+      dates.push(new Date(Date.UTC(2026, 0, 1) + index * 1000))
+    }
+    return () => db.event.where(event => event.createdAt.in(dates))
+  },
+  "insert of 1000 events": () => {
+    const events: ReturnType<typeof createEvent>[] = []
+    for (let index = 0; index < 1000; index++) {
+      events.push(createEvent(index))
+    }
+    return () => db.event.insertMany(events)
+  },
 }
 
 export default building

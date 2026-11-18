@@ -1,34 +1,34 @@
-// Schema and Db of the runtime benchmarks over a build of kern-orm, and their deterministic data.
+// Schema and Db of the runtime benchmarks, and their deterministic data.
 // - Forms with fields with answers, for filters and nested relations.
 // - Events of 10 columns of several types, for wide records.
 
 import type { Driver, DriverResult } from "kern-orm"
-
-import type { Build } from "./scenario.ts"
+import { bindSchema, createDatabase, defineSchema, defineTable, many, one } from "kern-orm"
+import * as t from "kern-orm/types"
 
 /** Result without rows, which the driver of a fixture answers with by default. */
 const noRows: DriverResult = { command: "SELECT", count: 0, columns: [], rows: [] }
 
-/** Creates the tables, the schema, and a `Db` of them with the modules of `build`, whose driver answers every statement with `result`. */
-export function createFixture({ orm, types: t }: Build, result: DriverResult = noRows) {
-  const form = orm.defineTable("form", {
+/** Creates the tables, the schema, and a `Db` of them, whose driver answers every statement with `result`. */
+export function createFixture(result: DriverResult = noRows) {
+  const form = defineTable("form", {
     id: t.uuid.primaryKey(),
     name: t.text,
     published: t.boolean,
     position: t.integer,
   })
-  const field = orm.defineTable("field", {
+  const field = defineTable("field", {
     id: t.uuid.primaryKey(),
     formId: t.uuid,
     position: t.integer,
     label: t.text,
   })
-  const answer = orm.defineTable("answer", {
+  const answer = defineTable("answer", {
     id: t.uuid.primaryKey(),
     fieldId: t.uuid,
     value: t.text,
   })
-  const event = orm.defineTable("event", {
+  const event = defineTable("event", {
     id: t.uuid.primaryKey(),
     accountId: t.integer,
     kind: t.text,
@@ -40,18 +40,14 @@ export function createFixture({ orm, types: t }: Build, result: DriverResult = n
     payload: t.jsonb,
     note: t.text.nullable(),
   })
-  const schema = orm.defineSchema({ form, field, answer, event }).$relations({
-    form: { fields: orm.many(field, { from: "id", to: "formId" }) },
+  const schema = defineSchema({ form, field, answer, event }).$relations({
+    form: { fields: many(field, { from: "id", to: "formId" }) },
     field: {
-      form: orm.one(form, { from: "formId", to: "id", required: true }),
-      answers: orm.many(answer, { from: "id", to: "fieldId" }),
+      form: one(form, { from: "formId", to: "id", required: true }),
+      answers: many(answer, { from: "id", to: "fieldId" }),
     },
   })
-  // A build before `bindSchema` binds a schema with `bind` of its database, so that `--base` compares with it; remove this after the release of 1.0.
-  const bindSchema = (orm.bindSchema ??
-    ((schema: unknown, database: { bind(schema: unknown): unknown }) =>
-      database.bind(schema))) as typeof orm.bindSchema
-  const db = bindSchema(schema, orm.createDatabase({ driver: createDriver(result) }))
+  const db = bindSchema(schema, createDatabase({ driver: createDriver(result) }))
   return { db }
 }
 
