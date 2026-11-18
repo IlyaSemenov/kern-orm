@@ -8,6 +8,7 @@ export { cidr, inet } from "./type/builtins/network"
 export { bigint, doublePrecision, integer, numeric, real, smallint } from "./type/builtins/numeric"
 export { char, text, varchar } from "./type/builtins/text"
 export { uuid } from "./type/builtins/uuid"
+export { vector } from "./type/builtins/vector"
 // The types that the declarations of these values name, so that a module that imports only this entry point emits its declarations: TypeScript names a type only through a module that the program loads.
 export type { AnyExpression } from "./expression/expression"
 export type {
@@ -25,6 +26,11 @@ export type {
 } from "./expression/operators/equality"
 export type { GenericOperator } from "./expression/operators/generic"
 export type { TextOperators, TextTypeOperators } from "./expression/operators/text"
+export type {
+  DistanceOperator,
+  DistanceSignature,
+  VectorOperators,
+} from "./expression/operators/vector"
 export type { Column } from "./table/column"
 export type { ExactNumberTypeOperators, NumberTypeOperators } from "./type/number"
 export type { BaseType, Type } from "./type/type"

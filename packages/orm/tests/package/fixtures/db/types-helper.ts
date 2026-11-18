@@ -8,6 +8,9 @@ export const nullableText = t.text.nullable()
 /** Type with PostgreSQL type parameters; see the file header. */
 export const decimal = t.numeric.with(10, 2)
 
+/** Nullable vector type of pgvector with PostgreSQL type parameters; see the file header. */
+export const embedding = t.vector.with(3).nullable()
+
 /** Type of another representation of its values; see the file header. */
 export const timestamptzDate = t.timestamptz.transform({ decode: value => new Date(value) })
 

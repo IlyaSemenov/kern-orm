@@ -14,6 +14,9 @@ export const decimal = t.numeric.with(10, 2)
 /** Type of text with PostgreSQL type parameters; see the file header. */
 export const code = t.varchar.with(8)
 
+/** Nullable vector type of pgvector with PostgreSQL type parameters; see the file header. */
+export const embedding = t.vector.with(3).nullable()
+
 /** Type of another representation of its values; see the file header. */
 export const timestamptzDate = t.timestamptz.transform({ decode: value => new Date(value) })
 

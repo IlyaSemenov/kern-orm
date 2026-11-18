@@ -29,6 +29,7 @@ Filters, queries in expressions, and SQL fragments.
 - [Recognizing an operand by one lookup](expressions/operand-recognition.md).
 - [Operand of an object condition read from the column type](expressions/object-condition-operand.md).
 - [Result of arithmetic of the type of the expression](expressions/arithmetic-result-type.md): not read from the types of both operands.
+- [Name of the negative inner product](expressions/negative-inner-product.md): `negativeInnerProduct` of the value of `<#>`, rather than `innerProduct` or `maxInnerProduct`.
 
 ## Aggregates and groups
 

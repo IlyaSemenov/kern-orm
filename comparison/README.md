@@ -27,6 +27,8 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [Hibernate ORM](https://github.com/hibernate/hibernate-orm) 7.4.
 - [Doctrine ORM](https://github.com/doctrine/orm) 3.5.0.
 - [Alembic](https://github.com/sqlalchemy/alembic) 1.20.1.
+- [pgvector-node](https://github.com/pgvector/pgvector-node) 0.3.1, the types and distances of pgvector for clients and query builders of Node.js.
+- [TypeORM](https://github.com/typeorm/typeorm) 1.1.3.
 
 ## Topics
 

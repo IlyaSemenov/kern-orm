@@ -25,6 +25,16 @@ Number types have `add`, `sub`, `mul`, and `div`, and integers and `numeric` als
 - Kysely, same: `eb(lhs, op, rhs)` takes an arithmetic operator, such as `eb('age', '+', 1)`, and types the result by the reference on the left ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/expression/expression-builder.ts#L172-L190)).
 - Drizzle ORM, lacks: its operators compare values, and a `sql` fragment writes arithmetic ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/sql/expressions/conditions.ts)).
 
+## Vectors of pgvector
+
+`vector` of pgvector is a built-in type of arrays of numbers, whose distances are operators that compile to the operators of pgvector, such as `document.embedding.cosineDistance(embedding)` to `embedding <=> $1`, with the result of `double precision`.
+
+- Drizzle ORM, same: `vector` of `pg-core` with required `dimensions`, of `number[]`, and the functions `l2Distance`, `innerProduct`, `cosineDistance`, `l1Distance`, `hammingDistance`, and `jaccardDistance` of a column and an array compile to the operators, `innerProduct` to `<#>` without changing its sign ([column](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/columns/vector_extension/vector.ts), [functions](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/sql/functions/vector.ts)).
+- pgvector-node, differs: a package of its own adds the types and the functions of distances to Kysely, Knex, MikroORM, and Sequelize, which take a column by its name, and names `<#>` `maxInnerProduct` ([source](https://github.com/pgvector/pgvector-node/blob/v0.3.1/src/kysely/index.js)).
+- TypeORM, lacks: a column of `vector` with `length` reads `number[]`, and a query sorts by a distance in a SQL string of `orderBy` ([docs](https://github.com/typeorm/typeorm/blob/1.1.3/docs/docs/entity/1-entities.md#vector-columns)).
+- Prisma ORM, lacks: a column of `vector` is `Unsupported("vector(3)")`, which the client leaves out, so queries of it are SQL text ([issue](https://github.com/prisma/orm/issues/18442)).
+- Orchid ORM pqb 0.73.49, lacks: a column of `vector` is a custom type, `t.type('vector(3)')`, of `unknown` values without operators ([source](https://github.com/romeerez/orchid-orm/blob/69c1e00283a9c08d1422d1dae6e6ef9caa52fd38/packages/pqb/src/columns/column-types/custom-type.ts)).
+
 ## Identifiers in SQL fragments
 
 `identifier` is a function of its own, as `sql` and `param` are.

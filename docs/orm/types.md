@@ -85,6 +85,7 @@ Pass PostgreSQL type parameters with `with`, such as `varchar.with(255)` for `va
   Store a missing value as `NULL` in a [`nullable`](#nullable-values) column rather than as a JSON `null` value.
   Queries pass `null` as `NULL`, and a JSON `null` value reads as `null` too, while `coalesce`, `isNull`, and `where` with `null` match only `NULL`; to tell them apart, see [JSON `null` values](#json-null-values).
 - `inet`, `cidr`: `string`.
+- `vector`, `vector.with(dimensions)`: `number[]`, for the `vector` type of the [pgvector](https://github.com/pgvector/pgvector) extension; sort and filter by its [distances](./queries/operators#vector-distances).
 - `array(element)`: one-dimensional array of the element values, such as `array(text)`; the elements of a custom type must be separated by commas in PostgreSQL, as those of all built-in types are.
   An array has `eq`, `ne`, and `in` when its element type has SQL `=` from [`equalityOperators`](./custom-types#operators).
 - `enum(name, values)`: one of `values`, for an existing PostgreSQL enum `name`.

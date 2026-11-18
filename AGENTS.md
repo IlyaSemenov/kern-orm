@@ -93,7 +93,7 @@ Do not catalog files or restate information evident from their names and locatio
 ## Tests
 
 - Tests that need PostgreSQL run only when `DATABASE_URL` is set; CI provides it.
-  Locally, set it in `.env.test.local`, copied from `.env.test.local.example`, to an empty database; `bun test` and the Vitest config load it instead of `.env.local`.
+  Locally, set it in `.env.test.local`, copied from `.env.test.local.example`, to an empty database, connecting as a superuser to a server with the pgvector extension installed; `bun test` and the Vitest config load it instead of `.env.local`.
 
 ## Checks
 

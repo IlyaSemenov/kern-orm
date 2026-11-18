@@ -1,7 +1,7 @@
-import { createNode } from "../../ast/nodes"
 import type { AnyExpression, Expression } from "../expression"
-import { getType, toExpression, toNode, toValueNode } from "../expression"
+import { getType } from "../expression"
 
+import { applyBinaryOperator } from "./binary"
 import type { Operand, OperandValue } from "./comparison"
 import type { GenericOperator, OperatorSignature } from "./generic"
 import { defineGenericOperator } from "./generic"
@@ -73,15 +73,7 @@ export const exactArithmeticOperators: ExactArithmeticOperators = {
 }
 
 function createArithmetic(operator: string) {
-  return defineGenericOperator<ArithmeticSignature, ArithmeticExpression>((self, value) => {
-    const type = getType(self)
-    // A plain operand is encoded without a cast, since the expression types its parameter, as a compared value is.
-    const node = createNode({
-      kind: "binary",
-      operator,
-      left: toNode(self),
-      right: toValueNode(value, type),
-    })
-    return toExpression(node, type) as never
-  })
+  return defineGenericOperator<ArithmeticSignature, ArithmeticExpression>(
+    (self, value) => applyBinaryOperator(self, operator, value, getType(self)) as never,
+  )
 }

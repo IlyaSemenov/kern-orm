@@ -12,7 +12,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Computed columns](computed-columns.md): columns defined as expressions, and fields computed at runtime.
 - [Unions and common table expressions](unions-and-common-table-expressions.md): `UNION ALL`, `WITH`, and derived sources.
 - [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
-- [pgvector type](pgvector-type.md): `vector` with the operators of its distances.
 - [Moving from rake-db](moving-from-rake-db.md): the applied versions of rake-db and a baseline of the schema.
 
 ## Later
@@ -59,6 +58,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Narrowing returned and accepted values apart](narrowing-returned-and-accepted-values-apart.md): `of<T>()` for the values that a type returns and those it accepts.
 - [Branded types of columns](branded-types-of-columns.md): an opt-in `brand()` that rejects a mixed-up identifier.
 - [Singleton tables whose row always exists](singleton-tables-whose-row-always-exists.md): an option of the table whose queries start in rows `one`.
+- [Other vector types of pgvector](other-vector-types-of-pgvector.md): `halfvec`, `sparsevec`, and the distances of `bit`.
 
 ## Without a use case
 

@@ -22,7 +22,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:18
+        # PostgreSQL with the pgvector extension, which the tests of the `vector` type create.
+        image: pgvector/pgvector:pg18
         env:
           POSTGRES_PASSWORD: postgres
         # Wait until postgres is ready before test steps run.

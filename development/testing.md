@@ -44,6 +44,7 @@ How to place and write the tests of kern-orm.
   Declare tests that need statements outside a transaction to run on the pool, such as tests of transactions, with `describePooledPostgres` of the same files, which gives them a database without `test: true`.
 - Leave the test database unchanged: create tables and data in `testTransaction` or in the seed of a test fixture of a database created with `test: true`, or, in a database without it, in a transaction that rolls them back or drops them, such as with `ON COMMIT DROP`, and close every fixture the test opens.
   Do not start a separate PostgreSQL cluster.
+- Create an extension that a test needs, such as `vector` of pgvector, in its test transaction or the seed of its fixture, which roll it back; the server of the tests has pgvector, as the image of the CI service does.
 - Test the contract of a driver with `describeDriverContract` of `kern-db/testing`, which the test of each driver of `kern-db`, such as `packages/db/tests/postgres-js.test.ts`, calls, skipping it when `DATABASE_URL` is not set; keep in that file only the tests of what its client alone does.
   Write the tests of the contract with `node:assert/strict` and only the functions of `DriverContractRunner`: users run them with any supported test runner.
 - Check a query plan by what its execution processes, such as sequential scans, rows read, runs of subqueries, and buffer blocks, rather than by a snapshot of the plan.

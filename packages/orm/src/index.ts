@@ -51,6 +51,12 @@ export type {
 } from "./expression/operators/text"
 export { textOperators } from "./expression/operators/text"
 export type {
+  DistanceOperator,
+  DistanceSignature,
+  VectorOperators,
+} from "./expression/operators/vector"
+export { vectorOperators } from "./expression/operators/vector"
+export type {
   CombinedCondition,
   Condition,
   ConditionOperand,

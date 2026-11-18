@@ -137,6 +137,19 @@
   - It is `NULL` when the expression or the operand can be.
 - An increment of a column is `add` in the callback of `update`, without a method of a mutation of its own ([decision](../decisions/mutations/increment-as-an-operator.md)).
 
+## Vector distances
+
+- `vector` (`type/builtins/vector.ts` of both packages) is the type of pgvector, a built-in type although PostgreSQL has it only with the extension `vector`, whose values are arrays of numbers in the text representation `[1,2.5,1e-05]`, which is JSON.
+  - It decodes with `JSON.parse`, which is faster than splitting the text, and encodes with `join`, so that PostgreSQL rejects a `NaN` or an infinite element with the error of pgvector rather than reads the `null` that JSON writes for it.
+  - Its type of the ORM has `equalityOperators`, since pgvector has `=` for it, and `vectorOperators`, without `orderingOperators`, whose order of vectors has no use.
+- `l2Distance`, `negativeInnerProduct`, `cosineDistance`, and `l1Distance` of `vectorOperators` (`expression/operators/vector.ts`) are the SQL `<->`, `<#>`, `<=>`, and `<+>` of pgvector of an expression with an operand, as a binary node, which the compiler parenthesizes as any operator other than arithmetic.
+  - They compile to the operators rather than to the functions of pgvector, such as `l2_distance`, since only an operator in `ORDER BY` can use an index of pgvector.
+  - `negativeInnerProduct` is the value of `<#>` as it is, the inner product with its sign changed, under a name that tells the sign ([decision](../decisions/expressions/negative-inner-product.md)).
+- An operand is what an operand of `lt` is, encoded by the type of the expression without a cast, which PostgreSQL resolves to the type of the expression, so that the operators apply to any vector type of pgvector, such as `halfvec` that users define.
+  Types do not restrict the types that take them, since the type of the expression encodes the operand whatever its values.
+- The result is an expression of `doublePrecision`, which pgvector returns for every distance, so it has the operators of numbers, such as `lt` of a distance within which a query keeps the rows.
+  It is `NULL` when the expression or the operand can be.
+
 ## Parameters and SQL fragments
 
 - PostgreSQL infers the type of every parameter from the statement text.

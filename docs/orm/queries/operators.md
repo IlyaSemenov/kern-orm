@@ -18,8 +18,9 @@ Operators by type:
 - every type: `isNull`;
 - types with SQL `=`, which are every built-in type except `json` and arrays of it: `eq`, `ne`, and `in`;
 - ordered types, which are numbers, text, `uuid`, dates, times, intervals, `inet`, `cidr`, and enums: `lt`, `lte`, `gt`, and `gte`;
-- `text`, `varchar`, and `char`: `like`, `ilike`, `lower`, `upper`, `trim`, and `length`.
-- numbers: `add`, `sub`, `mul`, and `div`, and for integers and `numeric` also `mod`.
+- `text`, `varchar`, and `char`: `like`, `ilike`, `lower`, `upper`, `trim`, and `length`;
+- numbers: `add`, `sub`, `mul`, and `div`, and for integers and `numeric` also `mod`;
+- `vector`: `l2Distance`, `negativeInnerProduct`, `cosineDistance`, and `l1Distance`.
 
 To match `NULL`, call `isNull` rather than pass `null` to a comparison.
 
@@ -52,6 +53,34 @@ The result is read by the type you call the operator on, so call it on the wider
 An operand cannot be an expression of other values, such as a `bigint` column beside an `integer` one; write a [`sql` fragment](./filtering#sql-fragments) of the wider type for it.
 
 To increment a column, see [Updating](./mutations#updating).
+
+## Vector distances
+
+To find the documents most similar to an embedding, sort by the distance of a `vector` column to it:
+
+```ts
+const documents = await db.document
+  .orderBy(document => document.embedding.cosineDistance(embedding))
+  .limit(5)
+  .select("id", "title")
+```
+
+The distances are those of pgvector, as `number`:
+
+- `l2Distance`: Euclidean distance, `<->`;
+- `negativeInnerProduct`: inner product with the sign changed, `<#>`, so that the largest inner product comes first in ascending order;
+- `cosineDistance`: cosine distance, `<=>`;
+- `l1Distance`: taxicab distance, `<+>`.
+
+They compile to these operators, so a query that sorts by a distance in ascending order with `limit` can use an HNSW or IVFFlat index of pgvector for the column with the operator class of that distance, such as `vector_cosine_ops` for `cosineDistance`.
+
+A distance has the operators of numbers, so compare it to keep only the documents within a distance:
+
+```ts
+await db.document
+  .where(document => document.embedding.cosineDistance(embedding).lt(0.3))
+  .select("id")
+```
 
 ## Beyond the operators
 

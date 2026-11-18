@@ -17,19 +17,19 @@ export const category = defineTable("category", {
 
 ## Type parameters
 
-For a type with PostgreSQL type parameters, such as the dimensions of `vector`, pass `withParameters` a function that formats the SQL type name with them; `with` then accepts the parameters:
+For a type with PostgreSQL type parameters, such as the dimensions of `halfvec` of pgvector, pass `withParameters` a function that formats the SQL type name with them; `with` then accepts the parameters:
 
 ```ts
 // pgvector writes vectors as "[1,2,3]", which is also their JSON
-const vector = defineType({ sqlType: "vector" })
+const halfvec = defineType({ sqlType: "halfvec" })
   .transform({
     decode: text => JSON.parse(text) as number[],
     encode: (value: number[]) => JSON.stringify(value),
   })
-  .withParameters((dimensions: number) => `vector(${dimensions})`)
+  .withParameters((dimensions: number) => `halfvec(${dimensions})`)
 
 export const document = defineTable("document", {
-  embedding: vector.with(1536),
+  embedding: halfvec.with(1536),
 })
 ```
 
@@ -44,6 +44,7 @@ Add the operators that PostgreSQL has for the type with `withOperators`, reusing
 - `textOperators`: `like`, `ilike`, `lower`, `upper`, `trim`, and `length`, for a type of strings.
 - `arithmeticOperators`: `add`, `sub`, `mul`, and `div`, for a type of numbers; their results have the type of the expression.
 - `exactArithmeticOperators`: those of `arithmeticOperators`, and `mod`, for a type of integers or exact numbers.
+- `vectorOperators`: `l2Distance`, `negativeInnerProduct`, `cosineDistance`, and `l1Distance`, for a vector type of pgvector, such as `halfvec`.
 
 ```ts
 import { defineType, orderingOperators, textOperators } from "kern-orm"
@@ -68,7 +69,7 @@ This example adds a distance operator to `vector`:
 import { defineTable, param, sql } from "kern-orm"
 import * as t from "kern-orm/types"
 
-const embedding = vector.withOperators({
+const embedding = t.vector.withOperators({
   isWithin: (self, other: number[], distance: number) =>
     sql(t.boolean)`${self} <-> ${param(self, other)} < ${distance}`,
 })
@@ -143,12 +144,12 @@ To give operators to a type defined without the ORM, such as in a package of a P
 ```ts
 import { defineTable, defineType, equalityOperators } from "kern-orm"
 
-import { vector as dbVector } from "./db-types"
+import { halfvec as dbHalfvec } from "./db-types"
 
-const vector = defineType(dbVector).withOperators(equalityOperators)
+const halfvec = defineType(dbHalfvec).withOperators(equalityOperators)
 
 export const document = defineTable("document", {
-  embedding: vector.with(1536),
+  embedding: halfvec.with(1536),
 })
 ```
 

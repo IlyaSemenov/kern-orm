@@ -52,6 +52,7 @@ A value without an exact JavaScript counterpart is a string, so that no precisio
   Store a missing value as `NULL` in a column that can be `NULL` rather than as a JSON `null` value.
   A parameter passes `null` as `NULL`, and a JSON `null` value reads as `null` too; to tell them apart, see [JSON `null` values](#json-null-values).
 - `inet`, `cidr`: `string`.
+- `vector`: `number[]`, for the `vector` type of the [pgvector](https://github.com/pgvector/pgvector) extension.
 - `array(element)`: one-dimensional array of the element values, such as `array(text)`; the elements of a custom type must be separated by commas in PostgreSQL, as those of all built-in types are.
 - `enum(name, values)`: one of `values`, for an existing PostgreSQL enum `name`.
 
@@ -167,6 +168,7 @@ These types take parameters:
 - `numeric.with(precision, scale?)`.
 - `varchar.with(length)` and `char.with(length)`; `char` alone has length 1, as in PostgreSQL.
 - `timestamptz.with(precision)`, `timestamp.with(precision)`, and `time.with(precision)`.
+- `vector.with(dimensions)`.
 
 ## Custom types
 
@@ -184,16 +186,16 @@ const path = await database.query`SELECT path FROM category WHERE id = ${categor
 Its values are the PostgreSQL text representations, and [`transform`](#deriving-types) converts them to other values.
 It has `nullable`, `of`, and `transform`, as the built-in types do.
 
-For a type with PostgreSQL type parameters, such as the dimensions of `vector`, pass `withParameters` a function that formats the SQL type name with them; `with` then accepts the parameters, such as `vector.with(1536)`:
+For a type with PostgreSQL type parameters, such as the dimensions of `halfvec` of pgvector, pass `withParameters` a function that formats the SQL type name with them; `with` then accepts the parameters, such as `halfvec.with(1536)`:
 
 ```ts
 // pgvector writes vectors as "[1,2,3]", which is also their JSON
-export const vector = defineType({ sqlType: "vector" })
+export const halfvec = defineType({ sqlType: "halfvec" })
   .transform({
     decode: text => JSON.parse(text) as number[],
     encode: (value: number[]) => JSON.stringify(value),
   })
-  .withParameters((dimensions: number) => `vector(${dimensions})`)
+  .withParameters((dimensions: number) => `halfvec(${dimensions})`)
 ```
 
 When the SQL type name alone constrains values, as `char` has length 1, `castType` names the type that `param` casts values to instead, such as `bpchar`.

@@ -119,4 +119,18 @@ describePostgres("built-in types in PostgreSQL", ({ database, testTransaction })
         await database.query`SELECT ${param(t.array(mood), ["happy", "sad"])}`.get(t.array(mood)),
       ).toEqual(["happy", "sad"])
     }))
+
+  it("encode and decode the vectors of pgvector", () =>
+    testTransaction(async () => {
+      await database.script`CREATE EXTENSION vector`
+      const embedding = t.vector.with(3)
+      const value = [1.5, -0.25, 0.00001]
+
+      expect(await database.query`SELECT ${param(embedding, value)}`.get(embedding)).toEqual(value)
+      expect(
+        await database.query`SELECT ${param(t.array(embedding), [value, [0, 0, 0]])}`.get(
+          t.array(embedding),
+        ),
+      ).toEqual([value, [0, 0, 0]])
+    }))
 })
