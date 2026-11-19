@@ -97,6 +97,7 @@ The SQL that loads nested queries and relations.
 
 - [Phase of a connection failure watched on every statement](transactions/connection-failure-phase.md): through a wrapper of the connection of a transaction, rather than a flag of the driver or the rejection of the callback.
 - [Sessions for statements outside a transaction](transactions/sessions.md): a level on a reserved connection, rather than a transaction that holds a lock beside the pool or access to the driver.
+- [Open sessions shared by the callbacks of `run`](transactions/open-sessions.md): callbacks that join the session through the async context, a closing that waits for them, and that the database waits for, rather than statements and locks as methods of the session, a pending callback of `session`, a closing that ends the session at once, or sessions that the database closes.
 - [Levels of the test helpers that take turns on their connection](transactions/test-levels-that-take-turns.md): the transactions of the tested code one at a time and each statement outside a transaction in a savepoint of its own, rather than rejecting beside a running transaction, a turn for a whole request of a browser test, statements without savepoints, or truncating tables between browser tests.
 
 ## Drivers

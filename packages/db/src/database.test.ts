@@ -199,6 +199,20 @@ describe("advisory locks", () => {
       expect(await database.transaction(() => database.tryLock(key))).toBe(true)
     })
 
+    it("holds a lock of an open session between the callbacks of run until the session is closed", async () => {
+      const key = createKey()
+
+      {
+        await using session = await database.openSession()
+        expect(await session.run(() => database.tryLock(key))).toBe(true)
+        expect(await database.session(() => database.tryLock(key))).toBe(false)
+        expect(await session.run(() => countHolders(key))).toBe(1)
+      }
+
+      expect(await countHolders(key)).toBe(0)
+      expect(await database.session(() => database.tryLock(key))).toBe(true)
+    })
+
     it("holds a lock of a transaction until the transaction ends", async () => {
       const key = createKey()
 

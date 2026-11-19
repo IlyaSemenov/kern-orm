@@ -4,6 +4,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 
 import type {
   DatabaseOptions,
+  OpenedSession,
   PollLockOptions,
   SessionOptions,
   TransactionOptions,
@@ -44,7 +45,7 @@ import {
 } from "./level"
 import type { ReleaseErrorHandler } from "./release"
 import { releaseConnection } from "./release"
-import { createSessionLevel, releaseSession } from "./session"
+import { openSession, releaseSession, startSession } from "./session"
 import type { LevelSetting } from "./settings"
 import { applySettings, getLevelSettings } from "./settings"
 import { acquireUnlessAborted } from "./test-levels/abort"
@@ -191,27 +192,46 @@ export class TransactionCoordinator {
    * After a `ConnectionError` on its connection, the session accepts no more statements.
    */
   session<T>(callback: () => Promise<T>, options?: SessionOptions): Promise<T> {
+    const refusal = this.#getSessionRefusal("start")
+    return refusal ? Promise.reject(refusal) : this.#runSession(callback, getLevelSettings(options))
+  }
+
+  /**
+   * Opens a session with the settings of `options` that the callbacks of its `run` share until it is closed, see `openSession` of the sessions.
+   *
+   * It rejects where `session` rejects.
+   * Closing the database waits for it, as for a session of `session`, since ending it would release its locks while the work that they guard still runs.
+   */
+  async openSession(options?: SessionOptions): Promise<OpenedSession> {
+    const refusal = this.#getSessionRefusal("open")
+    if (refusal) {
+      throw refusal
+    }
+    // Before the connection is acquired, so that options that throw reserve none.
+    const settings = getLevelSettings(options)
+    return openSession(this.#storage, await this.driver.acquire(), settings, this.#onReleaseError)
+  }
+
+  /** Returns the error that rejects a session that code would `start` or `open` now, or `undefined` when it can start. */
+  #getSessionRefusal(verb: "start" | "open"): Error | undefined {
+    // Late code of a finished level must not start a session either.
     const parent = this.#storage.getStore()
     if (parent) {
-      return Promise.reject(
-        new Error(
-          parent.session
-            ? "Cannot start a session inside a session"
-            : "Cannot start a session inside a transaction, also a test transaction: the statements of a session run outside a transaction",
-        ),
+      return new Error(
+        parent.session
+          ? `Cannot ${verb} a session inside a session`
+          : `Cannot ${verb} a session inside a transaction, also a test transaction: the statements of a session run outside a transaction`,
       )
     }
     if (this.#closed) {
-      return Promise.reject(createDatabaseClosedError("start a session"))
+      return createDatabaseClosedError(`${verb} a session`)
     }
     if (this.test) {
-      return Promise.reject(
-        new Error(
-          "Cannot start a session: the database was created with test: true, so its statements run in test transactions, and the statements of a session run outside a transaction",
-        ),
+      return new Error(
+        `Cannot ${verb} a session: the database was created with test: true, so its statements run in test transactions, and the statements of a session run outside a transaction`,
       )
     }
-    return this.#runSession(callback, getLevelSettings(options))
+    return undefined
   }
 
   /**
@@ -376,7 +396,7 @@ export class TransactionCoordinator {
    *
    * A driver waits for every reserved connection, so closing it under an open fixture or test transaction would wait forever.
    * A failed closing of the driver suppresses the failures of closing the fixtures and test transactions.
-   * From the first call, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, while the levels already running can still end; a repeated call returns the same closing.
+   * From the first call, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, while the levels already running can still end, also an open session, which its owner closes; a repeated call returns the same closing.
    */
   close(): Promise<void> {
     // A transaction or a session keeps its connection until it ends, so closing inside it would wait for itself.
@@ -516,17 +536,8 @@ export class TransactionCoordinator {
     callback: () => Promise<T>,
     settings: readonly LevelSetting[] | undefined,
   ): Promise<T> {
-    const level = createSessionLevel(await this.driver.acquire())
-    let outcome: Outcome<T> | undefined
-    if (settings) {
-      try {
-        await applySettings(level, settings)
-      } catch (error) {
-        level.state = "closed"
-        outcome = { rejection: { error } }
-      }
-    }
-    outcome ??= await runLevel(this.#storage, level, callback, false)
+    const level = await startSession(await this.driver.acquire(), settings, this.#onReleaseError)
+    const outcome = await runLevel(this.#storage, level, callback, false)
     await releaseSession(level, this.#onReleaseError)
     if (outcome.rejection) {
       throw outcome.rejection.error

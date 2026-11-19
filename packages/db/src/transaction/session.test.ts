@@ -1,14 +1,16 @@
 import { describe, expect, it } from "bun:test"
+import { AsyncLocalStorage } from "node:async_hooks"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
+import { createDatabase } from "../database"
 import type { SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 import { ConnectionError, QueryError } from "../driver-error"
 
 import { TransactionConnectionError } from "./connection-loss"
 import { TransactionCoordinator } from "./coordinator"
-import { createTestCoordinator, failOn, holdOn, markHandled, run } from "./testing"
+import { createTestCoordinator, failOn, holdOn, markHandled, run, settleCallbacks } from "./testing"
 
 const readSetting = "SELECT current_setting($1)"
 const setSetting = "SELECT set_config($1, $2, false)"
@@ -681,6 +683,747 @@ describe("connection failures", () => {
       await expect(coordinator.transaction(() => Promise.resolve())).rejects.toMatchObject({
         phase: "begin",
         cause: lost,
+      })
+    })
+  })
+})
+
+describe("open sessions", () => {
+  it("runs the callbacks of run on its one connection outside a transaction until it is closed, and releases the connection once", async () => {
+    const { driver, statements, releases } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    const context = new AsyncLocalStorage<string>()
+    const session = await context.run("opening", () => coordinator.openSession())
+    const result = await session.run(async () => {
+      await coordinator.execute(createStatement("first"))
+      await coordinator.executeScript("script")
+      return "done"
+    })
+    await coordinator.execute(createStatement("outside"))
+    // The callback runs in the async context of its caller, such as of a timer, not of the code that opened the session.
+    const seen = await context.run("calling", () =>
+      session.run(async () => {
+        await coordinator.execute(createStatement("from another context"))
+        return context.getStore()
+      }),
+    )
+    await session.run(() => session.run(run(coordinator, "nested")))
+    expect(releases).toEqual([])
+    const closing = session.close()
+
+    expect(session.close()).toBe(closing)
+    expect(session[Symbol.asyncDispose]()).toBe(closing)
+    await closing
+    expect(result).toBe("done")
+    expect(seen).toBe("calling")
+    expect(statements).toEqual([
+      { connection: 1, text: "first", parameters: [] },
+      { connection: "pool", text: "outside", parameters: [] },
+      { connection: 1, text: "from another context", parameters: [] },
+      { connection: 1, text: "nested", parameters: [] },
+    ])
+    expect(releases).toEqual([{ connection: 1 }])
+  })
+
+  it("rejects run without calling the callback, and a late statement of a callback, once it is closed", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+    const { promise: closed, resolve: close } = Promise.withResolvers<void>()
+
+    const session = await coordinator.openSession()
+    let late: Promise<unknown> | undefined
+    await session.run(async () => {
+      late = markHandled(closed.then(() => coordinator.execute(createStatement("late"))))
+    })
+    await session.close()
+    close()
+    let called = false
+    const joined = markHandled(
+      session.run(async () => {
+        called = true
+      }),
+    )
+
+    await expect(late!).rejects.toThrow("Cannot execute a query: its session is already finished")
+    await expect(joined).rejects.toThrow("Cannot run a callback: its session is already finished")
+    expect(called).toBe(false)
+    expect(statements).toEqual([])
+  })
+
+  it("rejects run inside a transaction, also of the session, inside another session, and beside a transaction of the session, without calling the callback", async () => {
+    const { driver } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+    const { promise: started, resolve: start } = Promise.withResolvers<void>()
+    const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+
+    const session = await coordinator.openSession()
+    let called = false
+    const join = () =>
+      session.run(async () => {
+        called = true
+      })
+
+    await coordinator.transaction(async () => {
+      await expect(join()).rejects.toThrow(
+        "Cannot run a callback of an open session inside a transaction",
+      )
+    })
+    await coordinator.session(async () => {
+      await expect(join()).rejects.toThrow(
+        "Cannot run a callback of an open session inside another session",
+      )
+    })
+    const transaction = session.run(() =>
+      coordinator.transaction(async () => {
+        await expect(join()).rejects.toThrow(
+          "Cannot run a callback of an open session inside a transaction",
+        )
+        start()
+        await finished
+      }),
+    )
+    await started
+    await expect(join()).rejects.toThrow(
+      "Cannot run a callback: a transaction of the session is running; await it first",
+    )
+    finish()
+    await transaction
+    await session.close()
+
+    expect(called).toBe(false)
+  })
+
+  it("rejects where a session cannot start: inside a transaction, inside a session, and on a database created for tests", async () => {
+    const { driver, releases } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+    const { coordinator: testCoordinator } = createTestCoordinator()
+
+    await coordinator.transaction(async () => {
+      await expect(coordinator.openSession()).rejects.toThrow(
+        "Cannot open a session inside a transaction",
+      )
+    })
+    await coordinator.session(async () => {
+      await expect(coordinator.openSession()).rejects.toThrow(
+        "Cannot open a session inside a session",
+      )
+    })
+    const session = await coordinator.openSession()
+    await session.run(async () => {
+      await expect(coordinator.openSession()).rejects.toThrow(
+        "Cannot open a session inside a session",
+      )
+    })
+    await session.close()
+
+    await expect(testCoordinator.openSession()).rejects.toThrow(
+      "Cannot open a session: the database was created with test: true",
+    )
+    expect(releases).toEqual([{ connection: 1 }, { connection: 2 }, { connection: 3 }])
+  })
+
+  it("rejects with the error of options that throw, without a connection", async () => {
+    let acquired = 0
+    const { driver } = createRecordingDriver({
+      acquire() {
+        acquired++
+      },
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    // A value that types reject, such as of code without types.
+    const opening = coordinator.openSession({ searchPath: "tenant_1" as never })
+
+    await expect(opening).rejects.toBeInstanceOf(TypeError)
+    expect(acquired).toBe(0)
+  })
+
+  it("keeps running callbacks while the database closes, which waits for it and rejects opening another", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    const session = await coordinator.openSession()
+    let closed = false
+    const closing = coordinator.close().then(() => {
+      closed = true
+    })
+
+    await expect(coordinator.openSession()).rejects.toThrow(
+      "Cannot open a session: the database is closed",
+    )
+    await session.run(async () => {
+      await expect(coordinator.close()).rejects.toThrow(
+        "Cannot close the database inside a session",
+      )
+      await coordinator.execute(createStatement("running"))
+    })
+    await settleCallbacks()
+    expect(closed).toBe(false)
+    await session.close()
+    await closing
+    expect(statements).toEqual([{ connection: 1, text: "running", parameters: [] }])
+  })
+
+  it("sets the search path when it opens and restores the previous one when it is closed", async () => {
+    const { driver, statements } = createRecordingDriver({ respond: respondWithSetting() })
+    const coordinator = new TransactionCoordinator(driver)
+
+    const session = await coordinator.openSession({ searchPath: ["tenant_1"] })
+    await session.run(run(coordinator, "inside"))
+    await session.close()
+
+    expect(statements).toEqual([
+      { connection: 1, text: readSetting, parameters: ["search_path"] },
+      { connection: 1, text: setSetting, parameters: ["search_path", '"tenant_1"'] },
+      { connection: 1, text: "inside", parameters: [] },
+      { connection: 1, text: setSetting, parameters: ["search_path", previousSearchPath] },
+    ])
+  })
+
+  it("rejects the opening when its settings fail, and releases its connection", async () => {
+    const failure = new Error("failure")
+    const { driver, statements, releases } = createRecordingDriver({
+      respond: failOn(readSetting, failure),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    await expect(coordinator.openSession({ searchPath: ["tenant_1"] })).rejects.toBe(failure)
+
+    expect(statements.map(({ text }) => text)).toEqual([readSetting])
+    expect(releases).toEqual([{ connection: 1 }])
+  })
+
+  it("rejects run after a ConnectionError on its connection without calling the callback, and closes without reporting the lost connection", async () => {
+    const lost = new ConnectionError("lost")
+    const reported: unknown[] = []
+    const { driver, statements, releases } = createRecordingDriver({
+      respond: failOn("failing", lost),
+    })
+    const coordinator = new TransactionCoordinator(driver, {
+      onReleaseError: error => reported.push(error),
+    })
+
+    const session = await coordinator.openSession()
+    await expect(session.run(run(coordinator, "failing"))).rejects.toBe(lost)
+    let called = false
+    const joined = session.run(async () => {
+      called = true
+    })
+
+    await expect(joined).rejects.toThrow(
+      "Cannot run a callback: the connection of the session failed, so the session accepts no more statements",
+    )
+    await expect(joined).rejects.toMatchObject({ cause: lost })
+    await session.close()
+    expect(called).toBe(false)
+    expect(statements.map(({ text }) => text)).toEqual(["failing"])
+    expect(releases).toEqual([{ connection: 1 }])
+    expect(reported).toEqual([])
+  })
+
+  describe("closing", () => {
+    const insideCallback =
+      "Cannot close an open session inside a running callback of its run: the closing waits for that callback"
+
+    it("waits for a callback that is running, which sends its later statement and commits its transaction before the settings are restored", async () => {
+      const events: string[] = []
+      const { driver } = createRecordingDriver({
+        respond: respondWithSetting(statement => {
+          events.push(statement.text)
+        }),
+        release() {
+          events.push("release")
+        },
+      })
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: resumed, resolve: resume } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession({ searchPath: ["tenant_1"] })
+      const running = session.run(async () => {
+        await resumed
+        await coordinator.execute(createStatement("later"))
+        await coordinator.transaction(run(coordinator, "inside"))
+        return "done"
+      })
+      let closed = false
+      const closing = session.close().then(() => {
+        closed = true
+      })
+      await settleCallbacks()
+      expect(closed).toBe(false)
+      resume()
+
+      expect(await running).toBe("done")
+      await closing
+      expect(events).toEqual([
+        readSetting,
+        setSetting,
+        "later",
+        "BEGIN",
+        "inside",
+        "COMMIT",
+        setSetting,
+        "release",
+      ])
+    })
+
+    it("lets a running callback send the statement of a query that it has not sent yet", async () => {
+      const { driver, statements } = createRecordingDriver()
+      const database = createDatabase({ driver })
+
+      const session = await database.openSession()
+      // A query sends its statement when it is awaited, after `run` and `close` return.
+      const round = session.run(async () => {
+        await database.query`SELECT 1`
+      })
+      const closing = session.close()
+      await round
+      await closing
+
+      expect(statements).toEqual([{ connection: 1, text: "SELECT 1", parameters: [] }])
+    })
+
+    it("lets a running callback start a nested run while it waits, and rejects run of other code, also of late code of a callback that settled, whose statements still reach the session", async () => {
+      const { driver, statements } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: closeCalled, resolve: announceClose } = Promise.withResolvers<void>()
+      const whileClosing = "Cannot run a callback: the session is closing"
+
+      const session = await coordinator.openSession()
+      let late: Promise<void> | undefined
+      await session.run(async () => {
+        late = closeCalled.then(async () => {
+          await expect(session.run(run(coordinator, "late run"))).rejects.toThrow(whileClosing)
+          // The session is open until the running callback settles.
+          await coordinator.execute(createStatement("late statement"))
+        })
+      })
+      const running = session.run(async () => {
+        await closeCalled
+        await session.run(run(coordinator, "nested"))
+        await expect(session.close()).rejects.toThrow(insideCallback)
+        await late
+      })
+      const closing = session.close()
+      await expect(session.run(run(coordinator, "outside"))).rejects.toThrow(whileClosing)
+      announceClose()
+      await running
+      await closing
+
+      await expect(session.run(run(coordinator, "closed"))).rejects.toThrow(
+        "Cannot run a callback: its session is already finished",
+      )
+      expect(statements.map(({ connection, text }) => `${connection}: ${text}`).sort()).toEqual([
+        "1: late statement",
+        "1: nested",
+      ])
+    })
+
+    it("rejects run of other code as closing also beside a transaction of a running callback", async () => {
+      const { driver } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: started, resolve: start } = Promise.withResolvers<void>()
+      const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession()
+      const running = session.run(() =>
+        coordinator.transaction(async () => {
+          start()
+          await finished
+        }),
+      )
+      await started
+      const closing = session.close()
+
+      // Awaiting the transaction would not let the call start.
+      await expect(session.run(run(coordinator, "outside"))).rejects.toThrow(
+        "Cannot run a callback: the session is closing",
+      )
+      finish()
+      await running
+      await closing
+    })
+
+    it("rejects run of late code of a nested call that settled, also through a session of another database, while its outer call runs", async () => {
+      const { driver, statements } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const otherCoordinator = new TransactionCoordinator(createRecordingDriver().driver)
+      const { promise: closeCalled, resolve: announceClose } = Promise.withResolvers<void>()
+      const whileClosing = "Cannot run a callback: the session is closing"
+
+      const session = await coordinator.openSession()
+      const other = await otherCoordinator.openSession()
+      const running = session.run(async () => {
+        let late: Promise<void> | undefined
+        await session.run(async () => {
+          late = closeCalled.then(async () => {
+            await expect(session.run(run(coordinator, "direct"))).rejects.toThrow(whileClosing)
+            await expect(
+              other.run(() => session.run(run(coordinator, "through another session"))),
+            ).rejects.toThrow(whileClosing)
+          })
+        })
+        await late
+      })
+      const closing = session.close()
+      announceClose()
+      await running
+      await closing
+      await other.close()
+
+      expect(statements).toEqual([])
+    })
+
+    it("waits for a nested run that its callback did not await", async () => {
+      const { driver, statements, releases } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: resumed, resolve: resume } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession()
+      let nested: Promise<void> | undefined
+      await session.run(async () => {
+        nested = session.run(async () => {
+          await resumed
+          await coordinator.execute(createStatement("nested"))
+        })
+      })
+      const closing = session.close()
+      await settleCallbacks()
+      expect(releases).toEqual([])
+      resume()
+      await nested
+      await closing
+
+      expect(statements).toEqual([{ connection: 1, text: "nested", parameters: [] }])
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("rejects inside a running callback, also in a transaction of it, leaving the session open, and closes from late code of a callback that settled", async () => {
+      const { driver, statements, releases } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: settled, resolve: settle } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession()
+      let late: Promise<void> | undefined
+      await session.run(async () => {
+        await expect(session.close()).rejects.toThrow(insideCallback)
+        await expect(session[Symbol.asyncDispose]()).rejects.toThrow(insideCallback)
+        await coordinator.transaction(async () => {
+          await expect(session.close()).rejects.toThrow(insideCallback)
+        })
+        late = settled.then(() => session.close())
+      })
+      await session.run(run(coordinator, "still open"))
+      settle()
+      await late
+
+      expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT", "still open"])
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("rejects in late code of a nested call that settled while its outer call runs, which may wait for that code, and then closes outside", async () => {
+      const { driver, releases } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: settled, resolve: settle } = Promise.withResolvers<void>()
+      const { promise: called, resolve: announceCall } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession()
+      let closing: Promise<void> | undefined
+      await session.run(async () => {
+        await session.run(async () => {
+          void settled.then(() => {
+            closing = markHandled(session.close())
+            announceCall()
+          })
+        })
+        settle()
+        // The outer call does not wait for the closing, so that a closing that waited for it would end, and fail the test rather than hang it.
+        await called
+      })
+
+      await expect(closing!).rejects.toThrow(insideCallback)
+      expect(releases).toEqual([])
+      await session.close()
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("rejects inside a callback of a session of another database that its own running callback encloses, and lets that callback start a nested run while it waits", async () => {
+      const outerDatabase = createRecordingDriver()
+      const innerDatabase = createRecordingDriver()
+      const outerCoordinator = new TransactionCoordinator(outerDatabase.driver)
+      const innerCoordinator = new TransactionCoordinator(innerDatabase.driver)
+      const { promise: closeCalled, resolve: announceClose } = Promise.withResolvers<void>()
+
+      const outer = await outerCoordinator.openSession()
+      const inner = await innerCoordinator.openSession()
+      const running = outer.run(() =>
+        inner.run(async () => {
+          await expect(outer.close()).rejects.toThrow(insideCallback)
+          await closeCalled
+          await outer.run(run(outerCoordinator, "nested"))
+        }),
+      )
+      await settleCallbacks()
+      const closing = outer.close()
+      announceClose()
+      await running
+      await closing
+      await inner.close()
+
+      expect(outerDatabase.statements).toEqual([{ connection: 1, text: "nested", parameters: [] }])
+      expect(outerDatabase.releases).toEqual([{ connection: 1 }])
+      expect(innerDatabase.releases).toEqual([{ connection: 1 }])
+    })
+
+    it("ends after a callback that rejects", async () => {
+      const failure = new Error("failure")
+      const { driver, releases } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: resumed, resolve: resume } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession()
+      const running = markHandled(
+        session.run(async () => {
+          await resumed
+          throw failure
+        }),
+      )
+      const closing = session.close()
+      resume()
+
+      await expect(running).rejects.toBe(failure)
+      await closing
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("rejects the later statement and a nested run of a callback after a ConnectionError while it waits, and ends once the callback settles, without another connection", async () => {
+      const lost = new ConnectionError("lost")
+      let acquired = 0
+      const { driver, statements, releases } = createRecordingDriver({
+        respond: failOn("failing", lost),
+        acquire() {
+          acquired++
+        },
+      })
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: resumed, resolve: resume } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession()
+      const running = session.run(async () => {
+        await resumed
+        await expect(coordinator.execute(createStatement("failing"))).rejects.toBe(lost)
+        await expect(coordinator.execute(createStatement("after"))).rejects.toThrow(
+          "Cannot execute a query: the connection of the session failed",
+        )
+        await expect(session.run(run(coordinator, "nested"))).rejects.toThrow(
+          "Cannot run a callback: the connection of the session failed",
+        )
+      })
+      const closing = session.close()
+      resume()
+      await running
+      await closing
+
+      expect(statements.map(({ text }) => text)).toEqual(["failing"])
+      expect(acquired).toBe(1)
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("waits for a statement that no callback awaited before it releases its connection, also without locks and settings, whose statements would wait for it", async () => {
+      const heartbeat = holdOn("heartbeat")
+      const { driver, releases } = createRecordingDriver({ respond: heartbeat.respond })
+      const coordinator = new TransactionCoordinator(driver)
+
+      const session = await coordinator.openSession()
+      let sent: Promise<unknown> | undefined
+      await session.run(async () => {
+        sent = coordinator.execute(createStatement("heartbeat"))
+      })
+      await heartbeat.reached
+      let closed = false
+      const closing = session.close().then(() => {
+        closed = true
+      })
+      await settleCallbacks()
+      expect(closed).toBe(false)
+      expect(releases).toEqual([])
+      heartbeat.resume()
+      await sent
+      await closing
+
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("waits for a script that no callback awaited after a later statement that its client refused at once", async () => {
+      const script = holdOn("script")
+      const refused = new ConnectionError("refused", { unsent: true })
+      const { driver, releases } = createRecordingDriver({ respond: script.respond })
+      const coordinator = new TransactionCoordinator({
+        ...driver,
+        async acquire() {
+          const connection = await driver.acquire()
+          return {
+            ...connection,
+            // A client can refuse a statement before the earlier ones complete, such as one with too many parameters.
+            execute: statement =>
+              statement.text === "refused"
+                ? Promise.reject(refused)
+                : connection.execute(statement),
+          }
+        },
+      })
+
+      const session = await coordinator.openSession()
+      let sent: Promise<void> | undefined
+      await session.run(async () => {
+        sent = coordinator.executeScript("script")
+        await expect(coordinator.execute(createStatement("refused"))).rejects.toBe(refused)
+      })
+      await script.reached
+      let closed = false
+      const closing = session.close().then(() => {
+        closed = true
+      })
+      await settleCallbacks()
+      expect(closed).toBe(false)
+      expect(releases).toEqual([])
+      script.resume()
+      await sent
+      await closing
+
+      expect(releases).toEqual([{ connection: 1 }])
+    })
+
+    it("ends the session in the turn in which its last call settles, so that late code queued behind it sends nothing", async () => {
+      const { driver, statements } = createRecordingDriver()
+      const coordinator = new TransactionCoordinator(driver)
+      const { promise: resumed, resolve: resume } = Promise.withResolvers<void>()
+
+      const session = await coordinator.openSession()
+      let late: Promise<unknown> | undefined
+      const running = session.run(() => {
+        // `run` awaits this promise, so its reaction, which settles the call, runs between the two reactions below.
+        const callback = resumed.then(() => {})
+        void callback.then(() => {
+          late = markHandled(
+            Promise.resolve().then(() => coordinator.execute(createStatement("late"))),
+          )
+        })
+        return callback
+      })
+      const closing = session.close()
+      resume()
+      await running
+      await closing
+
+      await expect(late!).rejects.toThrow("Cannot execute a query: its session is already finished")
+      expect(statements).toEqual([])
+    })
+
+    describe("with a transaction that no callback awaited", () => {
+      it("rolls back the transaction when its callback resolves in the turn of the closing", async () => {
+        const { driver, statements } = createRecordingDriver()
+        const coordinator = new TransactionCoordinator(driver)
+        const { promise: started, resolve: start } = Promise.withResolvers<void>()
+        const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+
+        const session = await coordinator.openSession()
+        let transaction: Promise<unknown> | undefined
+        await session.run(async () => {
+          transaction = markHandled(
+            coordinator.transaction(() => {
+              start()
+              return finished
+            }),
+          )
+          await started
+        })
+        finish()
+        await session.close()
+
+        await expect(transaction!).rejects.toThrow(
+          "Transaction was rolled back: its session ended first",
+        )
+        expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "ROLLBACK"])
+      })
+
+      it("rolls back the transaction when it is still running, which rejects", async () => {
+        const { driver, statements, releases } = createRecordingDriver()
+        const coordinator = new TransactionCoordinator(driver)
+        const { promise: started, resolve: start } = Promise.withResolvers<void>()
+        const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+
+        const session = await coordinator.openSession()
+        let transaction: Promise<unknown> | undefined
+        await session.run(async () => {
+          transaction = markHandled(
+            coordinator.transaction(async () => {
+              await coordinator.execute(createStatement("inside"))
+              start()
+              await finished
+            }),
+          )
+          await started
+        })
+        await session.close()
+        finish()
+
+        await expect(transaction!).rejects.toThrow(
+          "Transaction was rolled back: its session ended first",
+        )
+        expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "inside", "ROLLBACK"])
+        expect(releases).toEqual([{ connection: 1 }])
+      })
+
+      it("awaits a COMMIT that is already sent, so that the transaction resolves", async () => {
+        const commit = holdOn("COMMIT")
+        const { driver, statements, releases } = createRecordingDriver({ respond: commit.respond })
+        const coordinator = new TransactionCoordinator(driver)
+
+        const session = await coordinator.openSession()
+        let transaction: Promise<void> | undefined
+        await session.run(async () => {
+          transaction = coordinator.transaction(run(coordinator, "inside"))
+        })
+        await commit.reached
+        const closing = session.close()
+        await settleCallbacks()
+        expect(releases).toEqual([])
+        commit.resume()
+        await transaction
+        await closing
+
+        expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "inside", "COMMIT"])
+        expect(releases).toEqual([{ connection: 1 }])
+      })
+
+      it("resolves when the rollback of the transaction fails, which rejects the transaction", async () => {
+        const rejected = new QueryError("canceled", { code: "57014" })
+        const { driver, releases } = createRecordingDriver({
+          respond: failOn("ROLLBACK", rejected),
+        })
+        const coordinator = new TransactionCoordinator(driver)
+        const { promise: started, resolve: start } = Promise.withResolvers<void>()
+        const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+
+        const session = await coordinator.openSession()
+        let transaction: Promise<unknown> | undefined
+        await session.run(async () => {
+          transaction = markHandled(
+            coordinator.transaction(async () => {
+              start()
+              await finished
+            }),
+          )
+          await started
+        })
+        await session.close()
+        finish()
+
+        await expect(transaction!).rejects.toBeInstanceOf(SuppressedError)
+        await expect(transaction!).rejects.toMatchObject({ error: rejected })
+        expect(releases).toEqual([{ connection: 1 }])
       })
     })
   })

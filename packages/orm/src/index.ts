@@ -118,6 +118,7 @@ export type {
   Database,
   DatabaseOptions,
   IsolationLevel,
+  OpenedSession,
   PollLockOptions,
   SessionOptions,
   TransactionOptions,

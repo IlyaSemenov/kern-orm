@@ -3,6 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
 import type { SqlStatement } from "../driver"
+import { createStatement } from "../driver"
 import { QueryError } from "../driver-error"
 
 import { pause, pollLock } from "./advisory-lock"
@@ -196,6 +197,35 @@ describe("locks of a session", () => {
     expect(releases).toEqual([{ connection: 1 }])
   })
 
+  it("holds the locks of an open session between the callbacks of run, and releases them once when it is closed, after a statement that is still running", async () => {
+    const heartbeat = holdOn("heartbeat")
+    const { driver, statements, releases } = createRecordingDriver({
+      respond: respondWithLocks(heartbeat.respond),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    const session = await coordinator.openSession()
+    const taken = [
+      await session.run(() => coordinator.tryLock("worker")),
+      await session.run(() => coordinator.tryLock("worker")),
+    ]
+    const running = session.run(() => coordinator.execute(createStatement("heartbeat")))
+    await heartbeat.reached
+    const closing = session.close()
+    expect(releases).toEqual([])
+    heartbeat.resume()
+    await running
+    await closing
+
+    expect(taken).toEqual([true, true])
+    expect(statements).toMatchObject([
+      { text: trySessionLockStatement, parameters: ["worker"] },
+      { text: "heartbeat" },
+      { text: unlockStatement, parameters: ['{"worker"}'] },
+    ])
+    expect(releases).toEqual([{ connection: 1 }])
+  })
+
   it("rejects tryLock while a transaction of the session runs and after the session ends, without a statement", async () => {
     const begin = holdOn("BEGIN")
     const { driver, statements } = createRecordingDriver({ respond: begin.respond })
@@ -297,6 +327,37 @@ describe("locks of a session", () => {
       "BEGIN",
       "release",
     ])
+    expect(reported).toHaveLength(1)
+    expect(reported[0]).toMatchObject({
+      message: "Releasing the advisory locks of a session failed",
+      cause: rejected,
+    })
+  })
+
+  it("resolves the closing of an open session when releasing its locks fails, leaves the connection in a transaction, and reports the failure", async () => {
+    const rejected = new QueryError("canceled", { code: "57014" })
+    const reported: unknown[] = []
+    const events: string[] = []
+    const { driver } = createRecordingDriver({
+      respond: respondWithLocks(statement => {
+        events.push(statement.text)
+        if (statement.text === unlockStatement) {
+          throw rejected
+        }
+      }),
+      release() {
+        events.push("release")
+      },
+    })
+    const coordinator = new TransactionCoordinator(driver, {
+      onReleaseError: error => reported.push(error),
+    })
+
+    const session = await coordinator.openSession()
+    await session.run(() => coordinator.tryLock("worker"))
+    await session.close()
+
+    expect(events).toEqual([trySessionLockStatement, unlockStatement, "BEGIN", "release"])
     expect(reported).toHaveLength(1)
     expect(reported[0]).toMatchObject({
       message: "Releasing the advisory locks of a session failed",

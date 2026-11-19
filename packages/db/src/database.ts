@@ -61,6 +61,12 @@ export interface Database extends AsyncDisposable {
    */
   session<T>(callback: () => Promise<T>, options?: SessionOptions): Promise<T>
   /**
+   * Opens a session that the callbacks of its `run` share until it is closed, such as to hold a lock of `tryLock` on one connection for as long as a process works.
+   *
+   * It rejects where `session` rejects: inside a transaction, also a test transaction, inside another session, and on a database created with `test: true`.
+   */
+  openSession(options?: SessionOptions): Promise<OpenedSession>
+  /**
    * Takes the advisory lock of `key` until the transaction ends, waiting while another transaction or session holds it, such as to keep processes from running the same job at once.
    *
    * It rejects where `isInTransaction()` is `false`, since outside a transaction the lock would end with its statement; in a session, take the lock with `tryLock`, which does not wait.
@@ -81,7 +87,7 @@ export interface Database extends AsyncDisposable {
    * Once `signal` of `options` aborts, such as `AbortSignal.timeout(60_000)`, it makes no more attempts and rejects with the reason of the signal, unless the attempt that is running takes the lock.
    */
   pollLock(key: string, options?: PollLockOptions): Promise<void>
-  /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions and sessions end. */
+  /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions and sessions end, including the sessions of `openSession`, which end when they are closed. */
   close(): Promise<void>
 }
 
@@ -104,14 +110,41 @@ export interface TransactionOptions {
   searchPath?: readonly string[]
 }
 
-/** Options of `session` of a `Database` and `$session` of a `Db`. */
+/** Options of `session` and `openSession` of a `Database` and `$session` of a `Db`. */
 export interface SessionOptions {
   /**
    * PostgreSQL schemas where the unqualified names of the statements of the session resolve, in their order, such as the schema of a tenant followed by the schema of extensions.
    *
-   * It applies to the statements of the callback, including those of its transactions, until the session ends, which restores the search path that its connection had.
+   * It applies to the statements of the session, including those of its transactions, until the session ends, which restores the search path that its connection had.
    */
   searchPath?: readonly string[]
+}
+
+/**
+ * Open session of `openSession` of a `Database`: one connection outside a transaction that the callbacks of `run` share until the session is closed.
+ *
+ * Disposing it, such as with `await using`, closes it.
+ */
+export interface OpenedSession extends AsyncDisposable {
+  /**
+   * Runs `callback` in the session, as the callback of `session` runs: its statements run on the connection of the session, `transaction` starts a transaction on it, and `tryLock` outside such a transaction holds its lock until the session is closed.
+   *
+   * It can be called any number of times, also from code that did not open the session, such as a timer.
+   * It rejects without calling `callback` once the session is closed, after a `ConnectionError` on its connection, while a transaction of the session runs, and inside a transaction or another session.
+   * While the session is closing, it rejects too, unless a callback that is still running calls it.
+   * `tryLock` of a key that the session holds answers without a statement, so it does not tell that the connection is lost, and the lock with it; a statement in the session does.
+   */
+  run<T>(callback: () => Promise<T>): Promise<T>
+  /**
+   * Closes the session: waits for the callbacks of `run` that are running, then releases its locks, restores its settings, and returns its connection to the pool.
+   *
+   * A callback must settle for the session to close, so give a wait in it an end, such as a `signal` of `pollLock`; until then, the session keeps its connection, and the closing of the database waits for it.
+   * Call it outside the callbacks of `run`: inside a callback that is running, it rejects, since it would wait for that callback.
+   * Otherwise it never rejects, and its failures go to `onReleaseError` of the database, as those of `session` do: a failure to release the locks or to restore the settings, unless it is a `ConnectionError`, and a failure to release the connection, whatever its error.
+   * A transaction of the session that no callback awaited rolls back and rejects, unless its own end has started, such as its `COMMIT`, whose result the closing then waits for.
+   * A repeated call returns the first closing.
+   */
+  close(): Promise<void>
 }
 
 /** Options of `pollLock` of a `Database` and `$pollLock` of a `Db`. */
@@ -188,6 +221,7 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     isInTransaction: () => coordinator.isInTransaction(),
     isInTransactionBlock: () => coordinator.isInTransactionBlock(),
     session: (callback, options) => coordinator.session(callback, options),
+    openSession: options => coordinator.openSession(options),
     lock: key => coordinator.lock(key),
     tryLock: key => coordinator.tryLock(key),
     pollLock: (key, options) => coordinator.pollLock(key, options),

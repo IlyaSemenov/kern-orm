@@ -6,7 +6,7 @@
   `isDatabase` recognizes a database of `createDatabase` of any copy of kern-db by a brand of `Symbol.for`, which `createDatabase` sets as a property that is not enumerable, so it rejects a copy of a database ([decision](../decisions/drivers/recognizing-drivers-and-databases.md)).
 - **Transaction coordinator** (`transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
 - **Transaction level** (`transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `transaction/settings.ts`.
-- **Session** (`transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).
+- **Session** (`transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, how it starts, the [open sessions](#open-sessions) that the callbacks of `run` share, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).
 - **Advisory locks** (`transaction/advisory-lock.ts`): the statements of [locks](#locks) of string keys, and the locks that a session holds until it ends.
 
 ## Levels
@@ -75,6 +75,33 @@
   - A client that refuses, without sending them, both the statement that releases the locks or restores the settings and `BEGIN` keeps an idle connection, which returns to the pool with them: kern-db cannot tell such a `ConnectionError` from a lost connection, on which sending `BEGIN` again would never end.
   - The failure does not change the result or the error of the session, and goes to the handler of [failed releases](#levels) unless it is a `ConnectionError`, which a lost connection gives, with nothing to restore.
 
+## Open sessions
+
+- `openSession` of a `Database` opens a [session](#sessions) that no callback bounds, such as one that holds a lock for as long as a process works: the callbacks of its `run` share it until it is closed, with `close` or by its disposal ([decision](../decisions/transactions/open-sessions.md)).
+  It takes the options of `session`, rejects where `session` rejects, and resolves once its settings are set.
+  It reads its options before it acquires its connection, so that options that throw reserve none.
+- `run` runs its callback in the context of the session, from any async context and any number of times, so its statements, transactions, and locks follow the rules of the callback of `session`.
+  It rejects without calling its callback:
+  - when the session accepts no statements, as [joining](#joining) a level does: once it is closed, beside a transaction of the session that is running, and after a `ConnectionError` on its connection;
+  - inside a transaction, also of the session, and inside another session, whose level the statements of the callback would leave.
+- Each call of `run` that the session admits is running until the promise that it returned settles, also a call nested in a callback that did not await it.
+  The async context of a callback carries the calls of each open session, also of the sessions of other databases: the innermost one, which tells a running callback from late code of one that settled, and those around it that were running when the innermost call of the context started, inside which closing must not wait.
+  It carries no other call that settled, so that a session that runs for long does not keep them.
+- Closing waits for the calls that are running and then ends the session ([decision](../decisions/transactions/open-sessions.md)).
+  - While it waits, the session is open: the running callbacks go on by the rules of the session, also after a `ConnectionError`, which rejects their later statements, and a transaction that is running keeps its contract.
+  - While it waits, `run` rejects, unless a running callback calls it, whose nested call the closing waits for too.
+    Late code of a callback that settled cannot start a call then, but its statements sent without `run`, such as with `execute` of the database, still reach the session, whose level its async context keeps, until the session ends.
+  - The session ends in the turn in which the last call settles, or in which the closing is called when none is running, so that nothing runs in it in between: a transaction of the session that no callback awaited ends as in a session whose callback settles, and later statements reject.
+  - It then waits for the statements and scripts already sent before it releases the locks, restores the settings, and releases the connection: the session counts those that are running, since `release` of a [driver](drivers.md) may return before they complete, as that of postgres.js does.
+- A callback must settle for the session to close, so a wait in it must have an end, such as a signal of `pollLock`, and code that a callback waits for must not wait for the closing.
+  Until the session closes, it keeps its connection, with the locks that the connection holds while it lives, and the closing of the database waits for it.
+- Closing must be called outside the callbacks of `run`: in an async context that a running call of the session encloses, also around a nested call that settled or a callback of another session, it rejects without closing, since it would wait for that call.
+  Late code of a callback that settled, outside a running call, closes the session.
+- Otherwise closing never rejects, so that it can run in the handling of an error and in a disposal, and a repeated closing returns the first one.
+  A failure to end a transaction of the session rejects that transaction, and a failure to release the locks, to restore the settings, or to release the connection goes where it goes at the end of a [session](#sessions).
+- A lock that the session holds answers a later `tryLock` without a statement, by the rules of its [locks](#locks), so code that relies on the lock while its connection may be lost must run a statement in the session to learn of the loss.
+- An open session must be closed before its database: the closing of the database waits for it, as for a running session, rather than ending it, which would release its locks while the work that they guard still runs.
+
 ## Locks
 
 - `lock` of a `Database` and `$lock` of a `Db` take `pg_advisory_xact_lock` of `hashtextextended` of a string key with seed `0` on the connection of the current level, and `tryLock` and `$tryLock` take `pg_try_advisory_xact_lock` of the same key and resolve with whether they took it.
@@ -114,8 +141,9 @@
 - Objects with an explicit lifecycle, such as a database and a test fixture, are async disposable.
 - Closing a database closes its test fixtures, including those still opening, and its [open test transactions](testing.md#open-test-transactions) on connections of their own, and then closes the driver; closing it inside a transaction or a session rejects, since the driver would wait for that transaction or session forever.
   An open test transaction whose opening the closing overtakes rolls back, releases its connection, and rejects.
-  From the first closing, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, so nothing opens after the fixtures close; the levels already running still end, and a repeated closing returns the first one.
+  From the first closing, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, so nothing opens after the fixtures close; the levels already running still end, also an [open session](#open-sessions), which runs its callbacks until it is closed, and a repeated closing returns the first one.
 
 ## Open questions
 
 - Sessions inside a session: `session` rejects there, so code that starts a session cannot run in another one; decide whether it joins the enclosing session, with settings of its own that it restores.
+- `$openSession` of a `Db`: a `Db` has `$session` but no `$openSession`, so code that has only a `Db` opens a session through `$database`, and a `Db` over a function that returns its database does not check that database in the callbacks of `run`, as it does in those of `$session`; decide whether a `Db` gets `$openSession` with that check.

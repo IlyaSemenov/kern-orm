@@ -244,3 +244,40 @@ if (database.isInTransactionBlock()) {
   await database.query`CREATE INDEX CONCURRENTLY form_name_idx ON form (name)`
 }
 ```
+
+## Sessions that stay open
+
+To keep a session for longer than one callback, such as to hold an advisory lock for as long as a process works, open it with `database.openSession`, run code in it with `run`, and close it when the work is done:
+
+```ts
+import type { OpenedSession } from "kern-db"
+
+let session: OpenedSession | undefined
+
+async function start() {
+  session = await database.openSession()
+  // Only the instance that takes the lock sends the reminders.
+  if (await session.run(() => database.tryLock("form-reminders"))) {
+    startSendingReminders()
+  } else {
+    await session.close()
+  }
+}
+
+async function stop() {
+  // The lock is released with the session, so the work that it guards ends first.
+  await stopSendingReminders()
+  await session?.close()
+}
+```
+
+The callback of `run` runs as the callback of [`database.session`](#statements-outside-a-transaction) does: its statements run on the connection of the session, and a lock that it takes outside a transaction is held until the session is closed.
+Call `run` any number of times, also from code that did not open the session, such as a timer.
+
+A lost connection releases the lock, which the session learns only from a statement that fails: `database.tryLock` of a key that it holds answers without a statement.
+Before work that relies on the lock, run a statement in the session, such as `SELECT 1`.
+After a [`ConnectionError`](./errors#lost-connections) on its connection, every later `run` rejects: close the session, open a new one, and take the lock again.
+
+`close` waits for the callbacks of `run` that are running, so call it outside them.
+Close every open session before `database.close()`, which waits for them.
+`database.openSession` takes the options of `database.session` and rejects inside a transaction, as `run` does.
