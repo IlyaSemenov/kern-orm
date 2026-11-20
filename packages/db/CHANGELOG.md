@@ -1,5 +1,17 @@
 # kern-db
 
+## 0.7.0
+
+### Minor Changes
+
+- f2aa9b1: Add `database.openSession()`, which keeps a session open across callbacks until it is closed, such as to hold an advisory lock on one connection while a worker runs.
+- 32df409: Add the `vector` type of pgvector, whose values are arrays of numbers.
+- cb64c06: Return `DriverResult.columns` as objects with `name` and PostgreSQL type OID in `type`, including for results without rows; custom drivers and consumers of column names must use this metadata shape while values remain text or `null`.
+
+### Patch Changes
+
+- 9a0ce84: Reduce peak memory usage when reading large results through the postgres.js driver.
+
 ## 0.6.1
 
 ### Patch Changes
