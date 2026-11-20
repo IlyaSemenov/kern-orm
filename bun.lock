@@ -71,7 +71,7 @@
     },
     "packages/migrations": {
       "name": "kern-migrations",
-      "version": "0.6.1",
+      "version": "0.7.0",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "kern-db": "workspace:*",

@@ -1,5 +1,15 @@
 # kern-migrations
 
+## 0.7.0
+
+### Minor Changes
+
+- 23f896d: Add the `createView`, `dropView`, and `replaceView` migration helpers.
+
+### Patch Changes
+
+- 0e48850: Fix migrations using a temporary table instead of the table with the same name in the target schema.
+
 ## 0.6.1
 
 ### Patch Changes
