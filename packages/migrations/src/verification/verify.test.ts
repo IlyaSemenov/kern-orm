@@ -87,7 +87,7 @@ describePostgres("verifyMigrations", ({ database, driver, testTransaction, recor
     expect(result).toEqual({ searchPathKept: true, schemas: 0 })
   })
 
-  it("runs the migrations with the schemas of the history after the temporary schema, and ignores the schema of a Db", async () => {
+  it("runs the migrations with the search path of the temporary schema, the schemas of the history, and pg_temp, and ignores the schema of a Db", async () => {
     let searchPath: string | undefined
     const history = defineMigrations(
       {
@@ -103,7 +103,7 @@ describePostgres("verifyMigrations", ({ database, driver, testTransaction, recor
 
     await testTransaction(() => verifyMigrations(db, history))
 
-    expect(searchPath).toMatch(/^"kern_verify_[0-9a-f]{12}", "extensions"$/)
+    expect(searchPath).toMatch(/^"kern_verify_[0-9a-f]{12}", "extensions", "pg_temp"$/)
   })
 
   it("verifies on the database that the function of a Db bound to one returns at the call, such as of dependency injection", async () => {

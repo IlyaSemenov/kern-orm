@@ -101,7 +101,11 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - It creates the schema in a statement that takes a transaction-level advisory lock of the schema and checks the schema again under it, since histories of one target do not share the lock of the target, and `IF NOT EXISTS` misses a schema that another transaction has not committed yet and fails on the unique index of `pg_namespace` once that transaction commits.
   - The lock lasts until the transaction that creates the schema ends, so another history that creates the schema meanwhile waits for it, and its check under the lock sees the committed schema under `READ COMMITTED`, since each statement of the block takes a new snapshot.
   - The key of the lock includes the schema, so that calls that create different schemas, such as of new tenants, do not wait for each other.
-- The search path of the level of the migrations, a nested level or a session, is the target schema followed by the schemas of the history, and the level restores the previous search path when it ends.
+- The search path of the level of the migrations, a nested level or a session, is the target schema, the schemas of the history, and `pg_temp`, the schema of the temporary objects of the session, and the level restores the previous search path when it ends ([decision](../decisions/migrations/temporary-schema-last.md)).
+  - PostgreSQL searches `pg_temp` first unless the search path lists it, so a temporary table of the session, such as of the enclosing transaction of the application, would take the place of a table of the target schema: a view created over it would be a temporary view, while its migration is recorded as applied.
+  - An unqualified name finds a temporary relation or type only when no earlier schema of the search path has one of that name, so a migration must name a temporary object of its own with its schema, such as `pg_temp.form`, or by a name that no relation or type of these schemas has.
+  - A history that lists `pg_temp` in its `searchPath` gives it that place, since PostgreSQL takes the first place of a schema that the search path lists twice.
+  - PostgreSQL creates an object without a schema in its name in the first schema of the search path that the current role can use, which is `pg_temp` when it can use no earlier one, so a plain `CREATE TABLE` of a step that sets such a role can create a temporary table rather than fail.
 - After a call in a session fails, what committed before the failure stays, and the lock ends with the session.
   A change outside a transaction that failed may have run in part, and the record of its migration keeps the state before the change, unless the connection broke after the record committed:
   - a migration recorded as pending after its `up` failed needs `migrate`, which runs its `up` again;
@@ -220,7 +224,7 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 
 - `verifyMigrations(target, history, options)` (`src/verification/`) checks a history in a temporary schema of the database of its target, whose schema it ignores, in a transaction that always rolls back, nested in the enclosing transaction of a `Database` or a `Db`, such as a test transaction; on a `Driver`, it runs in a transaction of its own.
   - The temporary schema is `kern_verify_` with 12 random hexadecimal digits, so that verifications in parallel test processes do not wait for each other on the unique index of `pg_namespace`.
-  - Its search path is the temporary schema followed by the schemas of the history, as `migrate` gives a target.
+  - Its search path is the temporary schema, the schemas of the history, and `pg_temp`, as `migrate` gives a target.
   - In the transaction, every step runs its `up` and `down`, so the [changes outside a transaction](#changes-outside-a-transaction) go unchecked.
   - It runs at the isolation level of the enclosing transaction, or at the default of the database in a transaction of its own, since no other process changes its temporary schema.
     At `REPEATABLE READ` or `SERIALIZABLE`, `createExtension` of a migration fails when another transaction creates the extension and commits while the verification waits for the lock of extensions.

@@ -3,6 +3,7 @@ import type { Database } from "kern-db"
 
 import type { MigrationStep } from "../migration"
 import { runChange } from "../migration"
+import { createMigrationSearchPath } from "../target"
 import { describeSchema } from "../verification/structure"
 
 /** PostgreSQL schema that `inHelperSchema` and `inHelperSession` create. */
@@ -18,7 +19,9 @@ export async function inHelperSchema<T>(
   callback: () => Promise<T>,
 ): Promise<T> {
   await database.script(`CREATE SCHEMA ${helperSchema}`)
-  return await database.transaction(callback, { searchPath: [helperSchema] })
+  return await database.transaction(callback, {
+    searchPath: createMigrationSearchPath(helperSchema, []),
+  })
 }
 
 /**
@@ -35,7 +38,9 @@ export async function inHelperSession<T>(
   const schemas = [helperSchema, ...laterSchemas]
   await database.script(`CREATE SCHEMA ${schemas.join(";\nCREATE SCHEMA ")}`)
   try {
-    return await database.session(callback, { searchPath: schemas })
+    return await database.session(callback, {
+      searchPath: createMigrationSearchPath(helperSchema, laterSchemas),
+    })
   } finally {
     // Keeps PostgreSQL from sending a notice of each object that the drop cascades to.
     await database.script(`

@@ -7,7 +7,7 @@ import type { MigrationDatabase, MigrationStep } from "../migration"
 import { runMigrationSteps, toMigrationDatabase } from "../migration"
 import { quoteIdentifier } from "../sql"
 import type { MigrationTarget } from "../target"
-import { checkMigrationTarget, getTargetDatabase } from "../target"
+import { checkMigrationTarget, createMigrationSearchPath, getTargetDatabase } from "../target"
 
 import type { MigrationTest, MigrationTestCallback } from "./migration-test"
 import { describeSchema } from "./structure"
@@ -78,7 +78,7 @@ export async function verifyMigrations(
       }
     },
     // The search path of the migrations, as `migrate` gives it to a target in the temporary schema.
-    { searchPath: [schemaName, ...history.searchPath] },
+    { searchPath: createMigrationSearchPath(schemaName, history.searchPath) },
   )
 }
 

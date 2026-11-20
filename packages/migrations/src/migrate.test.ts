@@ -332,6 +332,47 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
     expect(result).toEqual({ searchPathRestored: true, forms: [{ id: 7 }] })
   })
 
+  it("resolves unqualified names in the target schema before the temporary objects of the session, such as a temporary table named as a table of the target schema", async () => {
+    const history = defineMigrations({
+      "0001_create_form": createForm,
+      "0002_create_form_view": { up: "CREATE VIEW form_view AS SELECT id FROM form" },
+    })
+
+    const tables = await testTransaction(async () => {
+      // A view over the temporary table would be a temporary view, missing from the target schema.
+      await database.script("CREATE TEMPORARY TABLE form (id integer) ON COMMIT DROP")
+      await migrate(db, history)
+      return await listTables(database, "migrations_tenant")
+    })
+
+    expect(tables).toEqual(["form", "form_view", "kern_migration"])
+  })
+
+  it("resolves unqualified names in the temporary objects of the session at the place where the history lists pg_temp", async () => {
+    let id: number | undefined
+    const history = defineMigrations(
+      {
+        "0001_read_form_source": {
+          up: async database => {
+            id = await database.query`SELECT id FROM form_source`.get(t.integer)
+          },
+        },
+      },
+      { searchPath: ["pg_temp", "migrations_extensions"] },
+    )
+
+    await testTransaction(async () => {
+      await database.script(`
+        CREATE SCHEMA migrations_extensions;
+        CREATE TABLE migrations_extensions.form_source AS SELECT 2 AS id;
+        CREATE TEMPORARY TABLE form_source ON COMMIT DROP AS SELECT 1 AS id;
+      `)
+      await migrate(db, history)
+    })
+
+    expect(id).toBe(1)
+  })
+
   it("targets the schema of the schemaName option instead of that of the Db, such as of a tenant that is being created", async () => {
     let calls = 0
     const tenantDb = bindSchema(schema, database, {

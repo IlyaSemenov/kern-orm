@@ -91,8 +91,21 @@ export interface ResolvedTarget {
   readonly tableName: string
   /** Name of the table of versions qualified by the target schema, quoted. */
   readonly table: string
-  /** Search path of the migrations: the target schema followed by the schemas of the history. */
+  /** Search path of the migrations, as `createMigrationSearchPath` gives it. */
   readonly searchPath: readonly string[]
+}
+
+/**
+ * Creates the search path of the migrations of PostgreSQL schema `schemaName`: the schema, followed by `laterSchemas`, the schemas of the history, and by `pg_temp`, the schema of the temporary objects of the session.
+ *
+ * PostgreSQL searches `pg_temp` first unless the search path lists it, so a temporary table of the session would take the place of a table of `schemaName` in a migration.
+ * `pg_temp` among `laterSchemas` keeps its place, since PostgreSQL takes the first place of a schema listed twice.
+ */
+export function createMigrationSearchPath(
+  schemaName: string,
+  laterSchemas: readonly string[],
+): string[] {
+  return [schemaName, ...laterSchemas, "pg_temp"]
 }
 
 /** Versions of a target as a statement read them. */
@@ -131,7 +144,7 @@ export async function openTarget(
     schemaName: state.schemaName,
     tableName: history.tableName,
     table: `${quoteIdentifier(state.schemaName)}.${quoteIdentifier(history.tableName)}`,
-    searchPath: [state.schemaName, ...history.searchPath],
+    searchPath: createMigrationSearchPath(state.schemaName, history.searchPath),
   }
   return {
     target: resolved,
