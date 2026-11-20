@@ -47,12 +47,12 @@ export default defineMigration([
 
 Leave out `down` of a step that cannot be undone, such as a change of data: rolling back skips it.
 
-A migration of a single step, such as a view, can export the step without an array:
+A migration of a single step, such as a comment of a table, can export the step without an array:
 
 ```ts
 export default defineMigration({
-  up: "CREATE VIEW published_form AS SELECT * FROM form WHERE published",
-  down: "DROP VIEW published_form",
+  up: "COMMENT ON TABLE form IS 'Forms that tenants publish'",
+  down: "COMMENT ON TABLE form IS NULL",
 })
 ```
 

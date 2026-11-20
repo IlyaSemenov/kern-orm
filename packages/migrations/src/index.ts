@@ -13,6 +13,8 @@ export { changeSequence, createSequence, dropSequence, renameSequence } from "./
 export { combineSteps, invertStep } from "./helpers/step"
 export type { TableOptions } from "./helpers/tables"
 export { createTable, dropTable, renameTable } from "./helpers/tables"
+export type { ReplaceViewOptions, ViewOptions } from "./helpers/views"
+export { createView, dropView, replaceView } from "./helpers/views"
 export type { MigrationHistory, MigrationHistoryOptions, MigrationLoader } from "./history"
 export { defineMigrations } from "./history"
 export type { MigrateOptions, MigrationStatus, RedoOptions, RollbackOptions } from "./migrate"
