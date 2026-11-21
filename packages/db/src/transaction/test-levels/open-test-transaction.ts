@@ -12,6 +12,7 @@ import {
   endLevel,
   getBeginStatement,
   getEndedOutcome,
+  resolveCallback,
   suppress,
 } from "../level"
 import type { ReleaseErrorHandler } from "../release"
@@ -104,7 +105,7 @@ export class OpenTestTransactions {
         if (current) {
           throw new Error("Cannot run a callback in an open test transaction inside a transaction")
         }
-        return this.#storage.run(level, callback)
+        return this.#storage.run(level, resolveCallback, callback)
       },
       get isOpen() {
         return level.state === "open"

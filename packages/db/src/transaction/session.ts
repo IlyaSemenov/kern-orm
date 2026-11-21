@@ -11,7 +11,7 @@ import { isQueryError } from "../error-condition"
 import { createUnlockStatement } from "./advisory-lock"
 import { ConnectionWatch } from "./connection-loss"
 import type { TransactionLevel } from "./level"
-import { createUnavailableError, endLevel } from "./level"
+import { createUnavailableError, endLevel, resolveCallback } from "./level"
 import type { ReleaseErrorHandler } from "./release"
 import { releaseConnection, reportReleaseError } from "./release"
 import type { LevelSetting } from "./settings"
@@ -240,8 +240,9 @@ export async function openSession(
       const call: SessionRun = { level, active: true }
       running++
       try {
+        // The result of the callback resolves inside both contexts, of the call and of the level.
         return await sessionRuns.run(createCallContext(call), () =>
-          current ? callback() : storage.run(level, callback),
+          current ? resolveCallback(callback) : storage.run(level, resolveCallback, callback),
         )
       } finally {
         call.active = false

@@ -70,5 +70,19 @@ export function run(coordinator: TransactionCoordinator, text: string) {
   return () => coordinator.execute(createStatement(text)).then(() => undefined)
 }
 
+/**
+ * Callback that returns a thenable that executes the statement `text` when its `then` is called, as a query does, rather than a promise.
+ *
+ * It has the type of a callback of a level, which only code that types do not check passes such a thenable to.
+ */
+export function runLazily(coordinator: TransactionCoordinator, text: string): () => Promise<void> {
+  const execute = run(coordinator, text)
+  const query: PromiseLike<void> = {
+    // oxlint-disable-next-line unicorn/no-thenable -- the thenable is what the tests pass
+    then: (onFulfilled, onRejected) => execute().then(onFulfilled, onRejected),
+  }
+  return () => query as Promise<void>
+}
+
 /** Seed of a test fixture that changes nothing. */
 export const seedNothing = () => Promise.resolve()

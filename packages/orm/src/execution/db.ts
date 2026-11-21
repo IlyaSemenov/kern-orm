@@ -362,6 +362,17 @@ function createDatabaseResolver(database: Database | (() => Database)): Database
     resolveDatabase,
     executor: { execute: statement => resolveDatabase().execute(statement) },
     track: (resolved, callback) =>
-      started.getStore() === resolved ? callback : () => started.run(resolved, callback),
+      started.getStore() === resolved
+        ? callback
+        : () => started.run(resolved, resolveCallback, callback),
   }
+}
+
+/**
+ * Calls `callback` of a transaction or a session and returns the promise of its result; called in the async context that tracks the database of the callback.
+ *
+ * A callback that types do not check may return a thenable that is not a promise, such as a query, which executes when its `then` is called; resolving it here executes it in that context, where another database is rejected.
+ */
+function resolveCallback<Result>(callback: () => Promise<Result>): Promise<Result> {
+  return Promise.resolve(callback())
 }
