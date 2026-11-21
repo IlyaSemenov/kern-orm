@@ -42,3 +42,5 @@ To share a transaction of an ORM or a query builder that runs on postgres.js, pa
 ### Orchid ORM
 
 `@kern-orm/orchid-interop` runs the queries of Orchid on the database of kern-orm, so that both ORMs share one connection pool and the transactions that either starts; see [Orchid ORM Interop](./orchid-interop).
+
+To run code of kern-orm, such as migrations, in a transaction of an Orchid instance that keeps its own pool and transactions, call `runInOrchidTransaction` of the same package; see [Run kern-orm code in transactions of Orchid](./orchid-interop#run-kern-orm-code-in-transactions-of-orchid).

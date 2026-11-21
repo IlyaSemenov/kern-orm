@@ -412,6 +412,7 @@ describe.each(["bun", "node"])("Orchid adapter package on %s", runtime => {
     expect(JSON.parse(run([runtime, "runtime.ts"], orchidConsumer, 10_000))).toEqual({
       rolledBack: true,
       committed: true,
+      joined: true,
     })
   })
 })

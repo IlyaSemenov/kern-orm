@@ -1,8 +1,11 @@
-import { connect } from "./helper.ts"
+import { orchidORM } from "orchid-orm/postgres-js"
+
+import { connect, joinOrchidTransaction } from "./helper.ts"
 
 const { database, orchid } = await connect()
+const native = orchidORM({ databaseURL: process.env.DATABASE_URL! }, {})
 try {
-  await database.session(async () => {
+  const shared = await database.session(async () => {
     await database.script("CREATE TEMP TABLE kern_orchid_package_item (id integer PRIMARY KEY)")
     try {
       await database.transaction(async () => {
@@ -19,8 +22,12 @@ try {
     })
     const committed = (await orchid.item.count()) === 2
     await database.script("DROP TABLE kern_orchid_package_item")
-    console.log(JSON.stringify({ rolledBack, committed }))
+    return { rolledBack, committed }
   })
+  // The external transaction of a native instance of Orchid runs outside the session, which has a connection of its own.
+  const joined = await native.$transaction(() => joinOrchidTransaction(native, database))
+  console.log(JSON.stringify({ ...shared, joined }))
 } finally {
+  await native.$close()
   await orchid.$close()
 }

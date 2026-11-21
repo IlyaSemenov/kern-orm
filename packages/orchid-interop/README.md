@@ -10,6 +10,8 @@ The adapter is experimental: it supports Orchid ORM 1.x (1.78.61 or later) and p
 npm install @kern-orm/orchid-interop kern-orm orchid-orm postgres@4
 ```
 
+To only run kern-db code in transactions of an existing Orchid instance, install `kern-db` instead of `kern-orm`.
+
 ## Usage
 
 ```ts
@@ -31,4 +33,6 @@ await db.$transaction(async () => {
 })
 ```
 
-See [the documentation](https://ilyasemenov.github.io/kern-orm/orm/orchid-interop) for transactions, tests, and limitations.
+To run kern-orm code, such as migrations, in the transactions of an Orchid instance that you keep as it is, including its test transactions, call `runInOrchidTransaction`.
+
+See [the documentation](https://ilyasemenov.github.io/kern-orm/orm/orchid-interop) for transactions, tests, and limitations, and [running kern-orm code in transactions of Orchid](https://ilyasemenov.github.io/kern-orm/orm/orchid-interop#run-kern-orm-code-in-transactions-of-orchid).

@@ -60,6 +60,10 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Singleton tables whose row always exists](singleton-tables-whose-row-always-exists.md): an option of the table whose queries start in rows `one`.
 - [Other vector types of pgvector](other-vector-types-of-pgvector.md): `halfvec`, `sparsevec`, and the distances of `bit`.
 - [Orchid transaction interoperability](orchid-transaction-interop.md): shared transaction ownership, legacy codecs, and test isolation for gradual migration.
+- [Native savepoints of external transactions](native-savepoints-of-external-transactions.md): nested levels in `sql.savepoint` of postgres.js, which recover from a failed statement.
+- [Native parameters of `postgresJsConnection`](native-parameters-of-postgres-js-connection.md): queries of Orchid with values in an external transaction.
+- [External connection of node-postgres](external-connection-of-node-postgres.md): `externalTransaction` over a client of node-postgres in a transaction.
+- [External transactions of Drizzle](drizzle-external-transactions.md): code of kern-db in a transaction that Drizzle owns.
 
 ## Without a use case
 

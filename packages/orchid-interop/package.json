@@ -39,6 +39,7 @@
   "devDependencies": {
     "@kern-orm/test-harness": "workspace:*",
     "kern-db": "workspace:*",
+    "kern-migrations": "workspace:*",
     "kern-orm": "workspace:*",
     "orchid-orm": "1.78.61",
     "postgres": "catalog:"

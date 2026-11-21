@@ -3,7 +3,7 @@
 `packages/orchid-interop/` is the experimental `@kern-orm/orchid-interop` package for Orchid ORM 1.x (1.78.61 or later) and postgres.js 4.
 It relies on implementation details of Orchid that the versions it was tested with, Orchid ORM 1.78.61 and pqb 0.73.50, define; a later release that changes them requires a release of the adapter ([decision](../decisions/transactions/orchid-adapter.md)).
 It imports Kern only through public `kern-db` entry points and keeps its version-specific transport, codecs, and Orchid state bridge outside the database and ORM packages.
-Its entry point exports only `createOrchidInterop` and its types; the driver, the executor, and `createOrchidDb` are internal.
+Its entry point exports only `createOrchidInterop`, `runInOrchidTransaction`, and their types; the driver, the executor, and `createOrchidDb` are internal.
 It imports Orchid only through the entry points of `orchid-orm`, and derives the types of Orchid's transaction state, which `orchid-orm` does not export, from its `Adapter` in `orchid-types.ts`, so that pqb comes in the version that the installed Orchid ORM requires.
 
 ## Setup and ownership
@@ -63,11 +63,30 @@ Object rows retain the last repeated name and define `__proto__` as an own data 
 Command counts preserve postgres.js's nullable count for DDL and empty SQL.
 Database-defined type metadata of both parsers and serializers, of domains and arrays, is initialized at startup, unless `fetch_types` of the connection is `false`, and has no refresh operation.
 
+## External transactions of a native instance
+
+`runInOrchidTransaction` of `orchid-transaction.ts` serves a native Orchid instance of `createDb` or `orchidORM` of `orchid-orm/postgres-js`, which keeps its pool and owns its transactions, unlike `createOrchidInterop`, where Kern owns them and Orchid's `testTransaction` is rejected.
+It runs a callback in an [external transaction](transactions.md#external-transactions) of a Kern database over the innermost running scope of Orchid's current transaction, test transactions included, and never runs Orchid's statements, which keep running through Orchid.
+
+- It reads the postgres.js client of that scope from private state that Orchid does not expose: `client` of the `TransactionAdapterClass` that `$getAdapter()` returns in a transaction, which a test transaction wraps in a `TestTransactionAdapter` under `adapter`, once for each instance whose test transaction shares the connection.
+  It recognizes the wrapper by `trx` without `client`, and the client by `savepoint`, which only the client of a transaction or a savepoint of postgres.js has, and throws an `Error` that names the tested versions for any other shape, such as of the bridge of `createOrchidInterop`, which has no `client`, or of node-postgres.
+  Outside a transaction, where `isInTransaction` of the adapter is `false`, it throws `TypeError`; `$isInTransaction` of the instance is `false` in a test transaction, so it is not used.
+  Each instance keeps its transaction in an async storage of its own, also over a shared adapter, so the instance must be the one that started the transaction or the test transaction.
+- Orchid replaces `client` while one of its savepoints runs and restores it after, and postgres.js remembers a failed statement on the client that sent it, also the client of an enclosing scope while a savepoint runs, so it reads the client for every statement, and creates the connection of `postgresJsConnection` again only when the client changes, so that a failure in a savepoint of Orchid fails only that savepoint.
+- postgres.js rolls back and rejects a scope of `sql.begin` or `sql.savepoint` whose callback resolves after a statement failed on its client, as [drivers](drivers.md#postgresjs) describe, while `begin` of Orchid's postgres.js adapter returns the result of its callback when `sql.begin` rejects after the callback resolved, so `$transaction` resolves and the changes are lost ([comparison](../comparison/transactions.md#a-transaction-that-postgresql-does-not-commit)).
+  So it records the first error of a statement that ran on the client of the scope that was current when it was called, and rejects with an `Error` whose `cause` is that error after its callback and `externalTransaction` resolved and the statements sent on the connection settled, since the level stops accepting statements when its callback settles but does not wait for those already sent; a rejection of either keeps its own error.
+  A failure on the client of a savepoint of Orchid that started in the callback is not recorded: postgres.js rejects that savepoint, and Orchid rejects its nested `$transaction` by itself.
+  When the callback of that `$transaction` resolves before such a statement fails, postgres.js has already ended the scope of the savepoint without a failure on its client, and the statement fails the enclosing scope with no record; recording it would also fail a savepoint that rolled back a failure it awaited, so the callback of a nested `$transaction` of Orchid must await the statements of Kern that it starts.
+  The rejection reaches Orchid only through the callback of its transaction: a caller that catches it inside that callback still loses the changes.
+  A `COMMIT` that PostgreSQL rejects, such as for a deferred constraint, happens after the call, and `$transaction` resolves then too.
+- A statement of Orchid with values does not run on the connection, which sends only the text parameters of Kern, as [execution](#execution-and-codecs) describes; Orchid's public `adapter.query()` is not used as the connection ([decision](../decisions/transactions/external-transactions.md#the-query-executor-of-the-owner-as-the-connection)).
+
 ## Tests
 
 The tests of the executor beside its module compare it with the native execution of Orchid; the tests of `getNativeParameters` belong to kern-db.
 Acceptance tests in `tests/` use real Orchid tables and Kern queries through the entry point for CRUD, relation reads, nested writes, automatic hook transactions, both transaction entry points, nested rollback, recoverable queries, concurrency, schema scopes of concurrent and nested transactions, isolation, test levels, late work, transaction control in SQL text, and unsupported features.
-The package test installs the packed adapter with the tested versions of its dependencies, emits consumer declarations, and executes shared transactions under Bun and Node.js.
+The tests of `runInOrchidTransaction` beside its module check its errors with fake adapters, and what a real commit of native Orchid keeps, read from another connection; `tests/external-transaction.test.ts` applies a history of `kern-migrations`, a development dependency, in Orchid's `testTransaction` with a nested test level, a failing migration, and the rollback of the outer level.
+The package test installs the packed adapter with the tested versions of its dependencies, emits consumer declarations, and executes shared transactions, and an external transaction of a native instance, under Bun and Node.js.
 
 ## Open questions
 

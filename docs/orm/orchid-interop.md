@@ -2,6 +2,7 @@
 
 To move an application from Orchid ORM to kern-orm one function at a time, connect both with `@kern-orm/orchid-interop`.
 The existing Orchid queries and the new kern-orm queries then run on one connection pool, in the same transactions.
+To run code of kern-orm, such as migrations, in the transactions of an Orchid instance that you keep as it is, call [`runInOrchidTransaction`](#run-kern-orm-code-in-transactions-of-orchid) instead.
 
 ::: warning Experimental
 The adapter supports Orchid ORM 1.x (1.78.61 or later) and postgres.js 4, and not every feature of Orchid ORM.
@@ -15,6 +16,8 @@ Install the adapter beside `kern-orm` and the supported versions of Orchid ORM a
 ```sh
 npm install @kern-orm/orchid-interop kern-orm orchid-orm postgres@4
 ```
+
+To only [run code of kern-db in transactions of Orchid](#run-kern-orm-code-in-transactions-of-orchid), install `kern-db` instead of `kern-orm`.
 
 Set `skipLibCheck: true` in `tsconfig.json`: the declarations of Orchid ORM fail to type-check without it.
 TypeScript still checks the code of your application.
@@ -103,6 +106,8 @@ Errors of the connection and of the lifetime of a transaction are the [errors of
 
 ## Limitations
 
+The instances of `createOrchidInterop` have these limitations:
+
 - After-commit hooks of Orchid are not supported: `$afterCommit`, and `afterCreateCommit`, `afterUpdateCommit`, `afterDeleteCommit`, and `afterSaveCommit` of tables and queries.
   `createOrchidInterop` rejects a table that declares one.
 - The isolation level `READ UNCOMMITTED`, the transaction options `readOnly` and `deferrable`, and the `role` and `setConfig` options of Orchid are not supported.
@@ -113,7 +118,7 @@ Errors of the connection and of the lifetime of a transaction are the [errors of
   Such a write that selects relations rejects.
   To roll back such a write as a whole, run it without recovery in a `db.$transaction()` of its own and catch the error outside that call.
 - Queries run without prepared statements, as the queries of kern-orm do: the `autoPreparedStatements` option of Orchid has no effect.
-- Orchid's `testTransaction` is not supported.
+- Orchid's `testTransaction` is not supported; [`runInOrchidTransaction`](#run-kern-orm-code-in-transactions-of-orchid) runs code of kern-orm in it for an instance of Orchid that `createOrchidInterop` did not create.
 - Queries of `orchid` with values do not run in a [transaction of another library](./interop#transactions-of-another-library) on a connection of `postgresJsConnection`, which sends only the text parameters of kern-orm: PostgreSQL rejects such a query for its missing parameters.
 - A query of SQL text, such as `orchid.$query`, runs one statement.
   Run a script of several statements with `database.script()`.
@@ -121,3 +126,37 @@ Errors of the connection and of the lifetime of a transaction are the [errors of
   In a transaction, PostgreSQL also keeps procedures and `DO` blocks from committing or rolling it back.
 - A result column of an array of a type created in the database after `createOrchidInterop`, such as of an enum that a migration creates while the application runs, comes to Orchid queries as its text; the `orchid` of a new `createOrchidInterop` reads it as an array.
   `fetch_types: false` in `connection` turns off the loading of these types, so a result column of an array of any type defined in the database comes as its text.
+
+## Run kern-orm code in transactions of Orchid
+
+To run code of kern-orm in a transaction of an Orchid instance that keeps its own pool and transactions, without `createOrchidInterop`, call `runInOrchidTransaction`.
+For example, apply [migrations](../migrations/applying) in a test transaction of Orchid, which rolls them back with the fixtures of the tests:
+
+```ts
+import { runInOrchidTransaction } from "@kern-orm/orchid-interop"
+import { migrate } from "kern-migrations"
+import { testTransaction } from "orchid-orm"
+import { createDb } from "orchid-orm/postgres-js"
+
+const qb = createDb({ databaseURL: process.env.DATABASE_URL! })
+
+await testTransaction.start(qb)
+await runInOrchidTransaction(qb, db.$database, () => migrate(db, migrations))
+```
+
+In the callback, the queries of the database that you pass run in the innermost transaction of `qb` that is running, also a nested or a test transaction, and commit or roll back with it, as in an [external transaction](./interop#transactions-of-another-library).
+Pass the instance of `createDb` or `orchidORM` of `orchid-orm/postgres-js` that started that transaction.
+In code without kern-orm, such as a package that takes a database, pass a `Database` of kern-db:
+
+```ts
+await runInOrchidTransaction(qb, database, () => migrate(database, migrations))
+```
+
+When you call `runInOrchidTransaction` in the callback of a transaction of Orchid, let its rejection reject that callback.
+
+Limitations:
+
+- A query of kern-orm that PostgreSQL rejects in the transaction or savepoint of Orchid that `runInOrchidTransaction` joined cannot be recovered from: postgres.js rolls that transaction or savepoint back when it ends, so `runInOrchidTransaction` rejects, also when the callback caught the error or a `db.$transaction` rolled the query back.
+- In a nested transaction of Orchid started in the callback, await every query of kern-orm before its callback returns.
+  When an awaited query fails, only that nested transaction rolls back, and it rejects; a query that fails after its callback returned breaks the enclosing transaction while `runInOrchidTransaction` resolves.
+- An outermost transaction of Orchid whose callback resolves reports success also when nothing was committed: after postgres.js rolled it back, such as when its callback caught a rejection of `runInOrchidTransaction`, and when PostgreSQL rejects its `COMMIT`, such as for a deferred constraint.
