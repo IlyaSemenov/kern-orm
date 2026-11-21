@@ -2,7 +2,7 @@
 
 import type { AsyncLocalStorage } from "node:async_hooks"
 
-import type { IsolationLevel } from "../database"
+import type { ExternalConnection, IsolationLevel } from "../database"
 import type { Connection, SqlStatement } from "../driver"
 import { createStatement } from "../driver"
 
@@ -13,7 +13,7 @@ import { applySettings } from "./settings"
 import { settleUnlessAborted } from "./test-levels/abort"
 import type { TurnQueue } from "./test-levels/turns"
 
-/** Transaction, savepoint nested in it, or session, run by one callback in its own async context, a test fixture without a context, or an open test transaction whose context the callbacks of `run` share. */
+/** Transaction, savepoint nested in it, session, or external transaction, run by one callback in its own async context, a test fixture without a context, or an open test transaction whose context the callbacks of `run` share. */
 export interface TransactionLevel {
   /** Connection of the level, which the watch of a transaction of `transaction` or of a session wraps for the levels nested in it too. */
   readonly connection: Connection
@@ -27,8 +27,10 @@ export interface TransactionLevel {
   readonly session: boolean
   /** Whether the level is a savepoint of its enclosing level rather than a session or a transaction of its own, which a level nested in a session is too. */
   readonly savepoint: boolean
+  /** Whether the level is an external transaction: code outside the database started it on its connection and ends it, so the level sends no `BEGIN`, `COMMIT`, or `ROLLBACK`, and never releases the connection. */
+  readonly external: boolean
   /**
-   * Whether the level or an enclosing one is a transaction of `transaction` rather than a test transaction, the seed of a test fixture, or a test fixture.
+   * Whether the level or an enclosing one is a transaction of `transaction` or an external transaction rather than a test transaction, the seed of a test fixture, or a test fixture.
    *
    * Code under test then starts a transaction of its own where it does in production, which runs as a savepoint of the test level.
    */
@@ -133,6 +135,7 @@ export function createLevel(
     depth: enclosing ? enclosing.depth + 1 : 0,
     session: false,
     savepoint: enclosing !== undefined,
+    external: false,
     inTransaction: transaction || (enclosing?.inTransaction ?? false),
     state: "starting",
     child: undefined,
@@ -141,6 +144,39 @@ export function createLevel(
     endedBy: undefined,
     restore: undefined,
     isolation: enclosing ? enclosing.isolation : isolation,
+    locks: undefined,
+    turns: undefined,
+  }
+}
+
+/**
+ * Creates the state of a `starting` external transaction: a transaction that code outside the database started on `connection` and ends itself.
+ *
+ * It sends no SQL, since the transaction has started, and counts as a transaction of `transaction`, since the database cannot tell a transaction of the tests of its owner.
+ * It does not watch its connection: its owner decides how the transaction ends, so the level passes a `ConnectionError` as it is.
+ */
+export function createExternalLevel(connection: ExternalConnection): TransactionLevel {
+  return {
+    connection: {
+      execute: statement => connection.execute(statement),
+      executeScript: text => connection.executeScript(text),
+      // The connection belongs to the owner of the transaction, so no level releases it.
+      release() {},
+    },
+    watch: undefined,
+    parent: undefined,
+    depth: 0,
+    session: false,
+    savepoint: false,
+    external: true,
+    inTransaction: true,
+    state: "starting",
+    child: undefined,
+    rollbackOnly: undefined,
+    cleanup: undefined,
+    endedBy: undefined,
+    restore: undefined,
+    isolation: undefined,
     locks: undefined,
     turns: undefined,
   }
@@ -303,15 +339,20 @@ export async function runLevel<T>(
       error: new Error(
         level.session
           ? "Session ended with an error: a transaction of it was still running when its callback finished"
-          : "Transaction was rolled back: a nested transaction was still running when its callback finished",
+          : level.external
+            ? "Cannot finish externalTransaction: a nested transaction was still running when its callback finished"
+            : "Transaction was rolled back: a nested transaction was still running when its callback finished",
       ),
     }
   }
   if (!rejection && level.rollbackOnly) {
     rejection = {
-      error: new Error("Transaction was rolled back: a nested transaction failed to end", {
-        cause: level.rollbackOnly.error,
-      }),
+      error: new Error(
+        level.external
+          ? "External transaction can only roll back: a nested transaction failed to end"
+          : "Transaction was rolled back: a nested transaction failed to end",
+        { cause: level.rollbackOnly.error },
+      ),
     }
   }
   const cleanup = await endLevel(level, commits && !rejection)
@@ -370,8 +411,9 @@ async function cleanUpLevel(
   const nestedCleanup = await nested
   const { parent } = level
   let cleanup: Cleanup
-  if (level.session) {
+  if (level.session || level.external) {
     // A session ends without a statement of its own; the coordinator restores its settings when it releases its connection.
+    // An external transaction ends without one too: its owner commits it or rolls it back.
     cleanup = {}
   } else if (level.savepoint) {
     cleanup = await endSavepoint(level, commit && !level.rollbackOnly)
@@ -466,7 +508,11 @@ export function createUnavailableError(
     return createSessionUnavailableError(level, operation)
   }
   if (level.state !== "open") {
-    return new Error(`Cannot ${operation}: its transaction is already finished`)
+    return new Error(
+      level.external
+        ? `Cannot ${operation}: the callback of its external transaction is already finished`
+        : `Cannot ${operation}: its transaction is already finished`,
+    )
   }
   // PostgreSQL would run them inside the savepoint of the nested level.
   if (level.child) {

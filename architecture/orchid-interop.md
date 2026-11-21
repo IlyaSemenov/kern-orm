@@ -55,6 +55,7 @@ A value that postgres.js fails to serialize rejects with `ConnectionError`, whic
 
 `createPostgresJsExecutor` passes the values of a compiled Orchid statement to the database in an `OrchidStatement`, and decodes the text result with `options.parsers` of the initialized Orchid-configured client ([decision](../decisions/drivers/orchid-codecs.md)).
 The driver of the database must run on the same client, whose serializers postgres.js applies by the parameter types that PostgreSQL resolves on the execution connection, as for Orchid itself.
+An [external transaction](transactions.md#external-transactions) of the database runs statements on its `ExternalConnection`, and that of `postgresJsConnection` sends only the text `parameters`, which an `OrchidStatement` leaves empty, so PostgreSQL rejects an Orchid statement with values there for its missing parameters.
 The executor rejects a client with result transforms.
 
 Parsers are selected once per result column; SQL null bypasses parsing.

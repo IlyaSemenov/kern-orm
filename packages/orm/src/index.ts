@@ -117,6 +117,7 @@ export { RequiredRelationError } from "./result/result"
 export type {
   Database,
   DatabaseOptions,
+  ExternalConnection,
   IsolationLevel,
   OpenedSession,
   PollLockOptions,

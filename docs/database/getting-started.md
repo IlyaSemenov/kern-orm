@@ -48,7 +48,7 @@ export const database = createDatabase({
 })
 ```
 
-Close the database with `database.close()` when the application stops; it waits for the running transactions to end.
+Close the database with `database.close()` when the application stops; it waits for the running transactions on its connections to end.
 
 ## Query
 

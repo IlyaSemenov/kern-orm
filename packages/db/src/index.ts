@@ -17,6 +17,7 @@ export { defineType, isType } from "./type/type"
 export type {
   Database,
   DatabaseOptions,
+  ExternalConnection,
   IsolationLevel,
   OpenedSession,
   PollLockOptions,

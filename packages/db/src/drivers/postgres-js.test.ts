@@ -1,13 +1,14 @@
 import { describe, expect, it } from "bun:test"
 
-import type { Sql } from "postgres"
+import { getThrownError } from "@kern-orm/test-harness/errors"
+import type { ReservedSql, Sql, TransactionSql } from "postgres"
 import postgres from "postgres"
 
 import { createStatement } from "../driver"
 import { ConnectionError, QueryError } from "../driver-error"
 
 import type { PostgresJsDriverOptions } from "./postgres-js"
-import { postgresJsDriver } from "./postgres-js"
+import { postgresJsConnection, postgresJsDriver } from "./postgres-js"
 
 /**
  * Fake postgres.js client that records the parameters and options of its statements and the scripts of the simple protocol, and answers them with no rows.
@@ -47,7 +48,13 @@ function createFakeClient({
       reserveFailure ? Promise.reject(reserveFailure) : Promise.resolve({ release() {} }),
     end: () => Promise.resolve(),
   }
-  return { driver: postgresJsDriver(sql as unknown as Sql, driverOptions), sent, options, scripts }
+  return {
+    driver: postgresJsDriver(sql as unknown as Sql, driverOptions),
+    sql,
+    sent,
+    options,
+    scripts,
+  }
 }
 
 it("sends every parameter, including null, with the unknown type", async () => {
@@ -233,5 +240,60 @@ describe("errors", () => {
       "Cannot execute a script: the driver is closed",
     ])
     await closing
+  })
+})
+
+describe("postgresJsConnection", () => {
+  /** Turns the fake client into the client of a transaction, which postgres.js gives `savepoint`. */
+  const toTransactionClient = (sql: object) =>
+    ({ ...sql, savepoint() {} }) as unknown as TransactionSql
+
+  it("runs statements and scripts on the client of the transaction as the driver does", async () => {
+    const { sql, sent, options, scripts } = createFakeClient()
+    const connection = postgresJsConnection(toTransactionClient(sql))
+
+    await connection.execute(createStatement("SELECT $1", [null]))
+    await connection.executeScript("CREATE TABLE a (id integer); CREATE TABLE b (id integer)")
+
+    expect(sent).toEqual([[{ value: null, type: 705 }]])
+    expect(options).toEqual([{ simple: false }])
+    expect(scripts).toEqual(["CREATE TABLE a (id integer); CREATE TABLE b (id integer)"])
+  })
+
+  it("rejects a statement that PostgreSQL rejected with QueryError", async () => {
+    const failure = Object.assign(new Error("duplicate key"), { severity: "ERROR", code: "23505" })
+    const { sql } = createFakeClient({ failure })
+
+    const error = await postgresJsConnection(toTransactionClient(sql))
+      .execute(createStatement("INSERT"))
+      .catch((error: unknown) => error)
+
+    expect(error).toBeInstanceOf(QueryError)
+    expect(error).toMatchObject({ code: "23505", cause: failure })
+  })
+
+  it("takes a reserved connection", async () => {
+    const { sql, sent } = createFakeClient()
+    const reserved = { ...sql, release() {} } as unknown as ReservedSql
+
+    await postgresJsConnection(reserved).execute(createStatement("SELECT 1"))
+
+    expect(sent).toEqual([[]])
+  })
+
+  it("throws TypeError for the client of a pool, whose statements would run outside the transaction", async () => {
+    const sql = postgres()
+    try {
+      // @ts-expect-error The client of a pool is neither the client of a transaction nor a reserved connection.
+      const error = getThrownError(() => postgresJsConnection(sql))
+
+      expect(error).toEqual(
+        new TypeError(
+          "postgresJsConnection() takes the postgres.js client of a transaction, which sql.begin or sql.savepoint passes to its callback, or a reserved connection on which a transaction has already started: the statements of another client, such as the client of the pool, would run outside the transaction",
+        ),
+      )
+    } finally {
+      await sql.end()
+    }
   })
 })

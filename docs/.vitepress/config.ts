@@ -49,6 +49,7 @@ export default defineConfig({
               text: "Advanced",
               items: [
                 { text: "Custom Types", link: "/orm/custom-types" },
+                { text: "Interop", link: "/orm/interop" },
                 { text: "Orchid ORM Interop", link: "/orm/orchid-interop" },
               ],
             },
@@ -66,6 +67,7 @@ export default defineConfig({
             { text: "Transactions", link: "/database/transactions" },
             { text: "Testing", link: "/database/testing" },
             { text: "Errors", link: "/database/errors" },
+            { text: "Interop", link: "/database/interop" },
             { text: "Custom Drivers", link: "/database/custom-drivers" },
             { text: "Building Query Builders", link: "/database/query-builders" },
             { text: "Building Packages", link: "/database/packages" },

@@ -114,6 +114,7 @@ Errors of the connection and of the lifetime of a transaction are the [errors of
   To roll back such a write as a whole, run it without recovery in a `db.$transaction()` of its own and catch the error outside that call.
 - Queries run without prepared statements, as the queries of kern-orm do: the `autoPreparedStatements` option of Orchid has no effect.
 - Orchid's `testTransaction` is not supported.
+- Queries of `orchid` with values do not run in a [transaction of another library](./interop#transactions-of-another-library) on a connection of `postgresJsConnection`, which sends only the text parameters of kern-orm: PostgreSQL rejects such a query for its missing parameters.
 - A query of SQL text, such as `orchid.$query`, runs one statement.
   Run a script of several statements with `database.script()`.
 - The adapter rejects direct transaction and savepoint commands in a query of SQL text, such as `BEGIN`, `COMMIT`, and `ROLLBACK TO SAVEPOINT`: start transactions with `orchid.$transaction` or `db.$transaction`.

@@ -5,7 +5,7 @@
   It does not expose its coordinator, so that its type does not depend on the private members of a class of one copy of the module: `getCoordinator` finds the coordinator by the object of the database for the test helpers and the driver contract, and finds none for another object, such as a copy of a database.
   `isDatabase` recognizes a database of `createDatabase` of any copy of kern-db by a brand of `Symbol.for`, which `createDatabase` sets as a property that is not enumerable, so it rejects a copy of a database ([decision](../decisions/drivers/recognizing-drivers-and-databases.md)).
 - **Transaction coordinator** (`transaction/coordinator.ts`): the only place that decides which connection executes a statement or a script of `$script`, which it routes alike.
-- **Transaction level** (`transaction/level.ts`): a transaction or a savepoint nested in it, how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `transaction/settings.ts`.
+- **Transaction level** (`transaction/level.ts`): a transaction, a savepoint nested in it, or an [external transaction](#external-transactions), how it starts, runs its callback, and ends, and how its cleanup errors combine; its [settings](#settings) are in `transaction/settings.ts`.
 - **Session** (`transaction/session.ts`): a level that runs statements on a reserved connection outside a transaction, how it starts, the [open sessions](#open-sessions) that the callbacks of `run` share, and how its connection returns to the pool without its [settings](#sessions) and [advisory locks](#locks).
 - **Advisory locks** (`transaction/advisory-lock.ts`): the statements of [locks](#locks) of string keys, and the locks that a session holds until it ends.
 
@@ -15,10 +15,11 @@
   A level stops accepting statements before its `COMMIT`, `ROLLBACK`, `RELEASE`, or `ROLLBACK TO`.
 - A level has at most one active nested level, reserved before its `SAVEPOINT` is sent, and a level run by a callback rejects its own statements and another nested level while it has one, since PostgreSQL would run them inside the nested savepoint; a test fixture preempts it instead.
 - A [level of the test helpers](testing.md#test-transactions) that code runs in makes its statements and nested levels take turns instead of rejecting them while it has a nested level: each one waits until those that came before it end, and once the level ends, the waiters reject at once.
-- Closing a level closes all levels nested in it at once; a level whose callback settles while its nested level is still active closes it, rolls back, and rejects, except that a [level of the test helpers](testing.md#test-transactions) whose callback resolves waits for it.
+- Closing a level closes all levels nested in it at once; a level whose callback settles while its nested level is still active closes that level and rejects, except that a [level of the test helpers](testing.md#test-transactions) whose callback resolves waits for it.
+  The closed level rolls back, unless its own end has started, which is then awaited; a transaction or a savepoint that closed it rolls back too, while a session and an [external transaction](#external-transactions) end without a statement of their own.
 - Every level has a single cleanup: whoever ends it, such as its callback, its enclosing level, a preemption, or the abort signal of a test, starts the cleanup or awaits the one already started.
   A level awaits the cleanup of its nested levels before its own.
-- A failed `RELEASE` or `ROLLBACK TO` of a nested level, or a failed restore of its [settings](#settings) before `RELEASE`, makes the enclosing level reject its statements and nested levels and roll back at its end, since the statement may not have reached PostgreSQL.
+- A failed `RELEASE` or `ROLLBACK TO` of a nested level, or a failed restore of its [settings](#settings) before `RELEASE`, makes the enclosing level reject its statements and nested levels and roll back at its end, since the statement may not have reached PostgreSQL; an [external transaction](#external-transactions) rejects at the end of its callback instead, for its owner to roll it back.
 - Starting a level rejects when its `BEGIN` or `SAVEPOINT` fails, and rolls the level back and rejects when its settings fail.
 - A cleanup error of a transaction never replaces an earlier error: it suppresses it in a `SuppressedError`.
 - A failed release of the connection of a transaction, a test transaction, or a test fixture never changes the result or error of the call, which is decided before the release: a committed transaction that rejected would be retried.
@@ -45,9 +46,34 @@
 
 - `ensureTransaction` of a `Database` and `$ensureTransaction` of a `Db` run their callback in the context of the current level without a savepoint when the code runs in a transaction, and start a transaction otherwise.
   A rejection of a joined callback undoes nothing; the enclosing level commits its changes unless it fails too.
-- `isInTransaction` of a `Database` and `$isInTransaction` of a `Db` tell whether the current level or an enclosing one is a level of `transaction`.
+- `isInTransaction` of a `Database` and `$isInTransaction` of a `Db` tell whether the current level or an enclosing one is a level of `transaction` or an [external transaction](#external-transactions).
   A test transaction and the seed of a test fixture are not such levels, so code under test starts a transaction of its own where it does in production, which runs as a savepoint of the test level.
 - Joining a level that accepts no statements, such as of late code of a finished transaction or beside a running nested level, rejects without calling the callback, as starting a nested level does; whether the level accepts statements does not affect `isInTransaction`.
+
+## External transactions
+
+- `externalTransaction` of a `Database` runs its callback in an external transaction: a level over a transaction that code outside the database started on a connection and ends itself, such as a transaction of another library that the application keeps, so that the statements of the callback commit or roll back with it ([decision](../decisions/transactions/external-transactions.md)).
+- The level takes the connection as an `ExternalConnection`, `execute` and `executeScript` of a `Connection` by the [contract of a driver](drivers.md): text parameters without declared types, text values, statements one at a time in the order of calls, and `QueryError` and `ConnectionError`.
+  `postgresJsConnection` of `kern-db/postgres-js` creates one over the [client of a transaction of postgres.js](drivers.md#postgresjs).
+  A query executor of another library, which serializes parameters and parses values by their types, is not such a connection.
+- The level sends no `BEGIN`, `COMMIT`, or `ROLLBACK` and never releases the connection.
+  When its callback settles, it stops accepting statements, by the rules of [levels](#levels): a statement of late code rejects, and a nested level that is still running rolls back to its savepoint, unless its own end has started, such as its `RELEASE`, which the level then awaits.
+- The owner of the transaction must keep it open until `externalTransaction` settles, and must not end a savepoint that it took before the call.
+  Statements that the owner runs on the connection meanwhile run in the transaction as PostgreSQL orders them, also inside a savepoint of a nested level of the database, which undoes them when it rolls back.
+- A physical connection must run one external transaction at a time, also through several `ExternalConnection` objects over it: the coordinator finds an enclosing level only in the async context, and the levels nested in two external transactions that run at once take savepoints of the same names, so that one rolls back or releases the savepoint of the other.
+- The levels nested in it are savepoints, with their [settings](#settings) and [isolation](#isolation) check, which reads the isolation level of the transaction from the connection.
+- It counts as a transaction of `transaction` for `isInTransaction`, `ensureTransaction`, and the [locks](#locks), since the database cannot tell a transaction of the tests of its owner.
+- `externalTransaction` rejects with the error of its callback and changes nothing by itself: its owner decides whether the transaction commits.
+  - It rejects when a nested level was still running when its callback resolved, after it rolled that level back or awaited its end that had started.
+  - It rejects when a nested level failed to end, by the rule of [levels](#levels); the owner must then roll the transaction back, since the statement may not have reached PostgreSQL.
+  - It does not wrap a `ConnectionError` in `TransactionConnectionError`, whose phases describe a transaction that the database ends.
+- `externalTransaction` rejects without calling its callback:
+  - inside a transaction, also an external one, or a session of the database, which has a connection of its own;
+  - on a database created with `test: true`, whose statements all run in transactions that roll back, while the owner of an external transaction may commit it;
+  - once the database is closing;
+  - for a connection without `execute` and `executeScript`, such as a client of PostgreSQL, and for a driver, which `isDriver` recognizes and whose statements run on its pool, with `TypeError`.
+- The coordinator does not wait for an external transaction when the database closes.
+  A driver whose client also holds the transaction, such as `postgresJsDriver(sql)` beside `sql.begin` of the same `sql`, waits for the connection of the transaction as for a reserved one, so the owner must not await `close` of the database inside that transaction.
 
 ## Sessions
 
@@ -60,10 +86,10 @@
 - A session whose transaction fails to end keeps accepting statements, unless its connection failed: PostgreSQL has ended a transaction whose `COMMIT` it rejected, such as for a deferred constraint.
 - A statement of a finished session fails and never runs on the pool.
 - `session` rejects without calling its callback:
-  - inside a transaction, a test transaction, or the seed of a test fixture, where its statements would run in a transaction block;
+  - inside a transaction, an external transaction, a test transaction, or the seed of a test fixture, where its statements would run in a transaction block;
   - inside another session;
   - on a database created with `test: true`, whose statements all run in test transactions.
-- `isInTransactionBlock` of a `Database` and `$isInTransactionBlock` of a `Db` tell whether a statement of the current context runs in a transaction block of PostgreSQL: in a transaction, a test transaction, or the seed of a test fixture, and not in a session outside its transactions.
+- `isInTransactionBlock` of a `Database` and `$isInTransactionBlock` of a `Db` tell whether a statement of the current context runs in a transaction block of PostgreSQL: in a transaction, an external transaction, a test transaction, or the seed of a test fixture, and not in a session outside its transactions.
   Unlike `isInTransaction`, it counts the levels of the test helpers, since PostgreSQL rejects such a statement in any transaction block; code that has one checks it to choose what to run.
 - A session takes the search path of its statements as `transaction` does.
   It sets the search path for the session of PostgreSQL, with `set_config(..., false)`, since it has no transaction that would end the setting, after it reads the value it replaces, and restores that value before its connection returns to the driver.
@@ -139,11 +165,13 @@
 ## Lifecycle
 
 - Objects with an explicit lifecycle, such as a database and a test fixture, are async disposable.
-- Closing a database closes its test fixtures, including those still opening, and its [open test transactions](testing.md#open-test-transactions) on connections of their own, and then closes the driver; closing it inside a transaction or a session rejects, since the driver would wait for that transaction or session forever.
+- Closing a database closes its test fixtures, including those still opening, and its [open test transactions](testing.md#open-test-transactions) on connections of their own, and then closes the driver; closing it inside a transaction or a session rejects, since the driver would wait for that transaction or session forever, and inside an [external transaction](#external-transactions) too, whichever client holds its connection.
   An open test transaction whose opening the closing overtakes rolls back, releases its connection, and rejects.
   From the first closing, statements, transactions, sessions, and fixtures started outside a transaction and a session reject, so nothing opens after the fixtures close; the levels already running still end, also an [open session](#open-sessions), which runs its callbacks until it is closed, and a repeated closing returns the first one.
 
 ## Open questions
 
+- External transactions of the tests of their owner: an external transaction counts as a transaction of `transaction`, so code under test that takes a lock or joins a transaction in a test transaction of its owner does not start a transaction of its own where it does in production; decide whether `externalTransaction` takes whether its transaction counts.
+- `$externalTransaction` of a `Db`: a `Db` has none, so code that has only a `Db` runs an external transaction through `$database`, and a `Db` over a function that returns its database does not check that database in the callback, as it does in that of `$transaction`.
 - Sessions inside a session: `session` rejects there, so code that starts a session cannot run in another one; decide whether it joins the enclosing session, with settings of its own that it restores.
 - `$openSession` of a `Db`: a `Db` has `$session` but no `$openSession`, so code that has only a `Db` opens a session through `$database`, and a `Db` over a function that returns its database does not check that database in the callbacks of `run`, as it does in those of `$session`; decide whether a `Db` gets `$openSession` with that check.

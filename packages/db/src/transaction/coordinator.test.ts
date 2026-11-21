@@ -1250,6 +1250,288 @@ describe("isolation levels", () => {
   })
 })
 
+describe("external transactions", () => {
+  /** Coordinator over a recording driver with connection 1 of the driver as the connection of an external transaction, which its owner acquired. */
+  async function createExternal(options?: Parameters<typeof createRecordingDriver>[0]) {
+    const recording = createRecordingDriver(options)
+    return {
+      ...recording,
+      coordinator: new TransactionCoordinator(recording.driver),
+      connection: await recording.driver.acquire(),
+    }
+  }
+
+  it("runs the statements and scripts of the callback on the connection without starting, ending, or releasing it", async () => {
+    const { coordinator, connection, statements, scripts, releases } = await createExternal()
+
+    const result = await coordinator.externalTransaction(connection, async () => {
+      await coordinator.execute(createStatement("inside"))
+      await coordinator.executeScript("script")
+      return "done"
+    })
+    await coordinator.execute(createStatement("outside"))
+
+    expect(result).toBe("done")
+    expect(statements).toEqual([
+      { connection: 1, text: "inside", parameters: [] },
+      { connection: "pool", text: "outside", parameters: [] },
+    ])
+    expect(scripts).toEqual([{ connection: 1, script: "script" }])
+    expect(releases).toEqual([])
+  })
+
+  it("rejects with the error of the callback without a statement", async () => {
+    const { coordinator, connection, statements } = await createExternal()
+    const failure = new Error("failure")
+
+    await expect(
+      coordinator.externalTransaction(connection, () => Promise.reject(failure)),
+    ).rejects.toBe(failure)
+
+    expect(statements).toEqual([])
+  })
+
+  it("runs a nested transaction in a savepoint, with its settings, and keeps the external transaction when it rolls back", async () => {
+    const { coordinator, connection, statements } = await createExternal({
+      respond: ({ text }) => (text === "SELECT current_setting($1)" ? { rows: [["public"]] } : {}),
+    })
+    const failure = new Error("failure")
+
+    await coordinator.externalTransaction(connection, async () => {
+      await coordinator.transaction(run(coordinator, "released"), { searchPath: ["tenant"] })
+      await expect(
+        coordinator.transaction(async () => {
+          await coordinator.execute(createStatement("rolled back"))
+          throw failure
+        }),
+      ).rejects.toBe(failure)
+      await coordinator.execute(createStatement("after"))
+    })
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      "SAVEPOINT kern_1",
+      "SELECT current_setting($1)",
+      "SELECT set_config($1, $2, true)",
+      "released",
+      "SELECT set_config($1, $2, true)",
+      "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "rolled back",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+      "after",
+    ])
+    expect(statements.every(statement => statement.connection === 1)).toBe(true)
+    expect(statements[4]!.parameters).toEqual(["search_path", "public"])
+  })
+
+  it("counts as a transaction, so that the callback joins it and takes advisory locks", async () => {
+    const { coordinator, connection, statements } = await createExternal()
+
+    const seen = await coordinator.externalTransaction(connection, async () => {
+      await coordinator.lock("import")
+      await coordinator.ensureTransaction(run(coordinator, "joined"))
+      return {
+        inTransaction: coordinator.isInTransaction(),
+        inTransactionBlock: coordinator.isInTransactionBlock(),
+      }
+    })
+
+    expect(seen).toEqual({ inTransaction: true, inTransactionBlock: true })
+    expect(statements.map(({ text }) => text)).toEqual([
+      "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+      "joined",
+    ])
+    expect(coordinator.isInTransactionBlock()).toBe(false)
+  })
+
+  it("reads the isolation level of the external transaction for a nested transaction with one", async () => {
+    const { coordinator, connection, statements } = await createExternal({
+      respond: ({ text }) =>
+        text === "SELECT current_setting('transaction_isolation')"
+          ? { rows: [["read committed"]] }
+          : {},
+    })
+
+    await coordinator.externalTransaction(connection, async () => {
+      await coordinator.transaction(() => Promise.resolve(), { isolation: "read committed" })
+      await expect(
+        coordinator.transaction(() => Promise.resolve(), { isolation: "serializable" }),
+      ).rejects.toThrow(
+        "Cannot start a nested transaction at isolation level serializable: its transaction runs at read committed",
+      )
+    })
+
+    expect(statements.map(({ text }) => text)).toEqual([
+      "SELECT current_setting('transaction_isolation')",
+      "SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+    ])
+  })
+
+  it("rejects a statement started after the callback instead of running it on the connection or the pool", async () => {
+    const { coordinator, connection, statements } = await createExternal()
+    const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+
+    let late: Promise<unknown> | undefined
+    await coordinator.externalTransaction(connection, async () => {
+      late = finished.then(() => coordinator.execute(createStatement("late")))
+    })
+    finish()
+
+    await expect(late!).rejects.toThrow(
+      "Cannot execute a query: the callback of its external transaction is already finished",
+    )
+    expect(statements).toEqual([])
+  })
+
+  it("rolls back a nested transaction that is still running when the callback resolves, and rejects", async () => {
+    const { coordinator, connection, statements } = await createExternal()
+    const { promise: finished, resolve: finish } = Promise.withResolvers<void>()
+
+    let nested: Promise<void> | undefined
+    await expect(
+      coordinator.externalTransaction(connection, async () => {
+        nested = markHandled(coordinator.transaction(() => finished))
+        await settleCallbacks()
+      }),
+    ).rejects.toThrow(
+      "Cannot finish externalTransaction: a nested transaction was still running when its callback finished",
+    )
+    finish()
+
+    await expect(nested!).rejects.toThrow("its enclosing transaction ended first")
+    expect(statements.map(({ text }) => text)).toEqual([
+      "SAVEPOINT kern_1",
+      "ROLLBACK TO SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+    ])
+  })
+
+  it("rejects when a nested transaction fails to end, after which it accepts no statements", async () => {
+    const releaseError = new Error("release")
+    const { coordinator, connection, statements } = await createExternal({
+      respond: failOn("RELEASE SAVEPOINT kern_1", releaseError),
+    })
+
+    const error = await coordinator
+      .externalTransaction(connection, async () => {
+        await expect(coordinator.transaction(() => Promise.resolve())).rejects.toBe(releaseError)
+        await expect(coordinator.execute(createStatement("after"))).rejects.toThrow(
+          "a nested transaction failed to end, so the transaction can only roll back",
+        )
+      })
+      .catch((error: unknown) => error)
+
+    expect(error).toEqual(
+      new Error("External transaction can only roll back: a nested transaction failed to end", {
+        cause: releaseError,
+      }),
+    )
+    expect(statements.map(({ text }) => text)).toEqual([
+      "SAVEPOINT kern_1",
+      "RELEASE SAVEPOINT kern_1",
+    ])
+  })
+
+  it("passes a ConnectionError of its connection as it is", async () => {
+    const lost = new ConnectionError("lost")
+    const { coordinator, connection } = await createExternal({ respond: failOn("inside", lost) })
+
+    await expect(
+      coordinator.externalTransaction(connection, run(coordinator, "inside")),
+    ).rejects.toBe(lost)
+  })
+
+  it("rejects inside a transaction, an external transaction, or a session of the database", async () => {
+    const { coordinator, connection } = await createExternal()
+    let called = false
+    const start = () =>
+      coordinator.externalTransaction(connection, async () => {
+        called = true
+      })
+
+    await coordinator.transaction(async () => {
+      await expect(start()).rejects.toThrow(
+        "Cannot run an external transaction inside a transaction of the database",
+      )
+    })
+    await coordinator.session(async () => {
+      await expect(start()).rejects.toThrow(
+        "Cannot run an external transaction inside a session of the database",
+      )
+    })
+    await coordinator.externalTransaction(connection, async () => {
+      await expect(start()).rejects.toThrow(
+        "Cannot run an external transaction inside a transaction of the database",
+      )
+    })
+
+    expect(called).toBe(false)
+  })
+
+  it("rejects closing the database in its callback, also on a connection of another driver", async () => {
+    const coordinator = new TransactionCoordinator(createRecordingDriver().driver)
+    // The driver of the coordinator has no reserved connection to wait for, so a closing that starts by mistake resolves and fails the test.
+    const connection = await createRecordingDriver().driver.acquire()
+
+    await coordinator.externalTransaction(connection, async () => {
+      await expect(coordinator.close()).rejects.toThrow(
+        "Cannot close the database inside a transaction",
+      )
+    })
+    await connection.release()
+  })
+
+  it("rejects on a coordinator created for tests and on a closed one", async () => {
+    const { coordinator: testCoordinator, driver } = createTestCoordinator()
+    const connection = await driver.acquire()
+    await expect(
+      testCoordinator.externalTransaction(connection, () => Promise.resolve()),
+    ).rejects.toThrow(
+      "Cannot run an external transaction: the database was created with test: true",
+    )
+    await connection.release()
+
+    const closed = await createExternal()
+    await closed.connection.release()
+    await closed.coordinator.close()
+    await expect(
+      closed.coordinator.externalTransaction(closed.connection, () => Promise.resolve()),
+    ).rejects.toThrow("Cannot run an external transaction: the database is closed")
+  })
+
+  it("rejects a driver, whose statements run on its pool", async () => {
+    const { coordinator, driver, statements } = await createExternal()
+    let called = false
+
+    await expect(
+      coordinator.externalTransaction(driver, async () => {
+        called = true
+      }),
+    ).rejects.toEqual(
+      new TypeError(
+        "The connection of an external transaction must be a connection of that transaction rather than a driver, whose statements run on its pool",
+      ),
+    )
+
+    expect(called).toBe(false)
+    expect(statements).toEqual([])
+  })
+
+  it("rejects a connection without the methods of a connection, such as a client of PostgreSQL", async () => {
+    const { coordinator } = await createExternal()
+
+    await expect(
+      coordinator.externalTransaction({ query() {} } as never, () => Promise.resolve()),
+    ).rejects.toEqual(
+      new TypeError(
+        "The connection of an external transaction must have execute and executeScript of a connection of kern-db, such as of postgresJsConnection of kern-db/postgres-js",
+      ),
+    )
+  })
+})
+
 describe("statements of a test transaction", () => {
   const texts = (statements: readonly { text: string }[]) => statements.map(({ text }) => text)
 
