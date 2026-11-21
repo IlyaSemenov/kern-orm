@@ -54,6 +54,21 @@ A nested transaction whose callback throws, also synchronously, rolls back to it
   Its `catch` and `catchUniqueError` of a query, unlike those of a promise, and its `recoverable` mark the query for recovery: in a transaction, it runs the statements of the query in a savepoint of its own, and outside one it runs them as usual ([then](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/query/then/then.ts)); a nested Kern transaction around the query gives it the same savepoint.
   Its test helper records levels under a private `trxForTest` symbol before calling the query's `transaction`, then installs fallback storage and rewrites adapter methods; rejecting only the fallback assignment is too late for its start promise to reject reliably ([test helper](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/testTransaction.ts)).
 
+## Reaching the connection of a transaction
+
+`externalTransaction` of kern-db runs its callback in a transaction of another library on a connection of that transaction, which the library must give, such as the client of postgres.js that `sql.begin` passes to its callback.
+
+- Orchid ORM 1.78.61 / pqb 0.73.50, lacks: `$getAdapter()` returns the adapter of the current transaction ([source](https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/query/db.ts#L574)), whose `query` and `arrays` take JavaScript values and parse the values of results by their types, and give no command tag.
+  The client of postgres.js of the transaction is the private `client` of `TransactionAdapterClass`, which Orchid replaces with the client of a savepoint while the savepoint runs ([source](https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/adapters/adapter.ts#L503-L511)), and a test transaction wraps that adapter in a `TestTransactionAdapter` under its private `adapter` ([source](https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/testTransaction.ts#L273-L292)).
+  `$isInTransaction()` returns `false` in a test transaction, while `isInTransaction()` of the adapter returns `true`.
+
+## A transaction that PostgreSQL does not commit
+
+`transaction` of kern-db rejects when PostgreSQL does not commit the transaction, such as when it rejects `COMMIT` for a deferred constraint, and commits the changes that its nested transactions did not roll back after a failed statement that a nested transaction rolled back.
+
+- Orchid ORM 1.78.61 / pqb 0.73.50 on postgres.js 4, fails: `begin` of its adapter of postgres.js returns the result of the callback when `sql.begin` rejects after the callback resolved ([source](https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/adapters/postgres-js.ts#L201-L222)), so `$transaction` resolves and nothing commits when `COMMIT` fails, such as for a deferred unique constraint, and when a statement failed on the client of the transaction, also one that the callback caught or that a savepoint of SQL text rolled back, which postgres.js rolls back and rejects for.
+  A statement that fails in a nested `$transaction` before its callback resolves rejects that nested transaction, since its savepoint of `sql.savepoint` rejects, and leaves the enclosing transaction committable; one that fails after the callback resolved, such as one that the callback did not await, aborts the enclosing transaction, which `$transaction` then resolves without committing.
+
 ## Round trips for a recoverable query
 
 Kern opens a savepoint for a recoverable Orchid query in a transaction, rolls back to it on error, and releases it after either outcome.

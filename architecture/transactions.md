@@ -54,7 +54,7 @@
 
 - `externalTransaction` of a `Database` runs its callback in an external transaction: a level over a transaction that code outside the database started on a connection and ends itself, such as a transaction of another library that the application keeps, so that the statements of the callback commit or roll back with it ([decision](../decisions/transactions/external-transactions.md)).
 - The level takes the connection as an `ExternalConnection`, `execute` and `executeScript` of a `Connection` by the [contract of a driver](drivers.md): text parameters without declared types, text values, statements one at a time in the order of calls, and `QueryError` and `ConnectionError`.
-  `postgresJsConnection` of `kern-db/postgres-js` creates one over the [client of a transaction of postgres.js](drivers.md#postgresjs).
+  `postgresJsConnection` of `kern-db/postgres-js` creates one over the [client of a transaction of postgres.js](drivers.md#postgresjs), and `runInOrchidTransaction` of `@kern-orm/orchid-interop` runs a callback in an external transaction over the current transaction of [Orchid ORM](orchid-interop.md#external-transactions-of-a-native-instance), whose connection it keeps to itself.
   A query executor of another library, which serializes parameters and parses values by their types, is not such a connection.
 - The level sends no `BEGIN`, `COMMIT`, or `ROLLBACK` and never releases the connection.
   When its callback settles, it stops accepting statements, by the rules of [levels](#levels): a statement of late code rejects, and a nested level that is still running rolls back to its savepoint, unless its own end has started, such as its `RELEASE`, which the level then awaits.

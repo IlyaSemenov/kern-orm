@@ -47,6 +47,7 @@ it("rolls back when the callback rejects", async () => {
   expect(releases).toEqual([{ connection: 1 }])
 })
 
+// Orchid ORM 1.78.61 on postgres.js resolved $transaction when postgres.js rejected after the callback resolved, such as for a statement that failed in it: https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/adapters/postgres-js.ts#L201-L222
 it("rejects when PostgreSQL rolls back on COMMIT", async () => {
   const { driver, releases } = createRecordingDriver({
     respond: ({ text }) => (text === "COMMIT" ? { command: "ROLLBACK" } : {}),
@@ -2192,6 +2193,7 @@ describe("failures of cleanup", () => {
     expect(releases).toEqual([{ connection: 1 }])
   })
 
+  // Orchid ORM 1.78.61 on postgres.js resolved $transaction when its COMMIT failed, such as for a deferred constraint: https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/adapters/postgres-js.ts#L201-L222
   it("rejects with a failed COMMIT and releases the connection", async () => {
     const commitError = new Error("commit")
     const { driver, statements, releases } = createRecordingDriver({

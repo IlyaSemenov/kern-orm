@@ -1,0 +1,8 @@
+# External transactions of Drizzle
+
+A layer, as `runInOrchidTransaction` of [`@kern-orm/orchid-interop`](../architecture/orchid-interop.md#external-transactions-of-a-native-instance) for Orchid ORM, that runs code of kern-db, such as migrations, in a transaction of Drizzle ORM, which keeps owning it.
+
+- Drizzle passes its transaction to the callback of `transaction` as `tx` rather than through an async context, so the layer takes `tx`, rather than the instance, and must reach the client of the driver under it, such as the client of postgres.js that `sql.begin` passes, or of node-postgres.
+- Find whether `tx` exposes that client publicly, or which private fields hold it in the versions that the layer supports, and how its nested transactions change it for each driver: on postgres.js, a nested transaction of Drizzle 0.45.4 runs on the client that `sql.savepoint` passes ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/postgres-js/session.ts#L211-L220)), and on node-postgres, it sends `SAVEPOINT`, `RELEASE`, and `ROLLBACK TO` as SQL on the same connection ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/node-postgres/session.ts#L285-L299)).
+- Find what its `transaction` does when the client of postgres.js rejects `sql.begin` after its callback resolved, as Orchid ORM resolves its `$transaction` then ([comparison](../comparison/transactions.md#a-transaction-that-postgresql-does-not-commit)).
+- It needs the [external connection of node-postgres](external-connection-of-node-postgres.md) for Drizzle on node-postgres.

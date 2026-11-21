@@ -36,6 +36,7 @@ await migrate(database, migrations, { schemaName: "app" })
 
 With only a driver, pass the driver: `migrate` runs on a database of its own over it, outside the transactions of your databases, and leaves the driver open.
 To apply migrations in a transaction, such as a [test transaction](../database/testing), pass the database of the transaction instead.
+To apply them in a transaction of another library, such as of postgres.js or of Orchid ORM, call `migrate` in an [external transaction](../database/interop#transactions-of-another-library) of the database.
 
 ## Tenants
 

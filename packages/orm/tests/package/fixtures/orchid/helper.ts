@@ -1,4 +1,6 @@
-import { createOrchidInterop } from "@kern-orm/orchid-interop"
+import type { OrchidTransactionSource } from "@kern-orm/orchid-interop"
+import { createOrchidInterop, runInOrchidTransaction } from "@kern-orm/orchid-interop"
+import type { Database } from "kern-db"
 import { createBaseTable } from "orchid-orm"
 
 const BaseTable = createBaseTable()
@@ -22,4 +24,18 @@ export async function query(interop: Awaited<ReturnType<typeof connect>>) {
   // @ts-expect-error the existing Orchid table still rejects a string primary key
   interop.orchid.item.create({ id: "invalid" })
   return id
+}
+
+/** Tells whether Orchid reads a transaction-local setting that kern-db wrote through `runInOrchidTransaction`. */
+export const joinOrchidTransaction = async (
+  orchid: OrchidTransactionSource,
+  database: Database,
+) => {
+  await runInOrchidTransaction(orchid, database, async () => {
+    await database.query`SELECT set_config('kern.package', 'joined', true)`
+  })
+  const { rows } = await orchid
+    .$getAdapter()
+    .query<{ value: string }>("SELECT current_setting('kern.package') AS value")
+  return rows[0]?.value === "joined"
 }
