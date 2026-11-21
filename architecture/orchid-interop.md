@@ -25,6 +25,7 @@ It never borrows a native connection, issues transaction-control SQL, or calls O
 Its `query` and `arrays` reject direct transaction and savepoint commands, such as `COMMIT` of `$query`, with `TypeError` before it runs, by its leading keywords after whitespace, nested comments, and empty statements, so that it cannot end a transaction of Kern ([decision](../decisions/transactions/orchid-transaction-control.md)).
 Statements that change settings of a transaction or a session, such as `SET TRANSACTION`, run as any other statement; changing an isolation level passed to a transaction from SQL text breaks the check of the isolation of a nested transaction, which compares the level that was passed.
 The callback transaction API maps supported isolation levels to Kern and rejects unsupported options before the callback.
+It reads the `then` of a query that the callback returns without awaiting it while the `schema` and `log` options of the transaction are in the scope of Orchid, by resolving the result of the callback inside that scope.
 Kern decides the ownership, lifetime, and nesting of every transaction and savepoint ([decision](../decisions/transactions/orchid-adapter.md)).
 
 `orchid.ts` installs behavior only on the created instance and its query bases; it does not change global Orchid prototypes.
@@ -84,7 +85,7 @@ It runs a callback in an [external transaction](transactions.md#external-transac
 ## Tests
 
 The tests of the executor beside its module compare it with the native execution of Orchid; the tests of `getNativeParameters` belong to kern-db.
-Acceptance tests in `tests/` use real Orchid tables and Kern queries through the entry point for CRUD, relation reads, nested writes, automatic hook transactions, both transaction entry points, nested rollback, recoverable queries, concurrency, schema scopes of concurrent and nested transactions, isolation, test levels, late work, transaction control in SQL text, and unsupported features.
+Acceptance tests in `tests/` use real Orchid tables and Kern queries through the entry point for CRUD, relation reads, nested writes, automatic hook transactions, both transaction entry points, nested rollback, recoverable queries, concurrency, schema scopes of concurrent and nested transactions, the options of a transaction for a query that its callback returns directly, isolation, test levels, late work, transaction control in SQL text, and unsupported features.
 The tests of `runInOrchidTransaction` beside its module check its errors with fake adapters, and what a real commit of native Orchid keeps, read from another connection; `tests/external-transaction.test.ts` applies a history of `kern-migrations`, a development dependency, in Orchid's `testTransaction` with a nested test level, a failing migration, and the rollback of the outer level.
 The package test installs the packed adapter with the tested versions of its dependencies, emits consumer declarations, and executes shared transactions, and an external transaction of a native instance, under Bun and Node.js.
 

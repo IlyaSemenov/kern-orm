@@ -179,7 +179,8 @@ export function createAdapter(database: Database, client: Sql): TransactionAdapt
               log: options?.log ?? state?.log,
               schema: options?.schema ?? state?.schema,
             },
-            () => callback(adapter),
+            // `Promise.resolve` reads the `then` accessor of a returned query while the Orchid options of the transaction are in scope.
+            () => Promise.resolve(callback(adapter)),
           )
         },
         { isolation: isolation as IsolationLevel | undefined },

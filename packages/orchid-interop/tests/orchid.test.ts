@@ -41,8 +41,15 @@ const { DATABASE_URL } = process.env
 
 describe.skipIf(!DATABASE_URL)("Orchid adapter", () => {
   let interop: OrchidInterop<typeof tables>
+  const logged: string[] = []
   beforeAll(async () => {
-    interop = await createOrchidInterop({ connection: { databaseURL: DATABASE_URL } }, tables)
+    interop = await createOrchidInterop(
+      {
+        connection: { databaseURL: DATABASE_URL },
+        orchid: { logger: { log: message => void logged.push(message), warn() {}, error() {} } },
+      },
+      tables,
+    )
   })
   afterAll(async () => {
     await interop?.database.close()
@@ -333,6 +340,30 @@ describe.skipIf(!DATABASE_URL)("Orchid adapter", () => {
       ).rejects.toThrow("rollback")
       expect(await orchid.item.count()).toBe(0)
     }))
+
+  test("keeps the schema and log options of a transaction for a query that its callback returns without awaiting it", async () => {
+    const { database, orchid } = interop
+    const rollback = new Error("roll back the schema")
+    const schema = `kern_orchid_direct_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`
+    logged.length = 0
+    await expect(
+      database.transaction(async () => {
+        await database.query`CREATE SCHEMA ${identifier(schema)}`
+        await database.query`CREATE TABLE ${identifier(schema)}.kern_orchid_item (name text NOT NULL)`
+        await database.query`INSERT INTO ${identifier(schema)}.kern_orchid_item VALUES (${schema})`
+        const name = await orchid.$transaction(
+          { schema, log: true },
+          // Types reject a callback that returns a query rather than a promise, which untyped code can still pass.
+          (() => orchid.item.get("name")) as unknown as () => Promise<string>,
+        )
+        expect(name).toBe(schema)
+        expect(logged).toEqual(
+          expect.arrayContaining([expect.stringContaining(`"${schema}"."kern_orchid_item"`)]),
+        )
+        throw rollback
+      }),
+    ).rejects.toBe(rollback)
+  })
 
   test("rejects parent queries during an active savepoint and late queries after it", () =>
     withTable(async () => {
