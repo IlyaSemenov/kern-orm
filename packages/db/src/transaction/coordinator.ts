@@ -1,15 +1,17 @@
-// Ambient transactions and sessions of a database: routing of statements to the connection of the current level, transactions, sessions, advisory locks, test transactions, and closing.
+// Ambient transactions and sessions of a database: routing of statements to the connection of the current level, transactions, external transactions, sessions, advisory locks, test transactions, and closing.
 
 import { AsyncLocalStorage } from "node:async_hooks"
 
 import type {
   DatabaseOptions,
+  ExternalConnection,
   OpenedSession,
   PollLockOptions,
   SessionOptions,
   TransactionOptions,
 } from "../database"
 import type { Connection, Driver, DriverResult, SqlStatement } from "../driver"
+import { isDriver } from "../driver"
 import { ConnectionError } from "../driver-error"
 import type {
   OpenedTestFixture,
@@ -31,6 +33,7 @@ import { TransactionConnectionError } from "./connection-loss"
 import type { LevelOptions, Outcome, Rejection, TransactionLevel } from "./level"
 import {
   closeStarting,
+  createExternalLevel,
   createLevel,
   createUnavailableError,
   endLevel,
@@ -146,6 +149,49 @@ export class TransactionCoordinator {
   }
 
   /**
+   * Runs `callback` in an external transaction: a transaction that code outside the database started on `connection` and ends itself, such as a transaction of another library.
+   *
+   * It sends no `BEGIN`, `COMMIT`, or `ROLLBACK`, and does not release the connection: when `callback` settles, the level only stops accepting statements, and then rolls back a nested transaction that is still running to its savepoint, or awaits its end when that has started, such as its `RELEASE`.
+   * It rejects without calling `callback` for a driver, whose statements run on its pool, inside a transaction, also an external one, or a session of the database, which has a connection of its own, and on a coordinator created for tests, whose statements all run in transactions that roll back.
+   * It rejects with the error of `callback`, and when a nested transaction was still running or failed to end, after which its owner must roll the transaction back.
+   * It does not wrap a `ConnectionError`, since its owner decides how the transaction ends.
+   */
+  async externalTransaction<T>(
+    connection: ExternalConnection,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    if (
+      typeof connection?.execute !== "function" ||
+      typeof connection.executeScript !== "function"
+    ) {
+      throw new TypeError(
+        "The connection of an external transaction must have execute and executeScript of a connection of kern-db, such as of postgresJsConnection of kern-db/postgres-js",
+      )
+    }
+    // A driver has the methods of a connection too, and runs them on its pool, outside the transaction.
+    if (isDriver(connection)) {
+      throw new TypeError(
+        "The connection of an external transaction must be a connection of that transaction rather than a driver, whose statements run on its pool",
+      )
+    }
+    const parent = this.#storage.getStore()
+    if (parent) {
+      throw new Error(
+        `Cannot run an external transaction inside a ${parent.session ? "session" : "transaction"} of the database`,
+      )
+    }
+    if (this.#closed) {
+      throw createDatabaseClosedError("run an external transaction")
+    }
+    if (this.test) {
+      throw new Error(
+        "Cannot run an external transaction: the database was created with test: true, so its statements run in test transactions, which roll back, and its owner ends an external transaction",
+      )
+    }
+    return runStarted(this.#storage, createExternalLevel(connection), callback, false)
+  }
+
+  /**
    * Runs `callback` in the current transaction, or in a new transaction outside of one.
    *
    * Joining starts no savepoint, so a rejection of `callback` does not undo its changes.
@@ -165,7 +211,7 @@ export class TransactionCoordinator {
   }
 
   /**
-   * Tells whether the current async context runs in a transaction of `transaction`.
+   * Tells whether the current async context runs in a transaction of `transaction` or in an external transaction.
    *
    * A test transaction and the seed of a test fixture are not transactions, unless they run inside one, so that code under test behaves as in production.
    */
@@ -174,7 +220,7 @@ export class TransactionCoordinator {
   }
 
   /**
-   * Tells whether a statement of the current async context runs in a transaction block of PostgreSQL: in a transaction, a test transaction, or the seed of a test fixture, but not in a session outside its transactions.
+   * Tells whether a statement of the current async context runs in a transaction block of PostgreSQL: in a transaction, an external transaction, a test transaction, or the seed of a test fixture, but not in a session outside its transactions.
    *
    * Unlike `isInTransaction`, it counts the levels of the test helpers, since PostgreSQL rejects a statement such as `CREATE INDEX CONCURRENTLY` in any transaction block.
    */

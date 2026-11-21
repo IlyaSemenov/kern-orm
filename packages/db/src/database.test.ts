@@ -6,7 +6,7 @@ import postgres from "postgres"
 
 import type { Database, IsolationLevel } from "./database"
 import { createDatabase, isDatabase } from "./database"
-import type { Driver, SqlStatement } from "./driver"
+import type { Connection, Driver, SqlStatement } from "./driver"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
 import { postgresJsDriver } from "./drivers/postgres-js"
@@ -478,6 +478,106 @@ describePooledPostgres("isolation levels in PostgreSQL", ({ database }) => {
       }
     },
   )
+})
+
+describePooledPostgres("external transactions in PostgreSQL", ({ database }) => {
+  /**
+   * Runs `callback` with a connection in a transaction that the test owns and rolls back, as another library holds its transaction.
+   *
+   * It then runs `afterRollback` on the connection, which still has what a transaction that committed by mistake left in its session, such as a temporary table.
+   */
+  async function withOwnedTransaction<T>(
+    callback: (connection: Connection) => Promise<T>,
+    afterRollback?: (connection: Connection) => Promise<void>,
+  ): Promise<T> {
+    const driver = postgresJsDriver(postgres(process.env.DATABASE_URL!, { max: 1 }))
+    try {
+      const connection = await driver.acquire()
+      try {
+        let result
+        try {
+          await connection.execute(createStatement("BEGIN"))
+          result = await callback(connection)
+        } finally {
+          await connection.execute(createStatement("ROLLBACK"))
+        }
+        await afterRollback?.(connection)
+        return result
+      } finally {
+        await connection.release()
+      }
+    } finally {
+      await driver.close()
+    }
+  }
+
+  const readOwned = async (connection: Connection, text: string) =>
+    (await connection.execute(createStatement(text))).rows.map(row => row[0])
+
+  it("runs the queries of the callback in the transaction of the connection, which its owner rolls back", async () => {
+    let remaining: unknown
+    const seen = await withOwnedTransaction(
+      async connection => {
+        await connection.execute(createStatement("CREATE TEMP TABLE kern_external (id integer)"))
+        const inside = await database.externalTransaction(connection, async () => {
+          await database.query`INSERT INTO kern_external VALUES (1)`
+          return {
+            backend: await database.query`SELECT pg_backend_pid()::text`.get(t.text),
+            rows: await database.query`SELECT id FROM kern_external`.pluck(t.integer),
+          }
+        })
+        return {
+          inside,
+          backend: (await readOwned(connection, "SELECT pg_backend_pid()"))[0],
+          rows: await readOwned(connection, "SELECT id FROM kern_external"),
+        }
+      },
+      async connection => {
+        remaining = await readOwned(connection, "SELECT to_regclass('pg_temp.kern_external')")
+      },
+    )
+
+    expect(seen.inside).toEqual({ backend: seen.backend!, rows: [1] })
+    expect(seen.rows).toEqual(["1"])
+    expect(remaining).toEqual([null])
+  })
+
+  it("rolls back a failed nested transaction to its savepoint, restores the search path, and keeps the external transaction", async () => {
+    const failure = new Error("failure")
+
+    const seen = await withOwnedTransaction(async connection => {
+      await connection.execute(createStatement("CREATE TEMP TABLE kern_external (id integer)"))
+      const initial = (await readOwned(connection, "SELECT current_setting('search_path')"))[0]
+      await database.externalTransaction(connection, async () => {
+        await database.transaction(
+          async () => {
+            await database.query`INSERT INTO kern_external VALUES (1)`
+          },
+          { searchPath: ["pg_temp"] },
+        )
+        const failed = database.transaction(
+          async () => {
+            await database.query`INSERT INTO kern_external VALUES (2)`
+            await database.query`SELECT 1 / 0`
+          },
+          { searchPath: ["pg_temp"] },
+        )
+        await expect(failed).rejects.toMatchObject({ code: "22012" })
+        const thrown = database.transaction(async () => {
+          await database.query`INSERT INTO kern_external VALUES (3)`
+          throw failure
+        })
+        await expect(thrown).rejects.toBe(failure)
+      })
+      return {
+        initial,
+        path: (await readOwned(connection, "SELECT current_setting('search_path')"))[0],
+        rows: await readOwned(connection, "SELECT id FROM kern_external"),
+      }
+    })
+
+    expect(seen).toEqual({ initial: seen.initial, path: seen.initial, rows: ["1"] })
+  })
 })
 
 describePooledPostgres("sessions in PostgreSQL", ({ database }) => {

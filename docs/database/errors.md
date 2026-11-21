@@ -88,12 +88,14 @@ try {
 
 Retry the outermost transaction: a nested transaction rejects with the errors of its statements, while its enclosing transaction rolls back and rejects with `TransactionConnectionError`.
 The error that the transaction rejects with otherwise, such as the error of its callback, is the `cause` of `TransactionConnectionError`.
+A [transaction of another library](./interop#transactions-of-another-library) is ended by that library rather than by the database, so `database.externalTransaction` adds no `TransactionConnectionError` to the `ConnectionError` of a statement.
+Run the transaction of that library again only once the library rolled it back, or when its changes can run twice.
 
 To tell whether the outcome of a failed statement or transaction is unknown because its connection failed, call `isOutcomeUnknown` with its error.
 It returns `true` after a `ConnectionError` outside a transaction, and after a `TransactionConnectionError` of phase `commit`.
 It returns `false` after a `ConnectionError` whose `unsent` is `true`.
 `false` does not mean that the operation applied nothing: a statement that ran may still reject, such as when its result fails to decode.
-Pass it the error of the outermost transaction rather than one that its callback caught: the transaction rolls back after such an error anyway.
+Pass it the error of the outermost transaction rather than one that its callback caught: a transaction of `database.transaction` rolls back after such an error anyway.
 
 ## Failures to release a connection
 

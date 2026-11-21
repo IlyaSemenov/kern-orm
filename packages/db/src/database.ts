@@ -1,4 +1,4 @@
-import type { Driver, DriverResult, SqlStatement } from "./driver"
+import type { Connection, Driver, DriverResult, SqlStatement } from "./driver"
 import type { SqlValue } from "./sql/fragment"
 import { compileFragment, compileScript, sql } from "./sql/fragment"
 import type { InitialSqlQueryState, SqlQuery } from "./sql/query"
@@ -42,16 +42,26 @@ export interface Database extends AsyncDisposable {
    */
   transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T>
   /**
+   * Runs `callback` in an external transaction: a transaction that other code started on `connection` and ends itself, such as a transaction of another library, so that the statements of the callback commit or roll back with it.
+   *
+   * Statements of this database, also of every schema bound to it, join it automatically, as they join a transaction of `transaction`, and `transaction` in the callback starts a nested transaction.
+   * The database sends no `BEGIN`, `COMMIT`, or `ROLLBACK` and does not release the connection.
+   * The transaction must stay open until the returned promise settles, and its owner must roll it back when the promise rejects for a nested transaction that failed to end.
+   * A physical connection must run one external transaction at a time, also through several `ExternalConnection` objects over it: the nested transactions of two that run at once take savepoints of the same connection, so that one can roll back the statements of the other.
+   * It rejects for a driver, inside a transaction or a session of the database, and on a database created with `test: true`.
+   */
+  externalTransaction<T>(connection: ExternalConnection, callback: () => Promise<T>): Promise<T>
+  /**
    * Runs `callback` in the current transaction without a nested transaction, or in a new transaction outside of one.
    *
    * A rejection of a callback that joined a transaction does not undo its changes: the enclosing transaction commits them unless it fails too.
    * A test transaction is not a transaction to join: there, it starts a nested transaction where it starts a transaction in production.
    */
   ensureTransaction<T>(callback: () => Promise<T>): Promise<T>
-  /** Tells whether the code runs in a transaction, not counting test transactions, so that code under test sees what it sees in production. */
+  /** Tells whether the code runs in a transaction, also an external one, not counting test transactions, so that code under test sees what it sees in production. */
   isInTransaction(): boolean
   /**
-   * Tells whether a statement of the code runs in a transaction block of PostgreSQL, counting test transactions, such as to choose a statement that PostgreSQL rejects there, `CREATE INDEX CONCURRENTLY`.
+   * Tells whether a statement of the code runs in a transaction block of PostgreSQL, counting external transactions and test transactions, such as to choose a statement that PostgreSQL rejects there, `CREATE INDEX CONCURRENTLY`.
    *
    * It is `false` in a session outside its transactions.
    */
@@ -91,9 +101,20 @@ export interface Database extends AsyncDisposable {
    * Once `signal` of `options` aborts, such as `AbortSignal.timeout(60_000)`, it makes no more attempts and rejects with the reason of the signal, unless the attempt that is running takes the lock.
    */
   pollLock(key: string, options?: PollLockOptions): Promise<void>
-  /** Rolls back the open test fixtures and closes the connections of the driver once the running transactions and sessions end, including the sessions of `openSession`, which end when they are closed. */
+  /**
+   * Rolls back the open test fixtures and closes the connections of the driver once the running transactions and sessions end, including the sessions of `openSession`, which end when they are closed.
+   *
+   * It waits for an external transaction only when the client of the driver holds the connection of that transaction too.
+   */
   close(): Promise<void>
 }
+
+/**
+ * Connection of an external transaction: it runs the statements and scripts of the database in a transaction that other code started and ends, by the contract of `execute` and `executeScript` of a `Connection`.
+ *
+ * It sends parameters as text without a declared type and returns values as text, runs its statements and scripts one at a time in the order of calls, and rejects with `QueryError` and `ConnectionError`, as a connection of a driver does.
+ */
+export type ExternalConnection = Pick<Connection, "execute" | "executeScript">
 
 /** Isolation level of a transaction in PostgreSQL. */
 export type IsolationLevel = "read committed" | "repeatable read" | "serializable"
@@ -221,6 +242,8 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
     },
     execute: statement => coordinator.execute(statement),
     transaction: (callback, options) => coordinator.transaction(callback, options),
+    externalTransaction: (connection, callback) =>
+      coordinator.externalTransaction(connection, callback),
     ensureTransaction: callback => coordinator.ensureTransaction(callback),
     isInTransaction: () => coordinator.isInTransaction(),
     isInTransactionBlock: () => coordinator.isInTransactionBlock(),

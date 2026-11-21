@@ -40,6 +40,8 @@ await db.$transaction(async () => {
 })
 ```
 
+In a [transaction of another library](./interop#transactions-of-another-library), that library decides what it commits after a query failed.
+
 ## Joining the current transaction
 
 To write a function of several queries that must run in a transaction, while its callers may already run one, pass its body to `$ensureTransaction`: inside a transaction, the callback joins it without a nested transaction; outside of one, it starts a transaction.
@@ -333,3 +335,7 @@ After a [`ConnectionError`](./errors#lost-connections) on its connection, every 
 `close` waits for the callbacks of `run` that are running, so call it outside them.
 Close every open session before `db.$database.close()`, which waits for them.
 `db.$database.openSession` takes the options of `$session` and rejects inside a transaction, as `run` does.
+
+## Transactions of another library
+
+To run queries in a transaction that another library started, such as postgres.js or another ORM, see [Interop with Other Libraries](./interop#transactions-of-another-library).

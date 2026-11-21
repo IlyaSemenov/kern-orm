@@ -47,6 +47,8 @@ await database.transaction(async () => {
 })
 ```
 
+In a [transaction of another library](./interop#transactions-of-another-library), that library decides what it commits after a statement failed.
+
 ## Joining the current transaction
 
 To write a function of several statements that must run in a transaction, while its callers may already run one, pass its body to `database.ensureTransaction`: inside a transaction, the callback joins it without a nested transaction; outside of one, it starts a transaction.
@@ -281,3 +283,7 @@ After a [`ConnectionError`](./errors#lost-connections) on its connection, every 
 `close` waits for the callbacks of `run` that are running, so call it outside them.
 Close every open session before `database.close()`, which waits for them.
 `database.openSession` takes the options of `database.session` and rejects inside a transaction, as `run` does.
+
+## Transactions of another library
+
+To run statements in a transaction that another library started, such as postgres.js or an ORM, see [Interop with Other Libraries](./interop#transactions-of-another-library).

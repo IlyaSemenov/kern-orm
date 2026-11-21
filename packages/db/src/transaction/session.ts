@@ -94,6 +94,7 @@ function createSessionLevel(watch: ConnectionWatch): TransactionLevel {
     depth: 0,
     session: true,
     savepoint: false,
+    external: false,
     inTransaction: false,
     state: "starting",
     child: undefined,

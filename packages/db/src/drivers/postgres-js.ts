@@ -1,5 +1,6 @@
-import type { ISql, Sql } from "postgres"
+import type { ISql, ReservedSql, Sql, TransactionSql } from "postgres"
 
+import type { ExternalConnection } from "../database"
 import type { Driver, DriverResult, SqlStatement, TextValue } from "../driver"
 import { ConnectionError, toDriverError } from "../driver-error"
 
@@ -59,6 +60,66 @@ export interface PostgresJsDriverOptions {
   getNativeParameters?: (statement: SqlStatement) => readonly unknown[] | undefined
 }
 
+/** Returns the values that postgres.js sends for the parameters of a statement. */
+type ParameterConversion = (statement: SqlStatement) => readonly unknown[]
+
+/**
+ * Creates the conversion of the text parameters of a statement for `sql`.
+ *
+ * It declares each text parameter with the type `unknown` (OID 705), whose default serializer of postgres.js keeps the text, so that PostgreSQL infers the type of the parameter from the statement.
+ * When every parameter, also `null`, has a declared type, postgres.js sends the values with the statement instead of waiting for PostgreSQL to describe its parameters, so the statement runs in one round trip.
+ */
+function createTextParameterConversion(sql: ISql): ParameterConversion {
+  return statement => statement.parameters.map(value => sql.typed(value as never, unknownType))
+}
+
+/** Executes `statement` with the parameters of `toParameters` on `client`, a postgres.js client of a pool, a reserved connection, or a transaction, by the contract of a driver. */
+async function execute(
+  client: ISql,
+  statement: SqlStatement,
+  toParameters: ParameterConversion,
+): Promise<DriverResult> {
+  const parameters = toParameters(statement)
+  const rows: TextValue[][] = []
+  let result
+  try {
+    // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
+    result = await client
+      .unsafe(statement.text, parameters as never[], { simple: false })
+      // Keeps the values as PostgreSQL returns them, without the parsers of postgres.js by their types, such as of timestamps into Date.
+      .raw()
+      .forEach(source => {
+        // Convert each row on arrival so that the raw buffers do not accumulate alongside the text rows.
+        const row = new Array<TextValue>(source.length)
+        for (let index = 0; index < source.length; index++) {
+          const value = source[index]!
+          row[index] = value === null ? null : value.toString("utf8")
+        }
+        rows.push(row)
+      })
+  } catch (error) {
+    throw toPostgresJsError(error)
+  }
+  return {
+    command: result.command,
+    // postgres.js gives `null` for a command tag without a number of rows, such as `BEGIN`.
+    count: result.count ?? 0,
+    // The client's metadata already has the public shape; the readonly contract lets it be shared.
+    columns: result.columns,
+    rows,
+  }
+}
+
+/** Executes a script of statements without parameters on `client`, as `execute` executes a statement. */
+async function executeScript(client: ISql, text: string): Promise<void> {
+  try {
+    // The simple protocol of PostgreSQL takes several statements in one query, without parameters; `raw` keeps the parsers of the client from reading the ignored results.
+    await client.unsafe(text).simple().raw()
+  } catch (error) {
+    throw toPostgresJsError(error)
+  }
+}
+
 /**
  * Creates a kern-db driver over a postgres.js client; the client keeps managing its pool.
  *
@@ -74,10 +135,7 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
     )
   }
 
-  // Declares each text parameter with the type `unknown` (OID 705), whose default serializer of postgres.js keeps the text, so that PostgreSQL infers the type of the parameter from the statement.
-  // When every parameter, also `null`, has a declared type, postgres.js sends the values with the statement instead of waiting for PostgreSQL to describe its parameters, so the statement runs in one round trip.
-  const toTextParameters = (statement: SqlStatement): readonly unknown[] =>
-    statement.parameters.map(value => sql.typed(value as never, unknownType))
+  const toTextParameters = createTextParameterConversion(sql)
   const { getNativeParameters } = options
   // Chosen once, so that a driver without the option sends text parameters without checking for it on every statement.
   const toParameters = getNativeParameters
@@ -96,47 +154,6 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
     : toTextParameters
   let closing: Promise<void> | undefined
 
-  async function execute(client: ISql, statement: SqlStatement): Promise<DriverResult> {
-    const parameters = toParameters(statement)
-    const rows: TextValue[][] = []
-    let result
-    try {
-      // postgres.js sends a statement without parameters with the simple protocol, which runs several statements of one text; the extended protocol rejects them before running any.
-      result = await client
-        .unsafe(statement.text, parameters as never[], { simple: false })
-        // Keeps the values as PostgreSQL returns them, without the parsers of postgres.js by their types, such as of timestamps into Date.
-        .raw()
-        .forEach(source => {
-          // Convert each row on arrival so that the raw buffers do not accumulate alongside the text rows.
-          const row = new Array<TextValue>(source.length)
-          for (let index = 0; index < source.length; index++) {
-            const value = source[index]!
-            row[index] = value === null ? null : value.toString("utf8")
-          }
-          rows.push(row)
-        })
-    } catch (error) {
-      throw toPostgresJsError(error)
-    }
-    return {
-      command: result.command,
-      // postgres.js gives `null` for a command tag without a number of rows, such as `BEGIN`.
-      count: result.count ?? 0,
-      // The client's metadata already has the public shape; the readonly contract lets it be shared.
-      columns: result.columns,
-      rows,
-    }
-  }
-
-  async function executeScript(client: ISql, text: string): Promise<void> {
-    try {
-      // The simple protocol of PostgreSQL takes several statements in one query, without parameters; `raw` keeps the parsers of the client from reading the ignored results.
-      await client.unsafe(text).simple().raw()
-    } catch (error) {
-      throw toPostgresJsError(error)
-    }
-  }
-
   /**
    * Throws once closing starts.
    *
@@ -151,7 +168,7 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
   return {
     async execute(statement) {
       assertOpen("execute a statement")
-      return execute(sql, statement)
+      return execute(sql, statement, toParameters)
     },
     async executeScript(text) {
       assertOpen("execute a script")
@@ -167,7 +184,7 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
         throw toDriverError(error, { unsent: true })
       }
       return {
-        execute: statement => execute(connection, statement),
+        execute: statement => execute(connection, statement, toParameters),
         executeScript: text => executeScript(connection, text),
         // postgres.js returns a released connection to the pool once its statements complete and only when ReadyForQuery reports it idle, and closes one in a transaction.
         // A `ConnectionError` leaves the connection open only for a statement that postgres.js refused without breaking the exchange of messages, such as one with too many parameters, whose status it still reads; a lost connection is already closed.
@@ -179,5 +196,28 @@ export function postgresJsDriver(sql: Sql, options: PostgresJsDriverOptions = {}
       closing ??= sql.end()
       return closing
     },
+  }
+}
+
+/**
+ * Creates the connection of an external transaction over the postgres.js client of that transaction, for `database.externalTransaction`: the client that `sql.begin` or `sql.savepoint` passes to its callback, or a reserved connection after its `BEGIN`.
+ *
+ * Its statements and scripts run on the client as those of a driver without `getNativeParameters` do, so the client keeps the transaction, and the connection sends no `BEGIN`, `COMMIT`, or `ROLLBACK` by itself.
+ * It throws a `TypeError` for another client, such as the client of the pool, whose statements would run outside the transaction.
+ * The client must come from a client without transforms of the column names or rows of results, such as of `postgres.camel`, which the client of a transaction gives no options to check.
+ * postgres.js rolls back a transaction of `sql.begin` or a savepoint of `sql.savepoint`, and rejects, when its callback resolves after a statement on its client failed without having rolled it back itself, also a statement of a nested transaction of the database that rolled back; a reserved connection has no such rule.
+ */
+export function postgresJsConnection(sql: TransactionSql | ReservedSql): ExternalConnection {
+  // Only the client of a transaction has `savepoint`, and only a reserved connection `release`.
+  const client = sql as Partial<TransactionSql & ReservedSql> | null | undefined
+  if (typeof client?.savepoint !== "function" && typeof client?.release !== "function") {
+    throw new TypeError(
+      "postgresJsConnection() takes the postgres.js client of a transaction, which sql.begin or sql.savepoint passes to its callback, or a reserved connection on which a transaction has already started: the statements of another client, such as the client of the pool, would run outside the transaction",
+    )
+  }
+  const toParameters = createTextParameterConversion(sql)
+  return {
+    execute: statement => execute(sql, statement, toParameters),
+    executeScript: text => executeScript(sql, text),
   }
 }

@@ -7,10 +7,13 @@ import {
   ConnectionError,
   createDatabase,
   createStatement,
+  identifier,
+  param,
   TransactionConnectionError,
 } from "kern-db"
-import { postgresJsDriver } from "kern-db/postgres-js"
+import { postgresJsConnection, postgresJsDriver } from "kern-db/postgres-js"
 import { describeDriverContract } from "kern-db/testing"
+import * as t from "kern-db/types"
 import type { Sql } from "postgres"
 import postgres from "postgres"
 
@@ -271,6 +274,117 @@ describe.skipIf(!DATABASE_URL)("postgresJsDriver", () => {
           await expect(database.execute(statement)).rejects.toBeInstanceOf(ConnectionError)
         }),
       ).rejects.toBeInstanceOf(TransactionConnectionError)
+    })
+  })
+})
+
+describe.skipIf(!DATABASE_URL)("postgresJsConnection", () => {
+  /** Client whose transactions the tests own, as an application that keeps its transactions in postgres.js. */
+  let sql: Sql
+  /** Database of kern-db of the application, on a pool of its own, apart from the connection of the transactions of `sql`. */
+  let database: Database
+  beforeAll(() => {
+    sql = postgres(DATABASE_URL!, { max: 1 })
+    database = createDatabase({ driver: postgresJsDriver(postgres(DATABASE_URL!, { max: 1 })) })
+  })
+  afterAll(async () => {
+    await database.close()
+    await sql.end()
+  })
+
+  /** Error that rolls back a transaction of `sql.begin` on purpose. */
+  class Rollback extends Error {}
+
+  it("runs the queries of an external transaction in a transaction of sql.begin, which its client rolls back", async () => {
+    let seen: unknown
+    const transaction = sql.begin(async tx => {
+      // The table would outlive a transaction that committed, for the check after the rollback.
+      await tx`CREATE TEMP TABLE kern_external (id integer, tags jsonb)`
+      seen = await database.externalTransaction(postgresJsConnection(tx), async () => {
+        await database.transaction(async () => {
+          await database.query`INSERT INTO kern_external VALUES (${1}, ${param(t.jsonb, ["a"])})`
+        })
+        return await database.query`SELECT id, tags FROM kern_external`
+          .take()
+          .select({ id: t.integer, tags: t.jsonb })
+      })
+      expect([...(await tx`SELECT id FROM kern_external`)]).toEqual([{ id: 1 }])
+      throw new Rollback()
+    })
+
+    await expect(transaction).rejects.toBeInstanceOf(Rollback)
+    expect(seen).toEqual({ id: 1, tags: ["a"] })
+    expect([...(await sql`SELECT to_regclass('pg_temp.kern_external') AS name`)]).toEqual([
+      { name: null },
+    ])
+  })
+
+  it("runs in a savepoint of sql.savepoint on the client of the savepoint", async () => {
+    const rows = await sql.begin(async tx => {
+      await tx`CREATE TEMP TABLE kern_external (id integer) ON COMMIT DROP`
+      await tx
+        .savepoint(async savepoint => {
+          await database.externalTransaction(postgresJsConnection(savepoint), async () => {
+            await database.query`INSERT INTO kern_external VALUES (1)`
+          })
+          throw new Rollback()
+        })
+        .catch((error: unknown) => {
+          if (!(error instanceof Rollback)) {
+            throw error
+          }
+        })
+      return [...(await tx`SELECT id FROM kern_external`)]
+    })
+
+    expect(rows).toEqual([])
+  })
+
+  describe("when the callback of sql.begin resolves", () => {
+    /** Table that outlives the transactions of the tests, so that the connection of the database reads what they committed. */
+    const name = `kern_external_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`
+    const table = identifier("public", name)
+    beforeAll(() => database.script`CREATE TABLE ${table} (id integer)`)
+    afterAll(() => database.script`DROP TABLE IF EXISTS ${table}`)
+
+    const readCommitted = () => database.query`SELECT id FROM ${table} ORDER BY id`.pluck(t.integer)
+
+    it("commits the statements of the callback, without those of a nested transaction that its callback rolled back", async () => {
+      const failure = new Error("failure")
+
+      await sql.begin(async tx => {
+        await database.externalTransaction(postgresJsConnection(tx), async () => {
+          await database.query`INSERT INTO ${table} VALUES (1)`
+          const thrown = database.transaction(async () => {
+            await database.query`INSERT INTO ${table} VALUES (2)`
+            throw failure
+          })
+          await expect(thrown).rejects.toBe(failure)
+        })
+      })
+
+      expect(await readCommitted()).toEqual([1])
+    })
+
+    // postgres.js remembers a failed statement of the client of a transaction, whatever savepoint rolled it back.
+    it("rejects and commits nothing after a nested transaction of the database rolled back a failed statement", async () => {
+      let rows: unknown
+      const transaction = sql.begin(async tx => {
+        await database.externalTransaction(postgresJsConnection(tx), async () => {
+          const failed = database.transaction(async () => {
+            await database.query`INSERT INTO ${table} VALUES (3)`
+            await database.query`SELECT 1 / 0`
+          })
+          await expect(failed).rejects.toMatchObject({ code: "22012" })
+          await database.query`INSERT INTO ${table} VALUES (4)`
+        })
+        // The transaction stays usable until postgres.js ends it.
+        rows = [...(await tx`SELECT id FROM public.${tx(name)} WHERE id > 2`)]
+      })
+
+      await expect(transaction).rejects.toMatchObject({ code: "22012" })
+      expect(rows).toEqual([{ id: 4 }])
+      expect(await readCommitted()).not.toContain(4)
     })
   })
 })

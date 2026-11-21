@@ -93,6 +93,15 @@ A custom driver relies on the contract of `driver.ts`, and on `QueryError`, `Con
 - It throws a `TypeError` at creation for a client with `transform.column.from` or `transform.row.from`, such as of `postgres.camel`: postgres.js applies them also to the results of `.raw()`, which would rename the result columns that kern-db reads values by, or replace the rows.
   It accepts a client with `transform.value.from`, which postgres.js skips for `.raw()`.
 
+`postgresJsConnection` creates the connection of an [external transaction](transactions.md#external-transactions) over the postgres.js client of that transaction: the client that `sql.begin` or `sql.savepoint` passes to its callback, or a reserved connection after its `BEGIN`.
+
+- It runs statements and scripts on that client as the driver without `getNativeParameters` runs them on a reserved connection, with the same text parameters, results, and errors, so a library that keeps its transactions in postgres.js shares them by passing the client of its current transaction.
+- While a savepoint of `sql.savepoint` runs, a connection must be created over the client of that savepoint, the innermost scope that is running: postgres.js also runs the statements of the client of an enclosing scope there, but remembers a failed statement on the client that sent it, so a failure that the savepoint rolled back would still roll back the enclosing scope.
+- It throws a `TypeError` for a client that has neither `savepoint` of the client of a transaction nor `release` of a reserved connection, such as the client of the pool, whose statements would run outside the transaction.
+- The client of a transaction gives no options, so its transforms of column names and rows go unchecked: the client must have none.
+- postgres.js remembers a statement that failed on the client of `sql.begin` or `sql.savepoint` and, when the callback of that scope resolves without having rolled the scope back with `rollback` of its client, rolls the scope back and rejects with the error of the statement, also when a savepoint of SQL text, such as of a nested level of the database, rolled the statement back.
+  So an external transaction on such a client commits only when none of its statements failed; a reserved connection has no such rule.
+
 ## node-postgres
 
 `kern-db/node-postgres` requires `pg` 8 and takes its `Pool`.
