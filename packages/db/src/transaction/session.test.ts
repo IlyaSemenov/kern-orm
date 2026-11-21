@@ -752,7 +752,7 @@ describe("open sessions", () => {
     // Late code of a callback that settled, which calls `run` in the context of the session but outside a running call.
     let runLate: (() => Promise<void>) | undefined
     await session.run(async () => {
-      runLate = AsyncLocalStorage.bind(() => session.run(() => closeLazily as Promise<void>))
+      runLate = AsyncLocalStorage.bind(() => session.run(() => closeLazily))
     })
     let closing: Promise<void> | undefined
     const closeLazily: PromiseLike<void> = {

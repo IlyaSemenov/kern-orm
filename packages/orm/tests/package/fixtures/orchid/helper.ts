@@ -31,9 +31,11 @@ export const joinOrchidTransaction = async (
   orchid: OrchidTransactionSource,
   database: Database,
 ) => {
-  await runInOrchidTransaction(orchid, database, async () => {
-    await database.query`SELECT set_config('kern.package', 'joined', true)`
-  })
+  await runInOrchidTransaction(
+    orchid,
+    database,
+    () => database.query`SELECT set_config('kern.package', 'joined', true)`,
+  )
   const { rows } = await orchid
     .$getAdapter()
     .query<{ value: string }>("SELECT current_setting('kern.package') AS value")

@@ -18,7 +18,7 @@ Queries of a `Db` or a `Database` run in the transaction of the current async co
 ## A query that a callback returns without awaiting it
 
 A query that the callback of a transaction returns without awaiting it, which sends its statement when its `then` is called, runs in the transaction: the level resolves the result of its callback in its context.
-The types of callbacks reject a query returned directly, so only code that types do not check returns one.
+The types of callbacks take a `PromiseLike`, so a callback returns a query directly, such as `() => db.post.insert(values)`.
 
 - Orchid ORM 1.78.61 (pqb 0.73.50) on postgres.js, fails: an outermost `transaction`, started outside an async state of Orchid, resolves the query outside the async context of the transaction, so the query runs on the pool, such as at `read committed` in a transaction started at `serializable`; a nested `transaction` awaits its callback in the state of the enclosing one ([source](https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/adapters/adapter.ts#L765-L807)).
 

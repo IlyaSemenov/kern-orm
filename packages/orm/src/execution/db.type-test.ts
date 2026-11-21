@@ -109,6 +109,37 @@ describe("$query", () => {
   })
 })
 
+describe("$transaction, $ensureTransaction, and $session", () => {
+  test("take a callback that returns a bound query and give the result of the query", () => {
+    expectTypeOf(db.$transaction(() => db.post.select("id"))).toEqualTypeOf<
+      Promise<{ id: string }[]>
+    >()
+    expectTypeOf(db.$ensureTransaction(() => db.post.find("x").get("title"))).toEqualTypeOf<
+      Promise<string>
+    >()
+    expectTypeOf(db.$session(() => db.$query`SELECT 1`)).toEqualTypeOf<Promise<number>>()
+  })
+
+  test("take an async callback and give its result", () => {
+    expectTypeOf(db.$transaction(async () => await db.post.select("id"))).toEqualTypeOf<
+      Promise<{ id: string }[]>
+    >()
+  })
+
+  test("reject a callback that returns an unbound query or a conflict target, which execute nothing, or a value", () => {
+    const pick = (bound: boolean) => (bound ? db.post.select("id") : schema.post.select("id"))
+
+    // @ts-expect-error An unbound query is not thenable.
+    void db.$transaction(() => schema.post.select("id"))
+    // @ts-expect-error A union with an unbound query is not thenable.
+    void db.$ensureTransaction(() => pick(true))
+    // @ts-expect-error A conflict target executes nothing before its action.
+    void db.$session(() => db.post.insert({ id: "x", title: "x" }).onConflict("id"))
+    // @ts-expect-error The result of the callback must fit PromiseLike.
+    void db.$transaction(() => 1)
+  })
+})
+
 describe("relations", () => {
   const comment = defineTable("comment", {
     id: t.uuid,

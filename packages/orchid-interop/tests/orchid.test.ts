@@ -353,7 +353,7 @@ describe.skipIf(!DATABASE_URL)("Orchid adapter", () => {
         await database.query`INSERT INTO ${identifier(schema)}.kern_orchid_item VALUES (${schema})`
         const name = await orchid.$transaction(
           { schema, log: true },
-          // Types reject a callback that returns a query rather than a promise, which untyped code can still pass.
+          // The types of Orchid ORM reject a callback that returns a query rather than a promise, which untyped code can still pass.
           (() => orchid.item.get("name")) as unknown as () => Promise<string>,
         )
         expect(name).toBe(schema)
@@ -498,7 +498,7 @@ describe.skipIf(!DATABASE_URL)("Orchid adapter", () => {
     // Keeps a rejection of the barrier handled when both sides fail before awaiting it.
     ready.promise.catch(() => {})
     let started = 0
-    const run = (name: string, start: typeof database.transaction) =>
+    const run = (name: string, start: <T>(callback: () => Promise<T>) => Promise<T>) =>
       start(async () => {
         await database.query`SELECT set_config('kern.test_owner', ${name}, true)`
         if (++started === 2) ready.resolve()
@@ -530,7 +530,7 @@ describe.skipIf(!DATABASE_URL)("Orchid adapter", () => {
     // A suffix of the run keeps concurrent runs of the test from waiting for the names of each other's schemas.
     const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 12)
     const readName = () => orchid.item.get("name")
-    const run = (owner: string, start: typeof database.transaction) => {
+    const run = (owner: string, start: <T>(callback: () => Promise<T>) => Promise<T>) => {
       const schema = `kern_orchid_${owner}_${suffix}`
       const nested = `${schema}_nested`
       return orchid

@@ -21,6 +21,7 @@ await database.transaction(async () => {
 ```
 
 Every statement in the callback joins the transaction automatically, including statements in called functions.
+A callback can also return a query without `async`, such as ``() => database.query`UPDATE form SET published = true WHERE id = ${formId}` ``, and its statement runs in the transaction.
 
 A statement started from the callback after the transaction has finished fails instead of running outside of it.
 

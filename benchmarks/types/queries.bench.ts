@@ -249,6 +249,8 @@ bench.baseline(async () => {
         })),
       })),
     }))
+  await storeDb.$transaction(async () => storeDb.brand.where({ name: "baseline" }).pluck("id"))
+  await storeDb.$transaction(() => storeDb.brand.where({ name: "baseline" }).pluck("id"))
 })
 
 bench("bound query", async () => {
@@ -710,3 +712,11 @@ bench("delete with get of a callback", async () => {
 bench("unbound delete", async () => {
   await tenantDb.$execute(formsSchema.form.where({ name: "x" }).delete().pluck("id"))
 }).types([252, "instantiations"])
+
+bench("transaction of an async callback", async () => {
+  await tenantDb.$transaction(async () => tenantDb.form.where({ published: true }).pluck("name"))
+}).types([394, "instantiations"])
+
+bench("transaction of a callback that returns a query", async () => {
+  await tenantDb.$transaction(() => tenantDb.form.where({ published: true }).pluck("name"))
+}).types([526, "instantiations"])

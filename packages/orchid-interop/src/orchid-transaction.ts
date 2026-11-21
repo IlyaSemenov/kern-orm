@@ -27,7 +27,7 @@ const testedVersions = "Orchid ORM 1.78.61 (pqb 0.73.50) on postgres.js 4"
 export async function runInOrchidTransaction<T>(
   orchid: OrchidTransactionSource,
   database: Database,
-  callback: () => Promise<T>,
+  callback: () => PromiseLike<T>,
 ): Promise<T> {
   const scope = readTransactionClient(orchid)
   let failure: { error: unknown } | undefined

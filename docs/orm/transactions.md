@@ -13,6 +13,7 @@ await db.$transaction(async () => {
 ```
 
 Every query in the callback joins the transaction automatically, including queries in called functions.
+A callback can also return a query without `async`, such as `() => db.form.find(formId).update({ published: true })`, and the query runs in the transaction.
 The transaction belongs to the database, so it also covers [other schemas](./multiple-schemas) bound to it.
 
 A query started from the callback after the transaction has finished fails instead of running outside of it.

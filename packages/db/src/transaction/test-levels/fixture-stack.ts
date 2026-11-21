@@ -63,7 +63,7 @@ export class TestFixtureStack {
    * The `close` of a refused fixture resolves once the earlier changes of the stack end.
    */
   start<T>(
-    seed: () => Promise<T>,
+    seed: () => PromiseLike<T>,
     refusal: Error | undefined,
     options: TestFixtureOptions | undefined,
   ): PendingTestFixture<T> {
@@ -262,7 +262,10 @@ export class TestFixtureStack {
    * The savepoint has its own context, so late code of `seed` cannot reach the fixture after it ends.
    * Its statements and transactions take turns, as in a test transaction.
    */
-  async #seedFixture<T>(fixture: TransactionLevel, seed: () => Promise<T>): Promise<Outcome<T>> {
+  async #seedFixture<T>(
+    fixture: TransactionLevel,
+    seed: () => PromiseLike<T>,
+  ): Promise<Outcome<T>> {
     try {
       const level = await startNestedLevel(fixture, false)
       level.turns = new TurnQueue()

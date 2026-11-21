@@ -716,11 +716,10 @@ describe("function that returns the database", () => {
     const query = db.post.select("id")
 
     await expect(
-      // Types reject a callback that returns a query rather than a promise, which untyped code can still pass.
-      db.$transaction((() => {
+      db.$transaction(() => {
         current = second
         return query
-      }) as unknown as () => Promise<unknown>),
+      }),
     ).rejects.toEqual(new Error(anotherDatabase))
 
     expect(statements).toEqual([])

@@ -24,7 +24,7 @@ export interface OpenedTestTransaction extends AsyncDisposable {
    * A transaction of a callback runs as a nested transaction that the queries and transactions of the other callbacks wait for.
    * It rejects without calling `callback` once the test transaction is closed, and inside a transaction.
    */
-  run<T>(callback: () => Promise<T>): Promise<T>
+  run<T>(callback: () => PromiseLike<T>): Promise<T>
   /** Whether the test transaction runs callbacks: it is `false` from the start of its closing, such as when a later test transaction in its fixture rolls it back. */
   readonly isOpen: boolean
   /** Rolls back the test transaction; the later queries of its callbacks fail, and closing it again returns the same closing. */
@@ -101,7 +101,7 @@ export interface TestHelpers {
    * A query of the callback outside a transaction runs in a nested transaction of its own, so that a failed query undoes only itself, as in production.
    * Inside an existing transaction, it starts a nested transaction that always rolls back.
    */
-  testTransaction<T>(callback: () => Promise<T>, options?: TestTransactionOptions): Promise<T>
+  testTransaction<T>(callback: () => PromiseLike<T>, options?: TestTransactionOptions): Promise<T>
   /**
    * Opens a test fixture for the tests of the current `describe` block or test file and runs `seed` in it, such as migrations or data shared by the tests.
    *
@@ -110,7 +110,7 @@ export interface TestHelpers {
    * Test fixtures nest: a new one opens inside the innermost open one, and test transactions run in the innermost one.
    * A fixture whose `seed` rejects rolls back and closes.
    */
-  useTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions): TestFixture<T>
+  useTestFixture<T>(seed: () => PromiseLike<T>, options?: TestFixtureOptions): TestFixture<T>
   /**
    * Wraps the `test` function of `node:test` or `bun:test` so that every test it declares runs in a test transaction.
    *
@@ -161,7 +161,7 @@ export function createTestHelpers(database: Database, hooks: TestHooks): TestHel
   return {
     testTransaction: (callback, options) => coordinator.testTransaction(callback, options),
     wrapTest: test => wrapTestFunction(test, undefined, false, runTestInTransaction),
-    useTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions) {
+    useTestFixture<T>(seed: () => PromiseLike<T>, options?: TestFixtureOptions) {
       let pending: PendingTestFixture<T> | undefined
       let fixture: OpenedTestFixture<T> | undefined
       hooks.before(async () => {
@@ -210,7 +210,7 @@ export function createTestHelpers(database: Database, hooks: TestHooks): TestHel
  */
 export function openTestFixture<T>(
   database: Database,
-  seed: () => Promise<T>,
+  seed: () => PromiseLike<T>,
   options?: TestFixtureOptions,
 ): Promise<OpenedTestFixture<T>> {
   return getCoordinator(database).createTestFixture(seed, options)
