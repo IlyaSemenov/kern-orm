@@ -279,10 +279,10 @@ async function checkIsolation(
 /**
  * Calls `callback` of a level and returns the promise of its result; called in the async context of the level, such as by `run` of its storage.
  *
- * A callback that types do not check, such as one behind `any` or of JavaScript, may return a thenable that is not a promise, such as a query, which sends its statement when its `then` is called.
+ * A callback may return a thenable that is not a promise, such as a query, which sends its statement when its `then` is called.
  * Resolving it here calls its `then` in the context of the level; code that awaits the callback from outside would call it in a context of its own, and the statement would run outside the level.
  */
-export function resolveCallback<T>(callback: () => Promise<T>): Promise<T> {
+export function resolveCallback<T>(callback: () => PromiseLike<T>): Promise<T> {
   // `Promise.resolve` returns a promise of the `Promise` constructor of this realm as it is, so a callback that returns one costs nothing more.
   return Promise.resolve(callback())
 }
@@ -296,7 +296,7 @@ export function resolveCallback<T>(callback: () => Promise<T>): Promise<T> {
 export async function runLevel<T>(
   storage: AsyncLocalStorage<TransactionLevel>,
   level: TransactionLevel,
-  callback: () => Promise<T>,
+  callback: () => PromiseLike<T>,
   commits: boolean,
   signal?: AbortSignal,
 ): Promise<Outcome<T>> {
@@ -374,7 +374,7 @@ export async function runLevel<T>(
 export async function runStarted<T>(
   storage: AsyncLocalStorage<TransactionLevel>,
   level: TransactionLevel,
-  callback: () => Promise<T>,
+  callback: () => PromiseLike<T>,
   commits: boolean,
   signal?: AbortSignal,
 ): Promise<T> {

@@ -140,7 +140,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    * Inside an existing transaction, it starts a nested transaction.
    */
   $transaction<Result>(
-    callback: () => Promise<Result>,
+    callback: () => PromiseLike<Result>,
     options?: TransactionOptions,
   ): Promise<Result>
   /**
@@ -149,7 +149,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    * A rejection of a callback that joined a transaction does not undo its changes: the enclosing transaction commits them unless it fails too.
    * A test transaction is not a transaction to join: there, it starts a nested transaction where it starts a transaction in production.
    */
-  $ensureTransaction<Result>(callback: () => Promise<Result>): Promise<Result>
+  $ensureTransaction<Result>(callback: () => PromiseLike<Result>): Promise<Result>
   /** Tells whether the code runs in a transaction of the database, not counting test transactions, so that code under test sees what it sees in production. */
   $isInTransaction(): boolean
   /**
@@ -165,7 +165,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    * A rejection of `callback` undoes nothing.
    * It rejects inside a transaction, also a test transaction, inside another session, and on a database created with `test: true`.
    */
-  $session<Result>(callback: () => Promise<Result>, options?: SessionOptions): Promise<Result>
+  $session<Result>(callback: () => PromiseLike<Result>, options?: SessionOptions): Promise<Result>
   /**
    * Takes the advisory lock of `key` until the transaction of the database ends, waiting while another transaction or session holds it, such as to keep processes from running the same job at once.
    *
@@ -330,7 +330,7 @@ interface DatabaseResolver {
   /** Executor of the queries of SQL text of the `Db`, which resolves the database when a query executes rather than when it is built. */
   executor: Pick<Database, "execute">
   /** Wraps the callback of `$transaction`, `$ensureTransaction`, or `$session` of the `Db` on `database`, so that `resolveDatabase` in it rejects another database. */
-  track<Result>(database: Database, callback: () => Promise<Result>): () => Promise<Result>
+  track<Result>(database: Database, callback: () => PromiseLike<Result>): () => PromiseLike<Result>
 }
 
 /**
@@ -371,8 +371,8 @@ function createDatabaseResolver(database: Database | (() => Database)): Database
 /**
  * Calls `callback` of a transaction or a session and returns the promise of its result; called in the async context that tracks the database of the callback.
  *
- * A callback that types do not check may return a thenable that is not a promise, such as a query, which executes when its `then` is called; resolving it here executes it in that context, where another database is rejected.
+ * A callback may return a thenable that is not a promise, such as a query, which executes when its `then` is called; resolving it here executes it in that context, where another database is rejected.
  */
-function resolveCallback<Result>(callback: () => Promise<Result>): Promise<Result> {
+function resolveCallback<Result>(callback: () => PromiseLike<Result>): Promise<Result> {
   return Promise.resolve(callback())
 }

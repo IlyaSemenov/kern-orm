@@ -14,7 +14,9 @@
 - Nested transactions use savepoints on the transaction connection, and every level run by a callback, the transaction or a savepoint, has its own context; a statement of a finished level fails and never runs in an enclosing level or on the pool.
   A level stops accepting statements before its `COMMIT`, `ROLLBACK`, `RELEASE`, or `ROLLBACK TO`.
 - The result of the callback of a level, also of `run` of an [open session](#open-sessions) or an [open test transaction](testing.md#open-test-transactions), resolves in the context of the level, so that a thenable that is not a promise has its `then` called there ([decision](../decisions/transactions/thenables-of-callbacks.md)).
-  A query of the database sends its statement when its `then` is called, so one that the callback returns without awaiting it runs in the level; the types of callbacks take a promise, so only code that types do not check returns a query directly.
+  A query of the database sends its statement when its `then` is called, so one that the callback returns without awaiting it runs in the level.
+- Every callback of a level, also the seed of a test fixture, has the type `() => PromiseLike<T>`, so that a callback returns a query directly, such as `() => db.post.insert(values)`, and a result that does not fit `PromiseLike`, such as an unbound query, which would execute nothing, is a type error ([decision](../decisions/transactions/callback-types.md)).
+  A transaction, a session, and `run` return `Promise<T>`, and a test fixture has the result of its seed as its `data`.
 - A level has at most one active nested level, reserved before its `SAVEPOINT` is sent, and a level run by a callback rejects its own statements and another nested level while it has one, since PostgreSQL would run them inside the nested savepoint; a test fixture preempts it instead.
 - A [level of the test helpers](testing.md#test-transactions) that code runs in makes its statements and nested levels take turns instead of rejecting them while it has a nested level: each one waits until those that came before it end, and once the level ends, the waiters reject at once.
 - Closing a level closes all levels nested in it at once; a level whose callback settles while its nested level is still active closes that level and rejects, except that a [level of the test helpers](testing.md#test-transactions) whose callback resolves waits for it.
@@ -173,7 +175,6 @@
 
 ## Open questions
 
-- Callbacks that return a query: the types of callbacks take `() => Promise<T>`, so `db.$transaction(() => db.post.insert(values))` needs `async`, although the query runs in the level; decide whether callbacks take a `PromiseLike`.
 - External transactions of the tests of their owner: an external transaction counts as a transaction of `transaction`, so code under test that takes a lock or joins a transaction in a test transaction of its owner does not start a transaction of its own where it does in production; decide whether `externalTransaction` takes whether its transaction counts.
 - `$externalTransaction` of a `Db`: a `Db` has none, so code that has only a `Db` runs an external transaction through `$database`, and a `Db` over a function that returns its database does not check that database in the callback, as it does in that of `$transaction`.
 - Sessions inside a session: `session` rejects there, so code that starts a session cannot run in another one; decide whether it joins the enclosing session, with settings of its own that it restores.

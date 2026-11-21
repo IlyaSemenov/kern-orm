@@ -129,7 +129,7 @@ export class TransactionCoordinator {
    * A failed cleanup after an error rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
    * A transaction that it starts rolls back instead of `COMMIT` after a `ConnectionError` on its connection, and when it rejects after such an error, also of `COMMIT`, it rejects with `TransactionConnectionError` of the phase of the failure, whose `cause` is the error it would reject with otherwise.
    */
-  transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T> {
+  transaction<T>(callback: () => PromiseLike<T>, options?: TransactionOptions): Promise<T> {
     const levelOptions = options && {
       settings: getLevelSettings(options),
       isolation: options.isolation,
@@ -158,7 +158,7 @@ export class TransactionCoordinator {
    */
   async externalTransaction<T>(
     connection: ExternalConnection,
-    callback: () => Promise<T>,
+    callback: () => PromiseLike<T>,
   ): Promise<T> {
     if (
       typeof connection?.execute !== "function" ||
@@ -197,7 +197,7 @@ export class TransactionCoordinator {
    * Joining starts no savepoint, so a rejection of `callback` does not undo its changes.
    * It rejects without calling `callback` when the current level accepts no statements, as a nested transaction would.
    */
-  async ensureTransaction<T>(callback: () => Promise<T>): Promise<T> {
+  async ensureTransaction<T>(callback: () => PromiseLike<T>): Promise<T> {
     const level = this.#storage.getStore()
     if (!level?.inTransaction) {
       return this.transaction(callback)
@@ -237,7 +237,7 @@ export class TransactionCoordinator {
    * A rejection of `callback` undoes nothing.
    * After a `ConnectionError` on its connection, the session accepts no more statements.
    */
-  session<T>(callback: () => Promise<T>, options?: SessionOptions): Promise<T> {
+  session<T>(callback: () => PromiseLike<T>, options?: SessionOptions): Promise<T> {
     const refusal = this.#getSessionRefusal("start")
     return refusal ? Promise.reject(refusal) : this.#runSession(callback, getLevelSettings(options))
   }
@@ -350,7 +350,7 @@ export class TransactionCoordinator {
    * A failure to start or end the level after the abort suppresses the reason in a `SuppressedError`.
    * Aborted while it waits for its turn in the fixture stack or for a connection, it rejects at once; after the abort, it never calls `callback`.
    */
-  testTransaction<T>(callback: () => Promise<T>, options?: TestTransactionOptions): Promise<T> {
+  testTransaction<T>(callback: () => PromiseLike<T>, options?: TestTransactionOptions): Promise<T> {
     const signal = options?.signal
     if (!this.test) {
       return Promise.reject(
@@ -405,7 +405,7 @@ export class TransactionCoordinator {
    * A fixture whose `seed` rejects rolls back and closes.
    */
   createTestFixture<T>(
-    seed: () => Promise<T>,
+    seed: () => PromiseLike<T>,
     options?: TestFixtureOptions,
   ): Promise<OpenedTestFixture<T>> {
     return this.startTestFixture(seed, options).fixture
@@ -417,7 +417,10 @@ export class TransactionCoordinator {
    * Closing before the fixture opens rejects the opening without waiting for `seed` and rolls the fixture back, so a fixture or test transaction started after `close` never nests in it, even when its `seed` never settles.
    * Closing an open fixture also closes the fixtures opening in it.
    */
-  startTestFixture<T>(seed: () => Promise<T>, options?: TestFixtureOptions): PendingTestFixture<T> {
+  startTestFixture<T>(
+    seed: () => PromiseLike<T>,
+    options?: TestFixtureOptions,
+  ): PendingTestFixture<T> {
     return this.#fixtures.start(seed, this.#getFixtureRefusal(), options)
   }
 
@@ -489,7 +492,7 @@ export class TransactionCoordinator {
    * A transaction of `transaction` whose connection fails rejects with `TransactionConnectionError`.
    */
   async #runRoot<T>(
-    callback: () => Promise<T>,
+    callback: () => PromiseLike<T>,
     commits: boolean,
     options: LevelOptions = noLevelOptions,
   ): Promise<T> {
@@ -526,7 +529,7 @@ export class TransactionCoordinator {
    */
   async #runInSession<T>(
     session: TransactionLevel,
-    callback: () => Promise<T>,
+    callback: () => PromiseLike<T>,
     options: LevelOptions = noLevelOptions,
   ): Promise<T> {
     const unavailable = createUnavailableError(session, "start a transaction")
@@ -546,7 +549,7 @@ export class TransactionCoordinator {
    */
   async #runTransaction<T>(
     level: TransactionLevel,
-    callback: () => Promise<T>,
+    callback: () => PromiseLike<T>,
     commits: boolean,
     { signal, settings, isolation }: LevelOptions,
   ): Promise<Outcome<T>> {
@@ -579,7 +582,7 @@ export class TransactionCoordinator {
    * A session whose settings fail to apply rejects without calling `callback`.
    */
   async #runSession<T>(
-    callback: () => Promise<T>,
+    callback: () => PromiseLike<T>,
     settings: readonly LevelSetting[] | undefined,
   ): Promise<T> {
     const level = await startSession(await this.driver.acquire(), settings, this.#onReleaseError)
@@ -593,7 +596,7 @@ export class TransactionCoordinator {
 
   async #runNested<T>(
     parent: TransactionLevel,
-    callback: () => Promise<T>,
+    callback: () => PromiseLike<T>,
     commits: boolean,
     options?: LevelOptions,
   ): Promise<T> {

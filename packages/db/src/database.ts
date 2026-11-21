@@ -40,7 +40,7 @@ export interface Database extends AsyncDisposable {
    *
    * Inside an existing transaction, it starts a nested transaction.
    */
-  transaction<T>(callback: () => Promise<T>, options?: TransactionOptions): Promise<T>
+  transaction<T>(callback: () => PromiseLike<T>, options?: TransactionOptions): Promise<T>
   /**
    * Runs `callback` in an external transaction: a transaction that other code started on `connection` and ends itself, such as a transaction of another library, so that the statements of the callback commit or roll back with it.
    *
@@ -50,14 +50,14 @@ export interface Database extends AsyncDisposable {
    * A physical connection must run one external transaction at a time, also through several `ExternalConnection` objects over it: the nested transactions of two that run at once take savepoints of the same connection, so that one can roll back the statements of the other.
    * It rejects for a driver, inside a transaction or a session of the database, and on a database created with `test: true`.
    */
-  externalTransaction<T>(connection: ExternalConnection, callback: () => Promise<T>): Promise<T>
+  externalTransaction<T>(connection: ExternalConnection, callback: () => PromiseLike<T>): Promise<T>
   /**
    * Runs `callback` in the current transaction without a nested transaction, or in a new transaction outside of one.
    *
    * A rejection of a callback that joined a transaction does not undo its changes: the enclosing transaction commits them unless it fails too.
    * A test transaction is not a transaction to join: there, it starts a nested transaction where it starts a transaction in production.
    */
-  ensureTransaction<T>(callback: () => Promise<T>): Promise<T>
+  ensureTransaction<T>(callback: () => PromiseLike<T>): Promise<T>
   /** Tells whether the code runs in a transaction, also an external one, not counting test transactions, so that code under test sees what it sees in production. */
   isInTransaction(): boolean
   /**
@@ -73,7 +73,7 @@ export interface Database extends AsyncDisposable {
    * A rejection of `callback` undoes nothing.
    * It rejects inside a transaction, also a test transaction, inside another session, and on a database created with `test: true`.
    */
-  session<T>(callback: () => Promise<T>, options?: SessionOptions): Promise<T>
+  session<T>(callback: () => PromiseLike<T>, options?: SessionOptions): Promise<T>
   /**
    * Opens a session that the callbacks of its `run` share until it is closed, such as to hold a lock of `tryLock` on one connection for as long as a process works.
    *
@@ -159,7 +159,7 @@ export interface OpenedSession extends AsyncDisposable {
    * While the session is closing, it rejects too, unless a callback that is still running calls it.
    * `tryLock` of a key that the session holds answers without a statement, so it does not tell that the connection is lost, and the lock with it; a statement in the session does.
    */
-  run<T>(callback: () => Promise<T>): Promise<T>
+  run<T>(callback: () => PromiseLike<T>): Promise<T>
   /**
    * Closes the session: waits for the callbacks of `run` that are running, then releases its locks, restores its settings, and returns its connection to the pool.
    *
