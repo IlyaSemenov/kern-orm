@@ -10,7 +10,15 @@ import { ConnectionError, QueryError } from "../driver-error"
 
 import { TransactionConnectionError } from "./connection-loss"
 import { TransactionCoordinator } from "./coordinator"
-import { createTestCoordinator, failOn, holdOn, markHandled, run, settleCallbacks } from "./testing"
+import {
+  createTestCoordinator,
+  failOn,
+  holdOn,
+  markHandled,
+  run,
+  runLazily,
+  settleCallbacks,
+} from "./testing"
 
 const readSetting = "SELECT current_setting($1)"
 const setSetting = "SELECT set_config($1, $2, false)"
@@ -44,6 +52,15 @@ it("runs statements and scripts of the callback on one reserved connection outsi
   ])
   expect(scripts).toEqual([{ connection: 1, script: "script" }])
   expect(releases).toEqual([{ connection: 1 }])
+})
+
+it("runs on its connection a statement that the callback returns unsent in a thenable, such as a query", async () => {
+  const { driver, statements } = createRecordingDriver()
+  const coordinator = new TransactionCoordinator(driver)
+
+  await coordinator.session(runLazily(coordinator, "inside"))
+
+  expect(statements).toEqual([{ connection: 1, text: "inside", parameters: [] }])
 })
 
 it("rejects with the error of the callback without a statement that would undo its changes", async () => {
@@ -724,6 +741,37 @@ describe("open sessions", () => {
       { connection: 1, text: "nested", parameters: [] },
     ])
     expect(releases).toEqual([{ connection: 1 }])
+  })
+
+  it("resolves a thenable that a callback of run returns, such as a query, in the session and in the call", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    const session = await coordinator.openSession()
+    await session.run(runLazily(coordinator, "inside"))
+    // Late code of a callback that settled, which calls `run` in the context of the session but outside a running call.
+    let runLate: (() => Promise<void>) | undefined
+    await session.run(async () => {
+      runLate = AsyncLocalStorage.bind(() => session.run(() => closeLazily as Promise<void>))
+    })
+    let closing: Promise<void> | undefined
+    const closeLazily: PromiseLike<void> = {
+      // oxlint-disable-next-line unicorn/no-thenable -- a thenable that acts in `then`, as a query does
+      then(onFulfilled, onRejected) {
+        closing = markHandled(session.close())
+        return Promise.resolve().then(onFulfilled, onRejected)
+      },
+    }
+    await runLate!()
+
+    // Its `then` was called inside the call of `run`, which a closing would wait for.
+    await expect(closing!).rejects.toEqual(
+      new Error(
+        "Cannot close an open session inside a running callback of its run: the closing waits for that callback",
+      ),
+    )
+    await session.close()
+    expect(statements).toEqual([{ connection: 1, text: "inside", parameters: [] }])
   })
 
   it("rejects run without calling the callback, and a late statement of a callback, once it is closed", async () => {

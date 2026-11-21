@@ -11,6 +11,7 @@ import {
   holdOn,
   markHandled,
   run,
+  runLazily,
   seedNothing,
   settleCallbacks,
 } from "../testing"
@@ -43,6 +44,22 @@ it("runs each statement of a callback in a savepoint of its own, nested in the i
     "ROLLBACK",
   ])
   expect(releases).toEqual([{ connection: 1 }])
+})
+
+it("runs a statement that a callback returns unsent in a thenable, such as a query", async () => {
+  const { coordinator, statements } = createTestCoordinator()
+
+  const opened = await coordinator.openTestTransaction()
+  await opened.run(runLazily(coordinator, "query"))
+  await opened.close()
+
+  expect(texts(statements)).toEqual([
+    "BEGIN",
+    "SAVEPOINT kern_1",
+    "query",
+    "RELEASE SAVEPOINT kern_1",
+    "ROLLBACK",
+  ])
 })
 
 it("rolls back a failed statement to its own savepoint, so the next statement runs", async () => {

@@ -64,6 +64,7 @@
     It rejects a result that is not a database by `isDatabase`, such as `undefined` of a missing provider.
   - The function must return the same database within a transaction or session.
     Inside the callback of `$transaction`, `$ensureTransaction`, or `$session` of the `Db`, also of `$ensureTransaction` that joins a transaction of the database, a call for which the function returns another database rejects; outside such a callback, such as in a transaction of the database or of another `Db`, it is not checked ([decision](../decisions/schemas/database-of-the-current-context.md)).
+    The same check applies when the callback returns a query directly.
     `DbOf` types the `Db` of a schema, and a `Db` of every schema that includes it fits that type, since the types of entries and relations accept more tables and relations, so code shared by several schemas takes such a `Db` as a parameter.
     Comparing two `Db` types compares the states of the queries of their entries, since a query is covariant in its state; the methods of a `Db` and a schema are generic or typed by `this`, so that comparing them compares no queries.
 

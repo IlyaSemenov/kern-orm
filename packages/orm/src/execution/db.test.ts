@@ -707,6 +707,25 @@ describe("function that returns the database", () => {
     ])
   })
 
+  it("rejects another database for a query that the callback of a transaction returns without awaiting it", async () => {
+    const first = createDatabase({ driver: createRecordingDriver().driver })
+    const { driver, statements } = createRecordingDriver()
+    const second = createDatabase({ driver })
+    let current = first
+    const db = bindSchema(schema, () => current)
+    const query = db.post.select("id")
+
+    await expect(
+      // Types reject a callback that returns a query rather than a promise, which untyped code can still pass.
+      db.$transaction((() => {
+        current = second
+        return query
+      }) as unknown as () => Promise<unknown>),
+    ).rejects.toEqual(new Error(anotherDatabase))
+
+    expect(statements).toEqual([])
+  })
+
   it("rejects another database in $ensureTransaction that joins a transaction of the database, but not outside its callback", async () => {
     const { db, provide, defaultDatabase, providedStatements } = connectProvided()
     const select = 'SELECT "post"."id" AS "id" FROM "post" AS "post"'

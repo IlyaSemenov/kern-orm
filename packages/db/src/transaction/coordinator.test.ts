@@ -14,6 +14,7 @@ import {
   holdOn,
   markHandled,
   run,
+  runLazily,
   seedNothing,
   settleCallbacks,
 } from "./testing"
@@ -34,6 +35,26 @@ it("runs statements of the callback on the transaction connection", async () => 
     { connection: 1, text: "COMMIT", parameters: [] },
   ])
   expect(releases).toEqual([{ connection: 1 }])
+})
+
+// Orchid ORM 1.78.61 on postgres.js ran on the pool a query that the callback of an outermost $transaction returned without awaiting it: https://github.com/romeerez/orchid-orm/blob/pqb%400.73.50/packages/pqb/src/adapters/adapter.ts#L765-L807
+it("runs in the transaction a statement that the callback returns unsent in a thenable, such as a query", async () => {
+  const { driver, statements } = createRecordingDriver()
+  const coordinator = new TransactionCoordinator(driver)
+
+  await coordinator.transaction(() => coordinator.transaction(runLazily(coordinator, "nested")))
+  await coordinator.ensureTransaction(runLazily(coordinator, "started"))
+
+  expect(statements).toEqual([
+    { connection: 1, text: "BEGIN", parameters: [] },
+    { connection: 1, text: "SAVEPOINT kern_1", parameters: [] },
+    { connection: 1, text: "nested", parameters: [] },
+    { connection: 1, text: "RELEASE SAVEPOINT kern_1", parameters: [] },
+    { connection: 1, text: "COMMIT", parameters: [] },
+    { connection: 2, text: "BEGIN", parameters: [] },
+    { connection: 2, text: "started", parameters: [] },
+    { connection: 2, text: "COMMIT", parameters: [] },
+  ])
 })
 
 it("rolls back when the callback rejects", async () => {
@@ -1281,6 +1302,14 @@ describe("external transactions", () => {
     expect(releases).toEqual([])
   })
 
+  it("runs on the connection a statement that the callback returns unsent in a thenable, such as a query", async () => {
+    const { coordinator, connection, statements } = await createExternal()
+
+    await coordinator.externalTransaction(connection, runLazily(coordinator, "inside"))
+
+    expect(statements).toEqual([{ connection: 1, text: "inside", parameters: [] }])
+  })
+
   it("rejects with the error of the callback without a statement", async () => {
     const { coordinator, connection, statements } = await createExternal()
     const failure = new Error("failure")
@@ -1548,6 +1577,28 @@ describe("statements of a test transaction", () => {
       "SAVEPOINT kern_1",
       "query 1",
       "RELEASE SAVEPOINT kern_1",
+      "SAVEPOINT kern_1",
+      "query 2",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+    ])
+  })
+
+  it("runs a statement that its callback returns unsent in a thenable, such as a query, also with a signal", async () => {
+    const { coordinator, statements } = createTestCoordinator()
+
+    await coordinator.testTransaction(runLazily(coordinator, "query 1"))
+    await coordinator.testTransaction(runLazily(coordinator, "query 2"), {
+      signal: new AbortController().signal,
+    })
+
+    expect(texts(statements)).toEqual([
+      "BEGIN",
+      "SAVEPOINT kern_1",
+      "query 1",
+      "RELEASE SAVEPOINT kern_1",
+      "ROLLBACK",
+      "BEGIN",
       "SAVEPOINT kern_1",
       "query 2",
       "RELEASE SAVEPOINT kern_1",
