@@ -41,7 +41,7 @@
     "@tsconfig/bun": "^1.0.12",
     "@types/bun": "^1.4.4",
     "@types/node": "^24",
-    "changesets-release": "^2.1.1",
+    "changesets-release": "^2.3.0",
     "esbuild": "^0.28.2",
     "jest-extended": "^7.0.0",
     "oxfmt": "^0.78.0",
