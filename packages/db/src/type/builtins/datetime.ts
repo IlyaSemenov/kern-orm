@@ -64,7 +64,7 @@ export function normalizeTimestamptz(text: string): string {
   }
   const match = timestamptzPattern.exec(text)
   if (!match) {
-    throw new Error(`Unsupported timestamptz value "${text}"; kern-db expects DateStyle ISO`)
+    throw createDateStyleError("timestamptz", text)
   }
   const offset =
     (match[8] === "-" ? -1 : 1) *
@@ -88,7 +88,7 @@ export function normalizeTimestamp(text: string): string {
   }
   const match = timestampPattern.exec(text)
   if (!match) {
-    throw new Error(`Unsupported timestamp value "${text}"; kern-db expects DateStyle ISO`)
+    throw createDateStyleError("timestamp", text)
   }
   return `${formatYear(toAstronomicalYear(match[1]!, match[5]))}${match[2]}T${match[3]}.${padFraction(match[4])}`
 }
@@ -100,7 +100,7 @@ export function normalizeDate(text: string): string {
   }
   const match = datePattern.exec(text)
   if (!match) {
-    throw new Error(`Unsupported date value "${text}"; kern-db expects DateStyle ISO`)
+    throw createDateStyleError("date", text)
   }
   return `${formatYear(toAstronomicalYear(match[1]!, match[3]))}${match[2]}`
 }
@@ -112,6 +112,13 @@ export function normalizeTime(text: string): string {
     throw new Error(`Unsupported time value "${text}"`)
   }
   return `${match[1]}.${padFraction(match[2])}`
+}
+
+/** Creates the error of a value of `type` in an output format of another `DateStyle` than `ISO`. */
+function createDateStyleError(type: string, text: string): Error {
+  return new Error(
+    `Unsupported ${type} value "${text}"; kern-db expects DateStyle ISO, which the connection options of the client can set`,
+  )
 }
 
 /** Converts a leading ISO 8601 year outside 1 to 9999 into the PostgreSQL format: unsigned after 9999 and with a `BC` suffix before 1. */

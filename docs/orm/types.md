@@ -93,6 +93,27 @@ Pass PostgreSQL type parameters with `with`, such as `varchar.with(255)` for `va
 Date and time strings have a fixed format, so comparing them as strings orders them chronologically.
 kern-orm expects the default `DateStyle` (`ISO`) and `bytea_output` (`hex`) settings.
 
+:::: details Databases with other settings
+If the database or the role sets another `DateStyle` or `bytea_output`, set the defaults in the connection options of the client, which take precedence:
+
+::: code-group
+
+```ts [postgres.js]
+postgres(process.env.DATABASE_URL!, {
+  connection: { DateStyle: "ISO", bytea_output: "hex" },
+})
+```
+
+```ts [node-postgres]
+new Pool({
+  connectionString: process.env.DATABASE_URL,
+  options: "-c DateStyle=ISO -c bytea_output=hex",
+})
+```
+
+:::
+::::
+
 ::: details Years outside 1 to 9999
 These years are written as in `Date.toISOString`: `+010000` for 10000, and `0000` for 1 BC, `-000001` for 2 BC, and so on.
 Such strings do not sort chronologically.

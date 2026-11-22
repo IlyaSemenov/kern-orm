@@ -20,7 +20,9 @@ export function encodeBytea(bytes: Uint8Array): string {
 /** Decodes a hex `bytea` literal into bytes. */
 export function decodeBytea(text: string): Uint8Array {
   if (!text.startsWith("\\x")) {
-    throw new Error("Unsupported bytea value; kern-db expects bytea_output hex")
+    throw new Error(
+      "Unsupported bytea value; kern-db expects bytea_output hex, which the connection options of the client can set",
+    )
   }
   const bytes = new Uint8Array((text.length - 2) / 2)
   for (let index = 0; index < bytes.length; index++) {
