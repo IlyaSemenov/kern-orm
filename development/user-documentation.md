@@ -29,7 +29,7 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
   This is a preference, not a rule: keep a description wherever it reads more clearly.
 - Do not restate in prose what users see in their editor's types or learn from a TypeScript or runtime error.
 - Document every guarantee that the application relies on, such as of transactions, the results of queries, and migrations.
-  Mention another edge case only when users must write different code because of it; record other edge cases, typing rules, and invariants in [architecture/](../architecture/README.md) and cover them with tests.
+  Mention another edge case only when users of the feature need it to use the library, not merely because rare code, such as of an uncommon PostgreSQL command, must change for it; record other edge cases, typing rules, and invariants in [architecture/](../architecture/README.md) and cover them with tests.
 - Write a rule of how users must do something as an instruction, such as to include each table under one key, rather than as the check or error that enforces it.
 - State a limitation, something that users cannot do, as a description, such as "A query with `distinct` cannot select related records", rather than as an instruction to avoid it, unless the description loses clarity.
 
