@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.9.0
+
+### Minor Changes
+
+- cc0f7e8: Add the `lockTimeout` option of `database.transaction()`, `database.session()`, and `database.openSession()`, which sets how long their statements can wait for each lock, in milliseconds, such as `database.transaction(callback, { lockTimeout: 1000 })`.
+
 ## 0.8.0
 
 ### Minor Changes

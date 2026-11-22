@@ -1,5 +1,15 @@
 # kern-orm
 
+## 0.21.0
+
+### Minor Changes
+
+- cc0f7e8: Add the `lockTimeout` option of `db.$transaction()` and `db.$session()`, which sets how long their queries can wait for each lock, in milliseconds, such as `db.$transaction(callback, { lockTimeout: 1000 })`.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.9.0
+
 ## 0.20.0
 
 ### Minor Changes
