@@ -12,7 +12,7 @@ import { operandNode } from "../expression/expression"
 import type { TypedOperand } from "../expression/functions"
 import type { OperandValue } from "../expression/operators/comparison"
 import type { SchemaContext, UsedRelation } from "../schema/relation"
-import type { AnyTable, Selectable } from "../table/table"
+import type { AnyRowSource, AnyTable, Selectable } from "../table/table"
 import { findKey, requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
@@ -713,6 +713,7 @@ export function createInsert(
   rows: "one" | "many",
   method: string,
 ): AnyMutationQuery {
+  requireWritableTable(query.table, method)
   if (!isTableQuery(query.node)) {
     throw new Error(
       `${method} applies only to a query of a table without clauses, such as filters or selected fields; select the fields that it returns after it`,
@@ -736,6 +737,7 @@ export function createInsert(
  */
 export function createUpsert(query: AnySelectQuery, values: unknown): AnyMutationQuery {
   const { table } = query
+  requireWritableTable(table, "upsert")
   const { foundKey } = query.node
   if (foundKey === undefined) {
     throw new Error(
@@ -840,13 +842,21 @@ export function createDelete(query: AnySelectQuery): AnyMutationQuery {
   )
 }
 
+/** Rejects writes to views, including views PostgreSQL allows updating. */
+function requireWritableTable(table: AnyRowSource, method: string): asserts table is AnyTable {
+  if (table.kind === "view") {
+    throw new Error(`${method} cannot write to view "${table.name}"`)
+  }
+}
+
 // PostgreSQL has no limit or order of the rows of `UPDATE` and `DELETE`, so a query of `take` would change every row it filters; `find` and `findBy` add no limit, since the values of a key match at most one row.
 /**
- * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a relation, with selected fields, which a mutation selects after it, with a conversion of `map`, which a mutation takes after it too, with keys of groups, whose rows SQL does not give, with an order, a limit, an offset, `distinct`, or `distinctOn`, with a row lock, which a mutation takes on its rows itself, or without a filter that restricts its rows unless `all` allows it or the table is a singleton table.
+ * Rejects a query whose rows `method`, `update` or `delete`, cannot change: one of a view or a relation, with selected fields, which a mutation selects after it, with a conversion of `map`, which a mutation takes after it too, with keys of groups, whose rows SQL does not give, with an order, a limit, an offset, `distinct`, or `distinctOn`, with a row lock, which a mutation takes on its rows itself, or without a filter that restricts its rows unless `all` allows it or the table is a singleton table.
  *
  * A filter simplified to `TRUE`, such as `where({})`, restricts no row.
  */
 function checkChangedRows(node: QueryNode, method: string): void {
+  requireWritableTable(node.from.table, method)
   if (node.relation !== undefined) {
     throw new Error(`${method} applies only to a query of a table, not of a relation`)
   }

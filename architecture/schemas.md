@@ -25,7 +25,7 @@
   - `TableKeys` holds the keys only in a member that takes and returns them, so that it is invariant in them, and that is required and named by an unexported symbol, so that no assignment gives a table more or fewer keys, and a type that drops the member, such as `Pick` of `primaryKey` and `unique`, tells no keys.
     Its members `primaryKey` and `unique` have the types of `AnyTableKeys`, so that intersecting it with `AnyTableKeys`, as the `this` types of query methods do, compares no tuples.
   - `defineTable` computes the keys of a table before writing them as the arguments of `TableKeys`, since a deferred type reference, or a type parameter that `infer` leaves for `never`, makes the type of a table generic, which TypeScript instantiates with the query states over it again on each call, such as of `$execute` ([benchmark](../benchmarks/types/queries.bench.ts)).
-  - `createTableFactory` creates a function of the type of `defineTable`, so that an application gives a convention of its tables in one place; a table outside the convention takes the plain `defineTable`.
+  - `createTableFactory` returns `{ defineTable, defineView }` with the signatures of the standalone functions and one naming convention for both.
     Its `columnName` callback maps a column key to its physical name.
     It applies only to columns without an explicit `columnName()`, creating copies so that shared columns remain unchanged.
     Applications can use `toSnakeCase` or supply another conversion, such as for a legacy database.
@@ -34,9 +34,12 @@
     - `toSnakeCase` (`table/snake-case.ts`) starts a word at a capital letter after a lowercase letter or a digit, so that digits stay in their word.
       A run of capital letters is one word, such as `user_id` for `userID`, and its last letter starts the next word before a lowercase letter, such as `json_data` for `JSONData`, unless that letter is an `s` that ends the key, a plural, such as `user_ids` for `userIDs`.
       Case does not tell a plural before another word from a word such as `Is`, as in `url_is_valid` for `URLIsValid`, so a key such as `IDsList`, which gives `i_ds_list`, requires `columnName`, and so does one that mixes cases in a word, such as `serverIPv4`, which gives `server_i_pv4`.
-    - Only column names are derived, since `defineTable` takes the name of its table.
+    - Only column names are derived, since both definition functions take the physical name of the table or view.
     - A derived physical name must differ from the physical name of every other column of the table, such as with keys `formId` and `form_id`, since two keys would silently read one column.
       Duplicate names set with `columnName` are allowed, as in `defineTable`.
+- **View** (`table/table.ts`): `defineView` describes an ordinary or materialized PostgreSQL view with named, typed columns and no keys, defaults, or singleton guarantee.
+  A view participates in schemas and reads like a table, including correlated queries.
+  Mutation entry points require a table in types and reject a view at runtime ([decision](../decisions/schemas/read-only-views.md)).
 - **Schema** (`schema/`): immutable collection of tables and their relations with query entry points.
   `defineSchema` composes it of tables by their keys and of other schemas, whose table objects and relation definitions it includes as they are, so the same table belongs to several schemas and a query of an included schema runs on a `Db` of the composed one.
   A key has one table and a table has one key in a schema: composition rejects a key of two different tables and a table under two keys, and includes a table that several parts include under the same key once.
@@ -81,6 +84,7 @@ Column keys must not start with `$` either, which keeps such names free for memb
   It reads the columns of PostgreSQL 18, `conenforced` and `conperiod`, from the row of `pg_constraint` as JSON, so that the statement runs on PostgreSQL 17, which lacks them.
 - Each table exists as a table, ordinary, partitioned, or foreign, or as a view, ordinary or materialized, with each column under its physical name; columns of one physical name are each checked.
 - Each column is of its `sqlType`: `to_regtype` and `to_regtypemod` resolve it in the search path of the connection, as the casts of queries resolve a type, and `format_type` of the result is compared with that of the column, so that aliases, such as `int4` and `integer`, match, and type modifiers, such as of `varchar(255)`, must match.
+- A definition made with `defineView` requires an ordinary or materialized view.
 - Only the columns and their types of a view are checked, since the catalog tells neither the nullability of its columns nor what its query guarantees; a required relation of a view is not checked.
 - A column of a table whose type is nullable has no not-null constraint, and one whose type is not nullable has a valid one: on PostgreSQL 18, `attnotnull` is also true for a `NOT VALID` not-null constraint, which rejects `NULL` of new rows but not of existing ones.
 - A column marked with `hasDefault` has a default, an identity, or a generated value; a default of a column without it is not a mismatch, since it breaks no insert or query of the table.

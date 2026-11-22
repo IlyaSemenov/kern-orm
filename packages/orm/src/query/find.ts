@@ -1,6 +1,6 @@
 // Keys of a table that queries take: the values of `find` and `findBy`, which they filter a query by, and the columns of `onConflict`.
 
-import type { AnyTable, IsKey, KeyColumns, KeyOf, TableKeys } from "../table/table"
+import type { AnyRowSource, IsKey, KeyColumns, KeyOf, TableKeys } from "../table/table"
 import { findKey, isKey } from "../table/table"
 import type { IsAny } from "../utils/type-helpers"
 
@@ -11,7 +11,7 @@ import type { EqValue } from "./filters"
  *
  * A union of tables gives the union of their values.
  */
-export type PrimaryKeyValues<T extends AnyTable> = T extends AnyTable
+export type PrimaryKeyValues<T extends AnyRowSource> = T extends AnyRowSource
   ? T["keys"] extends TableKeys<infer PrimaryKey extends KeyColumns, infer _UniqueKey>
     ? {
         readonly [I in keyof PrimaryKey]: NonNullable<
@@ -22,7 +22,7 @@ export type PrimaryKeyValues<T extends AnyTable> = T extends AnyTable
   : never
 
 /** Columns of the primary key of table `T`, or `never` where the type of `T` tells no primary key. */
-export type PrimaryKeyColumn<T extends AnyTable> = T extends AnyTable
+export type PrimaryKeyColumn<T extends AnyRowSource> = T extends AnyRowSource
   ? T["keys"] extends TableKeys<infer PrimaryKey extends KeyColumns, infer _UniqueKey>
     ? PrimaryKey[number]
     : never
@@ -33,7 +33,7 @@ export type PrimaryKeyColumn<T extends AnyTable> = T extends AnyTable
  *
  * A table of `any`, such as of `AnySelectQuery`, takes any columns, as `where` takes any values there.
  */
-export type KeyCheck<T extends AnyTable, Columns> = [IsKey<T, Columns>] extends [true]
+export type KeyCheck<T extends AnyRowSource, Columns> = [IsKey<T, Columns>] extends [true]
   ? unknown
   : IsAny<T> extends true
     ? unknown
@@ -50,18 +50,21 @@ export interface NotAKey<Keys> {
  * It rejects a table without a primary key, a number of values other than the number of its columns, and `null` and `undefined`.
  */
 export function toPrimaryKeyValues(
-  table: AnyTable,
+  table: AnyRowSource,
   values: readonly unknown[],
 ): Record<string, unknown> {
   const { primaryKey } = table.keys
   if (primaryKey === undefined) {
+    if (table.kind === "view") {
+      throw new Error(`find requires a primary key; use where to filter view "${table.name}"`)
+    }
     throw new Error(
       `find takes the values of a primary key, which table "${table.name}" does not have; use findBy with a unique key`,
     )
   }
   if (values.length !== primaryKey.length) {
     throw new Error(
-      `find takes one value for each column of the primary key of table "${table.name}", ${quoteColumns(primaryKey)}, not ${values.length}`,
+      `find takes one value for each column of the primary key of ${table.kind} "${table.name}", ${quoteColumns(primaryKey)}, not ${values.length}`,
     )
   }
   const filter: Record<string, unknown> = {}
@@ -77,16 +80,18 @@ export function toPrimaryKeyValues(
  *
  * It rejects columns that are not exactly a key of `table`, primary or unique, as `isKey` tells, and `null` and `undefined`.
  */
-export function toKeyValues(table: AnyTable, values: unknown): Record<string, unknown> {
+export function toKeyValues(table: AnyRowSource, values: unknown): Record<string, unknown> {
   if (typeof values !== "object" || values === null) {
-    throw new TypeError(`findBy takes an object of the columns of a key of table "${table.name}"`)
+    throw new TypeError(
+      `findBy takes an object of the columns of a key of ${table.kind} "${table.name}"`,
+    )
   }
   const columns = Object.keys(values)
   if (!isKey(table, columns)) {
     const listed =
       columns.length === 0 ? "an object without columns" : `columns ${quoteColumns(columns)}`
     throw new Error(
-      `findBy takes the columns of one key of table "${table.name}", primary or unique, not ${listed}`,
+      `findBy takes the columns of one key of ${table.kind} "${table.name}", primary or unique, not ${listed}`,
     )
   }
   // A copy, so that `where` never takes the object for an expression and reads each value once.
@@ -103,14 +108,17 @@ export function toKeyValues(table: AnyTable, values: unknown): Record<string, un
  *
  * It rejects columns that are not exactly a key of `table`, as `isKey` tells.
  */
-export function toConflictTarget(table: AnyTable, columns: readonly string[]): readonly string[] {
+export function toConflictTarget(
+  table: AnyRowSource,
+  columns: readonly string[],
+): readonly string[] {
   if (columns.length === 0) {
     return noColumns
   }
   const key = findKey(table, columns)
   if (key === undefined) {
     throw new Error(
-      `onConflict takes the columns of one key of table "${table.name}", primary or unique, or none for any key, not columns ${quoteColumns(columns)}`,
+      `onConflict takes the columns of one key of ${table.kind} "${table.name}", primary or unique, or none for any key, not columns ${quoteColumns(columns)}`,
     )
   }
   return key
@@ -121,10 +129,15 @@ const noColumns: readonly string[] = /* @__PURE__ */ Object.freeze([])
 
 // `IS NULL` matches every record whose column of a unique key is `NULL`, and `undefined` is no value.
 /** Returns `value` of column `column` of a key of `table` that `method` takes, rejecting `null` and `undefined`. */
-function requireKeyValue(table: AnyTable, column: string, value: unknown, method: string): unknown {
+function requireKeyValue(
+  table: AnyRowSource,
+  column: string,
+  value: unknown,
+  method: string,
+): unknown {
   if (value === null || value === undefined) {
     throw new TypeError(
-      `${method} got ${value} for column "${column}" of table "${table.name}"; a value of a key is never null or undefined`,
+      `${method} got ${value} for column "${column}" of ${table.kind} "${table.name}"; a value of a key is never null or undefined`,
     )
   }
   return value

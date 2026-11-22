@@ -14,7 +14,7 @@ import { coalesce } from "../expression/functions"
 import { sql } from "../expression/sql"
 import { many, one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
-import { defineTable } from "../table/table"
+import { defineTable, defineView } from "../table/table"
 import * as t from "../types"
 
 import { defineHelper } from "./helper"
@@ -84,6 +84,25 @@ function connect(count: number, rows: string[][] = []) {
   const { driver, statements } = createRecordingDriver({ respond: () => ({ count, rows }) })
   return { db: bindSchema(schema, createDatabase({ driver }), { schemaName: "app" }), statements }
 }
+
+it("rejects writes to a view before execution", () => {
+  const fields = from(
+    defineView("published_field", {
+      formId: t.uuid,
+      label: t.text,
+    }),
+  )
+  // @ts-expect-error A view is read-only.
+  expect(() => fields.insert({ formId: "id", label: "x" })).toThrow("cannot write to view")
+  // @ts-expect-error An empty batch still targets a view.
+  expect(() => fields.insertMany([])).toThrow("cannot write to view")
+  // @ts-expect-error A filter preserves the read-only source.
+  expect(() => fields.where({ label: "x" }).update({ label: "y" })).toThrow("cannot write to view")
+  // @ts-expect-error Explicitly selecting all rows cannot enable writes.
+  expect(() => fields.all().delete()).toThrow("cannot write to view")
+  // @ts-expect-error A view cannot be upserted.
+  expect(() => fields.upsert({ label: "x" })).toThrow("cannot write to view")
+})
 
 describe("insert", () => {
   it("inserts the values of a record, returning the number of the rows", () => {

@@ -50,13 +50,20 @@ export const schema = defineSchema({ form, field }).$relations({
   },
 })
 
-/** Result of a table factory, which modules of tables import; see the file header. */
-export const defineSnakeCaseTable = createTableFactory({ columnName: toSnakeCase })
+/** Table and view definition functions exported by an application; see the file header. */
+export const { defineTable: defineSnakeCaseTable, defineView: defineSnakeCaseView } =
+  createTableFactory({ columnName: toSnakeCase })
 
 /** Table defined through the exported factory result; see the file header. */
 export const snakeCaseField = defineSnakeCaseTable("form_field", {
   id: t.uuid.primaryKey(),
   formId: t.uuid,
+})
+
+/** View defined through the exported factory result; see the file header. */
+export const publishedField = defineSnakeCaseView("published_field", {
+  formId: t.uuid,
+  label: t.text,
 })
 
 /** Selects the names of all forms through a `Db` of the schema or of a schema that includes it; see the file header. */

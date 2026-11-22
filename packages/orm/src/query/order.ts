@@ -11,7 +11,7 @@ import { createNode } from "../ast/nodes"
 import type { AnyExpression } from "../expression/expression"
 import { isOperandSource, operandNode, toExpression } from "../expression/expression"
 import type { ScalarField } from "../result/result"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 import { requireColumn } from "../table/table"
 
 import { isSelectedAsValue } from "./aggregate"
@@ -35,12 +35,12 @@ export type OrderDirection =
   | "desc nulls last"
 
 /** Columns of table `T` with the directions to sort by them, in the order of their keys. */
-export type OrderColumns<T extends AnyTable> = {
+export type OrderColumns<T extends AnyRowSource> = {
   readonly [K in keyof T["columns"]]?: OrderDirection
 }
 
 /** Argument of `orderBy` of a query over table `T`: a column key, sorted in ascending order, or columns with directions. */
-export type OrderKey<T extends AnyTable> = (keyof T["columns"] & string) | OrderColumns<T>
+export type OrderKey<T extends AnyRowSource> = (keyof T["columns"] & string) | OrderColumns<T>
 
 declare const ordering: unique symbol
 

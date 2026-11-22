@@ -13,7 +13,7 @@ import type {
   TableKeys,
   TableOptions,
 } from "./table"
-import { createTableFactory, defineTable } from "./table"
+import { createTableFactory, defineTable, defineView } from "./table"
 
 declare const flag: boolean
 
@@ -203,14 +203,14 @@ describe("defineTable", () => {
 })
 
 describe("createTableFactory", () => {
-  test("creates a function of the type of defineTable", () => {
-    expectTypeOf(createTableFactory({ columnName: toSnakeCase })).toEqualTypeOf<
-      typeof defineTable
-    >()
+  test("preserves the signatures of defineTable and defineView", () => {
+    const factory = createTableFactory({ columnName: toSnakeCase })
+    expectTypeOf(factory.defineTable).toEqualTypeOf<typeof defineTable>()
+    expectTypeOf(factory.defineView).toEqualTypeOf<typeof defineView>()
   })
 
   test("types the keys of a table as defineTable does", () => {
-    const defineSnakeCaseTable = createTableFactory({ columnName: toSnakeCase })
+    const { defineTable: defineSnakeCaseTable } = createTableFactory({ columnName: toSnakeCase })
     const field = defineSnakeCaseTable(
       "form_field",
       {

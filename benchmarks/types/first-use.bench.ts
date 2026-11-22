@@ -9,12 +9,12 @@ import { catalogSchema, formsDb, formsSchema, storeDb, tenantDb } from "./fixtur
 bench("DbOf assignment of 2 tables", () => {
   const sharedDb: DbOf<typeof formsSchema> = tenantDb
   return sharedDb
-}).types([2018, "instantiations"])
+}).types([2080, "instantiations"])
 
 bench("DbOf assignment of 12 tables", () => {
   const sharedDb: DbOf<typeof catalogSchema> = storeDb
   return sharedDb
-}).types([2953, "instantiations"])
+}).types([3005, "instantiations"])
 
 bench("first unbound query", async () => {
   await formsDb.$execute(
@@ -26,7 +26,7 @@ bench("first unbound query", async () => {
       }))
       .take(),
   )
-}).types([2498, "instantiations"])
+}).types([2497, "instantiations"])
 
 // Nests 6 levels of relations, from orders down to the parent category, with sibling relations on the way.
 bench("first query of a deep relation graph", async () => {
@@ -53,4 +53,4 @@ bench("first query of a deep relation graph", async () => {
         })),
       })),
     }))
-}).types([6826, "instantiations"])
+}).types([6825, "instantiations"])

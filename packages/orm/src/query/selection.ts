@@ -2,7 +2,7 @@ import type { GroupValue } from "../expression/aggregates"
 import type { AnyExpression, TypedExpression } from "../expression/expression"
 import type { TypedOperand } from "../expression/functions"
 import type { OperandValue } from "../expression/operators/comparison"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 import type { IsAny, Simplify } from "../utils/type-helpers"
 
 import type { TransformedQuery, TransformedQueryState } from "./conversion"
@@ -113,7 +113,7 @@ type MergeFields<Previous, Fields> = Simplify<
 >
 
 /** Types of the values of columns `K` of table `T` as selected fields: the values that each encodes and its operators. */
-export type ColumnFieldTypes<T extends AnyTable, K extends keyof T["columns"]> = {
+export type ColumnFieldTypes<T extends AnyRowSource, K extends keyof T["columns"]> = {
   [P in K]: ColumnValueType<T, P>
 }
 

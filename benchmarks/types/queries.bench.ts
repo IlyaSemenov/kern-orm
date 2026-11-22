@@ -510,14 +510,14 @@ bench("helper of map", async () => {
 
 bench("insert with a helper of map", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withMappedName)
-}).types([1012, "instantiations"])
+}).types([1029, "instantiations"])
 
 bench("transform of the number of the rows", async () => {
   await tenantDb.form
     .find("x")
     .delete()
     .transform(count => count > 0)
-}).types([285, "instantiations"])
+}).types([287, "instantiations"])
 
 bench("helper", async () => {
   await tenantDb.form.select("id").use(withName)
@@ -529,7 +529,7 @@ bench("helper of relations", async () => {
 
 bench("insert with a helper", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).use(withName)
-}).types([1211, "instantiations"])
+}).types([1228, "instantiations"])
 
 bench("unbound query", async () => {
   await formsDb.$execute(
@@ -639,7 +639,7 @@ bench("$select", async () => {
 
 bench("insert", async () => {
   await tenantDb.form.insert({ id: "x", name: "x", published: true }).get("id")
-}).types([526, "instantiations"])
+}).types([528, "instantiations"])
 
 bench("insert with onConflict", async () => {
   await tenantDb.form
@@ -647,14 +647,14 @@ bench("insert with onConflict", async () => {
     .onConflict("id")
     .doNothing()
     .get("id")
-}).types([646, "instantiations"])
+}).types([648, "instantiations"])
 
 bench("insert with merge", async () => {
   await tenantDb.form
     .insert({ id: "x", name: "x", published: true })
     .onConflict("id")
     .merge("name", "published")
-}).types([577, "instantiations"])
+}).types([579, "instantiations"])
 
 bench("insert with update of a callback", async () => {
   await tenantDb.form
@@ -664,31 +664,31 @@ bench("insert with update of a callback", async () => {
       name: excluded.name,
       published: form.published,
     }))
-}).types([775, "instantiations"])
+}).types([777, "instantiations"])
 
 bench("upsert", async () => {
   await tenantDb.form.find("x").upsert({ name: "x", published: true }).get("id")
-}).types([458, "instantiations"])
+}).types([462, "instantiations"])
 
 bench("upsert of a singleton table", async () => {
   await settingsDb.settings.upsert({ locale: "x" }).get("id")
-}).types([137, "instantiations"])
+}).types([139, "instantiations"])
 
 bench("update", async () => {
   await tenantDb.form.find("x").update({ name: "x" }).select("id", "name")
-}).types([482, "instantiations"])
+}).types([484, "instantiations"])
 
 bench("update of a value of a query", async () => {
   await tenantDb.form.find("x").update({
     name: tenantDb.field.min("label").coalesce("x"),
   })
-}).types([331, "instantiations"])
+}).types([333, "instantiations"])
 
 bench("update of a callback", async () => {
   await tenantDb.form.find("x").update(form => ({
     name: form.name.lower(),
   }))
-}).types([285, "instantiations"])
+}).types([287, "instantiations"])
 
 bench("update of an increment", async () => {
   await tenantDb.field.find("x").update(field => ({
@@ -700,18 +700,18 @@ bench("update of an aggregate of a relation", async () => {
   await tenantDb.form.find("x").update(form => ({
     name: form.fields.min("label").coalesce("x"),
   }))
-}).types([807, "instantiations"])
+}).types([809, "instantiations"])
 
 bench("delete with get of a callback", async () => {
   await tenantDb.form
     .find("x")
     .delete()
     .get(form => form.name.lower())
-}).types([289, "instantiations"])
+}).types([291, "instantiations"])
 
 bench("unbound delete", async () => {
   await tenantDb.$execute(formsSchema.form.where({ name: "x" }).delete().pluck("id"))
-}).types([252, "instantiations"])
+}).types([254, "instantiations"])
 
 bench("transaction of an async callback", async () => {
   await tenantDb.$transaction(async () => tenantDb.form.where({ published: true }).pluck("name"))

@@ -1,7 +1,7 @@
 import type { HasEquality } from "../expression/operators/equality"
 import { isEqualityCompatible } from "../expression/operators/equality"
 import type { EmptyRecord } from "../query/state"
-import type { AnyTable, ColumnOperators, ContainsKey, KeyOf } from "../table/table"
+import type { AnyRowSource, ColumnOperators, ContainsKey, KeyOf } from "../table/table"
 import { containsKey, findColumn } from "../table/table"
 
 import type { Tables } from "./schema"
@@ -18,7 +18,7 @@ export type RelationKind = "many" | "one"
 /** Relation of a table of a schema to the records of table `Target`, which has key `TargetKey` in the schema. */
 export interface Relation<
   Kind extends RelationKind = RelationKind,
-  Target extends AnyTable = AnyTable,
+  Target extends AnyRowSource = AnyRowSource,
   TargetKey extends string = string,
   Required extends boolean = boolean,
 > {
@@ -39,7 +39,7 @@ export interface RelationDefinition extends Relation {
   readonly name: string
   /** Key of the source table. */
   readonly key: string
-  readonly source: AnyTable
+  readonly source: AnyRowSource
   readonly from: readonly string[]
   readonly to: readonly string[]
 }
@@ -80,8 +80,8 @@ export type TableRelations = { readonly [name: string]: Relation }
  */
 export interface RelationDeclaration<
   Kind extends RelationKind,
-  Source extends AnyTable,
-  Target extends AnyTable,
+  Source extends AnyRowSource,
+  Target extends AnyRowSource,
   From = unknown,
   Required extends boolean = boolean,
 > {
@@ -98,23 +98,23 @@ export interface RelationDeclaration<
 }
 
 /** Column key of table `T` whose type has SQL `=`, which a relation can compare. */
-type EqualityKey<T extends AnyTable> = {
+type EqualityKey<T extends AnyRowSource> = {
   [K in keyof T["columns"]]: HasEquality<ColumnOperators<T, K>> extends true ? K : never
 }[keyof T["columns"]] &
   string
 
 /** Key of a relation in table `T`: a column key, or a non-empty list of them for a composite key. */
-export type RelationKey<T extends AnyTable> =
+export type RelationKey<T extends AnyRowSource> =
   | EqualityKey<T>
   | readonly [EqualityKey<T>, ...EqualityKey<T>[]]
 
 /** Key of table `T` with as many columns as key `From`. */
-type MatchingKey<T extends AnyTable, From> = From extends string
+type MatchingKey<T extends AnyRowSource, From> = From extends string
   ? EqualityKey<T>
   : { readonly [I in keyof From]: EqualityKey<T> }
 
 /** Keys of a relation: the columns `from` of the source table equal the columns `to` of the target table, in order. */
-export interface RelationKeys<Target extends AnyTable, From> {
+export interface RelationKeys<Target extends AnyRowSource, From> {
   readonly from: From
   readonly to: MatchingKey<Target, From>
 }
@@ -176,7 +176,9 @@ export type CheckDeclarations<T extends Tables, D> = {
 }
 
 /** Names that a relation of table `T` cannot have: the keys of its columns, and names starting with `$`. */
-type ReservedName<T extends AnyTable> = `${keyof T["columns"] & (string | number)}` | `$${string}`
+type ReservedName<T extends AnyRowSource> =
+  | `${keyof T["columns"] & (string | number)}`
+  | `$${string}`
 
 /** Key of tables `T` written as key `K`, such as `1` for `"1"`, as object keys are strings at runtime. */
 type TableKey<T extends Tables, K> = {
@@ -203,7 +205,7 @@ export type DeclaredRelations<T extends Tables, D> = {
 type RelationColumn<K> = K extends readonly unknown[] ? K[number] : K
 
 /** Check of key `To` of a relation `one` that rejects it when its columns include no key of table `Target`, as far as the types tell. */
-type TargetKeyCheck<Target extends AnyTable, To> = [
+type TargetKeyCheck<Target extends AnyRowSource, To> = [
   ContainsKey<Target, RelationColumn<To>>,
 ] extends [false]
   ? { readonly to: MissingKey<KeyOf<Target["keys"]>> }
@@ -256,8 +258,8 @@ export type TableContext<R extends SchemaRelations, K> = K extends keyof R
  * A composite key lists its columns in arrays of the same length.
  */
 export function many<
-  Source extends AnyTable,
-  Target extends AnyTable,
+  Source extends AnyRowSource,
+  Target extends AnyRowSource,
   const From extends RelationKey<Source>,
 >(
   target: Target,
@@ -275,8 +277,8 @@ export function many<
  * Set `required: true` only where the database guarantees the record, such as by a foreign key on columns `from` that are not nullable.
  */
 export function one<
-  Source extends AnyTable,
-  Target extends AnyTable,
+  Source extends AnyRowSource,
+  Target extends AnyRowSource,
   const From extends RelationKey<Source>,
   const To extends MatchingKey<Target, From>,
   const Keys extends object = EmptyRecord,
@@ -290,8 +292,8 @@ export function one<
 
 function declareRelation<
   Kind extends RelationKind,
-  Source extends AnyTable,
-  Target extends AnyTable,
+  Source extends AnyRowSource,
+  Target extends AnyRowSource,
   From,
   Required extends boolean,
 >(
@@ -321,11 +323,11 @@ function toKeyList(key: unknown): readonly string[] {
  * Each pair of columns of the keys must satisfy `isEqualityCompatible`, the columns `to` of a relation `one` must include a key of the target, and the columns `from` of a required relation must not be nullable by `isNullable` of their types.
  */
 export function defineRelation(
-  source: AnyTable,
+  source: AnyRowSource,
   key: string,
   name: string,
   declaration: unknown,
-  findKey: (table: AnyTable) => string | undefined,
+  findKey: (table: AnyRowSource) => string | undefined,
 ): RelationDefinition {
   const subject = `Relation "${formatRelationName(key, name)}"`
   if (!isRelationDeclaration(declaration)) {
@@ -446,6 +448,6 @@ export function freezeRelations(relations: RelationMap): SchemaRelations {
 
 function isRelationDeclaration(
   value: unknown,
-): value is RelationDeclaration<RelationKind, AnyTable, AnyTable> {
+): value is RelationDeclaration<RelationKind, AnyRowSource, AnyRowSource> {
   return typeof value === "object" && value !== null && declarationBrand in value
 }

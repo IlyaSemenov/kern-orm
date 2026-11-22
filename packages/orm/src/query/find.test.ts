@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import { defineTable } from "../table/table"
+import { defineTable, defineView } from "../table/table"
 import * as t from "../types"
 
 import { toConflictTarget, toKeyValues, toPrimaryKeyValues } from "./find"
@@ -31,6 +31,15 @@ describe("toPrimaryKeyValues", () => {
   it("rejects a table without a primary key", () => {
     expect(() => toPrimaryKeyValues(log, ["log-id"])).toThrow(
       'find takes the values of a primary key, which table "log" does not have; use findBy with a unique key',
+    )
+  })
+
+  it("rejects a view and suggests where", () => {
+    const view = defineView("published_form", {
+      id: t.uuid,
+    })
+    expect(() => toPrimaryKeyValues(view, ["id"])).toThrow(
+      'find requires a primary key; use where to filter view "published_form"',
     )
   })
 

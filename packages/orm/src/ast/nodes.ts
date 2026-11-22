@@ -12,13 +12,13 @@ import type {
   ResultField,
   ScalarField,
 } from "../result/result"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 import type { AnyType } from "../type/type"
 
 /** Occurrence of a table in `FROM`. */
 export interface TableSourceNode {
   readonly kind: "table"
-  readonly table: AnyTable
+  readonly table: AnyRowSource
 }
 
 /**
@@ -159,7 +159,7 @@ export interface FragmentNode {
 /** Name of a table interpolated into a SQL fragment, qualified by the PostgreSQL schema of the statement. */
 export interface TableNameNode {
   readonly kind: "tableName"
-  readonly table: AnyTable
+  readonly table: AnyRowSource
   /** `Db` that the interpolated query of the table is bound to, which must be the `Db` that runs the statement. */
   readonly db: AnyDb | undefined
 }

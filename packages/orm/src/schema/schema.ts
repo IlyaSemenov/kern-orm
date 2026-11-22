@@ -5,7 +5,7 @@ import type { SelectQuery } from "../query/select"
 import { startQuery } from "../query/select"
 import type { Selection } from "../query/selection"
 import type { EmptyRecord, TableQueryState } from "../query/state"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 
 import type {
   CheckDeclarations,
@@ -24,7 +24,7 @@ const schemaBrand = Symbol("kern-orm.schema")
 export const schemaRelations = Symbol("kern-orm.schema.relations")
 
 /** Tables by their keys; a key must not start with `$`, which is reserved for schema and `Db` members. */
-export type Tables = Record<string, AnyTable>
+export type Tables = Record<string, AnyRowSource>
 
 /**
  * Immutable collection of tables and their relations with query entry points.
@@ -123,8 +123,8 @@ type ReadPart<P extends SchemaPart> =
 export function defineSchema<P extends SchemaPart[]>(
   ...parts: P
 ): Schema<SchemaTables<P>, SchemaPartRelations<P>> {
-  const tables = new Map<string, AnyTable>()
-  const keys = new Map<AnyTable, string>()
+  const tables = new Map<string, AnyRowSource>()
+  const keys = new Map<AnyRowSource, string>()
   const relations: RelationMap = new Map()
   for (const part of parts) {
     const partTables = isSchema(part) ? part.$tables : part
@@ -162,7 +162,7 @@ export function defineSchema<P extends SchemaPart[]>(
 /** Creates a schema of tables and relation definitions that are already checked; `keys` gives the key of each table. */
 function createSchema(
   tables: Tables,
-  keys: ReadonlyMap<AnyTable, string>,
+  keys: ReadonlyMap<AnyRowSource, string>,
   relations: SchemaRelations,
 ): Schema<Tables, SchemaRelations> {
   const methods: SchemaMembers<Tables, SchemaRelations> = {

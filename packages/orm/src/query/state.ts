@@ -4,7 +4,7 @@ import type { ResultRows } from "kern-db"
 
 import type { OperatorDefinitions } from "../expression/operators/definitions"
 import type { NoRelations, SchemaContext, UsedRelation } from "../schema/relation"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 
 /** Records of a query without selected fields. */
 export type EmptyRecord = Record<never, never>
@@ -37,7 +37,7 @@ export interface QueryValueType {
  * Methods change only their own parts of the state.
  */
 export interface SelectQueryState extends QueryState {
-  readonly table: AnyTable
+  readonly table: AnyRowSource
   readonly schema: SchemaContext
   // `unknown` rather than `QueryValueType`, and only the states of `expr` and `coalesce` narrow it, so that comparing a query with the state of a nested query or of an operand does not instantiate the operators of its type.
   /** Type of the value of a query of values, a `QueryValueType`; `never` for a query of records. */
@@ -60,7 +60,7 @@ export interface SelectQueryState extends QueryState {
 // An interface rather than an intersection lets a call infer `T` and `C` from a query.
 /** State of a query over table `T` with schema context `C`, whatever its result. */
 export interface QueryStateOf<
-  T extends AnyTable,
+  T extends AnyRowSource,
   C extends SchemaContext = SchemaContext,
 > extends SelectQueryState {
   readonly table: T
@@ -73,7 +73,7 @@ export interface QueryStateOf<
  * Without relations in `C`, it also types a query of the table in a schema that has relations of the table.
  */
 export interface InitialQueryState<
-  T extends AnyTable,
+  T extends AnyRowSource,
   C extends SchemaContext = NoRelations,
   U extends UsedRelation = never,
   Rows extends ResultRows = "many",
@@ -95,21 +95,21 @@ export interface InitialQueryState<
  * Where the type of `T` does not tell whether it is a singleton, such as `Table<Name, Columns>`, it is the union of both.
  */
 export type TableQueryState<
-  T extends AnyTable,
+  T extends AnyRowSource,
   C extends SchemaContext = NoRelations,
 > = SingletonOrInitialState<T, C, T["singleton"]>
 
 // Distributive over `Singleton`, so that `boolean` gives the union of both states, and a table of a generic type, such as `T extends typeof form`, gives the state of the constraint of its `singleton`, which a conditional type of `T["singleton"]` itself defers.
 /** State of a query that starts from table `T` with schema context `C`, as `TableQueryState` gives it, by `Singleton`, the `singleton` of the type of `T`. */
 type SingletonOrInitialState<
-  T extends AnyTable,
+  T extends AnyRowSource,
   C extends SchemaContext,
   Singleton,
 > = Singleton extends true ? SingletonQueryState<T, C> : InitialQueryState<T, C>
 
 // The state of `find` of a key without columns, so that `upsert` applies to it as to a query of `find`, and the methods that change the state drop the key as they do for `find`.
 /** State of a query that starts from singleton table `T` with schema context `C`: its one row as a record without fields, which resolves to `undefined` without it. */
-export interface SingletonQueryState<T extends AnyTable, C extends SchemaContext = NoRelations>
+export interface SingletonQueryState<T extends AnyRowSource, C extends SchemaContext = NoRelations>
   extends InitialQueryState<T, C, never, "optional">, FoundKey<never> {}
 
 /** Key of the member of `FoundKey` that makes it invariant in the columns of the key. */

@@ -1,7 +1,7 @@
 import type { OneRow, ResultRows } from "kern-db"
 
 import type { NoRelations, SchemaContext, UsableRelation, UsedRelation } from "../schema/relation"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 
 import type { SelectQueryKind } from "./kind"
 import type { AnySelectQuery, ChangeState, SelectQuery, TableOrQuery } from "./select"
@@ -22,7 +22,7 @@ import type { EmptyRecord, Grouped, QueryStateOf, SelectQueryState } from "./sta
  *
  * It is guaranteed, so that the state that the callback returns tells whether the callback ends the guarantee of the query the helper is applied to.
  */
-interface HelperState<T extends AnyTable, C extends SchemaContext> extends QueryStateOf<T, C> {
+interface HelperState<T extends AnyRowSource, C extends SchemaContext> extends QueryStateOf<T, C> {
   readonly result: HelperFields<never>
   readonly valueType: never
   readonly fieldTypes: EmptyRecord
@@ -94,7 +94,10 @@ type CheckResult<S extends SelectQueryState> = [S] extends [
 // The checks constrain the state of the query rather than test it with a conditional type, which TypeScript defers for a generic state, such as of a function that applies a helper.
 // A generic state passes them through its own constraint, such as `S extends QueryStateOf<T> & { readonly value: false }`.
 /** State of a query over table `T` that accepts a helper of effect `E`. */
-type HelperInput<T extends AnyTable, E extends HelperEffect> = QueryStateOf<T, ReadsContext<E>> &
+type HelperInput<T extends AnyRowSource, E extends HelperEffect> = QueryStateOf<
+  T,
+  ReadsContext<E>
+> &
   ValueCheck<E> &
   (true extends E["grouped"] ? { readonly aggregate: false } : unknown)
 
@@ -179,7 +182,7 @@ type EffectRows<S extends SelectQueryState, E extends HelperEffect> = E["guarant
  * Selected fields replace earlier fields under the same keys; a query made by `get`, `pluck`, an aggregate method, or `map` does not accept a helper that selects fields or maps them.
  * `use` of a mutation also applies a helper that only selects fields and maps them.
  */
-export type Helper<T extends AnyTable, E extends HelperEffect, A extends unknown[]> = <
+export type Helper<T extends AnyRowSource, E extends HelperEffect, A extends unknown[]> = <
   S extends HelperInput<T, E>,
   Kind extends SelectQueryKind,
 >(
@@ -189,7 +192,7 @@ export type Helper<T extends AnyTable, E extends HelperEffect, A extends unknown
 
 /** Helper of any table, effect, and arguments. */
 // oxlint-disable-next-line typescript/no-explicit-any -- a helper of any effect and arguments
-export type AnyHelper = Helper<AnyTable, any, any>
+export type AnyHelper = Helper<AnyRowSource, any, any>
 
 /** Type of a record of the fields that a helper of effect `E` selects, or of what its `map` gives, for each effect of a union. */
 export type HelperResult<E extends HelperEffect> = E extends HelperEffect
@@ -207,7 +210,7 @@ export type HelperResult<E extends HelperEffect> = E extends HelperEffect
  * A helper that only selects fields and maps them also applies to an insert, an update, and a delete with their `use`, where it selects what they return; other methods fail there.
  */
 export function defineHelper<
-  T extends AnyTable,
+  T extends AnyRowSource,
   // oxlint-disable-next-line typescript/no-explicit-any -- a query of any state
   R extends SelectQuery<any, SelectQueryKind>,
   A extends unknown[],

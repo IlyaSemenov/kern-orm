@@ -9,7 +9,7 @@ import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
 import type { ResultConversion } from "../result/result"
 import type { UsedRelation } from "../schema/relation"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 import type { IsAny } from "../utils/type-helpers"
 
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
@@ -33,7 +33,7 @@ export type SynchronousResult<R> = [Extract<R, PromiseLike<unknown>>] extends [n
 
 /** State of a query of `transform` of a table in types: over table `T`, whose whole result is `R`, selecting records of relations `U`. */
 export interface TransformedQueryState<
-  T extends AnyTable = AnyTable,
+  T extends AnyRowSource = AnyRowSource,
   R = unknown,
   U extends UsedRelation = UsedRelation,
 > extends QueryState {

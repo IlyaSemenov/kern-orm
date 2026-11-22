@@ -1,13 +1,14 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import type { EmptyRecord, NoOperators, ResultOf, TableKeys, Type } from "kern-orm"
-import { bindSchema, createDatabase, defineSchema, defineTable } from "kern-orm"
+import { bindSchema, createDatabase, defineSchema, defineTable, defineView } from "kern-orm"
 import * as t from "kern-orm/types"
 
 import {
   aggregateValue,
   convertedFormCount,
   defineSnakeCaseTable,
+  defineSnakeCaseView,
   deleteForm,
   deleteFormsWithFields,
   findFormByName,
@@ -27,6 +28,7 @@ import {
   namesWithFields,
   pageOfForms,
   plainNumeric,
+  publishedField,
   renameForm,
   requireLicenseToken,
   schema,
@@ -206,8 +208,9 @@ describe("emitted declarations of a type defined from another type", () => {
 })
 
 describe("emitted declarations of a table factory", () => {
-  test("keep the type of defineTable", () => {
+  test("keep the types of defineTable and defineView", () => {
     expectTypeOf(defineSnakeCaseTable).toEqualTypeOf<typeof defineTable>()
+    expectTypeOf(defineSnakeCaseView).toEqualTypeOf<typeof defineView>()
   })
 
   test("define tables with and without options, keeping their keys", () => {
@@ -235,6 +238,17 @@ describe("emitted declarations of a table factory", () => {
     expectTypeOf(log.keys).toEqualTypeOf<
       TableKeys<readonly ["id"], never> | TableKeys<readonly ["id"], readonly ["id", "code"]>
     >()
+  })
+
+  test("preserve the columns and read-only kind of an exported view", () => {
+    const { publishedField: fields } = defineSchema({ publishedField })
+    const selected = fields.select("formId", "label")
+    expectTypeOf<ResultOf<typeof selected>>().toEqualTypeOf<{
+      formId: string
+      label: string
+    }>()
+    // @ts-expect-error A view remains read-only across declarations.
+    fields.all().delete()
   })
 })
 

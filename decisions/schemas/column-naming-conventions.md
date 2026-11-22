@@ -1,10 +1,10 @@
 # Column naming conventions of the table factory
 
-`createTableFactory` takes the conversion of column keys to physical names, such as `toSnakeCase`, as an option of the definition of tables rather than of a database.
+`createTableFactory` takes the conversion of column keys to physical names, such as `toSnakeCase`, as an option of the definition of tables and views rather than of a database.
 
 ```ts
-// Chosen: the tables that the factory defines
-export const defineTable = createTableFactory({ columnName: toSnakeCase })
+// kern-orm: the factory that defines tables and views
+export const { defineTable, defineView } = createTableFactory({ columnName: toSnakeCase })
 
 // Drizzle ORM: the database
 const db = drizzle({ connection: process.env.DATABASE_URL, casing: "snake_case" })

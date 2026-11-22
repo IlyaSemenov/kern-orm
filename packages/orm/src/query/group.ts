@@ -5,7 +5,7 @@ import type { ExpressionNode } from "../ast/nodes"
 import type { GroupValue } from "../expression/aggregates"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { isOperandSource, operandNode } from "../expression/expression"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 
 import { isAggregateQuery } from "./aggregate"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
@@ -132,7 +132,7 @@ export type QueryHavingFilter<S extends SelectQueryState> = [S] extends [unknown
  */
 export function addHaving(
   node: QueryNode,
-  filter: WhereFilter<AnyTable>,
+  filter: WhereFilter<AnyRowSource>,
   context: QueryContext,
 ): ExpressionNode {
   if (node.groupBy.length === 0) {

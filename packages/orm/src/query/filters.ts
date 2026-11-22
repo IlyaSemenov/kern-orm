@@ -5,7 +5,7 @@ import type { EqualityOperator } from "../expression/operators/equality"
 import type { ConditionOperand, Predicate } from "../expression/predicates"
 import { toConditionNode } from "../expression/predicates"
 import type { NoRelations, SchemaContext } from "../schema/relation"
-import type { AnyTable, ColumnOperators, ColumnValues } from "../table/table"
+import type { AnyRowSource, ColumnOperators, ColumnValues } from "../table/table"
 import type { TypeInput, TypeOutput } from "../type/type"
 import type { IsAny } from "../utils/type-helpers"
 
@@ -19,12 +19,12 @@ import type { SelectQueryState } from "./state"
  *
  * A column without an `eq` operator of one operand accepts only `null` in this filter, when its input type includes `null`.
  */
-export type WhereValues<T extends AnyTable> = {
+export type WhereValues<T extends AnyRowSource> = {
   [K in keyof T["columns"]]?: EqValue<T, K> | (null extends ColumnValues<T>[K] ? null : never)
 }
 
 /** Operand of the `eq` operator of column `K` of table `T` in an object passed to `where`, such as an expression. */
-export type EqValue<T extends AnyTable, K extends keyof T["columns"]> =
+export type EqValue<T extends AnyRowSource, K extends keyof T["columns"]> =
   // Operators of a table of any columns are `any`, and its values accept any value, so that a query over a specific table is a query over any table.
   IsAny<ColumnOperators<T, K>> extends true
     ? ColumnValues<T>[K]
@@ -37,16 +37,16 @@ export type EqValue<T extends AnyTable, K extends keyof T["columns"]> =
 export type EqOperand<E> = E extends { eq: (value: infer V) => Predicate } ? V : never
 
 /** Filter of `where`: a Boolean expression, a query of one Boolean value, such as of `exists`, an object of column values, or their combination with `and`, `or`, and `not`. */
-export type WhereCondition<T extends AnyTable> = ConditionOperand<WhereValues<T>>
+export type WhereCondition<T extends AnyRowSource> = ConditionOperand<WhereValues<T>>
 
 // An intersection rather than one alias of both, as for the callback of `select`.
 /** Callback of `where` over table `T` with schema context `C`: it receives the columns and the queries of the relations of the table and returns a condition. */
-export type WhereCallback<T extends AnyTable, C extends SchemaContext = NoRelations> = (
+export type WhereCallback<T extends AnyRowSource, C extends SchemaContext = NoRelations> = (
   columns: ColumnRefs<T> & RelationRefs<C>,
 ) => WhereCondition<T>
 
 /** Argument of `where` of a query over table `T` with schema context `C`: a condition, or a callback that receives the columns and the relations of the query and returns one. */
-export type WhereFilter<T extends AnyTable, C extends SchemaContext = NoRelations> =
+export type WhereFilter<T extends AnyRowSource, C extends SchemaContext = NoRelations> =
   | WhereCondition<T>
   | WhereCallback<T, C>
 
@@ -63,7 +63,7 @@ export type QueryWhereFilter<S extends SelectQueryState> = [S] extends [unknown]
 /** Creates query filters with the filter of `where` over `source` with the relations of `context` combined with `AND` with the user filters of `filters`. */
 export function addUserFilter(
   filters: QueryFilters,
-  filter: WhereFilter<AnyTable>,
+  filter: WhereFilter<AnyRowSource>,
   source: TableSourceNode,
   context: QueryContext,
 ): QueryFilters {
@@ -81,7 +81,7 @@ export function addUserFilter(
  * A callback receives the columns with the relations, and what `readSelected` returns, such as the selected fields for `having`.
  */
 export function toFilterNode(
-  filter: WhereFilter<AnyTable>,
+  filter: WhereFilter<AnyRowSource>,
   source: TableSourceNode,
   context: QueryContext,
   readSelected?: () => unknown,

@@ -3,7 +3,7 @@ import type { ParameterBinder } from "kern-db/builder"
 import { bindParameter } from "kern-db/builder"
 
 import type { AnyDb } from "../../execution/db"
-import type { AnyTable } from "../../table/table"
+import type { AnyRowSource } from "../../table/table"
 
 import { cutIdentifier, maxNameBytes } from "./identifier"
 
@@ -24,7 +24,7 @@ export class CompileContext implements ParameterBinder {
   constructor(
     readonly schemaName: string | undefined,
     /** Tables that the statement may use, or `undefined` for any table. */
-    readonly tables: ReadonlySet<AnyTable> | undefined = undefined,
+    readonly tables: ReadonlySet<AnyRowSource> | undefined = undefined,
     /** `Db` that runs the statement, the only one whose interpolated tables it may name; `undefined` for a statement of no `Db`. */
     readonly db: AnyDb | undefined = undefined,
   ) {}

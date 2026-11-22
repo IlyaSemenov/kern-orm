@@ -5,14 +5,14 @@ import { bindSchema } from "../execution/db"
 import { one } from "../schema/relation"
 import { defineSchema } from "../schema/schema"
 import { toSnakeCase } from "../table/snake-case"
-import { createTableFactory, defineTable } from "../table/table"
+import { createTableFactory, defineTable, defineView } from "../table/table"
 import { defineType } from "../type/type"
 import * as t from "../types"
 
 import { findTableMismatches } from "./tables"
 
 describePostgres("findTableMismatches", ({ database, testTransaction }) => {
-  const defineSnakeTable = createTableFactory({ columnName: toSnakeCase })
+  const { defineTable: defineSnakeTable } = createTableFactory({ columnName: toSnakeCase })
 
   const user = defineSnakeTable("user", {
     id: t.uuid.primaryKey().hasDefault(),
@@ -453,6 +453,26 @@ describePostgres("findTableMismatches", ({ database, testTransaction }) => {
           message:
             'Required relation unenforced.parent has no usable foreign key of its columns: "unenforced_parent_id_fkey" is not valid and not enforced',
         },
+      ])
+    }))
+
+  it("requires an ordinary or materialized view to exist for defineView", () =>
+    testTransaction(async () => {
+      await database.script(`
+        CREATE TABLE form (id integer);
+        CREATE VIEW published_form AS SELECT id FROM form;
+        CREATE MATERIALIZED VIEW form_snapshot AS SELECT id FROM form;
+      `)
+      const columns = { id: t.integer }
+      const sources = defineSchema({
+        form: defineView("form", columns),
+        published: defineView("published_form", columns),
+        snapshot: defineView("form_snapshot", columns),
+        missing: defineView("missing_form", columns),
+      })
+      expect(await findTableMismatches(bindSchema(sources, database))).toEqual([
+        { table: "form", message: '"form" in schema "public" is not a view' },
+        { table: "missing", message: 'View "missing_form" does not exist in schema "public"' },
       ])
     }))
 

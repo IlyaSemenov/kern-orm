@@ -3,14 +3,14 @@ import { createNode } from "../ast/nodes"
 import type { Expression } from "../expression/expression"
 import { toExpression } from "../expression/expression"
 import type { SchemaContext, TableContext, UsedRelation } from "../schema/relation"
-import type { AnyTable, ColumnOperators, ColumnValues, Selectable } from "../table/table"
+import type { AnyRowSource, ColumnOperators, ColumnValues, Selectable } from "../table/table"
 
 import type { RelationRows } from "./rows"
 import type { SelectQuery } from "./select"
 import type { EmptyRecord, InitialQueryState } from "./state"
 
 /** References to the columns of the query source, passed to query callbacks. */
-export type ColumnRefs<T extends AnyTable> = {
+export type ColumnRefs<T extends AnyRowSource> = {
   readonly [K in keyof T["columns"]]: Expression<
     Selectable<T>[K],
     ColumnOperators<T, K>,

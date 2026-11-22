@@ -5,7 +5,7 @@ import type { ResultByRows, ResultRows } from "kern-db"
 import type { ExpressionNode } from "../ast/nodes"
 import { oneNode } from "../ast/nodes"
 import type { RelationDefinition, RelationKind } from "../schema/relation"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 
 import type { QueryState } from "./state"
 
@@ -34,7 +34,7 @@ export type QueryResult<S extends QueryState> = S extends QueryState
   : never
 
 /** Returns the rows mode of a query that starts from `table`, as `TableQueryState` gives it in types: `optional` of the one row of a singleton table, and `many` of the rows of another table. */
-export function getTableRows(table: AnyTable): ResultRows {
+export function getTableRows(table: AnyRowSource): ResultRows {
   return table.singleton ? "optional" : "many"
 }
 

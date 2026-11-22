@@ -39,7 +39,7 @@ import type {
 import { collectDefinitions } from "../schema/relation"
 import type { AnySchema, Schema, Tables } from "../schema/schema"
 import { defineEntries, schemaRelations } from "../schema/schema"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource, AnyTable } from "../table/table"
 
 /** Physical placement of the tables of a schema bound to a database. */
 export interface BindOptions {
@@ -65,10 +65,13 @@ type DbQuery<T extends Tables, R extends SchemaRelations> =
   | QueryOf<DbQueryState<T[keyof T], UsableRelation<R>>>
   | TransformedQuery<TransformedQueryState<T[keyof T], unknown, UsableRelation<R>>, SelectQueryKind>
   | RecordQuery<RecordQueryState<unknown, UsableRelation<R>>, SelectQueryKind>
-  | MutationQuery<DbMutationState<T[keyof T], UsableRelation<R>>, SelectQueryKind>
+  | MutationQuery<DbMutationState<T[keyof T] & AnyTable, UsableRelation<R>>, SelectQueryKind>
 
 /** State of a query that a `Db` can execute: over table `T`, selecting records only of relations `U`. */
-export interface DbQueryState<T extends AnyTable, U extends UsedRelation> extends QueryStateOf<T> {
+export interface DbQueryState<
+  T extends AnyRowSource,
+  U extends UsedRelation,
+> extends QueryStateOf<T> {
   readonly uses: U
 }
 
@@ -212,7 +215,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
   database: Database | (() => Database),
   options: BindOptions = {},
 ): Db<T, R> {
-  const tables = new Set<AnyTable>(Object.values(schema.$tables))
+  const tables = new Set<AnyRowSource>(Object.values(schema.$tables))
   const relations = schema[schemaRelations]
   const definitions = collectDefinitions(relations)
   // Changing the options object after binding does not change the Db.

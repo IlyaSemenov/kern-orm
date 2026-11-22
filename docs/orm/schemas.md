@@ -25,6 +25,38 @@ See [Types](./types) for the built-in types, column attributes, and custom types
 
 The definitions describe tables that already exist: create and change them with SQL or [migrations](../migrations/getting-started), and check in a test that they [match the database](./testing#tables-that-match-the-database).
 
+## Views
+
+Use `defineView` to read an ordinary or materialized PostgreSQL view through a schema:
+
+```ts
+import { defineView } from "kern-orm"
+import * as t from "kern-orm/types"
+
+export const publishedField = defineView("published_field", {
+  formId: t.uuid.columnName("form_id"),
+  label: t.text,
+})
+```
+
+Include the view in the schema alongside your tables, then query it through your application's `db`:
+
+```ts
+import { db } from "#db"
+
+const formsWithEmail = db.form.where(form =>
+  db.publishedField.where({ formId: form.id, label: "Email" }).exists(),
+)
+```
+
+To apply the same [column naming convention](#naming-conventions) to your tables and views, import both definition functions from your table factory module.
+Declare `nullable()` for a column whose result can be null.
+Create and change the SQL definition in a [migration](../migrations/helpers).
+
+A view declared with `defineView` is read-only and its columns cannot declare keys or defaults.
+Use `where` to look up its rows: `find`, `findBy`, and relations `one` targeting the view require a key.
+If you need to declare a key guaranteed by the view's query or write through an updatable view, describe it with `defineTable`.
+
 ## Keys
 
 Mark the primary key column with `primaryKey()` and each column of unique values with `unique()`:
@@ -62,7 +94,7 @@ Put the tables you query in a schema and bind it to the [database](./getting-sta
 ```ts
 import { bindSchema, defineSchema } from "kern-orm"
 
-export const schema = defineSchema({ form, field })
+export const schema = defineSchema({ form, field, publishedField })
 
 export const db = bindSchema(schema, database)
 ```
@@ -128,19 +160,19 @@ To name it differently, set the name with `columnName`, as `formId` of `field` [
 
 ### Naming conventions
 
-To name the columns of your tables in snake case, such as `form_id` for `formId`, create your own `defineTable` with `createTableFactory` and use it to define your tables:
+To use snake case for table and view columns, such as `form_id` for `formId`, export both functions from one factory:
 
 ```ts
-// db/define-table.ts
+// db/table-factory.ts
 import { createTableFactory, toSnakeCase } from "kern-orm"
 
-export const defineTable = createTableFactory({ columnName: toSnakeCase })
+export const { defineTable, defineView } = createTableFactory({ columnName: toSnakeCase })
 ```
 
 ```ts
 import * as t from "kern-orm/types"
 
-import { defineTable } from "./db/define-table"
+import { defineTable } from "./db/table-factory"
 
 export const field = defineTable("form_field", {
   id: t.uuid.primaryKey(),
@@ -149,13 +181,15 @@ export const field = defineTable("form_field", {
 })
 ```
 
+The factory's `defineView` applies the same conversion, so `formId: t.uuid` reads `form_id` in a view as well.
+
 A run of capital letters is one word, such as `user_id` for `userID` and `json_data` for `JSONData`, and digits stay in their word, such as `line2`.
 `columnName` overrides the derived name of a column, such as `t.text.columnName("line_2")`.
 
 For another convention, pass your own function, which gets the key of each column and returns its name:
 
 ```ts
-export const defineTable = createTableFactory({
+export const { defineTable, defineView } = createTableFactory({
   // personCategoryId for person_category_id
   columnName: key => key.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase()),
 })

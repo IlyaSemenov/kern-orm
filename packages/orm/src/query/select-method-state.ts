@@ -9,7 +9,7 @@ import type {
   TypedOperandOperators,
 } from "../expression/functions"
 import type { OperandValue } from "../expression/operators/comparison"
-import type { AnyTable, ColumnOperators, ColumnValues, Selectable } from "../table/table"
+import type { AnyRowSource, ColumnOperators, ColumnValues, Selectable } from "../table/table"
 
 import type { CountValueType } from "./aggregate"
 import type { OperandUses } from "./operand"
@@ -80,7 +80,7 @@ export type UnaggregatedValueQueryState = ValueQueryState & UnaggregatedQuerySta
 
 // A type of literal members rather than parameters of input and operators: an alias instantiates its arguments with each new mapper, also where no call reads them, and the operators of a type are object types that TypeScript instantiates again each time.
 /** Type of the value of a query of column `K` of table `T`. */
-export type ColumnValueType<T extends AnyTable, K extends keyof T["columns"]> = {
+export type ColumnValueType<T extends AnyRowSource, K extends keyof T["columns"]> = {
   readonly input: ColumnValues<T>[K]
   readonly operators: ColumnOperators<T, K>
 }

@@ -76,12 +76,12 @@ bench("schema with relations", () => {
       children: many(node, { from: "id", to: "parentId" }),
     },
   })
-}).types([1183, "instantiations"])
+}).types([1194, "instantiations"])
 
 bench("first expression of a table", () => {
   defineExpression(formsSchema.form, (form, name: string) => form.name.eq(name))
-}).types([166, "instantiations"])
+}).types([165, "instantiations"])
 
 bench("first helper of a table", () => {
   defineHelper(formsSchema.form, query => query.where({ published: true }))
-}).types([592, "instantiations"])
+}).types([591, "instantiations"])

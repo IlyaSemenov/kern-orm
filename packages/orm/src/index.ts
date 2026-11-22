@@ -291,6 +291,7 @@ export type {
   ToColumn,
 } from "./table/column"
 export type {
+  AnyRowSource,
   AnyTable,
   AnyTableKeys,
   ColumnDefinitions,
@@ -298,12 +299,14 @@ export type {
   ColumnShape,
   ColumnValues,
   KeyColumns,
+  RowSource,
   Selectable,
   Table,
   TableFactoryOptions,
   TableKeys,
   TableOptions,
   ToColumns,
+  View,
 } from "./table/table"
-export { createTableFactory, defineTable } from "./table/table"
+export { createTableFactory, defineTable, defineView } from "./table/table"
 export { toSnakeCase } from "./table/snake-case"

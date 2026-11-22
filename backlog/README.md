@@ -72,6 +72,7 @@ Ideas that wait for an application that needs them, or that are not planned.
 - [Several records of a relation `one`](several-records-of-a-relation-one.md): an error that names the field.
 - [Union of queries of several tables](union-of-queries-of-several-tables.md): one query typed from `cond ? db.foo : db.bar`.
 - [Relation-aware mutations](relation-aware-mutations.md): a separate project.
+- [Keys of view results](keys-of-view-results.md): declared keys for `findBy` and relations `one` targeting a view.
 
 ## Keeping the backlog
 

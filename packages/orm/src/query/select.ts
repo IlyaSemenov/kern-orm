@@ -18,7 +18,14 @@ import type { TypedOperand } from "../expression/functions"
 import type { Operand, OperandValue } from "../expression/operators/comparison"
 import { valuesQueryNode } from "../expression/operators/equality"
 import type { SchemaContext } from "../schema/relation"
-import type { AnyTable, AnyTableKeys, ColumnShape, Selectable, Table } from "../table/table"
+import type {
+  AnyRowSource,
+  AnyTable,
+  AnyTableKeys,
+  ColumnShape,
+  RowSource,
+  Selectable,
+} from "../table/table"
 
 import type { AggregateMethod, CountValueType } from "./aggregate"
 import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate"
@@ -165,7 +172,7 @@ export class SelectQuery<
     this: SelectQuery<S, Kind>,
     filter: QueryWhereFilter<S>,
   ): SelectQuery<FilteredState<S>, Kind>
-  where(filter: WhereFilter<AnyTable>): unknown {
+  where(filter: WhereFilter<AnyRowSource>): unknown {
     return this.derive(this.addFilter(filter))
   }
 
@@ -755,7 +762,7 @@ export class SelectQuery<
     this: SelectQuery<S, Kind>,
     filter: QueryHavingFilter<S>,
   ): SelectQuery<FilteredState<S>, Kind>
-  having(filter: WhereFilter<AnyTable>): unknown {
+  having(filter: WhereFilter<AnyRowSource>): unknown {
     return this.derive({
       having: addHaving(this.node, filter, this.context),
       rows: this.getFilteredRows(),
@@ -994,7 +1001,7 @@ export class SelectQuery<
    * Select the fields that it returns after it, such as `insert(values).get("id")`.
    * To handle a conflict of the record with an existing one on a key, call `onConflict` right after `insert`.
    */
-  insert<S extends SelectQueryState, Kind extends SelectQueryKind>(
+  insert<S extends QueryStateOf<AnyTable>, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
     values: InsertValues<S["table"]>,
   ): MutationQuery<InitialInsertState<S["table"], S["schema"], "one">, Kind>
@@ -1010,7 +1017,7 @@ export class SelectQuery<
    * To handle a conflict of a record with an existing one on a key, call `onConflict` right after `insertMany`.
    * A singleton table, which holds one row, takes `insert` or `upsert` instead.
    */
-  insertMany<S extends SelectQueryState, Kind extends SelectQueryKind>(
+  insertMany<S extends QueryStateOf<AnyTable>, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
     records: readonly InsertValues<S["table"]>[] & InsertManyCheck<S["table"]>,
   ): MutationQuery<InitialInsertState<S["table"], S["schema"], "many">, Kind>
@@ -1029,7 +1036,7 @@ export class SelectQuery<
    * Select the fields that it returns after it, such as `upsert(values).get("id")`.
    * To update the existing record with other values than the inserted ones, such as to increment a counter, call `onConflict` after `insert` instead.
    */
-  upsert<S extends FoundQueryState, Kind extends SelectQueryKind>(
+  upsert<S extends FoundQueryState & QueryStateOf<AnyTable>, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
     values: UpsertValues<S["table"], S["foundKey"]>,
   ): MutationQuery<InitialMutationState<S["table"], S["schema"], "one">, Kind>
@@ -1054,7 +1061,7 @@ export class SelectQuery<
    * Select the fields that it returns after it, with their values after the update, such as `update(callback).select("id")`.
    */
   update<
-    S extends SelectQueryState,
+    S extends QueryStateOf<AnyTable>,
     Kind extends SelectQueryKind,
     F extends (
       columns: ColumnRefs<S["table"]> & RelationRefs<S["schema"]>,
@@ -1082,7 +1089,7 @@ export class SelectQuery<
    * Values without a column to set change no row and lock none: the query reads the rows that it chooses instead, and resolves to their number or the fields selected after it.
    * Select the fields that it returns after it, with their values after the update, such as `update(set).select("id")`.
    */
-  update<S extends SelectQueryState, Kind extends SelectQueryKind>(
+  update<S extends QueryStateOf<AnyTable>, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
     set: UpdateSet<S["table"], S["schema"]>,
   ): MutationQuery<InitialMutationState<S["table"], S["schema"], S["rows"]>, Kind>
@@ -1097,7 +1104,7 @@ export class SelectQuery<
    * A query without a filter must call `all` to delete every row, unless it is a query of a singleton table, which deletes its row.
    * Select the fields that it returns after it, such as `delete().pluck("id")`.
    */
-  delete<S extends SelectQueryState, Kind extends SelectQueryKind>(
+  delete<S extends QueryStateOf<AnyTable>, Kind extends SelectQueryKind>(
     this: SelectQuery<S, Kind>,
   ): MutationQuery<InitialMutationState<S["table"], S["schema"], S["rows"]>, Kind>
   delete(): unknown {
@@ -1268,7 +1275,7 @@ export class SelectQuery<
   }
 
   /** Returns the changes of the node that add `filter` with `AND`, ending the guarantee of the row as `FilteredState` does in types. */
-  private addFilter(filter: WhereFilter<AnyTable>): NodeChanges {
+  private addFilter(filter: WhereFilter<AnyRowSource>): NodeChanges {
     const { node } = this
     return this.toFilteredChanges(addUserFilter(node.filters, filter, node.from, this.context))
   }
@@ -1357,7 +1364,7 @@ export class SelectQuery<
 }
 
 /** Check of the records of `insertMany` into table `T` that rejects them for a singleton table, which holds one row. */
-type InsertManyCheck<T extends AnyTable> = T["singleton"] extends true
+type InsertManyCheck<T extends AnyRowSource> = T["singleton"] extends true
   ? SingletonInsertMany
   : unknown
 
@@ -1403,7 +1410,7 @@ export type ResultOf<Q extends AnyQuery | AnySqlQuery | AnyHelper> = Q extends
   | AnyQuery
   | AnySqlQuery
   ? Q["types"]["result"]
-  : Q extends Helper<AnyTable, infer E, never>
+  : Q extends Helper<AnyRowSource, infer E, never>
     ? HelperResult<E>
     : never
 
@@ -1416,24 +1423,24 @@ export function bindQuery<S extends SelectQueryState>(
 }
 
 /** Table of a definition such as `defineExpression`: the table itself or a query over it with schema context `C`, such as `schema.form`. */
-export type TableOrQuery<T extends AnyTable, C extends SchemaContext = SchemaContext> =
+export type TableOrQuery<T extends AnyRowSource, C extends SchemaContext = SchemaContext> =
   | T
   | QueryOf<QueryStateOf<T, C>>
 
 // Overloads rather than `TableQueryState`, a conditional type, which TypeScript defers for a table of a generic type, such as `T extends typeof form`, so that the table of the state of the query would not be `T`, and `insert` would reject values of `InsertValues<T>`.
 /** Starts a query over a new occurrence of the table. */
-export function from<T extends Table<string, ColumnShape, AnyTableKeys, false>>(
+export function from<T extends RowSource<string, ColumnShape, AnyTableKeys, false>>(
   table: T,
 ): SelectQuery<InitialQueryState<T>>
 /** Starts a query of the one row of a singleton table over a new occurrence of the table. */
-export function from<T extends Table<string, ColumnShape, AnyTableKeys, true>>(
+export function from<T extends RowSource<string, ColumnShape, AnyTableKeys, true>>(
   table: T,
 ): SelectQuery<SingletonQueryState<T>>
 /** Starts a query over a new occurrence of a table whose type does not tell whether it is a singleton table, of all its rows or of its one row. */
-export function from<T extends AnyTable>(
+export function from<T extends AnyRowSource>(
   table: T,
 ): SelectQuery<InitialQueryState<T> | SingletonQueryState<T>>
-export function from(table: AnyTable): AnySelectQuery {
+export function from(table: AnyRowSource): AnySelectQuery {
   return startQuery(table, noContext)
 }
 

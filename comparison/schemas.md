@@ -1,5 +1,17 @@
 # Tables and schemas
 
+## Reading PostgreSQL views
+
+`defineView` describes the result columns of an existing ordinary or materialized view for read-only queries through the same schema entries as tables.
+The SQL definition belongs to a migration.
+
+- Orchid ORM 1.78.61, differs: its table factory supplies `defineView`, which applies the factory's naming convention.
+  The descriptor can include the SQL body, and the application queries registered views through `db.$views`.
+  Views are read-only by default; `readOnly: false` enables mutations on an ordinary view, and materialized views are always read-only ([published declarations](https://unpkg.com/orchid-orm@1.78.61/dist/index.d.ts)).
+- Drizzle ORM, same for an existing view: `pgView(name, columns).existing()` describes its columns and tells Drizzle Kit to skip creating it; a view defined with `.as(query)` can instead infer the columns from the query ([docs](https://orm.drizzle.team/docs/views)).
+- Prisma ORM, differs: its `views` preview feature exposes a read-only client model for a `view` block, and the developer supplies the SQL in a migration or creates the view separately.
+  Prisma ORM has no schema support for materialized views ([docs](https://www.prisma.io/docs/orm/v7/prisma-schema/data-model/views)).
+
 ## Unions of column values
 
 `of<T>()` of any type narrows the values that a column returns and accepts to `T`, such as a union of strings that a `CHECK` constraint allows, and types reject a `T` outside the values of the type.
@@ -15,7 +27,7 @@
 
 ## Where the naming convention is set
 
-A naming convention is an option of the definition of tables, `createTableFactory`, rather than of a database.
+A naming convention is an option of the definition of tables and views, `createTableFactory`, rather than of a database.
 
 - Drizzle ORM, differs: `casing` is an option of `drizzle` ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/utils.ts)), and its documentation describes the builder `snakeCase.table` ([docs](https://orm.drizzle.team/docs/sql-schema-declaration#camel-and-snake-casing)).
 

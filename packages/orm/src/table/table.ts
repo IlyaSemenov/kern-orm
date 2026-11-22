@@ -45,18 +45,18 @@ export interface TableKeys<
 }
 
 /**
- * Immutable table descriptor: physical name, columns, keys, and whether it holds at most one row.
+ * Immutable descriptor of a table or view: physical name, columns, keys, and whether it holds at most one row.
  *
- * A table knows nothing about relations, schemas, or database connections, so the same table can belong to several schemas.
- * Its object identity is the logical identity of the table.
+ * The same table or view can belong to several schemas.
+ * Its object identity identifies it across schemas.
  */
-export interface Table<
+export interface RowSource<
   Name extends string = string,
   Columns extends ColumnShape = ColumnShape,
   Keys extends AnyTableKeys = AnyTableKeys,
   Singleton extends boolean = boolean,
 > {
-  readonly kind: "table"
+  readonly kind: "table" | "view"
   readonly name: Name
   readonly columns: Columns
   readonly keys: Keys
@@ -64,8 +64,29 @@ export interface Table<
   readonly singleton: Singleton
 }
 
+/** Descriptor of a writable table. */
+export interface Table<
+  Name extends string = string,
+  Columns extends ColumnShape = ColumnShape,
+  Keys extends AnyTableKeys = AnyTableKeys,
+  Singleton extends boolean = boolean,
+> extends RowSource<Name, Columns, Keys, Singleton> {
+  readonly kind: "table"
+}
+
+/** Descriptor of an ordinary or materialized view for reading. */
+export interface View<
+  Name extends string = string,
+  Columns extends ColumnShape = ColumnShape,
+> extends RowSource<Name, Columns, TableKeys<undefined, never>, false> {
+  readonly kind: "view"
+}
+
 /** Table of any name, columns, and keys. */
 export type AnyTable = Table<string, ColumnShape>
+
+/** Table or view of any name and columns. */
+export type AnyRowSource = RowSource<string, ColumnShape>
 
 /**
  * Options of `defineTable` over column keys `Column`: the keys of several columns, whose columns are listed in their order, and whether the table holds at most one row.
@@ -95,17 +116,17 @@ export interface TableFactoryOptions {
 }
 
 /** Record shape returned when all columns of a table are selected. */
-export type Selectable<T extends AnyTable> = {
+export type Selectable<T extends AnyRowSource> = {
   [K in keyof T["columns"]]: TypeOutput<T["columns"][K]["type"]>
 }
 
 /** Input values of the types of the columns. */
-export type ColumnValues<T extends AnyTable> = {
+export type ColumnValues<T extends AnyRowSource> = {
   [K in keyof T["columns"]]: TypeInput<T["columns"][K]["type"]>
 }
 
 /** Operators of the expressions of a column. */
-export type ColumnOperators<T extends AnyTable, K extends keyof T["columns"]> = TypeOperators<
+export type ColumnOperators<T extends AnyRowSource, K extends keyof T["columns"]> = TypeOperators<
   T["columns"][K]["type"]
 >
 
@@ -115,12 +136,12 @@ export type ColumnOperators<T extends AnyTable, K extends keyof T["columns"]> = 
  * It is `boolean` when the type of `T` does not tell its keys.
  * A union of tables, or of their keys, gives the union of their results.
  */
-export type IsKey<T extends AnyTable, Columns> = T extends AnyTable
+export type IsKey<T extends AnyRowSource, Columns> = T extends AnyRowSource
   ? KeysResult<T["keys"], Columns, "exact">
   : never
 
 /** Tells whether columns `Columns`, a union of column keys, include a key of table `T`, primary or unique, as `IsKey` tells its results. */
-export type ContainsKey<T extends AnyTable, Columns> = T extends AnyTable
+export type ContainsKey<T extends AnyRowSource, Columns> = T extends AnyRowSource
   ? KeysResult<T["keys"], Columns, "included">
   : never
 
@@ -278,6 +299,19 @@ export type IsExactKey<K> =
       : false
 
 /**
+ * Describes an ordinary or materialized PostgreSQL view for read queries.
+ * Use `createTableFactory` to share a column naming convention with tables, or `columnName()` to specify a physical name.
+ * View columns cannot declare keys or defaults.
+ */
+export function defineView<
+  Name extends string,
+  Definitions extends Record<string, AnyType | Column<AnyType, undefined, false>>,
+>(name: Name, definitions: Definitions): View<Name, ToColumns<Definitions>>
+export function defineView(name: string, definitions: ColumnDefinitions): AnyRowSource {
+  return createRowSource("view", name, definitions, undefined, undefined)
+}
+
+/**
  * Defines a table; a type without column attributes becomes a column as it is.
  *
  * A key of one column is marked on its column.
@@ -312,59 +346,69 @@ export function defineTable(
   name: string,
   definitions: ColumnDefinitions,
   options?: TableOptions,
-): AnyTable {
-  return createTable(name, definitions, options, undefined)
+): AnyRowSource {
+  return createRowSource("table", name, definitions, options, undefined)
 }
 
-/**
- * Creates a table-definition function with the given naming convention, for an application to define its tables with.
- *
- * Its tables have the same types as those of `defineTable`.
- */
-export function createTableFactory(factoryOptions: TableFactoryOptions): typeof defineTable {
+/** Creates table and view definition functions that share the column naming convention in `factoryOptions`. */
+export function createTableFactory(factoryOptions: TableFactoryOptions): {
+  defineTable: typeof defineTable
+  defineView: typeof defineView
+} {
   const deriveColumnName = factoryOptions.columnName
   if (typeof deriveColumnName !== "function") {
     throw new TypeError("The columnName option of createTableFactory must be a function")
   }
-  return ((name: string, definitions: ColumnDefinitions, options?: TableOptions) =>
-    createTable(name, definitions, options, deriveColumnName)) as typeof defineTable
+  return {
+    defineTable: ((name: string, definitions: ColumnDefinitions, options?: TableOptions) =>
+      createRowSource("table", name, definitions, options, deriveColumnName)) as typeof defineTable,
+    defineView: ((name: string, definitions: ColumnDefinitions) =>
+      createRowSource("view", name, definitions, undefined, deriveColumnName)) as typeof defineView,
+  }
 }
 
-/** Creates the table that `defineTable` defines, naming its columns by `deriveColumnName` if given. */
-function createTable(
+/** Creates a table or view descriptor, applying the naming convention to unnamed columns and rejecting keys and defaults on view columns. */
+function createRowSource(
+  kind: "table" | "view",
   name: string,
   definitions: ColumnDefinitions,
   options: TableOptions | undefined,
   deriveColumnName: ((key: string) => string) | undefined,
-): AnyTable {
+): AnyRowSource {
   const columns: ColumnShape = {}
   for (const [key, definition] of Object.entries(definitions)) {
     if (key.startsWith("$")) {
-      throw new Error(`Column key "${key}" of table "${name}" must not start with "$"`)
+      throw new Error(`Column key "${key}" of ${kind} "${name}" must not start with "$"`)
     }
     if (!isRecordKey(key)) {
       throw new Error(
-        `Column key "__proto__" of table "${name}" is not allowed; use columnName("__proto__")`,
+        `Column key "__proto__" of ${kind} "${name}" is not allowed; use columnName("__proto__")`,
       )
     }
     const column = toColumn(definition)
     if (!column) {
       const rejected = describeRejectedDbType(definition)
       throw new TypeError(
-        `Column "${key}" of table "${name}" must be a type of kern-orm or a column${rejected ? `, not ${rejected}` : ""}`,
+        `Column "${key}" of ${kind} "${name}" must be a type of kern-orm or a column${rejected ? `, not ${rejected}` : ""}`,
       )
+    }
+    if (kind === "view") {
+      const { keyKind, hasDefault, default: defaultValue } = column.attributes
+      if (keyKind !== undefined || hasDefault || defaultValue !== undefined) {
+        throw new Error(`Column "${key}" of view "${name}" cannot declare a key or a default`)
+      }
     }
     columns[key] = column
   }
   if (deriveColumnName) {
-    nameColumns(name, columns, deriveColumnName)
+    nameColumns(kind, name, columns, deriveColumnName)
   }
   const singleton = options?.singleton
   if (singleton !== undefined && typeof singleton !== "boolean") {
     throw new TypeError(`The singleton option of table "${name}" must be a boolean`)
   }
   return Object.freeze({
-    kind: "table",
+    kind,
     name,
     columns: Object.freeze(columns),
     keys: defineKeys(name, columns, options),
@@ -373,13 +417,14 @@ function createTable(
 }
 
 /**
- * Replaces unnamed columns of table `name` with copies whose physical names are derived from their keys, so that a column shared with other tables stays as it is.
+ * Replaces unnamed columns of a table or view with copies whose physical names are derived from their keys, preserving shared column definitions.
  *
  * It calls `deriveColumnName`, which an application gives, once for each such column.
  * It rejects a derived name that is not a non-empty string, which PostgreSQL rejects only when a query runs, and a derived name that another column has, since two keys would silently read one column.
  * Duplicate names set with `columnName` are allowed, as in `defineTable`.
  */
 function nameColumns(
+  kind: AnyRowSource["kind"],
   name: string,
   columns: ColumnShape,
   deriveColumnName: (key: string) => string,
@@ -392,7 +437,7 @@ function nameColumns(
       const columnName: unknown = deriveColumnName(key)
       if (typeof columnName !== "string" || columnName === "") {
         throw new TypeError(
-          `The name derived for column "${key}" of table "${name}" must be a non-empty string`,
+          `The name derived for column "${key}" of ${kind} "${name}" must be a non-empty string`,
         )
       }
       columns[key] = column.columnName(columnName)
@@ -404,7 +449,7 @@ function nameColumns(
     for (const other of keys) {
       if (other !== key && columns[other]!.attributes.name === columnName) {
         throw new Error(
-          `Columns "${key}" and "${other}" of table "${name}" have one physical name "${columnName}"; set another name with columnName()`,
+          `Columns "${key}" and "${other}" of ${kind} "${name}" have one physical name "${columnName}"; set another name with columnName()`,
         )
       }
     }
@@ -496,17 +541,17 @@ function hasSameColumns(key: KeyColumns, other: KeyColumns): boolean {
 }
 
 /** Finds the column of `table` under `key`, ignoring properties inherited from the object prototype, such as `toString`. */
-export function findColumn(table: AnyTable, key: string): AnyColumn | undefined {
+export function findColumn(table: AnyRowSource, key: string): AnyColumn | undefined {
   return Object.hasOwn(table.columns, key) ? table.columns[key] : undefined
 }
 
 /** Tells whether the columns of `table` under `columns` are exactly a key of it, primary or unique, in any order, as `IsKey` does in types. */
-export function isKey(table: AnyTable, columns: readonly string[]): boolean {
+export function isKey(table: AnyRowSource, columns: readonly string[]): boolean {
   return findKey(table, columns) !== undefined
 }
 
 /** Returns the key of `table`, primary or unique, whose columns are exactly those under `columns` in any order, as `isKey` tells, or `undefined`. */
-export function findKey(table: AnyTable, columns: readonly string[]): KeyColumns | undefined {
+export function findKey(table: AnyRowSource, columns: readonly string[]): KeyColumns | undefined {
   const listed = new Set(columns)
   const isListed = (key: KeyColumns) => key.length === listed.size && isKeyAmong(key, listed)
   const { primaryKey, unique } = table.keys
@@ -514,13 +559,13 @@ export function findKey(table: AnyTable, columns: readonly string[]): KeyColumns
 }
 
 /** Tells whether the columns of `table` under `columns` include a key of it, primary or unique, as `ContainsKey` does in types. */
-export function containsKey(table: AnyTable, columns: readonly string[]): boolean {
+export function containsKey(table: AnyRowSource, columns: readonly string[]): boolean {
   const listed = new Set(columns)
   return someKey(table, key => isKeyAmong(key, listed))
 }
 
 /** Tells whether `predicate` holds for a key of `table`, primary or unique. */
-function someKey(table: AnyTable, predicate: (key: KeyColumns) => boolean): boolean {
+function someKey(table: AnyRowSource, predicate: (key: KeyColumns) => boolean): boolean {
   const { primaryKey, unique } = table.keys
   return (primaryKey !== undefined && predicate(primaryKey)) || unique.some(predicate)
 }
@@ -531,10 +576,10 @@ function isKeyAmong(key: KeyColumns, columns: ReadonlySet<string>): boolean {
 }
 
 /** Returns the column of `table` under `key` as `findColumn` finds it, rejecting a key that is not a column. */
-export function requireColumn(table: AnyTable, key: string): AnyColumn {
+export function requireColumn(table: AnyRowSource, key: string): AnyColumn {
   const column = findColumn(table, key)
   if (!column) {
-    throw new Error(`Unknown column "${key}" of table "${table.name}"`)
+    throw new Error(`Unknown column "${key}" of ${table.kind} "${table.name}"`)
   }
   return column
 }

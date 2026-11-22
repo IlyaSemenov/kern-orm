@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
@@ -26,7 +26,7 @@ const other = defineTable("other", {
   id: t.uuid,
 })
 
-const keys = new Map<AnyTable, string>([
+const keys = new Map<AnyRowSource, string>([
   [form, "form"],
   [field, "field"],
 ])
@@ -146,12 +146,12 @@ describe("defineRelation", () => {
       editorId: t.uuid.nullable(),
       groupId: t.uuid.nullable(),
     })
-    const postKeys = new Map<AnyTable, string>([
+    const postKeys = new Map<AnyRowSource, string>([
       [user, "user"],
       [post, "post"],
     ])
 
-    function defineTestRelation(declaration: unknown, source: AnyTable = post) {
+    function defineTestRelation(declaration: unknown, source: AnyRowSource = post) {
       const key = postKeys.get(source)!
       return defineRelation(source, key, "related", declaration, table => postKeys.get(table))
     }

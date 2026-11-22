@@ -1,6 +1,6 @@
 import type { AnyExpression } from "../expression/expression"
 import type { NoRelations, SchemaContext } from "../schema/relation"
-import type { AnyTable } from "../table/table"
+import type { AnyRowSource } from "../table/table"
 
 import type { ColumnRefs, RelationRefs } from "./column-refs"
 import type { ScalarQuery } from "./operand"
@@ -14,7 +14,7 @@ import type { TableOrQuery } from "./select"
  * Defined with a table, it receives only the columns, and every query of the table can call it, also one without relations, such as of `from`.
  */
 export function defineExpression<
-  T extends AnyTable,
+  T extends AnyRowSource,
   R extends AnyExpression | ScalarQuery,
   A extends unknown[],
   C extends SchemaContext = NoRelations,

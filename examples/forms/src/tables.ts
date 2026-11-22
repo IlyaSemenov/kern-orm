@@ -1,7 +1,7 @@
 import { createTableFactory, toSnakeCase } from "kern-orm"
 import * as t from "kern-orm/types"
 
-const defineTable = createTableFactory({ columnName: toSnakeCase })
+const { defineTable } = createTableFactory({ columnName: toSnakeCase })
 
 export const form = defineTable("form", {
   id: t.uuid.primaryKey().hasDefault(),

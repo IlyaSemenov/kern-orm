@@ -8,7 +8,8 @@ import type { RelationDefinition } from "../schema/relation"
 import { collectDefinitions, formatRelationName } from "../schema/relation"
 import { schemaRelations } from "../schema/schema"
 import type { AnyColumn } from "../table/column"
-import type { AnyTable, KeyColumns } from "../table/table"
+import type { AnyRowSource, KeyColumns } from "../table/table"
+import { capitalize } from "../utils/capitalize"
 
 /** Mismatch of a table of a `Db` and the database. */
 export interface TableMismatch {
@@ -84,7 +85,7 @@ const minimumServerVersion = 170000
  */
 export async function findTableMismatches(db: AnyDb): Promise<TableMismatch[]> {
   const database = db.$database
-  const tables = db.$schema.$tables as Record<string, AnyTable>
+  const tables = db.$schema.$tables as Record<string, AnyRowSource>
   const catalog = await readCatalog(database, db.$schemaName, Object.values(tables))
   const mismatches: TableMismatch[] = []
   for (const key of Object.keys(tables)) {
@@ -105,7 +106,7 @@ export async function findTableMismatches(db: AnyDb): Promise<TableMismatch[]> {
 async function readCatalog(
   database: Database,
   schemaName: string | undefined,
-  tables: readonly AnyTable[],
+  tables: readonly AnyRowSource[],
 ): Promise<Catalog> {
   const server = await database.query`
     SELECT current_setting('server_version_num')::integer AS version, current_schema() AS schema
@@ -328,12 +329,17 @@ async function resolveTypes(
 }
 
 /** Returns the problems of `table` in `catalog`, such as a missing column. */
-function findTableProblems(table: AnyTable, catalog: Catalog): string[] {
+function findTableProblems(table: AnyRowSource, catalog: Catalog): string[] {
   const relation = catalog.relations.get(table.name)
   if (relation === undefined) {
-    return [`Table "${table.name}" does not exist in schema "${catalog.schemaName}"`]
+    return [
+      `${capitalize(table.kind)} "${table.name}" does not exist in schema "${catalog.schemaName}"`,
+    ]
   }
   const isView = isViewKind(relation.kind)
+  if (table.kind === "view" && !isView) {
+    return [`"${table.name}" in schema "${catalog.schemaName}" is not a view`]
+  }
   if (!isView && !isTableKind(relation.kind)) {
     return [`"${table.name}" in schema "${catalog.schemaName}" is not a table or a view`]
   }
@@ -411,7 +417,7 @@ function findTableProblems(table: AnyTable, catalog: Catalog): string[] {
  * One of them must exist, and none may be deferrable, since PostgreSQL rejects the insert of a deferrable arbiter.
  */
 function findKeyProblem(
-  table: AnyTable,
+  table: AnyRowSource,
   kind: string,
   columns: KeyColumns,
   indexes: readonly CatalogIndex[],

@@ -5,7 +5,7 @@ import type { AnyExpression } from "../expression/expression"
 import { toValueNode } from "../expression/expression"
 import type { NoRelations, SchemaContext } from "../schema/relation"
 import type { AnyColumn, columnDefault } from "../table/column"
-import type { AnyTable, ColumnValues, Selectable } from "../table/table"
+import type { AnyRowSource, AnyTable, ColumnValues, Selectable } from "../table/table"
 import { requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
@@ -81,7 +81,7 @@ export interface InsertRows {
  * It rejects a key that is not a column of `table`, and a query other than of one value.
  */
 export function toInsertRows(
-  table: AnyTable,
+  table: AnyRowSource,
   records: readonly unknown[],
   method: string,
 ): InsertRows {
@@ -133,10 +133,10 @@ interface DefaultedColumn {
 }
 
 /** Columns of each table with a default of kern-orm, which an insert reads each time it runs. */
-const defaultedColumns = new WeakMap<AnyTable, readonly DefaultedColumn[]>()
+const defaultedColumns = new WeakMap<AnyRowSource, readonly DefaultedColumn[]>()
 
 /** Returns the columns of `table` with a default of kern-orm, in the order of its columns. */
-function findDefaultedColumns(table: AnyTable): readonly DefaultedColumn[] {
+function findDefaultedColumns(table: AnyRowSource): readonly DefaultedColumn[] {
   let found = defaultedColumns.get(table)
   if (found === undefined) {
     const columns: DefaultedColumn[] = []
@@ -161,7 +161,7 @@ function findDefaultedColumns(table: AnyTable): readonly DefaultedColumn[] {
  * Without such defaults, `rows` are returned as they are.
  * A function that returns `undefined`, which types reject, leaves `DEFAULT` of the database.
  */
-export function addColumnDefaults(table: AnyTable, rows: InsertRows): InsertRows {
+export function addColumnDefaults(table: AnyRowSource, rows: InsertRows): InsertRows {
   const defaulted = findDefaultedColumns(table)
   if (defaulted.length === 0) {
     return rows
@@ -230,6 +230,6 @@ export function toAssignments(
 
 // The column types the parameter, so it needs no cast, as a compared value does.
 /** Returns the node of `value` of the column of `table` under `key`: an expression or a query of one value, which lowering replaces with a scalar subquery, or a parameter encoded with the type of the column. */
-function resolveValue(table: AnyTable, key: string, value: unknown): ExpressionNode {
+function resolveValue(table: AnyRowSource, key: string, value: unknown): ExpressionNode {
   return toValueNode(value, requireColumn(table, key).type)
 }

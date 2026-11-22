@@ -7,7 +7,15 @@ import * as t from "../types"
 import type { Column } from "./column"
 import { toSnakeCase } from "./snake-case"
 import type { TableOptions } from "./table"
-import { containsKey, createTableFactory, defineTable, findColumn, findKey, isKey } from "./table"
+import {
+  containsKey,
+  createTableFactory,
+  defineTable,
+  defineView,
+  findColumn,
+  findKey,
+  isKey,
+} from "./table"
 
 describe("defineTable", () => {
   it("rejects column keys reserved for column reference members", () => {
@@ -275,7 +283,9 @@ describe("defineTable", () => {
 })
 
 describe("createTableFactory", () => {
-  const defineSnakeCaseTable = createTableFactory({ columnName: toSnakeCase })
+  const { defineTable: defineSnakeCaseTable, defineView: defineSnakeCaseView } = createTableFactory(
+    { columnName: toSnakeCase },
+  )
 
   it("names a type and a column by the function, keeping the other attributes", () => {
     const field = defineSnakeCaseTable("form_field", {
@@ -305,9 +315,20 @@ describe("createTableFactory", () => {
     })
   })
 
+  it("uses the same convention for view columns and preserves explicit names", () => {
+    const view = defineSnakeCaseView("published_field", {
+      formId: t.uuid,
+      fieldLabel: t.text.columnName("label"),
+    })
+
+    expect(view.kind).toBe("view")
+    expect(view.columns.formId.attributes.name).toBe("form_id")
+    expect(view.columns.fieldLabel.attributes.name).toBe("label")
+  })
+
   it("names columns by any function", () => {
     // Orchid ORM 1.78.47 has only its own snakeCase, and declined a function of names: https://github.com/romeerez/orchid-orm/issues/197
-    const defineCamelCaseTable = createTableFactory({
+    const { defineTable: defineCamelCaseTable } = createTableFactory({
       columnName: key => key.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase()),
     })
     const person = defineCamelCaseTable("person", {
@@ -319,7 +340,7 @@ describe("createTableFactory", () => {
 
   it("calls the function once for each column without a name", () => {
     const keys: string[] = []
-    const defineRecordingTable = createTableFactory({
+    const { defineTable: defineRecordingTable } = createTableFactory({
       columnName: key => {
         keys.push(key)
         return key
@@ -440,10 +461,10 @@ describe("createTableFactory", () => {
   })
 
   it("rejects a derived name that is not a non-empty string", () => {
-    const defineEmptyTable = createTableFactory({
+    const { defineTable: defineEmptyTable } = createTableFactory({
       columnName: () => "",
     })
-    const defineUntypedTable = createTableFactory({
+    const { defineTable: defineUntypedTable } = createTableFactory({
       columnName: () => undefined as unknown as string,
     })
 
@@ -468,6 +489,22 @@ describe("createTableFactory", () => {
     expect(() => createTableFactory({})).toThrow(
       "The columnName option of createTableFactory must be a function",
     )
+  })
+})
+
+describe("defineView", () => {
+  it("rejects keys and defaults on view columns", () => {
+    for (const id of [
+      t.uuid.primaryKey(),
+      t.uuid.unique(),
+      t.uuid.hasDefault(),
+      t.uuid.default("id"),
+    ]) {
+      // @ts-expect-error View columns accept only a physical name.
+      expect(() => defineView("published_form", { id })).toThrow(
+        "cannot declare a key or a default",
+      )
+    }
   })
 })
 

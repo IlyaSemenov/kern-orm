@@ -22,8 +22,9 @@ import type {
 import { findValueProjection } from "../../ast/projections"
 import type { AnyDb } from "../../execution/db"
 import type { StatementPlan } from "../../result/result"
-import type { AnyTable } from "../../table/table"
+import type { AnyRowSource } from "../../table/table"
 import { requireColumn } from "../../table/table"
+import { capitalize } from "../../utils/capitalize"
 
 import { CompileContext } from "./context"
 import { nameProjection } from "./identifier"
@@ -55,7 +56,7 @@ const noFields: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
 export function compileStatement(
   node: StatementNode,
   options: CompileOptions = {},
-  tables?: ReadonlySet<AnyTable>,
+  tables?: ReadonlySet<AnyRowSource>,
   db?: AnyDb,
 ): CompiledQuery {
   const context = new CompileContext(options.schemaName, tables, db)
@@ -102,7 +103,7 @@ export function compileStatement(
 export function compileTextStatement(
   node: RawSqlNode,
   options: CompileOptions = {},
-  tables?: ReadonlySet<AnyTable>,
+  tables?: ReadonlySet<AnyRowSource>,
   db?: AnyDb,
 ): SqlStatement {
   const context = new CompileContext(options.schemaName, tables, db)
@@ -387,9 +388,9 @@ function compileSource(context: CompileContext, outer: Scope | undefined, declar
 }
 
 /** Compiles the name of `table`, qualified by the PostgreSQL schema of the statement, rejecting a table outside the tables of the statement. */
-function compileTableName(context: CompileContext, table: AnyTable): string {
+function compileTableName(context: CompileContext, table: AnyRowSource): string {
   if (context.tables !== undefined && !context.tables.has(table)) {
-    throw new Error(`Table "${table.name}" is not part of the schema`)
+    throw new Error(`${capitalize(table.kind)} "${table.name}" is not part of the schema`)
   }
   return context.schemaName === undefined
     ? quoteIdentifier(table.name)
@@ -403,8 +404,8 @@ function compileInterpolatedTable(context: CompileContext, node: TableNameNode):
   if (db !== undefined && db !== context.db) {
     throw new Error(
       context.db === undefined
-        ? `Table "${table.name}" interpolated into SQL is bound to a Db, so only that Db can compile the query`
-        : `Table "${table.name}" interpolated into SQL is bound to another Db`,
+        ? `${capitalize(table.kind)} "${table.name}" interpolated into SQL is bound to a Db, so only that Db can compile the query`
+        : `${capitalize(table.kind)} "${table.name}" interpolated into SQL is bound to another Db`,
     )
   }
   return compileTableName(context, table)
