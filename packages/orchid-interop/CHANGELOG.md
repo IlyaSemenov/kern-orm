@@ -1,0 +1,12 @@
+# @kern-orm/orchid-interop
+
+## 0.1.0
+
+### Minor Changes
+
+- 4f3196d: Allow the callbacks of transactions, sessions, test helpers, and `runInOrchidTransaction()` to return a query directly without `async`, such as `db.$transaction(() => db.post.insert(values))`.
+- d2c66f2: Add an experimental adapter that runs Orchid ORM and kern-orm queries on one connection pool and in the same transactions.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.8.0

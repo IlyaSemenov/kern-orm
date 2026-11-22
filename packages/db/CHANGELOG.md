@@ -1,5 +1,17 @@
 # kern-db
 
+## 0.8.0
+
+### Minor Changes
+
+- 4f3196d: Allow the callbacks of transactions, sessions, test helpers, and `runInOrchidTransaction()` to return a query directly without `async`, such as `db.$transaction(() => db.post.insert(values))`.
+- fcfd1a5: Add `database.externalTransaction()`, which runs a callback in a transaction that another library started and ends, and `postgresJsConnection()` of `kern-db/postgres-js`, which adapts the client of a transaction of postgres.js for it.
+- d2c66f2: Add the `getNativeParameters` option of `postgresJsDriver`, so that query builders can pass JavaScript values to postgres.js for serialization.
+
+### Patch Changes
+
+- d509714: Fix queries running outside their transaction or session when an untyped callback returns them directly.
+
 ## 0.7.0
 
 ### Minor Changes
