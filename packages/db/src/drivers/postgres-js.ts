@@ -90,6 +90,7 @@ async function execute(
       .raw()
       .forEach(source => {
         // Convert each row on arrival so that the raw buffers do not accumulate alongside the text rows.
+        // oxlint-disable-next-line unicorn/no-new-array -- Allocate the known row width once before decoding its columns.
         const row = new Array<TextValue>(source.length)
         for (let index = 0; index < source.length; index++) {
           const value = source[index]!
