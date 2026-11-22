@@ -475,6 +475,38 @@ describe("settings", () => {
     expect(events.at(-1)).toBe("release")
   })
 
+  it("sets the lock timeout of a session and restores the value of its connection", async () => {
+    const { driver, statements } = createRecordingDriver({
+      respond: statement => (statement.text === readSetting ? { rows: [["0"]] } : {}),
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.session(run(coordinator, "inside"), { lockTimeout: 1000 })
+
+    expect(statements).toMatchObject([
+      { text: readSetting, parameters: ["lock_timeout"] },
+      { text: setSetting, parameters: ["lock_timeout", "1000"] },
+      { text: "inside" },
+      { text: setSetting, parameters: ["lock_timeout", "0"] },
+    ])
+  })
+
+  it("rejects an invalid lock timeout without acquiring a connection", async () => {
+    let acquired = 0
+    const { driver } = createRecordingDriver({
+      acquire() {
+        acquired++
+      },
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    await expect(coordinator.session(() => Promise.resolve(), { lockTimeout: -1 })).rejects.toThrow(
+      RangeError,
+    )
+    await expect(coordinator.openSession({ lockTimeout: 1.5 })).rejects.toThrow(RangeError)
+    expect(acquired).toBe(0)
+  })
+
   it("restores the search path after a callback that rejects", async () => {
     const { driver, statements } = createRecordingDriver({ respond: respondWithSetting() })
     const coordinator = new TransactionCoordinator(driver)

@@ -129,7 +129,8 @@ export class TransactionCoordinator {
    * A failed cleanup after an error rejects with a `SuppressedError` that keeps the original error in its `suppressed` chain.
    * A transaction that it starts rolls back instead of `COMMIT` after a `ConnectionError` on its connection, and when it rejects after such an error, also of `COMMIT`, it rejects with `TransactionConnectionError` of the phase of the failure, whose `cause` is the error it would reject with otherwise.
    */
-  transaction<T>(callback: () => PromiseLike<T>, options?: TransactionOptions): Promise<T> {
+  // Async, so that an invalid lock timeout rejects the call rather than throws from it; the body up to its first await still runs in the call, so a nested level is reserved there.
+  async transaction<T>(callback: () => PromiseLike<T>, options?: TransactionOptions): Promise<T> {
     const levelOptions = options && {
       settings: getLevelSettings(options),
       isolation: options.isolation,
@@ -141,11 +142,12 @@ export class TransactionCoordinator {
         : this.#runNested(parent, callback, true, levelOptions)
     }
     if (this.#closed) {
-      return Promise.reject(createDatabaseClosedError("start a transaction"))
+      throw createDatabaseClosedError("start a transaction")
     }
-    return this.test
-      ? Promise.reject(new Error(describeOutsideTest("start a transaction")))
-      : this.#runRoot(callback, true, levelOptions)
+    if (this.test) {
+      throw new Error(describeOutsideTest("start a transaction"))
+    }
+    return this.#runRoot(callback, true, levelOptions)
   }
 
   /**
@@ -237,9 +239,13 @@ export class TransactionCoordinator {
    * A rejection of `callback` undoes nothing.
    * After a `ConnectionError` on its connection, the session accepts no more statements.
    */
-  session<T>(callback: () => PromiseLike<T>, options?: SessionOptions): Promise<T> {
+  // Async, so that an invalid lock timeout rejects the call rather than throws from it.
+  async session<T>(callback: () => PromiseLike<T>, options?: SessionOptions): Promise<T> {
     const refusal = this.#getSessionRefusal("start")
-    return refusal ? Promise.reject(refusal) : this.#runSession(callback, getLevelSettings(options))
+    if (refusal) {
+      throw refusal
+    }
+    return this.#runSession(callback, getLevelSettings(options))
   }
 
   /**

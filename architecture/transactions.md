@@ -95,8 +95,8 @@
   - on a database created with `test: true`, whose statements all run in test transactions.
 - `isInTransactionBlock` of a `Database` and `$isInTransactionBlock` of a `Db` tell whether a statement of the current context runs in a transaction block of PostgreSQL: in a transaction, an external transaction, a test transaction, or the seed of a test fixture, and not in a session outside its transactions.
   Unlike `isInTransaction`, it counts the levels of the test helpers, since PostgreSQL rejects such a statement in any transaction block; code that has one checks it to choose what to run.
-- A session takes the search path of its statements as `transaction` does.
-  It sets the search path for the session of PostgreSQL, with `set_config(..., false)`, since it has no transaction that would end the setting, after it reads the value it replaces, and restores that value before its connection returns to the driver.
+- A session takes the search path and the lock timeout of its statements as `transaction` does.
+  It sets them for the session of PostgreSQL, with `set_config(..., false)`, since it has no transaction that would end them, after it reads the values they replace, and restores those values before its connection returns to the driver.
 - After a `ConnectionError` of a statement or a script on its connection, also of its transactions, a session rejects its later statements and transactions: the connection may be lost, and a statement that ran on a new one would run without the settings of the session.
   A [driver](drivers.md) rejects every statement on a reserved connection that is lost.
 - A connection whose settings fail to restore, or whose [advisory locks](#locks) fail to release, must not return to the pool with them, and `release` of a connection takes no argument ([decision](../decisions/drivers/release-by-driver.md)), so the session leaves it in a transaction, which a driver closes on release.
@@ -152,10 +152,13 @@
 
 ## Settings
 
-- Settings of a level, such as its search path, are statements on its connection, `set_config(..., true)` after its `BEGIN` or `SAVEPOINT`, completed before its callback starts.
-- `transaction` of a `Database` and `$transaction` of a `Db` take the search path of the level as a list of schemas, which they quote, such as the target schema and the schema of extensions of [migrations](migrations.md#applying-and-rolling-back).
-  They take it in options after the callback, as `testTransaction` takes its options.
-- A nested level restores the settings it changed when it is released, since PostgreSQL keeps a setting of `SET LOCAL` or `set_config(..., true)` of a released savepoint until the transaction ends.
+- Settings of a level, such as its search path and its lock timeout, are statements on its connection, `set_config(..., true)` of all of them in one statement after its `BEGIN` or `SAVEPOINT`, completed before its callback starts.
+- `transaction` of a `Database` and `$transaction` of a `Db` take the settings in options after the callback, as `testTransaction` takes its options:
+  - `searchPath`, the search path as a list of schemas, which they quote, such as the target schema and the schema of extensions of [migrations](migrations.md#applying-and-rolling-back);
+  - `lockTimeout`, `lock_timeout` as an integer number of milliseconds from `0`, which disables the timeout, to `2147483647`, the largest that PostgreSQL accepts, since PostgreSQL would reject or round another number.
+- An invalid `lockTimeout` rejects the call before it sends a statement or acquires a connection, also of a session.
+- A level of code under test runs as a savepoint of a test level, so its settings follow the rules of a nested level, and it gets them as in production.
+- A nested level restores the settings of its options when it is released, since PostgreSQL keeps a setting of `SET LOCAL` or `set_config(..., true)` of a released savepoint until the transaction ends.
   It reads their values in a statement of its own before it changes them, since PostgreSQL does not define the order in which it evaluates the expressions of one statement, and restores them before its `RELEASE`.
   `ROLLBACK TO` restores them itself, so a level that rolls back sends no settings after its rollback.
 
@@ -164,7 +167,7 @@
 - A transaction, a test transaction, or a test fixture that is not nested runs at the isolation level of its options.
 - A nested level runs at the isolation level of its transaction, which PostgreSQL sets for the whole transaction, and one whose options give another level rejects without starting.
   It compares the level of the options of its transaction when they give one, and otherwise reads it from the connection once per transaction, so SQL that changes the level of a transaction started with a level, such as `SET TRANSACTION`, must not run in it.
-- At `repeatable read` and `serializable`, the snapshot of a transaction with [settings](#settings) comes from the statement of its settings, so it is taken before the callback starts.
+- At `repeatable read` and `serializable`, the snapshot of a transaction with [settings](#settings) comes from the statement of its settings, so it is taken before the callback starts, and the callback cannot import a snapshot with `SET TRANSACTION SNAPSHOT`, which PostgreSQL accepts only before the first query of a transaction.
 
 ## Lifecycle
 

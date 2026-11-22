@@ -9,3 +9,13 @@ export function getThrownError(callback: () => unknown): unknown {
   }
   throw new Error("Expected the callback to throw")
 }
+
+/** Returns the error that `promise` rejects with, and rejects when it resolves. */
+export function getRejection(promise: PromiseLike<unknown>): Promise<unknown> {
+  return Promise.resolve(promise).then(
+    () => {
+      throw new Error("Expected the promise to reject")
+    },
+    (error: unknown) => error,
+  )
+}

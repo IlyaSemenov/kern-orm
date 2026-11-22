@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { getRejection } from "@kern-orm/test-harness/errors"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
 import type { DriverResult, SqlStatement } from "../driver"
@@ -748,6 +749,66 @@ describe("settings", () => {
     ])
   })
 
+  it("sets the lock timeout of a transaction in milliseconds with its search path in one statement", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.transaction(run(coordinator, "inside"), {
+      searchPath: ["tenant_1"],
+      lockTimeout: 1000,
+    })
+
+    expect(statements).toMatchObject([
+      { text: "BEGIN" },
+      {
+        text: "SELECT set_config($1, $2, true), set_config($3, $4, true)",
+        parameters: ["search_path", '"tenant_1"', "lock_timeout", "1000"],
+      },
+      { text: "inside" },
+      { text: "COMMIT" },
+    ])
+  })
+
+  // 0 disables the timeout, and 2 ** 31 - 1 is the largest value that PostgreSQL accepts.
+  it.each([0, 2 ** 31 - 1])("sets a lock timeout of %p", async lockTimeout => {
+    const { driver, statements } = createRecordingDriver()
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.transaction(() => Promise.resolve(), { lockTimeout })
+
+    expect(statements).toMatchObject([
+      { text: "BEGIN" },
+      { text: setSetting, parameters: ["lock_timeout", String(lockTimeout)] },
+      { text: "COMMIT" },
+    ])
+  })
+
+  // A value that types reject, such as of code without types, also one whose conversion to a string throws.
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 31, "1000", Object.create(null)])(
+    "rejects a lock timeout of %p without a connection or a statement, also of a nested level",
+    async (lockTimeout: number) => {
+      let acquired = 0
+      const { driver, statements } = createRecordingDriver({
+        acquire() {
+          acquired++
+        },
+      })
+      const coordinator = new TransactionCoordinator(driver)
+
+      await expect(
+        coordinator.transaction(() => Promise.resolve(), { lockTimeout }),
+      ).rejects.toThrow(RangeError)
+      expect(acquired).toBe(0)
+
+      await coordinator.transaction(async () => {
+        await expect(
+          coordinator.transaction(() => Promise.resolve(), { lockTimeout }),
+        ).rejects.toThrow("lockTimeout must be an integer number of milliseconds")
+      })
+      expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT"])
+    },
+  )
+
   it("restores the settings that a nested level replaced before its RELEASE", async () => {
     const { driver, statements } = createRecordingDriver({ respond: respondWithSetting() })
     const coordinator = new TransactionCoordinator(driver)
@@ -763,6 +824,35 @@ describe("settings", () => {
       { text: setSetting, parameters: ["search_path", '"tenant_1"'] },
       { text: "inside" },
       { text: setSetting, parameters: ["search_path", previousSearchPath] },
+      { text: "RELEASE SAVEPOINT kern_1" },
+      { text: "COMMIT" },
+    ])
+  })
+
+  it("restores each setting that a nested level replaced with its own previous value", async () => {
+    const { driver, statements } = createRecordingDriver({
+      respond: statement =>
+        statement.text.startsWith("SELECT current_setting") ? { rows: [["public", "0"]] } : {},
+    })
+    const coordinator = new TransactionCoordinator(driver)
+
+    await coordinator.transaction(() =>
+      coordinator.transaction(() => Promise.resolve(), {
+        searchPath: ["tenant_1"],
+        lockTimeout: 1000,
+      }),
+    )
+
+    const setBoth = "SELECT set_config($1, $2, true), set_config($3, $4, true)"
+    expect(statements).toMatchObject([
+      { text: "BEGIN" },
+      { text: "SAVEPOINT kern_1" },
+      {
+        text: "SELECT current_setting($1), current_setting($2)",
+        parameters: ["search_path", "lock_timeout"],
+      },
+      { text: setBoth, parameters: ["search_path", '"tenant_1"', "lock_timeout", "1000"] },
+      { text: setBoth, parameters: ["search_path", "public", "lock_timeout", "0"] },
       { text: "RELEASE SAVEPOINT kern_1" },
       { text: "COMMIT" },
     ])
@@ -2277,16 +2367,6 @@ describe("failures of cleanup", () => {
 
 describe("connection failures", () => {
   const setSetting = "SELECT set_config($1, $2, true)"
-
-  /** Rejection of `promise`, which must reject. */
-  function getRejection(promise: Promise<unknown>): Promise<unknown> {
-    return promise.then(
-      () => {
-        throw new Error("Expected a rejection")
-      },
-      (error: unknown) => error,
-    )
-  }
 
   it("rejects with phase begin when getting the connection fails", async () => {
     const lost = new ConnectionError("lost")

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test"
 
+import { getRejection } from "@kern-orm/test-harness/errors"
 import { describePooledPostgres, describePostgres } from "@kern-orm/test-harness/postgres"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import postgres from "postgres"
@@ -11,9 +12,45 @@ import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
 import { postgresJsDriver } from "./drivers/postgres-js"
 import { identifier, param, sql } from "./sql/fragment"
-import { createTestHelpers } from "./test-helpers"
+import { createTestHelpers, openTestTransaction } from "./test-helpers"
 import { TransactionConnectionError } from "./transaction/connection-loss"
 import * as t from "./types"
+
+/**
+ * Runs `take` in `start`, such as in a session, holds what it takes until `check` ends, and returns what `take` gives.
+ *
+ * With `limit`, it holds it for at most `limit` milliseconds after `take` resolves, so that a check that waits for it ends.
+ */
+async function whileHeld<T>(
+  start: (callback: () => Promise<void>) => Promise<unknown>,
+  take: () => Promise<T>,
+  check: () => Promise<void>,
+  limit?: number,
+): Promise<T> {
+  const taken = Promise.withResolvers<T>()
+  const ended = Promise.withResolvers<void>()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const level = start(async () => {
+    taken.resolve(await take())
+    if (limit !== undefined) {
+      timer = setTimeout(() => ended.resolve(), limit)
+    }
+    await ended.promise
+  })
+  try {
+    // It rejects the test if the level fails before it takes the lock.
+    const result = await Promise.race([taken.promise, level.then(() => taken.promise)])
+    await check()
+    return result
+  } finally {
+    clearTimeout(timer)
+    ended.resolve()
+    await level
+  }
+}
+
+/** Longest time in milliseconds that a test holds a lock while it checks that another statement times out. */
+const lockWaitLimit = 2000
 
 describe("isDatabase", () => {
   it("recognizes a database of createDatabase, also of another copy of kern-db by its brand", () => {
@@ -191,29 +228,6 @@ describe("advisory locks", () => {
         WHERE locktype = 'advisory' AND granted
           AND (classid::bigint << 32) + objid::bigint = hashtextextended(${key}, 0)
       `.get(t.integer)
-
-    /** Runs `take` in `start`, such as in a session, holds what it takes until `check` ends, and returns what `take` gives. */
-    async function whileHeld<T>(
-      start: (callback: () => Promise<void>) => Promise<unknown>,
-      take: () => Promise<T>,
-      check: () => Promise<void>,
-    ): Promise<T> {
-      const taken = Promise.withResolvers<T>()
-      const ended = Promise.withResolvers<void>()
-      const level = start(async () => {
-        taken.resolve(await take())
-        await ended.promise
-      })
-      try {
-        // It rejects the test if the level fails before it takes the lock.
-        const result = await Promise.race([taken.promise, level.then(() => taken.promise)])
-        await check()
-        return result
-      } finally {
-        ended.resolve()
-        await level
-      }
-    }
 
     it("holds a lock of a session until the session ends, takes it once for repeated and concurrent calls, and releases it once", async () => {
       const key = createKey()
@@ -394,6 +408,108 @@ describePostgres("search path in PostgreSQL", ({ database, testTransaction }) =>
     expect(paths.after).toBe(paths.initial)
   })
 })
+
+describePostgres("lock timeout in PostgreSQL", ({ database, testTransaction }) => {
+  const getLockTimeout = async () =>
+    await database.query`SELECT current_setting('lock_timeout')`.get(t.text)
+
+  /** Runs `callback` while an open test transaction on a connection of its own holds the advisory lock of a new key, which it receives, for at most `lockWaitLimit`. */
+  async function holdLock<T>(callback: (key: string) => Promise<T>): Promise<T> {
+    const key = `kern_lock_timeout_test_${crypto.randomUUID()}`
+    const holder = await openTestTransaction(database)
+    let guard: ReturnType<typeof setTimeout> | undefined
+    try {
+      // A nested transaction keeps its lock after its release, until the test transaction ends.
+      await holder.run(() => database.transaction(() => database.lock(key)))
+      // A lock wait without a timeout ends once the holder closes, and the test transaction that waits for it ends only then; the closing in `finally` returns this closing, which passes its failure to the test.
+      guard = setTimeout(() => holder.close().catch(() => {}), lockWaitLimit)
+      return await callback(key)
+    } finally {
+      clearTimeout(guard)
+      await holder.close()
+    }
+  }
+
+  it("bounds the lock waits of the callback of a transaction that runs in a test transaction", async () => {
+    const rejection = await holdLock(key =>
+      testTransaction(() =>
+        getRejection(database.transaction(() => database.lock(key), { lockTimeout: 50 })),
+      ),
+    )
+
+    expect(rejection).toMatchObject({ code: "55P03" })
+  })
+
+  it("bounds the lock waits of nested transactions and restores the enclosing lock timeout when each is released or rolls back", async () => {
+    const timeouts = await holdLock(key =>
+      testTransaction(async () => {
+        const initial = await getLockTimeout()
+        const nested = await database.transaction(
+          async () => ({
+            inherited: await getRejection(database.transaction(() => database.lock(key))),
+            own: await database.transaction(getLockTimeout, { lockTimeout: 0 }),
+            released: await getLockTimeout(),
+            ownWait: await getRejection(
+              database.transaction(() => database.lock(key), { lockTimeout: 30 }),
+            ),
+            rolledBack: await getLockTimeout(),
+          }),
+          { lockTimeout: 50 },
+        )
+        return { initial, nested, after: await getLockTimeout() }
+      }),
+    )
+
+    expect(timeouts).toEqual({
+      initial: timeouts.initial,
+      nested: {
+        inherited: expect.objectContaining({ code: "55P03" }),
+        own: "0",
+        released: "50ms",
+        ownWait: expect.objectContaining({ code: "55P03" }),
+        rolledBack: "50ms",
+      },
+      after: timeouts.initial,
+    })
+  })
+})
+
+describePooledPostgres(
+  "lock timeout of transactions and sessions in PostgreSQL",
+  ({ database }) => {
+    /** Holds the advisory lock of a new key in a transaction while `check` runs with the key, for at most `lockWaitLimit`. */
+    async function whileLocked(check: (key: string) => Promise<void>): Promise<void> {
+      const key = `kern_lock_timeout_test_${crypto.randomUUID()}`
+      await whileHeld(
+        callback => database.transaction(callback),
+        () => database.lock(key),
+        () => check(key),
+        lockWaitLimit,
+      )
+    }
+
+    it("bounds the lock waits of a transaction", async () => {
+      await whileLocked(async key => {
+        const rejection = await getRejection(
+          database.transaction(() => database.lock(key), { lockTimeout: 50 }),
+        )
+        expect(rejection).toMatchObject({ code: "55P03" })
+      })
+    })
+
+    it("bounds the lock waits of a session", async () => {
+      await whileLocked(async key => {
+        const rejection = await getRejection(
+          database.session(
+            () => database.query`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
+            { lockTimeout: 50 },
+          ),
+        )
+        expect(rejection).toMatchObject({ code: "55P03" })
+      })
+    })
+  },
+)
 
 describePooledPostgres("isolation levels in PostgreSQL", ({ database }) => {
   const getIsolation = async () =>

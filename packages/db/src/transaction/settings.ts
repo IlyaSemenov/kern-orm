@@ -13,14 +13,48 @@ export interface LevelSetting {
   readonly value: TextValue
 }
 
-/** Settings of a level of `transaction` or of `session` with `options`, or `undefined` when it has none. */
+/** Largest `lock_timeout` that PostgreSQL accepts, in milliseconds: the largest signed 32-bit integer, which is the type of its value. */
+const maxLockTimeout = 2 ** 31 - 1
+
+/**
+ * Settings of a level of `transaction` or of `session` with `options`, or `undefined` when it has none.
+ *
+ * It throws for an invalid `lockTimeout`, so that the level sends no statement.
+ */
 export function getLevelSettings(
-  options: Pick<TransactionOptions, "searchPath"> | undefined,
+  options: Pick<TransactionOptions, "searchPath" | "lockTimeout"> | undefined,
 ): LevelSetting[] | undefined {
-  // The value of `search_path` is a list of identifiers, so each schema is quoted, as the PostgreSQL schema of a Db is, which keeps the case of its name and lets it contain commas and quotes.
-  return options?.searchPath
-    ? [{ name: "search_path", value: options.searchPath.map(quoteIdentifier).join(", ") }]
-    : undefined
+  if (!options) {
+    return undefined
+  }
+  const settings: LevelSetting[] = []
+  if (options.searchPath) {
+    // The value of `search_path` is a list of identifiers, so each schema is quoted, as the PostgreSQL schema of a Db is, which keeps the case of its name and lets it contain commas and quotes.
+    settings.push({
+      name: "search_path",
+      value: options.searchPath.map(quoteIdentifier).join(", "),
+    })
+  }
+  if (options.lockTimeout !== undefined) {
+    settings.push({ name: "lock_timeout", value: formatLockTimeout(options.lockTimeout) })
+  }
+  return settings.length > 0 ? settings : undefined
+}
+
+/**
+ * Returns the value of `lock_timeout` for `milliseconds`, an integer from 0, which disables the timeout, to the largest value that PostgreSQL accepts.
+ *
+ * It throws a `RangeError` for another number, which PostgreSQL would reject or round, and for a value that is not a number, such as of code without types.
+ */
+function formatLockTimeout(milliseconds: number): string {
+  if (!Number.isInteger(milliseconds) || milliseconds < 0 || milliseconds > maxLockTimeout) {
+    throw new RangeError(
+      // A value that is not a number names its type, since converting it to a string can throw, such as for an object without a prototype.
+      `lockTimeout must be an integer number of milliseconds from 0 to ${maxLockTimeout}, got ${typeof milliseconds === "number" ? milliseconds : typeof milliseconds}`,
+    )
+  }
+  // A value without a unit is in milliseconds, the unit of `lock_timeout`.
+  return String(milliseconds)
 }
 
 /**

@@ -208,6 +208,25 @@ await database.transaction(
 
 The search path applies to the statements of the callback, including those of its nested transactions, until the transaction ends; a nested transaction with its own `searchPath` then restores the search path of the enclosing one.
 
+## Lock timeout
+
+To limit how long a statement of a transaction waits for each lock, such as for a row that another transaction has [locked](#locking-rows), pass `lockTimeout` in milliseconds: a statement that waits longer for one lock rejects with a [`lock_not_available` error](./errors).
+
+```ts
+await database.transaction(
+  async () => {
+    await database.query`SELECT id FROM form WHERE id = ${formId} FOR UPDATE`
+    // ...
+  },
+  { lockTimeout: 1000 },
+)
+```
+
+The timeout applies to each statement of the callback, including those of its nested transactions, until the transaction ends; a nested transaction with its own `lockTimeout` then restores the timeout of the enclosing one.
+Pass `0` to disable the timeout, such as in a nested transaction of a transaction with a timeout.
+
+Like any failed statement, the rejection aborts the transaction, so to continue after it, run the statement in a [nested transaction](#nested-transactions).
+
 ## Statements outside a transaction
 
 To run several statements on one connection outside a transaction, pass a callback to `database.session`:
@@ -233,6 +252,8 @@ await database.session(
   { searchPath: ["tenant_3"] },
 )
 ```
+
+To limit how long a statement of a session waits for each lock, pass `lockTimeout`, as to [`database.transaction`](#lock-timeout); it applies until the session ends.
 
 A statement that PostgreSQL rejects in a transaction, such as `CREATE INDEX CONCURRENTLY` or `VACUUM`, needs no session by itself: run it with `database.query` outside a transaction.
 Send each such statement on its own, since PostgreSQL runs a script of several statements in one transaction.

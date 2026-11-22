@@ -130,9 +130,16 @@ export interface TransactionOptions {
   /**
    * PostgreSQL schemas where the unqualified names of the statements of the transaction resolve, in their order, such as the schema of a tenant followed by the schema of extensions.
    *
-   * It applies to the statements of the callback, including those of its nested transactions, until the transaction ends; a nested transaction then restores the search path of the enclosing transaction.
+   * It applies to the statements of the callback, including those of its nested transactions, until the transaction ends; a nested transaction with its own `searchPath` then restores the search path of the enclosing transaction.
    */
   searchPath?: readonly string[]
+  /**
+   * Longest time in milliseconds that a statement of the transaction waits for each lock that it takes, such as of a row or a table, before it fails with the error `lock_not_available`; `0` disables the timeout.
+   *
+   * It applies to the statements of the callback, including those of its nested transactions, until the transaction ends; a nested transaction with its own `lockTimeout` then restores the lock timeout of the enclosing transaction.
+   * The transaction rejects without a statement when `lockTimeout` is not an integer from `0` to `2147483647`.
+   */
+  lockTimeout?: number
 }
 
 /** Options of `session` and `openSession` of a `Database` and `$session` of a `Db`. */
@@ -143,6 +150,13 @@ export interface SessionOptions {
    * It applies to the statements of the session, including those of its transactions, until the session ends, which restores the search path that its connection had.
    */
   searchPath?: readonly string[]
+  /**
+   * Longest time in milliseconds that a statement of the session waits for each lock that it takes, such as of a table, before it fails with the error `lock_not_available`; `0` disables the timeout.
+   *
+   * It applies to the statements of the session, including those of its transactions, until the session ends, which restores the lock timeout that its connection had.
+   * The session rejects without a statement when `lockTimeout` is not an integer from `0` to `2147483647`.
+   */
+  lockTimeout?: number
 }
 
 /**
