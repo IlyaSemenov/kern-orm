@@ -1,5 +1,11 @@
 # kern-orm
 
+## 0.23.0
+
+### Minor Changes
+
+- db84299: Add `kern-orm/db/builder`, which re-exports `kern-db/builder`.
+
 ## 0.22.0
 
 ### Minor Changes

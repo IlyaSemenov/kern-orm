@@ -1,6 +1,6 @@
 {
   "name": "kern-migrations",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "Migrations of PostgreSQL schemas for kern-db and kern-orm",
   "keywords": [
     "kern-db",

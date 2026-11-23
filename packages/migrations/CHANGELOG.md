@@ -1,5 +1,11 @@
 # kern-migrations
 
+## 0.8.0
+
+### Minor Changes
+
+- 17c83d4: Add the `createFunction`, `dropFunction`, and `replaceFunction` migration helpers.
+
 ## 0.7.2
 
 ### Patch Changes
