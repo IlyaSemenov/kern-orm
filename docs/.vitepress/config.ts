@@ -13,7 +13,13 @@ export default defineConfig({
       { text: "ORM", link: "/orm/getting-started", activeMatch: "^/orm/" },
       { text: "Database", link: "/database/getting-started", activeMatch: "^/database/" },
       { text: "Migrations", link: "/migrations/getting-started", activeMatch: "^/migrations/" },
-      { text: "Jobs", link: "https://ilyasemenov.github.io/kern-jobs/" },
+      {
+        text: "Kern",
+        items: [
+          { text: "Kern Libraries", link: "/ecosystem" },
+          { text: "Jobs", link: "https://ilyasemenov.github.io/kern-jobs/" },
+        ],
+      },
     ],
     sidebar: {
       "/orm/": [
