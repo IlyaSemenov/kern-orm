@@ -222,3 +222,5 @@ Require `kern-db` in `peerDependencies` of your package, by a range of one minor
 
 - Your builder recognizes only the fragments, types, and queries of its own copy of kern-db, so it works only with the copy that the application uses; a peer dependency shares that copy when the version of kern-db of the application is in your range.
 - Before 1.0, a minor version of kern-db may change `kern-db/builder`.
+
+In a package that depends on kern-orm, import from `kern-orm/db/builder` instead, without requiring `kern-db` itself: it is the copy of kern-db that the queries of kern-orm use.

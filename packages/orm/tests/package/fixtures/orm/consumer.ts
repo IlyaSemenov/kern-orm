@@ -12,6 +12,7 @@ import {
   orderingOperators,
 } from "kern-orm"
 import { defineType as defineDbType, identifier, param } from "kern-orm/db"
+import { startSqlQuery } from "kern-orm/db/builder"
 import { postgresJsDriver } from "kern-orm/db/postgres-js"
 import * as dbTypes from "kern-orm/db/types"
 import type { TableMismatch, TestFixture } from "kern-orm/testing"
@@ -39,6 +40,12 @@ const page = db.$select({
 const formId = param(dbTypes.uuid, "form-id")
 const statement = db.$query`DELETE FROM ${identifier("app", "form")} WHERE id = ${formId}`
 
+// The builder API of `kern-orm/db/builder`, which runs a compiled statement as a typed query of SQL text.
+const compiled = statement.toSQL()
+const compiledQuery = startSqlQuery(() => compiled, database).select({
+  id: dbTypes.uuid,
+})
+
 // The hooks never run, so the fixture never opens.
 const { useTestFixture } = createTestHelpers(createDatabase({ driver, test: true }), {
   before: () => {},
@@ -60,6 +67,7 @@ console.log(
       .select("id")
       .toSQL().text,
     statementText: statement.toSQL().text,
+    compiledQueryText: compiledQuery.toSQL().text,
   }),
 )
 await database.close()

@@ -19,6 +19,7 @@
       "kern-orm/testing": ["./packages/orm/src/testing.ts"],
       "kern-orm/types": ["./packages/orm/src/types.ts"],
       "kern-orm/db": ["./packages/orm/src/db.ts"],
+      "kern-orm/db/builder": ["./packages/orm/src/db/builder.ts"],
       "kern-orm/db/node-postgres": ["./packages/orm/src/db/node-postgres.ts"],
       "kern-orm/db/postgres-js": ["./packages/orm/src/db/postgres-js.ts"],
       "kern-orm/db/types": ["./packages/orm/src/db/types.ts"],
