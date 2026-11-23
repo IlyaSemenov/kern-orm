@@ -74,6 +74,7 @@ Lowering and the statements that the compiler builds, apart from nested rows.
 
 - [Lowering visits every node](sql/lowering-visits-every-node.md).
 - [Parameters bound once only in queries of groups](sql/parameters-of-groups.md).
+- [Keys of fields read by a read expression](sql/keys-of-read-fields.md): a query sorts and groups by the value itself, through a derived source where a clause takes the value from its projection, rather than by the position of the field, by a repeated expression, or rejecting the query.
 
 ## Nested rows
 
@@ -92,6 +93,7 @@ The SQL that loads nested queries and relations.
 - [Nullability read from the accepted values](types/nullability-of-accepted-values.md): rather than kept apart from the values in types and expressions.
 - [One name for the types of both packages](types/type-names-of-both-packages.md): `Type` and `defineType` in `kern-db` and `kern-orm`, rather than `Codec` or `SqlType` in `kern-db`.
 - [Members of the type of `kern-db` declared again in the type of the ORM](types/db-type-members-of-a-type.md): rather than inherited from `Type` of `kern-db` or shared through a higher-kinded type.
+- [Read expression declared by a type](types/read-expression-of-a-type.md): as SQL text that its `decode` reads the result of, rather than an option of the columns of a record, a second decoder of a built-in type, or a function of `sql` fragments.
 
 ## Tables and schemas
 

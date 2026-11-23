@@ -14,7 +14,7 @@ export interface SqlColumn<Key extends string = string, T extends AnyType = AnyT
   readonly key: Key
   /** Name of the column in SQL, such as in its table. */
   readonly name: string
-  /** Type that decodes the values of the column. */
+  /** Type that decodes the values of the column, which the fragment selects by the read expression of the type, if it has one. */
   readonly type: T
 }
 
@@ -204,6 +204,7 @@ export type AnySqlColumns = SqlColumns<any, any>
 
 /**
  * Creates the columns of a record from `columns` of a source of a statement, such as of a table: the fragment selects each of them under the name of a result column, which a selection reads its value from.
+ * It applies the read expression of the type of each column that has one.
  *
  * It rejects a column twice, a key that a record cannot have, and a name of a result column that PostgreSQL may truncate in a server encoding or that is not well-formed.
  */
@@ -261,7 +262,10 @@ export function createSqlColumns(
         `Result column "${column}" has a name that may be longer than ${maxIdentifierBytes} bytes in a server encoding, where a character other than ASCII takes up to 4, and PostgreSQL truncates a longer name; ${prefix === undefined ? "give the column a shorter key" : "set a shorter prefix or give the column a shorter key"}`,
       )
     }
-    text += `${text === "" ? "" : ", "}${qualifier}${quoteIdentifier(name)} AS ${quoteIdentifier(column)}`
+    const value = `${qualifier}${quoteIdentifier(name)}`
+    // The type decodes the result of its read expression, so the fragment selects the column by it.
+    const { read } = type
+    text += `${text === "" ? "" : ", "}${read === undefined ? value : read(value)} AS ${quoteIdentifier(column)}`
     fields.push(Object.freeze({ key, column, type }))
   }
   let key: number[] | undefined

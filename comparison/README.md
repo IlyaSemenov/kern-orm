@@ -33,6 +33,7 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [pgvector-node](https://github.com/pgvector/pgvector-node) 0.3.1, the types and distances of pgvector for clients and query builders of Node.js.
 - [TypeORM](https://github.com/typeorm/typeorm) 1.1.3.
 - [knex](https://github.com/knex/knex) 3.3.0.
+- [MikroORM](https://github.com/mikro-orm/mikro-orm) 7.2.11.
 
 ## Topics
 

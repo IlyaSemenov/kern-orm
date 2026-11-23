@@ -455,6 +455,9 @@ function compileExpression(
           : compileOperand(context, scope, operand, "cast")
       return `${value}::${node.type.castType}`
     }
+    case "read":
+      // Lowering reads only a value of a type that has the expression.
+      return node.type.read!(compileOperand(context, scope, node.operand, "read"))
     case "boolean":
       return node.value ? "TRUE" : "FALSE"
     case "and":

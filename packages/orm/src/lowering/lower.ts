@@ -27,11 +27,13 @@ import { lowerMutation } from "./mutation"
 import { sortByPositions } from "./order"
 import { lowerPage } from "./page"
 import { createRecordTemplate, dropLiterals, lowerProjections, projectExists } from "./projection"
+import { readFields, readRows } from "./read"
 
 /**
  * Lowers a query to the SQL statement that executes it: the select statement of `lowerQuery` that sorts by the positions of the projections that have the values of its sort expressions, the statement without a source of a query of `$select`, or the statement of a mutation.
  *
  * A selected expression repeated in `ORDER BY` would get parameters of its own, and PostgreSQL may evaluate it again.
+ * The statement selects each scalar field of its result of a type with a read expression by the expression, whose result the type decodes.
  * It replaces and checks the queries nested in every statement as `lowerQuery` does.
  */
 export function lowerStatement(
@@ -52,7 +54,7 @@ export function lowerStatement(
   const context = createContext(definitions, db)
   switch (node.kind) {
     case "query":
-      return lowerSelect(node, context, true)
+      return lowerSelect(node, context, true, true)
     case "record":
       return lowerRecord(node, context)
     default:
@@ -73,7 +75,7 @@ export function lowerQuery(
   definitions?: ReadonlySet<RelationDefinition>,
   db?: AnyDb,
 ): SelectNode {
-  return lowerSelect(node, createContext(definitions, db), false)
+  return lowerSelect(node, createContext(definitions, db), false, false)
 }
 
 /** Lowers the SQL text of a statement, such as of `$query`, replacing the queries in the expressions interpolated into it, and checking them as `lowerStatement` does. */
@@ -94,15 +96,24 @@ function createContext(
   const context: LoweringContext = {
     definitions,
     db,
-    lowerSelect: (node, positions) => lowerSelect(node, context, positions),
+    lowerSelect: (node, positions) => lowerSelect(node, context, positions, false),
     lowerExists: node => lowerExists(node, context),
   }
   return context
 }
 
-/** Lowers a query as `lowerQuery` does, or as `lowerStatement` does when `positions` is set, with the conversion of its result. */
-function lowerSelect(node: QueryNode, context: LoweringContext, positions: boolean): SelectNode {
-  const statement = lowerSelectStatement(node, context, positions)
+/**
+ * Lowers a query as `lowerQuery` does, with the conversion of its result.
+ *
+ * With `positions`, the statement sorts by the positions of its projections, and with `executed`, the statement of a query that a `Db` executes, it reads the fields of its result by the read expressions of their types, as `lowerStatement` does.
+ */
+function lowerSelect(
+  node: QueryNode,
+  context: LoweringContext,
+  positions: boolean,
+  executed: boolean,
+): SelectNode {
+  const statement = lowerSelectStatement(node, context, positions, executed)
   const { conversion } = node
   return conversion === undefined ? statement : Object.freeze({ ...statement, conversion })
 }
@@ -112,13 +123,23 @@ function lowerSelectStatement(
   node: QueryNode,
   context: LoweringContext,
   positions: boolean,
+  executed: boolean,
 ): SelectNode {
+  // `EXISTS` is a Boolean, which has no read expression.
   if (isExistsQuery(node)) {
     return selectExists(node, context)
   }
   checkRelation(node, context)
   if (isAggregateQuery(node)) {
-    return lowerAggregate(node, context)
+    const aggregate = lowerAggregate(node, context)
+    if (!executed) {
+      return aggregate
+    }
+    // The statement of an aggregate has no order or keys, which would take the value of its field.
+    const fields = readFields(aggregate.projections)
+    return fields === aggregate.projections
+      ? aggregate
+      : Object.freeze({ ...aggregate, projections: fields })
   }
   const recordTemplate = createRecordTemplate(node.projections)
   const selected = dropLiterals(node.projections)
@@ -162,8 +183,11 @@ function lowerSelectStatement(
     guaranteedBy,
     recordTemplate,
   }
-  // Resolve sort expressions against the final projections because `lowerPage` can replace both the projections and the sort keys.
-  const lowered: UnfrozenSelectNode<SourceNode> = lowerPage(statement, selected) ?? statement
+  // Resolve sort expressions against the final projections because `lowerPage` and `readRows` can replace both the projections and the sort keys.
+  let lowered: UnfrozenSelectNode<SourceNode> = lowerPage(statement, selected) ?? statement
+  if (executed) {
+    lowered = readRows(lowered)
+  }
   if (positions && lowered.orderBy.length > 0) {
     lowered.orderBy = sortByPositions(lowered.orderBy, lowered.projections)
   }
@@ -193,7 +217,7 @@ function lowerRecord(node: RecordQueryNode, context: LoweringContext): SelectNod
     kind: "select",
     from: undefined,
     joins: noJoins,
-    projections: lowerProjections(dropLiterals(node.projections), context),
+    projections: readFields(lowerProjections(dropLiterals(node.projections), context)),
     filters: noFilters,
     orderBy: noOrder,
     limit: undefined,

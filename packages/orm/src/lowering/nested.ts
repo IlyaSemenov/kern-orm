@@ -10,18 +10,13 @@ import type {
 } from "../ast/nodes"
 import { createList, createNode, createSelectNode } from "../ast/nodes"
 import type { NestedField, ResultPlan } from "../result/result"
+import type { AnyType } from "../type/type"
 
-import { deriveOrderedSource } from "./order"
+import { deriveSeparateSource } from "./order"
+import { readValue } from "./read"
 
 /** Maximum number of arguments of a PostgreSQL function, `FUNC_MAX_ARGS` of its default build. */
 const maxFunctionArguments = 100
-
-/** Number `0`, the offset that keeps PostgreSQL from merging a derived source into its query. */
-const zeroNode = /* @__PURE__ */ createNode<RawSqlNode>({
-  kind: "raw",
-  fragments: ["0"],
-  values: [],
-})
 
 // A scalar subquery in the select list rather than a LATERAL join: with a limit, PostgreSQL evaluates it after the sort of the parent and stops once it has the rows of the limit, while it evaluates a LATERAL join for every row before them.
 /**
@@ -44,20 +39,8 @@ export function projectRows(key: string, query: SelectNode): ProjectionNode {
 export function packRows(query: SelectNode): SelectNode {
   const { projections } = query
   const many = query.rows === "many"
-  // Packing and ordering read the values of `query` through a derived source, whose expressions are evaluated once per row unless PostgreSQL merges it into the created query.
-  // PostgreSQL merges no derived source with `DISTINCT`, `DISTINCT ON`, `GROUP BY`, a row lock, a limit, an offset, or a volatile function in its select list.
-  // Packing refers to each scalar twice, so `OFFSET 0` keeps it from merging a source that selects scalars other than table columns, which it would evaluate twice.
-  const separate =
-    !query.distinct &&
-    query.distinctOn === undefined &&
-    query.groupBy === undefined &&
-    query.lock === undefined &&
-    query.limit === undefined &&
-    query.offset === undefined &&
-    projections.some(
-      projection => projection.nested === undefined && !isTableColumn(projection.expression),
-    )
-  const { source, order } = deriveOrderedSource(query, many, separate ? zeroNode : query.offset)
+  // Packing and ordering read the values of `query` through a derived source, and packing refers to each scalar twice.
+  const { source, order } = deriveSeparateSource(query, many)
 
   // A function takes at most 100 arguments, so a wider row is an array of JSON values.
   const wide = projections.length > maxFunctionArguments
@@ -68,7 +51,8 @@ export function packRows(query: SelectNode): SelectNode {
       // Nested rows are JSON already, so they stay JSON in the packed row.
       values.push(value)
     } else {
-      values.push(wide ? createList("to_json(", [packScalar(value)], ")") : packScalar(value))
+      const scalar = packScalar(value, projection.type)
+      values.push(wide ? createList("to_json(", [scalar], ")") : scalar)
     }
   }
   // Without values, a packed row is `[]`, a row without fields, which differs from a missing row.
@@ -111,22 +95,18 @@ export function packRows(query: SelectNode): SelectNode {
   return createSelectNode(source, [projection])
 }
 
-/** Tells whether `node` is a column of a table, which PostgreSQL reads rather than evaluates, so it can be repeated. */
-function isTableColumn(node: ExpressionNode): boolean {
-  return node.kind === "column" && node.source.kind === "table"
-}
-
 /**
- * Packs a scalar as its PostgreSQL text representation, or `NULL`.
+ * Packs a scalar of `type` as the PostgreSQL text representation that the type decodes, of the value or of the result of the read expression of the type, or `NULL`.
  *
  * `format` uses the output function of the type, as the driver receives the values of a row; a cast to `text` differs from it for types such as `boolean`, `inet`, and `char`.
  */
-function packScalar(value: ColumnRefNode): RawSqlNode {
+function packScalar(value: ColumnRefNode, type: AnyType): RawSqlNode {
   // `format` turns `NULL` into an empty string, so `NULL` is tested apart, and `IS NULL` would also hold for a composite whose fields are all `NULL`.
+  // The test reads the value itself: a read expression is `NULL` only for `NULL`, so it is evaluated once.
   return createNode({
     kind: "raw",
     fragments: ["CASE WHEN ", " IS NOT DISTINCT FROM NULL THEN NULL ELSE format('%s', ", ") END"],
-    values: [value, value],
+    values: [value, readValue(value, type)],
   })
 }
 

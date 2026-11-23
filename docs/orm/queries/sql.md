@@ -73,6 +73,7 @@ const upserted = await db.$query`
 
 The field `form` is the record of the row, with the keys and the types of the columns of the table, as a query of the table returns it.
 `select` reads it from the result columns that `columnsOf` names in the statement, such as `id`, not from a column named `form`.
+`columnsOf` applies the [read expression](../custom-types#reading-values-by-an-expression) of the type of each column that has one.
 To select only some of the columns, list their keys in the `columns` option.
 As in `select` by keys, a column whose key is chosen at runtime is optional in the record unless the list also names it explicitly.
 

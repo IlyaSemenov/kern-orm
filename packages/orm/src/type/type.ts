@@ -65,6 +65,12 @@ export interface BaseType<
   readonly encode: (value: NonNullable<Input>) => string
   /** Converts a non-null PostgreSQL text representation to a value; it does not read `this`. */
   readonly decode: (text: string) => Exclude<Output, null>
+  /**
+   * Optional function that maps the SQL of a value to the SQL expression whose result `decode` reads, such as `extract(epoch from "run_at")` for `"run_at"`; it does not read `this`.
+   *
+   * Queries apply this expression to each result field of this type.
+   */
+  readonly read: ((value: string) => string) | undefined
   /** Operators of expressions of this type, in addition to `isNull` or replacing it. */
   readonly operators: Operators
   /**

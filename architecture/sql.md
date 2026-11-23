@@ -3,7 +3,7 @@
 - **AST** (`ast/`): the SQL AST, structural expression and statement nodes, and their pure transformations, such as Boolean simplification.
   A select statement nests queries in scalar subqueries, `EXISTS`, and derived sources of `FROM`, plain or `LATERAL`; nodes store no lexical scopes, which the compiler derives from the position of a query in the tree.
 - **Lowering** (`lowering/`): turns the semantic node of a query into a SQL select statement of the AST, and a mutation into its `INSERT`, `UPDATE`, or `DELETE` statement, which the compiler compiles, and keeps the SQL text of a statement of `$query` as it is, except that it lowers the queries in its interpolated expressions; the compiler knows no relation definitions or semantic query nodes.
-  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query without a [conversion](queries.md#converting-results), of its statement, or `EXISTS` of its rows for such a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries or literals in its fields keeps its fields as its projections.
+  Each nested query becomes a scalar subquery in place of its field, of its packed rows or, for an aggregate query without a [conversion](queries.md#converting-results), of its statement, or `EXISTS` of its rows for such a query of `exists`, and a query other than an aggregate query or a query of `exists` without queries or literals in its fields keeps its fields as its projections, apart from the fields that the statement of an executed query reads by [read expressions](#read-expressions).
   A statement keeps the [conversion of its query](queries.md#converting-results), which SQL does not see, for the result plan.
   A query of `$select` has no source and becomes a statement without `FROM` of rows `one`, which PostgreSQL returns as exactly one row.
   A query of `exists` becomes a statement without `FROM` of one row of `EXISTS` of its rows, whose query selects nothing, which PostgreSQL accepts, apart from the rows of `distinct` and `distinctOn` below, and has no order.
@@ -21,6 +21,7 @@
   The statement of an executed query sorts by the positions of its projections, while the statement of a packed nested query keeps its sort expressions, which packing reads.
   A query of [`distinct`](queries.md#distinct-rows), [`distinctOn`](queries.md#first-row-of-each-group), or [`groupBy`](queries.md#groups) also sorts by positions as a subquery, of `IN`, of an expression, or in SQL text: PostgreSQL finds a sort expression of `SELECT DISTINCT` in the select list, one of `GROUP BY` among the keys, and a key of `DISTINCT ON` among the sort keys, only when it is equal, and a repeated expression has aliases of its own and, apart from the parameters of casts in a query of groups, parameters of its own.
   A mutation keeps its statement and packs the nested queries of the fields of its `RETURNING` as a select list does.
+  The statement that a query executes reads the fields of its result by the [read expressions](#read-expressions) of their types.
   For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
   An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
   Lowering replaces it in every expression of a statement: of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text.
@@ -33,6 +34,7 @@
 - **Compiler** (`compiler/postgres/`): turns an AST into SQL text, parameters, and result decoding metadata.
   Parameters and source aliases belong to the whole statement, apart from the lexical scopes that decide which sources a column reference sees.
   Whether an operand needs parentheses depends only on its node kind, the precedence of its operator, and its position in the parent, decided in one place (`parentheses.ts`), so that the SQL keeps the structure of the tree with the fewest parentheses.
+  The value of a read expression is in parentheses unless it is a column, a parameter, a call of an aggregate, or a subquery, since the expression of a type places it anywhere in its SQL.
 - **Result** (`result/`): decodes driver rows and packed nested rows by the result plan of a compiled query, or the number of the rows of the command tag of a mutation without `RETURNING`, and converts the result as the plan tells.
   The database layer (`result.ts`) holds the rows modes, how a query of one row takes its row, the keys that a record can have, and `NotFoundError` and `ResultDecodeError`, which the ORM throws too; `RequiredRelationError` is of the ORM.
   The layer also decodes the flat results of [queries of SQL text](sql-queries.md#results), from the result columns of the names of their fields.
@@ -79,6 +81,21 @@
   So the keys stay expressions in the statement, and one place covers the projections of an executed query and those that lowering adds, such as the sort keys of packed rows and the argument of an aggregate.
   A selected expression repeated in `GROUP BY` would have aliases of its own and parameters of its own other than of casts, which PostgreSQL rejects with `must appear in the GROUP BY clause` or `subquery uses ungrouped column`.
   A key of a selected field takes the node of its lowered projection, since lowering replaces the node of a field that holds a query.
+
+## Read expressions
+
+- A value of a type with a [read expression](types.md) is selected by the expression where it leaves a statement as a field of its result, as a `read` node of its expression and its type, which only lowering creates (`lowering/read.ts`) and the compiler compiles by `read` of the type:
+  - the scalar projections of the statement that a query executes (`lowerStatement`): the select list of a query, also of `$select` and of an aggregate query, and `RETURNING` of a mutation, or the select list that an update without assignments compiles its returned fields to;
+  - the scalars of [packed rows](#nested-rows), which packing reads.
+- A value that a statement only computes with keeps its PostgreSQL type: a condition, a sort key, a key of `GROUP BY` or `DISTINCT ON`, an argument of an aggregate, a projection of a derived source, and the projections of a subquery of an expression, of `IN`, or of SQL text, which the statement or the text reads.
+- A value is read once: nested rows are JSON, which has no type, and the value of a nested aggregate query or of `EXISTS` is read as the field of the statement that selects it.
+- A field read by its expression is not the projection that has the value of a sort expression or of a key, by the rule of the same column or expression node, so an executed query sorts and groups by the expression itself, such as `ORDER BY "job"."run_at"`, rather than by the position of the field, whose value is the result of the read expression ([decision](../decisions/sql/keys-of-read-fields.md)).
+- A statement whose clause takes the value of such a field from its projection reads its rows from a derived source, the statement of the query without read expressions, over which it reads the fields and sorts by the sort keys of the source, as a page after an offset does:
+  - a query of `distinct` with such a field, since `DISTINCT` compares the projections and PostgreSQL takes a sort key of it only from them;
+  - a query whose sort key, key of `GROUP BY`, or key of `DISTINCT ON` is the expression of such a field other than a column, such as a selected aggregate, since repeating the expression would evaluate it again, with parameters of its own, which PostgreSQL does not take for a key.
+  - The source gets `OFFSET 0` by the rule of the source of [packed rows](#nested-rows) (`deriveSeparateSource`), so that PostgreSQL does not merge it and evaluate a sorted expression at both its places.
+  - A column is repeated instead, also a column of the derived source of a page, since PostgreSQL reads it rather than evaluates it.
+- The statement of an aggregate query has no order or keys that take the value of its field, and `EXISTS` is a Boolean, so neither needs a further derived source to read its field.
 
 ## Result decoding
 
@@ -127,8 +144,10 @@
     It is smaller and faster to build than an object with keys ([decision](../decisions/nested-rows/packed-rows-as-arrays.md)).
     A row wider than the limit of 100 arguments of a PostgreSQL function is built from an array of JSON values.
   - A scalar value is its PostgreSQL text representation from `format('%s', value)`, which uses the output function of the type, so one `decode` serves the values of a driver row and of a packed row alike, including extension types; an SQL array or a JSON column is a scalar too.
+    A scalar of a type with a [read expression](#read-expressions) is the text of the result of the expression, `format('%s', extract(epoch from value))`, as a driver row has it.
     A cast to `text` is not used: those of `boolean`, `inet`, `cidr`, and `char` differ from their output, such as `true` instead of `t`.
   - SQL `NULL` is JSON `null` through `IS NOT DISTINCT FROM NULL`, since `format` turns it into an empty string, and `IS NULL` also holds for a composite whose fields are all `NULL`.
+    The test reads the value itself rather than the result of its read expression, which is `NULL` only for `NULL`, so the expression is evaluated once.
   - Nested rows stay JSON inside a packed row and never pass through `format`.
   - A row lock of the nested query stays in the derived source that reads its rows, since PostgreSQL rejects it beside the aggregate.
   - Packing reads the projections of the nested query through a derived source, whose expressions are evaluated once per row as long as PostgreSQL does not merge the source into the aggregating query, where packing refers to a scalar twice.

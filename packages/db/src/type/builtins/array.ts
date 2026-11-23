@@ -9,10 +9,17 @@ import { defineType } from "../type"
  *
  * A `NULL` element decodes to `null`; a nullable `element` type, such as `array(text.nullable())`, types such elements.
  * Elements are separated by commas, as in arrays of all built-in types; a custom type with another delimiter, such as `box`, is not supported.
+ * It rejects an `element` type with a read expression.
  */
 export function array<Output, Input>(
   element: Type<Output, Input>,
 ): DerivableType<Output[], Input[]> {
+  // The expression reads a value of the type, whereas PostgreSQL returns the elements of an array in their own text representations.
+  if (element.read !== undefined) {
+    throw new TypeError(
+      `array() cannot use element type "${element.sqlType}" because its read expression does not apply to array elements`,
+    )
+  }
   const encodeElement = (value: Input) =>
     value === null ? null : element.encode(value as NonNullable<Input>)
   // The type parameters of the element, such as the length of `varchar(255)`, stay in the SQL type and not in the cast type.

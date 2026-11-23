@@ -59,6 +59,19 @@ describe("defineType", () => {
     expect(vector.nullable().with(3).decode).toBe(dbVector.decode)
   })
 
+  it("defines a type with the read expression of its options or of its type of kern-db, which the types derived from it keep", () => {
+    const read = (value: string) => `extract(epoch from ${value})`
+    const epoch = defineType({ sqlType: "timestamptz", read })
+
+    expect(epoch.read).toBe(read)
+    expect(defineType(defineDbType({ sqlType: "timestamptz", read })).read).toBe(read)
+    expect(defineType(epoch).read).toBe(read)
+    expect(
+      epoch.withOperators(orderingOperators).nullable().transform({ decode: Number }).read,
+    ).toBe(read)
+    expect(text.read).toBeUndefined()
+  })
+
   it("defines a type that is a type of kern-db, unlike a column of it", () => {
     const vector = defineType(dbVector)
 

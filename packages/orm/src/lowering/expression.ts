@@ -30,10 +30,11 @@ export function lowerExpression(node: ExpressionNode, context: LoweringContext):
     case "values":
     case "fragment":
     case "tableName":
-    // Only lowering creates the queries of subqueries and of `EXISTS`, which are lowered already.
+    // Only lowering creates the queries of subqueries and of `EXISTS`, and the values that a result reads, which are lowered already.
     case "subquery":
     case "exists":
     case "textSubquery":
+    case "read":
       return node
     case "nestedQuery":
       return lowerNestedQuery(node, context)

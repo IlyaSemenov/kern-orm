@@ -12,13 +12,20 @@ import { addColumnDefaults } from "../query/values"
 import type { LoweringContext } from "./context"
 import { lowerEach, lowerExpression, lowerFilters, lowerValue } from "./expression"
 import { createRecordTemplate, dropLiterals, lowerProjections } from "./projection"
+import { readFields } from "./read"
 
-/** Lowers a mutation to its statement, replacing the queries in its expressions, and packing the rows of each nested query of `RETURNING` into the value of its field, or selecting the value of a nested aggregate query, as a select list does. */
+/**
+ * Lowers a mutation to its statement, replacing the queries in its expressions, and packing the rows of each nested query of `RETURNING` into the value of its field, or selecting the value of a nested aggregate query, as a select list does.
+ *
+ * The statement reads each scalar field of `RETURNING` by the read expression of its type, if the type has one.
+ */
 export function lowerMutation(node: MutationNode, context: LoweringContext): MutationStatementNode {
   const { target, returning, rows, value, conversion } = node
   const recordTemplate = returning === undefined ? undefined : createRecordTemplate(returning)
   const lowered =
-    returning === undefined ? undefined : lowerProjections(dropLiterals(returning), context)
+    returning === undefined
+      ? undefined
+      : readFields(lowerProjections(dropLiterals(returning), context))
   switch (node.kind) {
     case "insert": {
       // Defaults of kern-orm are added when the insert runs, as the database adds its own, so that the mutation keeps the records as given, which `merge` reads.

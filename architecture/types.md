@@ -12,6 +12,17 @@
   - A type is told from other objects at runtime by its brand, never by its shape.
     Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a type too.
     A type that `defineType` or a derivable type creates is frozen.
+  - A type may declare a read expression, `read` of the options of `defineType`: a function from the SQL text of an expression of its PostgreSQL type to the SQL text that reads it, such as `extract(epoch from value)`, whose result `decode` decodes instead of the value ([decision](../decisions/types/read-expression-of-a-type.md)).
+    - It is the member `read` of the contract, `undefined` for a type whose values are read as they are; the types derived with `transform`, `nullable`, `of`, and `with` keep it, and so does an object that copies the members of a type, such as a type of the ORM.
+    - It is SQL text rather than a `sql` fragment, so it has no parameters, and the [columns of a record](sql-queries.md#columns-of-records) give it in their text; `defineType` rejects an option that is not a function or does not return a string.
+    - It must not read `this`, must give the same SQL for the same value, and must write the value once in it, whatever the value: a statement writes the SQL of the value at each place, so two would evaluate it twice, such as a volatile expression that a query selects.
+      `defineType` calls it with a sample value and rejects SQL that has the sample another number of times, which finds the mistake early but does not check every value.
+      An expression that needs the value at several places calls a PostgreSQL function of one argument; a scalar subquery of the value would evaluate a value that refers to no row, such as `random()`, once for the statement.
+    - The expression takes the value in the PostgreSQL type of the expression that a query reads, which is wider than the type of the column where PostgreSQL computes it in another type, such as the `numeric` average of `integer` values, as `decode` takes the text of that type.
+    - A statement must select a value of such a type by the expression wherever it returns the value: the columns of a record and the [queries of the ORM](sql.md#read-expressions) do, and a statement of SQL text written by hand must select it itself.
+    - The expression must be `NULL` for `NULL` and for no other value: decoding keeps `NULL` as `null` without `decode`, packing tests the value itself, and the columns of a record tell a missing row by the `NULL` of the result columns of their key, so a column of a key may have such a type.
+    - The built-in types have none, so the SQL of their queries does not depend on it.
+    - `array` rejects an element type with one, since the expression does not apply to the elements of an array; it rejects when it is called, since the values of a type do not tell its expression in types.
   - The built-in types live in `type/builtins/`, under their names; a built-in type of `kern-orm/types` is `defineType` of the ORM of the type of `kern-db/types` with the operators of the type.
     `array` of the layer builds only the representation of an array of a type, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type of the ORM adds `orderingOperators`.
 - **Type of the ORM** (`type/` of `kern-orm`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
@@ -109,7 +120,7 @@
   - At runtime, `count` takes a plain object as its options and any other value as its argument, and each function rejects options other than a plain object and a key other than its options, so that an object of column values passed instead of an argument, such as `count({ status: "approved" })`, rejects rather than counts every row.
   - The aggregate methods take no options: `where` chooses the rows of a method, and `stringAgg` of a query joins them in the order of the query.
 - The values follow the aggregate methods: `count` and `countDistinct` give a number, and the others the value of the argument or `null`, also without rows that `filter` takes.
-  The type of the expression is the one of the method, so it decodes the value and gives it its operators; `sum` of `smallint` and `integer` values rejects a sum outside the safe integer range of numbers, and `avg` of a type of the cast type `bigint` rejects when it is called.
+  The type of the expression is the one of the method, so it decodes the value and gives it its operators; `sum` of `smallint` and `integer` values rejects a sum outside the safe integer range of numbers, and `avg` of a type of the cast type `bigint`, and `sum` of `smallint` and `integer` values of a type with a read expression, reject when they are called.
   Types do not check that PostgreSQL has the aggregate for the type of the argument, as for the methods.
 - An overload without a filter marks an aggregate with its argument value for direct selection in a [query of groups](queries.md#groups).
   Operators and functions do not carry this mark; an aggregate expression retains its standalone nullable value when used outside a grouped selection.

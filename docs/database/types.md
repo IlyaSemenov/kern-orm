@@ -78,6 +78,8 @@ new Pool({
 ```
 
 :::
+
+A library that runs on the connections of an application, whose settings it does not choose, can read dates by a [read expression](./custom-types#reading-values-by-an-expression) of a type of its own instead.
 ::::
 
 ::: details Years outside 1 to 9999

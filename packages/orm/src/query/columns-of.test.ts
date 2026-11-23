@@ -9,6 +9,7 @@ import { bindSchema } from "../execution/db"
 import { defineSchema } from "../schema/schema"
 import { toSnakeCase } from "../table/snake-case"
 import { createTableFactory, defineTable, defineView } from "../table/table"
+import { defineType } from "../type/type"
 import * as t from "../types"
 
 import { columnsOf } from "./columns-of"
@@ -41,7 +42,21 @@ const pendingJob = defineView("pending_job", {
   note: t.text.nullable(),
 })
 
-const schema = defineSchema({ queue, job, membership })
+/** Point in time read as seconds since the epoch, whose text does not depend on `DateStyle`. */
+const epoch = defineType({
+  sqlType: "timestamptz",
+  read: value => `extract(epoch from ${value})`,
+}).transform({
+  decode: text => new Date(Math.round(Number(text) * 1000)),
+  encode: (value: Date) => value.toISOString(),
+})
+
+const event = defineTable("event", {
+  id: t.integer.primaryKey(),
+  at: epoch,
+})
+
+const schema = defineSchema({ queue, job, membership, event })
 
 describe("columns", () => {
   const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
@@ -63,6 +78,12 @@ describe("columns", () => {
       '"j"."id" AS "job__id"',
     )
     expect(columnsOf(db.job, { prefix: "job", columns: ["id"] }).text).toBe('"id" AS "job__id"')
+  })
+
+  it("select a column of a type with a read expression by the expression", () => {
+    expect(columnsOf(event, { alias: "e" }).text).toBe(
+      '"e"."id" AS "e__id", extract(epoch from "e"."at") AS "e__at"',
+    )
   })
 
   it("keep the types of the columns in their fields", () => {
@@ -194,5 +215,28 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
         .take()
 
       expect(row.job).toMatchObject({ id: 1, queueName: "mail", lockedBy: "worker" })
+    }))
+
+  it("reads a column of a type with a read expression whatever the DateStyle of the session", () =>
+    testTransaction(async () => {
+      await database.script(`
+        SET LOCAL DateStyle = 'SQL, DMY';
+        CREATE TABLE event (id integer PRIMARY KEY, at timestamptz NOT NULL);
+        INSERT INTO event VALUES (1, '2026-01-15T07:00:00.123Z');
+      `)
+      const eventColumns = columnsOf(db.event, { alias: "e" }).nullable()
+
+      const rows = await db.$query`
+        SELECT ${eventColumns}
+        FROM generate_series(1, 2) AS n LEFT JOIN ${db.event} e ON e.id = n
+        ORDER BY n
+      `.select({
+        event: eventColumns,
+      })
+
+      expect(rows).toEqual([
+        { event: { id: 1, at: new Date("2026-01-15T07:00:00.123Z") } },
+        { event: null },
+      ])
     }))
 })

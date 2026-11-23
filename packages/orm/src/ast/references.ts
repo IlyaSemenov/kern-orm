@@ -96,6 +96,7 @@ export function visitNodes(
     case "nestedQuery":
       return
     case "cast":
+    case "read":
     case "not":
     case "isNull":
       visitNodes(node.operand, visit, queries)

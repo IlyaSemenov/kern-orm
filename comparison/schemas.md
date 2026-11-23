@@ -19,6 +19,15 @@ The SQL definition belongs to a migration.
 - Orchid ORM, same: `narrowType` narrows the input, output, and query types of a column together ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#narrowtype)).
 - Drizzle ORM, lacks: `$type<T>()` takes any type, also one outside the values of the column ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/column-builder.ts)); `text({ enum })` infers a union from a list of the values ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/columns/text.ts)).
 
+## Types read by a SQL expression
+
+A custom type declares `read`, the SQL expression that reads its values, such as `extract(epoch from value)` or `ST_AsGeoJSON(value)`, and decodes its result; queries select a returned value by it, also in packed nested rows and `RETURNING`, and filter, sort, and group by the value itself.
+
+- MikroORM, differs: `convertToJSValueSQL` of a custom type returns the SQL that reads a column ([source](https://github.com/mikro-orm/mikro-orm/blob/v7.2.11/packages/core/src/types/Type.ts#L48-L53)), and the query builder writes it where it maps the column of a select list, of a condition, and of an order, so a condition compares and an order sorts by the result of the expression ([source](https://github.com/mikro-orm/mikro-orm/blob/v7.2.11/packages/sql/src/query/QueryBuilderHelper.ts#L238-L249)).
+- Doctrine ORM 3.8.0 with Doctrine DBAL 4.6.0, same: `convertToPHPValueSQL` of a type ([source](https://github.com/doctrine/dbal/blob/4.6.0/src/Types/Type.php#L227-L241)) applies in the select list, and the columns of conditions and of an order stay as they are ([source](https://github.com/doctrine/orm/blob/3.8.0/src/Query/SqlWalker.php#L1317)).
+- Drizzle ORM, lacks: `customType` has `fromDriver` and `toDriver`, and a select list selects the column as it is ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/columns/custom.ts#L185-L197), [drizzle-orm#554](https://github.com/drizzle-team/drizzle-orm/issues/554)).
+  Drizzle ORM 1.0.0-rc.6 has `forJsonSelect`, which changes the SQL of a column inside JSON functions, such as of relational queries, and not in a select list ([source](https://github.com/drizzle-team/drizzle-orm/blob/v1.0.0-rc.6/drizzle-orm/src/pg-core/columns/custom.ts#L272-L325)).
+
 ## Column naming conventions
 
 `createTableFactory` takes any conversion of column keys to physical names, such as `toSnakeCase` or one of a legacy database.

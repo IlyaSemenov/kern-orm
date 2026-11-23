@@ -35,6 +35,48 @@ export const document = defineTable("document", {
 
 When the SQL type name alone constrains values, as `char` has length 1, `castType` names the type that [`param`](./types#types-in-queries) casts values to instead, such as `bpchar`.
 
+## Reading values by an expression
+
+PostgreSQL returns the values of some types as text that depends on the session or is hard to decode: the text of `timestamptz` follows the `DateStyle` setting, and a `geometry` of PostGIS comes as hex-encoded binary.
+To read the values of a type by a SQL expression instead, pass `read` a function that returns the SQL of the expression for the SQL of a value.
+The type then decodes the result of the expression:
+
+```ts
+import { defineTable, defineType, orderingOperators } from "kern-orm"
+import * as t from "kern-orm/types"
+
+// Seconds since the epoch read the same with any DateStyle
+const instant = defineType({
+  sqlType: "timestamptz",
+  read: value => `extract(epoch from ${value})`,
+})
+  .transform({
+    decode: seconds => new Date(Math.round(Number(seconds) * 1000)),
+    encode: (value: Date) => value.toISOString(),
+  })
+  .withOperators(orderingOperators)
+
+export const job = defineTable("job", {
+  id: t.integer.primaryKey(),
+  runAt: instant,
+})
+
+// SELECT extract(epoch from "job"."runAt") AS "runAt" FROM "job" AS "job" ORDER BY "job"."runAt"
+const times = await db.job.pluck("runAt").orderBy("runAt")
+// times: Date[]
+```
+
+Queries select every value of the type that they return by the expression, also in related records and in the fields that a mutation returns.
+They filter, sort, and group by the value itself, such as the column, so the expression changes only how a value is read.
+[`columnsOf`](./queries/sql#rows-of-tables) selects such a column by the expression too, whereas a statement of SQL text that lists a field of such a type itself must select the expression, such as `extract(epoch from run_at) AS "runAt"`.
+
+- The expression must be `NULL` for `NULL` and for no other value.
+- Include the SQL text of the value exactly once in the returned expression.
+- An aggregate other than a count reads its value by the expression of the type of its argument, in the PostgreSQL type of its result, such as the `numeric` average of `integer` values, so the expression must take that type.
+  `sum` takes no `smallint` or `integer` type with `read`.
+- A `sql` fragment of such a type must return a value of the PostgreSQL type, which the query reads by the expression.
+- `array` takes no type with `read`, since the expression does not apply to the elements of an array.
+
 ## Operators
 
 Add the operators that PostgreSQL has for the type with `withOperators`, reusing the operator sets of the built-in types:

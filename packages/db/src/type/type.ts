@@ -30,6 +30,12 @@ export interface Type<Output, Input = Output> {
   readonly encode: (value: NonNullable<Input>) => string
   /** Converts a non-null PostgreSQL text representation to a value; it does not read `this`. */
   readonly decode: (text: string) => Exclude<Output, null>
+  /**
+   * Optional function that maps the SQL of a value to the SQL expression whose result `decode` reads, such as `extract(epoch from "run_at")` for `"run_at"`; it does not read `this`.
+   *
+   * Statements returning a value of this type must select it through this expression.
+   */
+  readonly read: ((value: string) => string) | undefined
 }
 
 /** Type of any values. */
@@ -146,6 +152,16 @@ export interface TypeOptions {
   sqlType: string
   /** SQL type name that parameters are cast to when `sqlType` constrains values, such as `bpchar` for `char`, whose length is 1. */
   castType?: string
+  /**
+   * Returns the SQL expression by which the values of the type are read, from `value`, the SQL of an expression of the type, such as `` value => `extract(epoch from ${value})` `` for a `timestamptz` read as seconds since the epoch, whose text does not depend on `DateStyle`.
+   *
+   * The type, and the types derived from it, decode the PostgreSQL text representation of the result of the expression rather than of the value.
+   * The expression must be `NULL` for `NULL` and for no other value.
+   * The function must give the same SQL for the same `value`, and must write `value` once in it, whatever the value: a statement would evaluate a value written twice at both places.
+   * `defineType` checks it for a sample value.
+   * `value` may be of a wider PostgreSQL type where PostgreSQL computes it in one, such as the `numeric` average of `integer` values.
+   */
+  read?: (value: string) => string
 }
 
 /**
@@ -166,15 +182,30 @@ export function defineType(
       `Define the type parameters of "${options.sqlType}" using withParameters(), or set castType`,
     )
   }
+  const { read } = options
+  if (read !== undefined) {
+    // The expression is SQL text, which a statement takes as it is, so a function that returns another value, such as a fragment of `sql`, is rejected here rather than in a statement.
+    const text: unknown = typeof read === "function" ? read(valueProbe) : undefined
+    // A value written twice would be evaluated twice, such as a volatile expression that a query selects; the check finds the mistake for the probe, not for every value.
+    if (typeof text !== "string" || text.split(valueProbe).length !== 2) {
+      throw new TypeError(
+        `The read option of type "${options.sqlType}" must be a function that returns the SQL text of an expression that refers to its value once`,
+      )
+    }
+  }
   return createType({
     sqlType: options.sqlType,
     castType: options.castType ?? options.sqlType,
     encode: keepText,
     decode: keepText,
+    read,
     isNullable: false,
     formatSqlType: undefined,
   })
 }
+
+/** SQL of a value that `defineType` passes to a `read` option to find the value in the expression: a character that SQL text does not contain. */
+const valueProbe = "\u0000"
 
 /** Type that the options of `defineType` are checked against when they are a type, naming the reason. */
 interface NotTypeOptions {
@@ -192,6 +223,7 @@ interface TypeState {
   // oxlint-disable-next-line typescript/no-explicit-any -- the caller types the values
   readonly encode: (value: any) => string
   readonly decode: (text: string) => unknown
+  readonly read: ((value: string) => string) | undefined
   readonly isNullable: boolean
   /** Formats the SQL type name with type parameters; types without parameters have none. */
   readonly formatSqlType: ((...parameters: never[]) => string) | undefined
@@ -208,6 +240,7 @@ function createType(state: TypeState): AnyDerivableType {
     isNullable: state.isNullable,
     encode: state.encode,
     decode: state.decode,
+    read: state.read,
     // oxlint-disable-next-line typescript/no-explicit-any -- the caller types the values
     transform: ({ decode, encode }: Partial<TypeTransform<any, any, any, any>>) =>
       derive({

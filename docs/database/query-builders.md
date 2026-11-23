@@ -89,6 +89,10 @@ Compile the parts of a statement by the rules of kern-db:
 
 To reject a value that a parameter takes only with a type, such as an object, when your users pass it to the builder rather than when the statement compiles, call `assertUntypedValue` with it.
 
+Select each value that a statement returns by the [read expression](./custom-types#reading-values-by-an-expression) of its type, if the type has one: `type.read` returns its SQL for the SQL of the value, such as of a quoted column.
+Pass it the SQL of one operand, in parentheses when it is a compound expression, such as `(a + b)`, since the expression may place it beside an operator.
+Keep the value itself where the statement only computes with it, such as in a condition or a sort key.
+
 ## Fragments of your users
 
 Render a fragment of `sql`, `identifier`, or `param` with `renderFragment` and a `ParameterBinder` of your statement: it returns the SQL text of the fragment and adds its parameters through the binder in the order of the text, among the parameters of your statement.
@@ -143,6 +147,7 @@ const claimed = await database.query`
 
 The columns are a SQL fragment, `"j"."id" AS "j__id", "j"."run_at" AS "j__runAt"`, and a field of `select` that reads the record from these result columns.
 The fragment names each result column by the key of its column after the `prefix` option, which is the alias by default; the names of the result columns of several tables of one statement must differ.
+`createSqlColumns` applies the read expression of the type of each column that has one.
 For a statement that you build as text, insert `job.text` instead.
 
 `key` lists the columns that are never `NULL` in a row, such as a primary key: `job.nullable()` then makes the record `null` when they are all `NULL`, such as without a match of a `LEFT JOIN`.

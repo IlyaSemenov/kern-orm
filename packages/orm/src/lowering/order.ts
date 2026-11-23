@@ -99,6 +99,38 @@ export function deriveOrderedSource(
   return { source, order }
 }
 
+/** Number `0`, the offset that keeps PostgreSQL from merging a derived source into its query. */
+const zeroNode = /* @__PURE__ */ createNode<RawSqlNode>({
+  kind: "raw",
+  fragments: ["0"],
+  values: [],
+})
+
+/**
+ * Creates the derived source of the rows of `query` as `deriveOrderedSource` does, for a reader that refers to a scalar of a row more than once, such as packing, which tests it for `NULL` and then reads it.
+ *
+ * The expressions of a derived source are evaluated once per row unless PostgreSQL merges it into the query that reads it, which would evaluate them at each reference.
+ * PostgreSQL merges no derived source with `DISTINCT`, `DISTINCT ON`, `GROUP BY`, a row lock, a limit, an offset, or a volatile function in its select list, so `OFFSET 0` keeps it from merging any other source that selects scalars other than table columns.
+ */
+export function deriveSeparateSource(query: SelectNode, ordered: boolean): OrderedSource {
+  const separate =
+    !query.distinct &&
+    query.distinctOn === undefined &&
+    query.groupBy === undefined &&
+    query.lock === undefined &&
+    query.limit === undefined &&
+    query.offset === undefined &&
+    query.projections.some(
+      projection => projection.nested === undefined && !isTableColumn(projection.expression),
+    )
+  return deriveOrderedSource(query, ordered, separate ? zeroNode : query.offset)
+}
+
+/** Tells whether `node` is a column of a table, which PostgreSQL reads rather than evaluates, so it can be repeated. */
+function isTableColumn(node: ExpressionNode): boolean {
+  return node.kind === "column" && node.source.kind === "table"
+}
+
 /** Projection of a derived source that the reader of the source sorts by, with the direction and the placement of `NULL` of its order. */
 interface SortKey extends Omit<OrderNode, "expression"> {
   readonly key: string

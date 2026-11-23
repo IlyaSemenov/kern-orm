@@ -1,5 +1,7 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import { defineType, isType } from "./type"
 
 const vector = defineType({ sqlType: "vector" })
@@ -8,6 +10,10 @@ const vector = defineType({ sqlType: "vector" })
     encode: (value: number[]) => JSON.stringify(value),
   })
   .withParameters((dimensions: number) => `vector(${dimensions})`)
+
+function readEpoch(value: string): string {
+  return `extract(epoch from ${value})`
+}
 
 describe("defineType", () => {
   it("defines a type of the text representations as they are", () => {
@@ -34,6 +40,40 @@ describe("defineType", () => {
 
   it("creates a type that cannot be changed", () => {
     expect(Object.isFrozen(defineType({ sqlType: "ltree" }))).toBe(true)
+  })
+
+  it("defines a type that is read by its read expression, and as it is without one", () => {
+    const epoch = defineType({ sqlType: "timestamptz", read: readEpoch })
+
+    expect(epoch.read).toBe(readEpoch)
+    expect(epoch.read!('"run_at"')).toBe('extract(epoch from "run_at")')
+    expect(defineType({ sqlType: "timestamptz" }).read).toBeUndefined()
+  })
+
+  it("rejects a read option that is not a function of SQL text that refers to its value once", () => {
+    const error = new TypeError(
+      'The read option of type "timestamptz" must be a function that returns the SQL text of an expression that refers to its value once',
+    )
+
+    expect(
+      // @ts-expect-error The option is a function.
+      getThrownError(() => defineType({ sqlType: "timestamptz", read: "extract(epoch from $1)" })),
+    ).toEqual(error)
+    expect(
+      // @ts-expect-error The function returns SQL text.
+      getThrownError(() => defineType({ sqlType: "timestamptz", read: value => ({ value }) })),
+    ).toEqual(error)
+    // The value would be evaluated twice, such as a volatile expression that a query selects.
+    expect(
+      getThrownError(() =>
+        defineType({ sqlType: "timestamptz", read: value => `${value} - ${value}` }),
+      ),
+    ).toEqual(error)
+    expect(
+      getThrownError(() =>
+        defineType({ sqlType: "timestamptz", read: () => "extract(epoch from value)" }),
+      ),
+    ).toEqual(error)
   })
 })
 
@@ -128,6 +168,25 @@ describe("of", () => {
     const ltree = defineType({ sqlType: "ltree" })
 
     expect<unknown>(ltree.of<"a" | "b">()).toBe(ltree)
+  })
+})
+
+describe("read expression", () => {
+  it("is kept by the types derived from the type", () => {
+    const epoch = defineType({ sqlType: "timestamptz", read: readEpoch }).withParameters(
+      (precision: number) => `timestamptz(${precision})`,
+    )
+
+    expect(epoch.transform({ decode: Number }).read).toBe(readEpoch)
+    expect(epoch.nullable().read).toBe(readEpoch)
+    expect(epoch.of<"0">().read).toBe(readEpoch)
+    expect(epoch.with(3).read).toBe(readEpoch)
+  })
+
+  it("is copied with the members of a type", () => {
+    const epoch = defineType({ sqlType: "timestamptz", read: readEpoch })
+
+    expect({ ...epoch, operators: {} }.read).toBe(readEpoch)
   })
 })
 

@@ -1,9 +1,12 @@
 import { expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import type { ScalarProjection } from "../ast/nodes"
 import { param, sql } from "../expression/sql"
 import { defineTable } from "../table/table"
 import type { AnyType } from "../type/type"
+import { defineType } from "../type/type"
 import * as t from "../types"
 
 import { countType, isAggregateQuery } from "./aggregate"
@@ -69,6 +72,27 @@ it("decodes a sum of integer values by their type, rejecting a sum outside the s
   )
   expect(sum.encode(0)).toBe("0")
   expect(typeOf(from(post).sum("stars")).decode("6")).toEqual({ stars: 6 })
+})
+
+it("rejects a sum of integer values of a type with a read expression, whose result its check of the range cannot read", () => {
+  const read = (value: string) => `'#' || ${value}`
+  const tag = defineTable("tag", {
+    views: defineType({ sqlType: "integer", read }).transform({
+      decode: text => Number(text.slice(1)),
+    }),
+    bytes: defineType({ sqlType: "bigint", read }).transform({
+      decode: text => BigInt(text.slice(1)),
+    }),
+  })
+
+  expect(getThrownError(() => from(tag).sum("views"))).toEqual(
+    new TypeError(
+      "sum of integer values of a type with a read expression cannot reject a sum outside the safe integer range of numbers, since the type decodes the result of the expression; sum a sql fragment of the column with a type of the bigint sum",
+    ),
+  )
+  // PostgreSQL sums `bigint` values as a `numeric`, which no check reads.
+  expect(typeOf(from(tag).sum("bytes"))).toBe(tag.columns.bytes.type)
+  expect(typeOf(from(tag).avg("views"))).toBe(tag.columns.views.type)
 })
 
 it("gives a sum of integer values the operators of their type", () => {

@@ -213,10 +213,19 @@ function toArgumentType(argument: AnyType): AnyType {
 }
 
 // PostgreSQL sums `smallint` and `integer` values as a `bigint`, which their `Number` decodes without an error outside the safe integer range.
-/** Returns the type of the sum of the values of type `argument`: for `smallint` and `integer` values, a `bigint` with the operators of `argument` that rejects a sum that a number cannot hold exactly, and `argument` for others. */
+/**
+ * Returns the type of the sum of the values of type `argument`: for `smallint` and `integer` values, a `bigint` with the operators of `argument` that rejects a sum that a number cannot hold exactly, and `argument` for others.
+ *
+ * It rejects such a type with a read expression: the type decodes the result of the expression rather than the text of the sum, which the check reads.
+ */
 function toSumType(argument: AnyType): AnyType {
   if (argument.castType !== "smallint" && argument.castType !== "integer") {
     return argument
+  }
+  if (argument.read !== undefined) {
+    throw new TypeError(
+      `sum of ${argument.castType} values of a type with a read expression cannot reject a sum outside the safe integer range of numbers, since the type decodes the result of the expression; sum a sql fragment of the column with a type of the bigint sum`,
+    )
   }
   let type = sumTypes.get(argument)
   if (type === undefined) {

@@ -67,6 +67,18 @@ export interface CastNode {
   readonly type: AnyType
 }
 
+/**
+ * Value of `operand` read by the read expression of `type`, whose result the type decodes.
+ *
+ * Only lowering creates it, where a value of such a type leaves a statement as a field of its result; a value that a statement computes with keeps its PostgreSQL type.
+ */
+export interface ReadNode {
+  readonly kind: "read"
+  readonly operand: ExpressionNode
+  /** Type with a read expression. */
+  readonly type: AnyType
+}
+
 export interface BooleanNode {
   readonly kind: "boolean"
   readonly value: boolean
@@ -198,6 +210,7 @@ export type ExpressionNode =
   | ColumnRefNode
   | ParamNode
   | CastNode
+  | ReadNode
   | BooleanNode
   | AndNode
   | OrNode

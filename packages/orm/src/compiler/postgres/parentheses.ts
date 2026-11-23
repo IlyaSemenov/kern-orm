@@ -7,9 +7,16 @@ import type { BinaryNode, ExpressionNode } from "../../ast/nodes"
  * - `cast`: the operand of a cast.
  * - `condition`: an operand of `AND`, `OR`, or `NOT`.
  * - `interpolation`: an expression interpolated into a SQL fragment.
+ * - `read`: the value of a read expression of a type, which the expression places anywhere in its SQL.
  * - `BinaryPosition`: an operand of a binary operator.
  */
-export type OperandPosition = "value" | "cast" | "condition" | "interpolation" | BinaryPosition
+export type OperandPosition =
+  | "value"
+  | "cast"
+  | "condition"
+  | "interpolation"
+  | "read"
+  | BinaryPosition
 
 /** Position of an operand of a binary operator: the precedence of the operator, and whether the operand is on its right. */
 export interface BinaryPosition {
@@ -71,9 +78,11 @@ export function needsParentheses(node: ExpressionNode, position: OperandPosition
       return false
     case "cast":
       // Text after an interpolated cast could continue its type name, such as a subscript `[1]` after `integer[]`.
-      return position === "interpolation"
+      return position === "interpolation" || position === "read"
     case "raw":
     case "fragment":
+    // The SQL of a read expression is of a type, as the text of a fragment is of a user.
+    case "read":
       // An interpolated fragment stays as it is, since its text may be a list or a clause rather than a value.
       return position !== "interpolation"
     case "and":
@@ -103,6 +112,7 @@ function needsBinaryParentheses(
     case "cast":
     case "condition":
     case "interpolation":
+    case "read":
       return true
     default: {
       const precedence = getPrecedence(operator)

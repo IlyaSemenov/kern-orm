@@ -63,7 +63,7 @@ const forms = await db.form
   .orderBy((form, selected) => desc(selected.score))
 ```
 
-The rows are sorted by the same values that the records get.
+PostgreSQL sorts by the value of the selected expression before the [read expression](../custom-types#reading-values-by-an-expression) of its type is applied.
 
 After `pluck` or `get`, the second parameter is the expression of the value.
 

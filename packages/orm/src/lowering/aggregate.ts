@@ -163,6 +163,7 @@ function refersToSource(node: ExpressionNode, source: SourceNode): boolean {
     case "textSubquery":
       return false
     case "cast":
+    case "read":
     case "not":
     case "isNull":
     case "inQuery":

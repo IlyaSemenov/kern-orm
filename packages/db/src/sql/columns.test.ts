@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test"
 
 import { integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
+import { defineType } from "../type/type"
 
 import { createSqlColumns, SqlColumns } from "./columns"
 import { compileFragment, compileScript, sql, SqlFragment } from "./fragment"
@@ -43,6 +44,22 @@ describe("createSqlColumns", () => {
       createSqlColumns([{ key: 'a"b', name: 'c"d', type: text }], { alias: 'e"f', prefix: 'g"h' })
         .text,
     ).toBe('"e""f"."c""d" AS "g""h__a""b"')
+  })
+
+  it("selects a column of a type with a read expression by the expression", () => {
+    const epoch = defineType({
+      sqlType: "timestamptz",
+      read: value => `extract(epoch from ${value})`,
+    })
+    const job = [
+      { key: "id", name: "id", type: integer },
+      { key: "runAt", name: "run_at", type: epoch.nullable() },
+    ] as const
+
+    expect(createSqlColumns(job).text).toBe('"id" AS "id", extract(epoch from "run_at") AS "runAt"')
+    expect(createSqlColumns(job, { alias: "j" }).text).toBe(
+      '"j"."id" AS "j__id", extract(epoch from "j"."run_at") AS "j__runAt"',
+    )
   })
 
   it("is a fragment without parameters, frozen with its text and its fields, which a template and a script interpolate", () => {

@@ -5,7 +5,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 
 ## Next
 
-- [Read expression of a type](read-expression-of-a-type.md): a custom type read by a SQL expression of its own, such as epoch seconds of a timestamp.
 - [JSON operators](json-operators.md): `->`, `->>`, and functions of JSON paths typed by the shape.
 - [Updating records with values of each](updating-records-with-values-of-each.md): `UPDATE ... FROM (VALUES ...)` matched by a key.
 - [Through and many-to-many relations](through-and-many-to-many-relations.md): relations through other relations and through a join table.
@@ -76,6 +75,7 @@ Ideas that wait for an application that needs them, or that are not planned.
 - [Union of queries of several tables](union-of-queries-of-several-tables.md): one query typed from `cond ? db.foo : db.bar`.
 - [Relation-aware mutations](relation-aware-mutations.md): a separate project.
 - [Keys of view results](keys-of-view-results.md): declared keys for `findBy` and relations `one` targeting a view.
+- [Write expression of a type](write-expression-of-a-type.md): a custom type whose parameters are written by a SQL expression of its own, such as `ST_GeomFromGeoJSON($1)`.
 
 ## Keeping the backlog
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
+import { defineType } from "../type"
+
 import { array, formatArray, parseArray } from "./array"
 import { text, varchar } from "./text"
 
@@ -51,5 +55,18 @@ describe("array", () => {
   it("keeps the type parameters of the element in the SQL type and not in the cast type", () => {
     expect(array(varchar.with(255)).sqlType).toBe("varchar(255)[]")
     expect(array(varchar.with(255)).castType).toBe("varchar[]")
+  })
+
+  it("rejects an element type with a read expression, which does not apply to the elements", () => {
+    const epoch = defineType({
+      sqlType: "timestamptz",
+      read: value => `extract(epoch from ${value})`,
+    })
+
+    expect(getThrownError(() => array(epoch.nullable()))).toEqual(
+      new TypeError(
+        'array() cannot use element type "timestamptz" because its read expression does not apply to array elements',
+      ),
+    )
   })
 })
