@@ -27,12 +27,14 @@ export default defineConfig({
           text: "Data Model",
           items: [
             {
-              text: "Tables and Schemas",
+              text: "Tables and Views",
+              link: "/orm/tables",
+              items: [{ text: "Singleton Tables", link: "/orm/singleton-tables" }],
+            },
+            {
+              text: "Schemas and Relations",
               link: "/orm/schemas",
-              items: [
-                { text: "Singleton Tables", link: "/orm/singleton-tables" },
-                { text: "Multiple Schemas", link: "/orm/multiple-schemas" },
-              ],
+              items: [{ text: "Multiple Schemas", link: "/orm/multiple-schemas" }],
             },
             {
               text: "Types",

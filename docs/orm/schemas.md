@@ -1,95 +1,8 @@
-# Tables and Schemas
-
-## Tables
-
-Define each table of the database with `defineTable`, giving its name and columns:
-
-```ts
-import { defineTable } from "kern-orm"
-import * as t from "kern-orm/types"
-
-export const form = defineTable("form", {
-  id: t.uuid.primaryKey(),
-  name: t.text,
-  published: t.boolean,
-})
-
-export const field = defineTable("form_field", {
-  id: t.uuid.primaryKey(),
-  formId: t.uuid.columnName("form_id"),
-  label: t.text,
-})
-```
-
-See [Types](./types) for the built-in types, column attributes, and custom types, and [Column names](#column-names) for `columnName`.
-
-The definitions describe tables that already exist: create and change them with SQL or [migrations](../migrations/getting-started), and check in a test that they [match the database](./testing#tables-that-match-the-database).
-
-## Views
-
-Use `defineView` to read an ordinary or materialized PostgreSQL view through a schema:
-
-```ts
-import { defineView } from "kern-orm"
-import * as t from "kern-orm/types"
-
-export const publishedField = defineView("published_field", {
-  formId: t.uuid.columnName("form_id"),
-  label: t.text,
-})
-```
-
-Include the view in the schema alongside your tables, then query it through your application's `db`:
-
-```ts
-import { db } from "#db"
-
-const formsWithEmail = db.form.where(form =>
-  db.publishedField.where({ formId: form.id, label: "Email" }).exists(),
-)
-```
-
-To apply the same [column naming convention](#naming-conventions) to your tables and views, import both definition functions from your table factory module.
-Declare `nullable()` for a column whose result can be null.
-Create and change the SQL definition in a [migration](../migrations/helpers).
-
-A view declared with `defineView` is read-only and its columns cannot declare keys or defaults.
-Use `where` to look up its rows: `find`, `findBy`, and relations `one` targeting the view require a key.
-If you need to declare a key guaranteed by the view's query or write through an updatable view, describe it with `defineTable`.
-
-## Keys
-
-Mark the primary key column with `primaryKey()` and each column of unique values with `unique()`:
-
-```ts
-export const user = defineTable("user", {
-  id: t.uuid.primaryKey(),
-  email: t.text.unique(),
-})
-```
-
-List the columns of a key of several columns in the options of `defineTable`:
-
-```ts
-export const membership = defineTable(
-  "membership",
-  {
-    userId: t.uuid,
-    groupId: t.uuid,
-    position: t.integer,
-  },
-  {
-    primaryKey: ["userId", "groupId"],
-    unique: [["groupId", "position"]],
-  },
-)
-```
-
-Declare the keys that the database guarantees, such as by a constraint, a unique index, or the query of a view: [relations](#relations) and [`find` and `findBy`](./queries/selecting#record-by-key) rely on them, and a query of a relation `one` fails when it finds several records.
+# Schemas and Relations
 
 ## Schemas
 
-Put the tables you query in a schema and bind it to the [database](./getting-started#connect) with `bindSchema`:
+Pass your [table and view definitions](./tables) to `defineSchema`, then bind the schema to the [database](./getting-started#connect) with `bindSchema`:
 
 ```ts
 import { bindSchema, defineSchema } from "kern-orm"
@@ -99,11 +12,13 @@ export const schema = defineSchema({ form, field, publishedField })
 export const db = bindSchema(schema, database)
 ```
 
-Table keys cannot start with `$`, which schemas and `Db` reserve for their own members.
-
 The schema only describes the tables and their relations, and `db` executes queries on the database.
+A schema of kern-orm is not a PostgreSQL schema, which holds tables in the database: to query the tables of a PostgreSQL schema, pass it to `bindSchema` as `schemaName`; see [PostgreSQL schemas](#postgresql-schemas).
+
 Start queries from the tables of `db`, such as `db.form`; see [Queries](./queries/).
 Where code has no `Db`, such as code shared by several Dbs, start them from the schema instead; see [Queries without a Db](./queries/reusable#queries-without-a-db).
+
+Table keys cannot start with `$`, which schemas and `Db` reserve for their own members.
 
 In code that has only `db`, such as a script, reach its database with `$database`:
 
@@ -133,7 +48,7 @@ export const schema = defineSchema({ form, field }).$relations({
 - `many(field, { from: "id", to: "formId" })` relates a form to the fields whose `formId` equals its `id`.
 - `one(form, { from: "formId", to: "id", required: true })` relates a field to the form whose `id` equals its `formId`.
 
-Include a [key](#keys) of the target in the columns `to` of `one`, such as its primary key, so that they match at most one record.
+Include a [key](./tables#keys) of the target in the columns `to` of `one`, such as its primary key, so that they match at most one record.
 
 Without the record, a query of a relation `one` gives `null`, and a query of a required relation rejects with `RequiredRelationError` unless it [filters the record](./queries/relations).
 Set `required: true` when the database guarantees the record, such as by a foreign key, and the columns `from` are not nullable.
@@ -152,65 +67,6 @@ Relate columns of the same SQL type, such as two `uuid` columns; `smallint`, `in
 A [custom type](./custom-types#operators) needs the operators of `equalityOperators` to be related.
 
 To share relations between schemas, see [Multiple Schemas](./multiple-schemas#schemas).
-
-## Column names
-
-A column is named after its key.
-To name it differently, set the name with `columnName`, as `formId` of `field` [above](#tables) does.
-
-### Naming conventions
-
-To use snake case for table and view columns, such as `form_id` for `formId`, export both functions from one factory:
-
-```ts
-// db/table-factory.ts
-import { createTableFactory, toSnakeCase } from "kern-orm"
-
-export const { defineTable, defineView } = createTableFactory({ columnName: toSnakeCase })
-```
-
-```ts
-import * as t from "kern-orm/types"
-
-import { defineTable } from "./db/table-factory"
-
-export const field = defineTable("form_field", {
-  id: t.uuid.primaryKey(),
-  formId: t.uuid, // form_id
-  createdAt: t.timestamptz, // created_at
-})
-```
-
-The factory's `defineView` applies the same conversion, so `formId: t.uuid` reads `form_id` in a view as well.
-
-A run of capital letters is one word, such as `user_id` for `userID` and `json_data` for `JSONData`, and digits stay in their word, such as `line2`.
-`columnName` overrides the derived name of a column, such as `t.text.columnName("line_2")`.
-
-For another convention, pass your own function, which gets the key of each column and returns its name:
-
-```ts
-export const { defineTable, defineView } = createTableFactory({
-  // personCategoryId for person_category_id
-  columnName: key => key.replace(/_(.)/g, (_, letter: string) => letter.toUpperCase()),
-})
-```
-
-## Tables of one row
-
-To keep a table to one row, such as the settings of an application, declare it with `singleton: true` in the options of `defineTable`, and give it a unique index of `(true)` in its migration:
-
-```ts
-export const settings = defineTable(
-  "settings",
-  {
-    id: t.uuid.primaryKey().hasDefault(),
-    locale: t.text,
-  },
-  { singleton: true },
-)
-```
-
-A query of the table is then a query of its row, such as `await db.settings.upsert({ locale })`; see [Singleton Tables](./singleton-tables).
 
 ## Database of the current context
 

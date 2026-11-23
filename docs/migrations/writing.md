@@ -23,7 +23,7 @@ Name each module `<number>_<name>`, such as `0001_create_form.ts`, with a number
 
 Write names without a PostgreSQL schema, such as `form` rather than `app.form`: migrations run with the search path of the schema they apply to, so the same migrations apply to any schema.
 
-Use the database names of tables and columns, such as `form_id` for the key `formId` mapped by a [naming convention](../orm/schemas#naming-conventions).
+Use the database names of tables and columns, such as `form_id` for the key `formId` mapped by a [naming convention](../orm/tables#naming-conventions).
 Migration helpers and SQL use these names directly.
 In a test after migrating, check the database against the tables of your `Db` with [`findTableMismatches`](../orm/testing#tables-that-match-the-database).
 

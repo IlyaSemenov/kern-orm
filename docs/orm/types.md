@@ -26,13 +26,13 @@ export const field = defineTable("form_field", {
 
 Column attributes set what belongs to the table:
 
-- `.columnName("form_id")` sets the physical column name when it differs from the key; to derive the names of all columns, such as in snake case, see [Naming conventions](./schemas#naming-conventions).
+- `.columnName("form_id")` sets the physical column name when it differs from the key; to derive the names of all columns, such as in snake case, see [Naming conventions](./tables#naming-conventions).
 - `.primaryKey()` marks the column as the primary key; a nullable type cannot be one.
 - `.unique()` marks the column as a unique key.
 - `.hasDefault()` marks a column that the database fills in when an [insert](./queries/mutations#inserting) omits it, such as by `DEFAULT` or an identity, so that inserts may omit it.
 - `.default(value)` lets inserts omit the column and inserts `value` instead; see [Defaults in code](#defaults-in-code).
 
-For keys of several columns, see [Keys](./schemas#keys).
+For keys of several columns, see [Keys](./tables#keys).
 
 Changes of the type, such as `nullable` and `transform`, come before column attributes: `t.text.nullable().columnName("note")`.
 Types and columns are immutable, so you can reuse them across tables.

@@ -70,7 +70,7 @@ await db.membership
   .doNothing()
 ```
 
-Pass the columns of a [primary or unique key](../schemas#keys) of the table, in any order.
+Pass the columns of a [primary or unique key](../tables#keys) of the table, in any order.
 A record that conflicts only on another key, such as on `groupId` and `position`, still rejects; call `onConflict()` without columns to skip a record that conflicts on any key.
 
 A skipped record is not returned: `insert` resolves to `0`, and the fields that you select after `doNothing` to `undefined`.

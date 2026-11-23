@@ -337,7 +337,7 @@ It checks the PostgreSQL schema of the `Db`, such as of the current tenant, in t
 - each column of a table is nullable or `NOT NULL` as you define it, and has a default, an identity, or a generated value when you mark it with `hasDefault()`;
 - a table has no other `NOT NULL` column without a default, which every insert would have to give;
 - each key of a table has a unique index or constraint of its columns that is not partial, and none of them is deferrable;
-- a [table of one row](./schemas#tables-of-one-row) has a unique index of `(true)`;
+- a [table of one row](./singleton-tables#the-table-in-a-migration) has a unique index of `(true)`;
 - each required relation `one` between tables has a foreign key of its columns that is valid and not deferrable.
 
 The check compares only the columns and their types of a view, and requires PostgreSQL 17 or newer.

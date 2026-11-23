@@ -45,7 +45,7 @@ export const database = createDatabase({
 `database.close()` ends the client, so do not call `sql.end()` yourself.
 
 kern-db reads results as PostgreSQL returns them, so create the client without transforms of the column names or rows of results, such as `postgres.camel`, and give other code that relies on such a transform a client of its own.
-In an application of kern-orm, name the columns of your tables in snake case with its [naming conventions](../orm/schemas#naming-conventions) instead.
+In an application of kern-orm, name the columns of your tables in snake case with its [naming conventions](../orm/tables#naming-conventions) instead.
 
 ## node-postgres
 
