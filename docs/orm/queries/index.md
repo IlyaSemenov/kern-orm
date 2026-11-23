@@ -8,6 +8,7 @@ const forms = await db.form.where({ published: true }).select("id", "name")
 ```
 
 A method never changes the query it is called on, so a query can be extended in several ways without affecting the others.
+Each `await` executes the query again; see [Reusable queries](./composing#reusable-queries).
 
 ## Guides
 
