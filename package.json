@@ -19,7 +19,8 @@
   "type": "module",
   "scripts": {
     "build": "bun run --filter './packages/*' build",
-    "docs:build": "vitepress build docs",
+    "docs:build": "vitepress build docs && bun run docs:links",
+    "docs:links": "sh docs/.vitepress/check-links.sh",
     "docs:dev": "vitepress dev docs",
     "docs:preview": "vitepress preview docs",
     "lint": "oxlint --fix && oxfmt",
