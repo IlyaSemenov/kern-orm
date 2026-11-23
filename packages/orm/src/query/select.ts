@@ -31,6 +31,7 @@ import type { AggregateMethod, CountValueType } from "./aggregate"
 import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { noContext } from "./column-refs"
+import { createComment } from "./comment"
 import type { SynchronousResult, TransformedQuery, TransformedQueryState } from "./conversion"
 import { addMap, transformQuery } from "./conversion"
 import type { ExistsValueType } from "./exists"
@@ -1139,7 +1140,7 @@ export class SelectQuery<
    * Converts the whole result in code, after decoding, executed or nested, such as to group rows or to compute a value from them.
    *
    * `callback` receives what the query resolves to, once: the array of rows, one row, or `null` or `undefined` of a missing row of a nullable or optional query; it returns its result synchronously.
-   * The SQL stays as it is, so call it last: the returned query only executes, nests in a selection, and takes further `transform`.
+   * The SQL stays as it is, so call it after the methods that choose the rows and the fields: the returned query only executes, nests in a selection, and takes further `transform` and `comment`.
    * A failure of `callback` rejects with `ResultDecodeError`, whose cause is the error.
    */
   transform<S extends SelectQueryState, Kind extends SelectQueryKind, R>(
@@ -1175,6 +1176,19 @@ export class SelectQuery<
     ...args: unknown[]
   ): unknown {
     return requireDerived(this, callback(this, ...args), "The callback of use")
+  }
+
+  /**
+   * Starts the SQL of the statement of the query with `label` in a block comment, such as to find the statement in `pg_stat_activity` and in the log of PostgreSQL.
+   *
+   * It replaces an earlier comment of the query, and `null` removes it; the queries derived from it, such as its insert, update, delete, and upsert, keep it.
+   * Only the query that runs the statement writes its comment: a query nested in another one, such as in a selection or a condition, leaves its comment out.
+   * It rejects a label that contains the start or the end of a block comment, or a NUL character.
+   */
+  comment<Q extends AnySelectQuery>(this: Q, label: string | null): Q
+  comment(label: string | null): unknown {
+    // The key of `find` stays, so that `upsert` applies after the comment.
+    return this.derive({ comment: createComment(label), foundKey: this.node.foundKey })
   }
 
   /**

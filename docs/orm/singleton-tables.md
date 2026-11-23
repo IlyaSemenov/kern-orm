@@ -61,7 +61,7 @@ Pass the values that [`insert`](./queries/mutations#inserting) takes, since a mi
 A column that you omit, or give as `undefined`, gets its default in a new row and keeps its value in an existing one.
 `upsert` takes at least one value other than `undefined`.
 
-Call `upsert` on the query of the table without other methods, such as `where`, and select the fields of the row after it:
+Call `upsert` on the query of the table without clauses, such as `where`, and select the fields of the row after it:
 
 ```ts
 const licenseId = await db.license.upsert({ token }).get("id")

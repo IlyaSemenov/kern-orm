@@ -26,7 +26,7 @@ bench("first unbound query", async () => {
       }))
       .take(),
   )
-}).types([2497, "instantiations"])
+}).types([2503, "instantiations"])
 
 // Nests 6 levels of relations, from orders down to the parent category, with sibling relations on the way.
 bench("first query of a deep relation graph", async () => {

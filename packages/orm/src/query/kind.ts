@@ -66,7 +66,14 @@ export type AnyQuery = AnySelectQuery | AnyTransformedQuery | AnyRecordQuery | A
 export function compileToSQL(query: AnyQuery, options: CompileOptions | undefined): SqlStatement {
   const { db } = query
   if (db === undefined) {
-    const { text, parameters } = compileStatement(lowerStatement(query.node), options)
+    const { node } = query
+    const { text, parameters } = compileStatement(
+      lowerStatement(node),
+      options,
+      undefined,
+      undefined,
+      node.comment,
+    )
     return createStatement(text, parameters)
   }
   // A caller holding the query as a query of either kind can still pass options, which the `Db` would not apply.

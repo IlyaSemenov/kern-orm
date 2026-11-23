@@ -76,9 +76,11 @@ export interface QueryNode extends ResultMode {
   /**
    * Values of the columns of the key of `find` or `findBy` of a query of a table without clauses, which `upsert` inserts, an empty object for a query that starts from a singleton table, whose key has no columns, or `undefined` for any other query.
    *
-   * Every method that derives a node from the query drops them, whereas `use` returns the query of its callback, such as the query itself.
+   * Every method that derives a node from the query drops them, apart from `comment`, which labels the statement without changing the query, whereas `use` returns the query of its callback, such as the query itself.
    */
   readonly foundKey: Readonly<Record<string, unknown>> | undefined
+  /** Label of `comment`, which the statement of the query starts with when it runs the query rather than nests it. */
+  readonly comment: string | undefined
 }
 
 /**
@@ -86,13 +88,18 @@ export interface QueryNode extends ResultMode {
  *
  * Its result mode is the rows mode of the rows it changes and whether a row is the value of its only field.
  */
-export type MutationNode = MutationStatementNode<SelectedNode>
+export type MutationNode = MutationStatementNode<SelectedNode> & {
+  /** Label of `comment`, which the statement of the mutation starts with. */
+  readonly comment: string | undefined
+}
 
 /** Query of `$select` without a source: one record whose fields are the values of expressions, the rows of independent queries, and literals. */
 export interface RecordQueryNode {
   readonly kind: "record"
   /** Fields in the order of the record, with unique keys. */
   readonly projections: readonly SelectedNode[]
+  /** Label of `comment`, which the statement of the query starts with. */
+  readonly comment: string | undefined
 }
 
 /** Empty values of the key without columns of a query that starts from a singleton table. */
@@ -130,6 +137,7 @@ export function createQueryNode(
     all: false,
     conversion: undefined,
     foundKey: singleton ? singletonKey : undefined,
+    comment: undefined,
   })
 }
 

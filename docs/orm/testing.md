@@ -310,7 +310,7 @@ try {
 
 Run such tests on a database created without `test: true`, since their transactions run beside each other.
 
-When the code under test runs the query on a connection that the test cannot reach, wait for it by a part of its SQL with `waitForLockedStatement`, which resolves to its backend PID.
+When the code under test runs the query on a connection that the test cannot reach, wait for it by a part of its SQL, such as the label of its [comment](./queries/#comments), with `waitForLockedStatement`, which resolves to its backend PID.
 Both reject when nothing waits within 2 seconds; pass `timeout` to wait longer or shorter.
 
 ## Tables that match the database

@@ -15,6 +15,7 @@ Query objects, their types, and the methods that choose rows.
 - [One parameter of `$execute` for every class of query](queries/execute-parameter.md).
 - [`ResultOf` of a helper](queries/result-of-a-helper.md): one type for the record of a query and of a helper, rather than a type of its own.
 - [Arrays of nodes not frozen](queries/unfrozen-node-arrays.md).
+- [Comments of nested queries left out](queries/comments-of-nested-queries.md): only the query that runs a statement writes its comment.
 
 ## Filters and expressions
 

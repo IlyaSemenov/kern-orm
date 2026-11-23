@@ -296,6 +296,10 @@ export function describeDriverContract(
       assert.equal(await selectValue("SELECT $1::text IS NULL", [null]), "t")
     })
 
+    it("leaves a placeholder in a comment to PostgreSQL, which ignores it", async () => {
+      assert.equal(await selectValue("/* operation $1 ? */ SELECT $1::text", ["text"]), "text")
+    })
+
     it("sends a parameter as it is, whatever type PostgreSQL describes for it", async () => {
       // A client that serializes a parameter by the type that PostgreSQL describes, such as postgres.js, would turn "true" into false and encode a JSON text again.
       assert.equal(await selectValueOnDriver("SELECT $1::boolean", ["true"]), "t")

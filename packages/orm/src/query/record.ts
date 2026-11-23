@@ -7,6 +7,7 @@ import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
 import type { UsedRelation } from "../schema/relation"
 
+import { createComment } from "./comment"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { RecordQueryNode, SelectedNode } from "./node"
@@ -60,6 +61,20 @@ export class RecordQuery<
   }
 
   /**
+   * Starts the SQL of the statement of the query with `label` in a block comment, such as to find the statement in `pg_stat_activity` and in the log of PostgreSQL.
+   *
+   * A later call replaces the label, and `comment(null)` removes it.
+   * It rejects a label that contains the start or the end of a block comment, or a NUL character.
+   */
+  comment<Q extends AnyRecordQuery>(this: Q, label: string | null): Q
+  comment(label: string | null): unknown {
+    return new RecordQuery(
+      Object.freeze({ ...this.node, comment: createComment(label) }),
+      this.db as AnyDb | undefined,
+    )
+  }
+
+  /**
    * Compiles the query into SQL text and parameters; `schemaName` qualifies its tables.
    *
    * A query bound to a `Db` compiles as the `Db` executes it, with the PostgreSQL schema of the `Db`, and rejects options.
@@ -92,5 +107,5 @@ export function startRecordQuery<S extends RecordQueryState, Kind extends Select
 ): RecordQuery<S, Kind> {
   const projections: SelectedNode[] = []
   addSelection(projections, selection)
-  return new RecordQuery(Object.freeze({ kind: "record", projections }), db)
+  return new RecordQuery(Object.freeze({ kind: "record", projections, comment: undefined }), db)
 }

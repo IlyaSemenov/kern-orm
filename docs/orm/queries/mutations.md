@@ -57,7 +57,7 @@ Pass the values that [`insert`](#inserting) takes, apart from the columns of the
 A column that you omit, or give as `undefined`, gets its default in a new record and keeps its value in an existing one.
 `upsert` takes at least one value other than `undefined`.
 
-Call `upsert` right after `find` or `findBy`, without other methods, such as `where`, and select the fields of the record after it, such as `upsert(values).get("id")`.
+Call `upsert` right after `find` or `findBy`, without other clauses, such as `where` or `select`, and select the fields of the record after it, such as `upsert(values).get("id")`.
 
 To save the row of a [singleton table](../singleton-tables), call `upsert` on the query of the table itself, such as `db.settings.upsert({ locale })`.
 

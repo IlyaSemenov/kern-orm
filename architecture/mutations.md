@@ -58,9 +58,8 @@
 
 - `onConflict` takes the columns of exactly one key of the table, primary or unique, in any order, checked as the object of `findBy` is: by `KeyCheck` in types, and by `findKey` at runtime, which gives the key in its own order for the target of `ON CONFLICT`.
   Without columns, the conflict is on any key for `doNothing`, and on the row of a singleton table for `merge` and `update`.
-- It applies only right after `insert` and `insertMany`, in types and at runtime, as `ON CONFLICT` precedes `RETURNING`.
-  - The state of an insert has the part `insert` outside of `MutationQueryState`, so that every change of the state by `ChangeMutationState` drops it and other mutations do not carry it; types reject `onConflict` without it, after any other method, as on an update or a delete.
-  - At runtime, it rejects a mutation other than an insert, and an insert with returned fields, a conversion, or a conflict.
+- It applies only to an insert of `insert` or `insertMany` without returned fields, a conversion, or a conflict, such as right after them or after a [`comment`](queries.md#comments) of the insert, in types and at runtime, as `ON CONFLICT` precedes `RETURNING`.
+  - The state of an insert has the part `insert` outside of `MutationQueryState`, so that every change of the state by `ChangeMutationState` drops it and other mutations do not carry it; types reject `onConflict` without it, such as after `select` of an insert, as on an update or a delete.
 - It returns a `ConflictTarget`, whose methods choose the action and return the mutation ([decision](../decisions/mutations/conflict-actions.md)): `doNothing` gives the insert of `ON CONFLICT ... DO NOTHING`, which skips each row that conflicts on the key.
   - A row that conflicts only on another key rejects, as without `onConflict`.
   - The insert changes rows `optional` after `insert`, which resolve to `0` or to `undefined` of the returned fields when the row conflicts, and rows `many` after `insertMany`, whose number and returned fields are those of the inserted rows.
@@ -79,7 +78,7 @@
 
 - `upsert` of a query of `find` or `findBy` inserts the record of the values of the key with its values and, on a conflict on that key, sets the columns of its values of the existing record: it is the insert of the record with `onConflict` of the key and `merge` without columns, as `INSERT ... ON CONFLICT (key) DO UPDATE SET column = EXCLUDED.column`, one statement, so that concurrent upserts of a missing record do not reject with a unique violation.
   An update of other values than the inserted ones, such as an increment of a counter, is an insert with `onConflict` and `update`.
-- It applies only right after `find` or `findBy` of a query of a table without clauses, by the key that they keep ([finding by a key](queries.md#finding-by-a-key)), and to a [query of a singleton table](queries.md#queries-of-a-singleton-table) without clauses, by the key without columns that it keeps, whose conflict is on the row of the table, as of `onConflict()` and `merge` of an insert into it.
+- It applies only to a query that keeps the key of `find` or `findBy` of a query of a table without clauses, such as right after them or after a [`comment`](queries.md#comments), by that key ([finding by a key](queries.md#finding-by-a-key)), and to a [query of a singleton table](queries.md#queries-of-a-singleton-table) without clauses, by the key without columns that it keeps, whose conflict is on the row of the table, as of `onConflict()` and `merge` of an insert into it.
   - Types reject it on a query whose state has no part `foundKey`, such as after `optional`, `select`, or `get`, but not after the methods that keep the state, such as `where`, `orderBy`, the row locks, and `use`.
   - At runtime, it rejects a query whose node keeps no values of the key, such as with `where` before or after `find`, `optional`, a relation, selected fields, an order, or a row lock, also on a singleton table, such as after `take` or `where`.
 - Its values are those of an insert without the columns of the key, `UpsertValues`, a mapped type of its own ([decision](../decisions/mutations/upsert-types.md)).

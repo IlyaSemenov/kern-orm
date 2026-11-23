@@ -16,6 +16,7 @@ import type { AnyRowSource, AnyTable, Selectable } from "../table/table"
 import { findKey, requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
+import { createComment } from "./comment"
 import type { SynchronousResult } from "./conversion"
 import { addMap, addTransform } from "./conversion"
 import type { KeyCheck } from "./find"
@@ -437,6 +438,17 @@ export class MutationQuery<
   }
 
   /**
+   * Starts the SQL of the statement of the query with `label` in a block comment, such as to find the statement in `pg_stat_activity` and in the log of PostgreSQL.
+   *
+   * It replaces an earlier comment of the query, and `null` removes it; the mutations derived from it, such as of `select` and of the action of `onConflict`, keep it.
+   * It rejects a label that contains the start or the end of a block comment, or a NUL character.
+   */
+  comment<Q extends AnyMutationQuery>(this: Q, label: string | null): Q
+  comment(label: string | null): unknown {
+    return this.derive({ comment: createComment(label) })
+  }
+
+  /**
    * Compiles the query into SQL text and parameters; `schemaName` qualifies its tables.
    *
    * A query bound to a `Db` compiles as the `Db` executes it, with the PostgreSQL schema of the `Db`, and rejects options.
@@ -650,6 +662,7 @@ export class ConflictTarget<
         returning: undefined,
         rows,
         value: false,
+        comment: insert.node.comment,
       }),
       insert.context,
       insert.db as AnyDb | undefined,
@@ -797,6 +810,7 @@ function createInsertInto(
       returning: undefined,
       rows,
       value: false,
+      comment: node.comment,
     }),
     query.context,
     query.db,
@@ -817,6 +831,7 @@ export function createUpdate(query: AnySelectQuery, set: unknown): AnyMutationQu
       returning: undefined,
       rows: node.rows,
       value: false,
+      comment: node.comment,
     }),
     query.context,
     query.db,
@@ -836,6 +851,7 @@ export function createDelete(query: AnySelectQuery): AnyMutationQuery {
       returning: undefined,
       rows: node.rows,
       value: false,
+      comment: node.comment,
     }),
     query.context,
     query.db,

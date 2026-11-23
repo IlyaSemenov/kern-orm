@@ -439,8 +439,8 @@ const page = await db.form
 // page: { forms: { id: string; name: string }[]; cursor: string | undefined }
 ```
 
-Call `transform` after the other methods of a query, since they would change what it receives.
-After it, the query can only be executed, nested in a selection, or converted with `transform` again.
+Call `transform` after the methods that choose the rows and the fields of a query, since they would change what it receives.
+After it, the query can only be executed, nested in a selection, converted with `transform` again, or given a [comment](./#comments).
 
 Both also convert the field of a nested query, such as of [related records](./relations):
 

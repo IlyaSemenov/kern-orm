@@ -52,18 +52,20 @@ const noFields: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
  *
  * With `tables`, such as the tables of the schema of a `Db`, an occurrence or an interpolated name of any other table at any depth of the statement is rejected.
  * `db` is the `Db` that runs the statement: a table interpolated from a query bound to another `Db`, or to any `Db` without it, is rejected.
+ * `comment`, the label of `comment` of the query that runs the statement, starts its text as a block comment.
  */
 export function compileStatement(
   node: StatementNode,
   options: CompileOptions = {},
   tables?: ReadonlySet<AnyRowSource>,
   db?: AnyDb,
+  comment?: string,
 ): CompiledQuery {
   const context = new CompileContext(options.schemaName, tables, db)
   switch (node.kind) {
     case "select":
       return {
-        text: compileQuery(context, undefined, node),
+        text: addComment(compileQuery(context, undefined, node), comment),
         parameters: context.parameters,
         // A projection is a result field, so the result needs no copy of the projections.
         fields: node.projections,
@@ -78,7 +80,7 @@ export function compileStatement(
     default: {
       const { returning } = node
       return {
-        text: compileMutation(context, node),
+        text: addComment(compileMutation(context, node), comment),
         parameters: context.parameters,
         fields: returning ?? noFields,
         recordTemplate: node.recordTemplate,
@@ -93,6 +95,12 @@ export function compileStatement(
       }
     }
   }
+}
+
+// The comment starts the text, so that `pg_stat_activity` shows it within the length of `track_activity_query_size`, to which it truncates the text of a statement.
+/** Writes `comment`, which `createComment` has checked, as a block comment before the SQL `text` of a statement, or returns `text` without one. */
+function addComment(text: string, comment: string | undefined): string {
+  return comment === undefined ? text : `/* ${comment} */ ${text}`
 }
 
 /**

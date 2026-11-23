@@ -12,6 +12,7 @@ import type { UsedRelation } from "../schema/relation"
 import type { AnyRowSource } from "../table/table"
 import type { IsAny } from "../utils/type-helpers"
 
+import { createComment } from "./comment"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { QueryNode } from "./node"
@@ -47,7 +48,7 @@ export interface TransformedQueryState<
 /**
  * Immutable query of a table of state `S` whose whole result `transform` converts after decoding, unbound or bound to a `Db`.
  *
- * It executes and nests in a selection as the query it comes from, with the same SQL, so it has only `transform`, which converts the result further: another method would change what the callback receives, and an expression does not take it, since SQL does not see the conversion.
+ * It executes and nests in a selection as the query it comes from, with the same SQL, so it has only `transform`, which converts the result further, and `comment`, which leaves the result as it is: another method would change what the callback receives, and an expression does not take it, since SQL does not see the conversion.
  * An unbound query is not thenable, so it can be returned from async functions; it is compiled with `toSQL` or executed by a `Db`.
  * A bound query executes on its `Db` when awaited.
  */
@@ -82,6 +83,21 @@ export class TransformedQuery<
   ): TransformedQuery<TransformedQueryState<S["table"], R, S["uses"]>, Kind>
   transform(callback: (result: unknown) => unknown): unknown {
     return transformQuery(this.node, this.db as AnyDb | undefined, callback)
+  }
+
+  /**
+   * Starts the SQL of the statement of the query with `label` in a block comment, such as to find the statement in `pg_stat_activity` and in the log of PostgreSQL.
+   *
+   * It replaces an earlier comment of the query, and `null` removes it; the queries of `transform` derived from it keep it.
+   * Only the query that runs the statement writes its comment: the query nested in a selection leaves its comment out.
+   * It rejects a label that contains the start or the end of a block comment, or a NUL character.
+   */
+  comment<Q extends AnyTransformedQuery>(this: Q, label: string | null): Q
+  comment(label: string | null): unknown {
+    return new TransformedQuery(
+      Object.freeze({ ...this.node, comment: createComment(label) }),
+      this.db as AnyDb | undefined,
+    )
   }
 
   /**

@@ -238,6 +238,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
       { schemaName: resolveSchemaName() },
       tables,
       db,
+      query.node.comment,
     )
   }
 
