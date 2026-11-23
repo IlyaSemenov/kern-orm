@@ -64,6 +64,8 @@ export default defineConfig({
           text: "Execution and Testing",
           items: [
             { text: "Transactions", link: "/orm/transactions" },
+            { text: "Locks", link: "/orm/locks" },
+            { text: "Sessions", link: "/orm/sessions" },
             { text: "Testing", link: "/orm/testing" },
             { text: "Errors", link: "/orm/errors" },
           ],
@@ -103,6 +105,8 @@ export default defineConfig({
           text: "Execution and Testing",
           items: [
             { text: "Transactions", link: "/database/transactions" },
+            { text: "Locks", link: "/database/locks" },
+            { text: "Sessions", link: "/database/sessions" },
             { text: "Testing", link: "/database/testing" },
             { text: "Errors", link: "/database/errors" },
             { text: "Interop with Other Libraries", link: "/database/interop" },

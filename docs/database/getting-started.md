@@ -83,6 +83,8 @@ await database.transaction(async () => {
 - [Drivers](./drivers): the drivers of postgres.js and node-postgres.
 - [SQL Queries and Scripts](./sql): SQL fragments, names known at runtime, JSON and arrays in statements, and scripts.
 - [Types](./types): the values of the built-in types, nullable and narrowed values, and types of your own.
-- [Transactions](./transactions): nested transactions, advisory locks, isolation levels, and statements outside a transaction.
+- [Transactions](./transactions): nest transactions, join the current one, and set the isolation level and the search path.
+- [Locks](./locks): lock rows, take advisory locks, and limit how long a statement waits for a lock.
+- [Sessions](./sessions): run statements outside a transaction on one connection, and keep a session open.
 - [Testing](./testing): run each test in a transaction that rolls back.
 - [Errors](./errors): statements that PostgreSQL rejects and lost connections.

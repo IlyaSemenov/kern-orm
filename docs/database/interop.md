@@ -25,7 +25,7 @@ await sql.begin(async tx => {
 ```
 
 Every statement that the callback runs through `database` runs in that transaction, including statements in called functions, and commits or rolls back with it: the database neither starts nor ends the transaction.
-In the callback, `database.transaction` starts a [nested transaction](./transactions#nested-transactions), and the code runs as in a transaction of the database: `database.isInTransaction()` returns `true`, and [advisory locks](./transactions#advisory-locks) last until the transaction ends.
+In the callback, `database.transaction` starts a [nested transaction](./transactions#nested-transactions), and the code runs as in a transaction of the database: `database.isInTransaction()` returns `true`, and [advisory locks](./locks#advisory-locks) last until the transaction ends.
 
 Keep the transaction open until `database.externalTransaction` settles, and roll it back when it rejects.
 Wait for it to settle before you start another external transaction or run statements of the other library on the same connection: a nested transaction that rolls back would undo what they wrote meanwhile.
