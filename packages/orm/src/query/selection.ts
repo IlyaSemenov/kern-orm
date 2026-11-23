@@ -3,7 +3,7 @@ import type { AnyExpression, TypedExpression } from "../expression/expression"
 import type { TypedOperand } from "../expression/functions"
 import type { OperandValue } from "../expression/operators/comparison"
 import type { AnyRowSource } from "../table/table"
-import type { IsAny, Simplify } from "../utils/type-helpers"
+import type { IsAny, IsIndexKey, IsUnion, Simplify } from "../utils/type-helpers"
 
 import type { TransformedQuery, TransformedQueryState } from "./conversion"
 import type { SelectQueryKind } from "./kind"
@@ -92,25 +92,69 @@ type RecordFields<Fields> = Fields extends unknown
     : { [K in keyof Fields as K extends number ? `${K}` : K]: Fields[K] }
   : never
 
+/** Key used to look up a selected field without matching a member inherited from Object. */
+type OwnFieldKey<K extends PropertyKey> = K extends string ? `:${K}` : K
+
+/** Fields under their lookup keys, retaining explicit properties, index signatures and optionality. */
+type OwnFields<F> = { [K in keyof F as OwnFieldKey<K>]: F[K] }
+
 /** Merge of normalized fields, retaining the previous value when an optional replacement is absent. */
 type MergeFields<Previous, Fields> = Simplify<
   {
     [
-      K in keyof Previous as K extends keyof Fields ? ({} extends Pick<Fields, K> ? K : never) : K
+      K in keyof Previous as K extends keyof Fields
+        ? OwnFields<Fields> extends Record<OwnFieldKey<K>, unknown>
+          ? never
+          : K
+        : K
     ]: K extends typeof helperFields
       ? // A branch selecting extra keys must not be reduced to one selecting fewer fields or none.
         Previous[K] | keyof Fields
-      : K extends keyof Fields
-        ? // A decoder can return undefined, so it cannot be excluded as merely an absent property.
-          Previous[K] | Fields[K]
-        : Previous[K]
+      : IsIndexKey<K> extends true
+        ? // An open key can name a field selected on either side of the merge.
+          Previous[K] | Fields[K & keyof Fields] | undefined
+        : K extends keyof Fields
+          ? // A decoder can return undefined, so it cannot be excluded as merely an absent property.
+            Previous[K] | OwnFields<Fields>[OwnFieldKey<K> & keyof OwnFields<Fields>]
+          : Previous[K]
   } & {
     // Optional overlapping fields are handled above to preserve the input field's requiredness.
     [
-      K in keyof Fields as K extends keyof Previous ? ({} extends Pick<Fields, K> ? never : K) : K
-    ]: Fields[K]
+      K in keyof Fields as K extends keyof Previous
+        ? OwnFields<Fields> extends Record<OwnFieldKey<K>, unknown>
+          ? K
+          : never
+        : K
+    ]: IsIndexKey<K> extends true ? Fields[K] | Previous[K & keyof Previous] | undefined : Fields[K]
   }
 >
+
+/** Tells whether `K` can name more than one column, as with a union or an index signature. */
+type IsDynamicColumn<K extends PropertyKey> = IsIndexKey<K> extends true ? true : IsUnion<K>
+
+/** Columns guaranteed by individual arguments, including fixed arguments on either side of a spread. */
+type GuaranteedColumnKeys<
+  Keys extends readonly PropertyKey[],
+  Found extends PropertyKey = never,
+> = Keys extends readonly [infer Key extends PropertyKey, ...infer Rest extends PropertyKey[]]
+  ? GuaranteedColumnKeys<Rest, true extends IsDynamicColumn<Key> ? Found : Found | Key>
+  : Keys extends readonly [...infer Rest extends PropertyKey[], infer Key extends PropertyKey]
+    ? GuaranteedColumnKeys<Rest, true extends IsDynamicColumn<Key> ? Found : Found | Key>
+    : Found
+
+/** Tells whether the number of column arguments or the key at any position can vary. */
+type HasDynamicColumn<Keys extends readonly PropertyKey[]> = number extends Keys["length"]
+  ? true
+  : { [I in keyof Keys]: IsDynamicColumn<Keys[I]> }[number]
+
+/** Fields selected by column keys, with a required property for each key guaranteed by the arguments. */
+export type PickSelectedColumns<Row, Keys extends readonly (keyof Row)[]> =
+  // Distribute before inspecting positions so that a key guaranteed by one tuple stays local to that branch.
+  Keys extends unknown
+    ? true extends HasDynamicColumn<Keys>
+      ? Pick<Row, GuaranteedColumnKeys<Keys>> & Partial<Pick<Row, Keys[number]>>
+      : Pick<Row, Keys[number]>
+    : never
 
 /** Types of the values of columns `K` of table `T` as selected fields: the values that each encodes and its operators. */
 export type ColumnFieldTypes<T extends AnyRowSource, K extends keyof T["columns"]> = {
@@ -156,18 +200,7 @@ export type MergeFieldTypes<P, N> = P extends unknown
       ? P
       : [keyof P] extends [never]
         ? N
-        : {
-            [K in keyof P | keyof N]: K extends keyof N
-              ? {} extends Pick<N, K>
-                ? // An optional replacement may be absent, so the previous type stays possible.
-                  K extends keyof P
-                  ? P[K] | Exclude<N[K], undefined>
-                  : Exclude<N[K], undefined>
-                : N[K]
-              : K extends keyof P
-                ? P[K]
-                : never
-          }
+        : MergeFields<P, N>
     : never
   : never
 

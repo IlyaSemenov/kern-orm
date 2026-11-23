@@ -6,6 +6,7 @@ import type { GroupValue } from "../expression/aggregates"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { isOperandSource, operandNode } from "../expression/expression"
 import type { AnyRowSource } from "../table/table"
+import type { IsIndexKey } from "../utils/type-helpers"
 
 import { isAggregateQuery } from "./aggregate"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
@@ -79,18 +80,20 @@ export function addGroupKeys(
  * A field of nested rows or of a literal is among the references, but reading it throws; a field of the rows of a query of one value, such as of `get`, has the operators of its value in types.
  */
 export type HavingFields<S extends SelectQueryState> = S["value"] extends false
-  ? {
-      readonly [K in keyof S["result"] & string]: FieldRef<
-        SelectedFieldTypesOf<S["fieldTypes"]>,
-        K,
-        S["result"][K]
-      >
-    }
+  ? HavingRefs<S["result"], SelectedFieldTypesOf<S["fieldTypes"]>>
   : S["value"] extends true
     ? S["aggregate"] extends false
       ? ToFieldRef<S["valueType"], S["result"]>
       : undefined
     : undefined
+
+/** References of selected fields in a group, preserving the optional properties of the result. */
+type HavingRefs<R, F> = {
+  // An index signature may name a missing projection with or without `noUncheckedIndexedAccess`.
+  readonly [K in keyof R as K & string]:
+    | FieldRef<F, K & string, R[K]>
+    | (IsIndexKey<K> extends true ? undefined : never)
+}
 
 /** Reference of the callback of `having` to field `K` of values `V`, with the type of its value among field types `F`, for each member of a union of them. */
 type FieldRef<F, K extends string, V> = K extends keyof F

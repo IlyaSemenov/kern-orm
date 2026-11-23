@@ -13,6 +13,7 @@ import * as t from "../types"
 import { defineHelper } from "./helper"
 import type { SelectQueryKind } from "./kind"
 import type { ResultOf, SelectQuery } from "./select"
+import { from } from "./select"
 import type { EmptyRecord, FoundKey, QueryStateOf } from "./state"
 import type { InsertValues, UpdateSet, UpdateValues } from "./values"
 
@@ -199,6 +200,33 @@ describe("results", () => {
     expectTypeOf(
       db.post.find("post-id").nullable().delete().select("title"),
     ).resolves.toEqualTypeOf<{ title: string } | null>()
+  })
+
+  test("return dynamic column keys as optional fields", () => {
+    const fields: ("id" | "title")[] = []
+    const changed = db.post.find("post-id").delete()
+    expectTypeOf(changed.select(...fields)).resolves.toEqualTypeOf<{
+      id?: string
+      title?: string
+    }>()
+    expectTypeOf(changed.select("id", ...fields)).resolves.toEqualTypeOf<{
+      id: string
+      title?: string
+    }>()
+  })
+
+  test("include a previously selected field in an open key lookup", () => {
+    const columns: Record<string, typeof t.text> = { title: t.text }
+    const changed = from(defineTable("post", columns)).all().delete()
+    const returning = (key: string) =>
+      changed
+        .select(() => ({
+          title: sql(t.integer)`1`,
+        }))
+        .select(key)
+    type Row = ResultOf<ReturnType<typeof returning>>
+    expectTypeOf<Row[string]>().toEqualTypeOf<number | string | undefined>()
+    expectTypeOf<Row>().toMatchTypeOf<{ title: number | string | undefined }>()
   })
 
   test("gain no field from a selection without keys", () => {

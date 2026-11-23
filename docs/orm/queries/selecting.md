@@ -50,6 +50,8 @@ const forms = await db.form.select("id", "name").select(form => ({
 
 `select("*")` also replaces fields under column keys and keeps the other fields.
 
+In `select("id", ...keys)`, `id` is required and fields selected only through a runtime list are optional.
+
 `clearSelect` removes all selected fields and keeps the other clauses:
 
 ```ts

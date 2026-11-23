@@ -243,6 +243,7 @@ export type {
   GroupSelectionResult,
   MergeSelection,
   NestedQuery,
+  PickSelectedColumns,
   SelectedFieldTypes,
   Selection,
   SelectionFieldTypes,

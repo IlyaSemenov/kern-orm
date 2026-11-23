@@ -34,6 +34,8 @@ Queries come in two kinds that share the query methods and differ only by execut
 ## Selection
 
 - A query returns only explicitly selected fields: without `select` its records have no fields, and all columns require `select("*")`.
+  A fixed argument that names a single column guarantees its field.
+  Keys chosen from a union, an index signature, or an array of unknown length are optional in the result and in references to selected fields unless another selection or argument guarantees them ([decision](../decisions/queries/dynamic-column-keys.md)).
 - A selected field other than a literal is a projection: an expression, the key of the field, and the type of the expression, which decodes its values; the projections are the result fields of the compiled query.
   A projection of nested rows has the result plan of their query instead of a type.
   An expression without a type, such as `sql<T>`, cannot be selected, since a TypeScript type does not determine how to decode its values; it is rejected at runtime by its missing type and in types by the mark of `TypedExpression`, which selection requires, `Expression` includes, and `AnyExpression`, such as an operand of a generic operator, lacks.
@@ -41,6 +43,7 @@ Queries come in two kinds that share the query methods and differ only by execut
   The last selection of a key determines the whole field, such as its expression and its decoding type, so each key has one field and repeating a column is idempotent, within a call as well as across calls.
   Result types merge fields by replacing overlapping keys, independently for each branch of a union of records or selections; a result of `any` stays `any`.
   Numeric keys are normalized to strings before merging, matching JavaScript object keys.
+  A lookup through an index signature includes the values of overlapping fields from either selection and `undefined` for a missing field, including in references to projections.
   An optional selection retains the input field's requiredness and allows either its previous value or the selected property value, including `undefined`.
   `clearSelect` removes all fields and keeps the other clauses.
   Outside helper callbacks, TypeScript can reduce a union to a query of fewer fields when the shared fields have compatible types and the other state parts match; selecting a key hidden by that reduction replaces its runtime field.

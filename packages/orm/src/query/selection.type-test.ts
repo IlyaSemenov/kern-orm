@@ -35,6 +35,15 @@ describe("MergeSelection", () => {
     }>()
   })
 
+  test("includes both value types for overlapping template index signatures", () => {
+    type Left = `left_${string}`
+    type Right = `${string}_right`
+    type Row = MergeSelection<Record<Left, number>, Record<Right, string>>
+    expectTypeOf<Row[Left]>().toEqualTypeOf<number | string | undefined>()
+    expectTypeOf<Row[Right]>().toEqualTypeOf<number | string | undefined>()
+    expectTypeOf<Row["left_right"]>().toEqualTypeOf<number | string | undefined>()
+  })
+
   test("tracks selected keys in the helper marker", () => {
     type Named = MergeSelection<HelperFields<never>, { name: string }>
     type Identified = MergeSelection<Named, { id: number; name: boolean }>

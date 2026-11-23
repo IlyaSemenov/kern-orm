@@ -95,6 +95,7 @@ import type {
   GroupOperandValue,
   GroupSelectionResult,
   MergeSelection,
+  PickSelectedColumns,
   SelectedFieldTypes,
   Selection,
   SelectionFieldTypes,
@@ -213,17 +214,19 @@ export class SelectQuery<
   select<
     S extends RecordQueryState,
     Kind extends SelectQueryKind,
-    // Without keys, TypeScript would infer the constraint, every column, whereas the call adds no column.
-    K extends keyof S["table"]["columns"] & string = never,
+    const Keys extends readonly (keyof S["table"]["columns"] & string)[],
   >(
     this: SelectQuery<S, Kind>,
-    ...keys: K[]
+    ...keys: Keys
   ): SelectQuery<
     ChangeState<
       S,
       {
-        result: MergeSelection<S["result"], Pick<Selectable<S["table"]>, K>>
-        fieldTypes: SelectedFieldTypes<S["fieldTypes"], ColumnFieldTypes<S["table"], K>>
+        result: MergeSelection<S["result"], PickSelectedColumns<Selectable<S["table"]>, Keys>>
+        fieldTypes: SelectedFieldTypes<
+          S["fieldTypes"],
+          PickSelectedColumns<ColumnFieldTypes<S["table"], Keys[number]>, Keys>
+        >
       }
     >,
     Kind

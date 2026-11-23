@@ -31,7 +31,13 @@ import { mergeProjections, projectValue } from "./projections"
 import type { QueryResult } from "./rows"
 import type { AnySelectQuery } from "./select"
 import { requireDerived } from "./select"
-import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
+import type {
+  MergeSelection,
+  PickSelectedColumns,
+  Selection,
+  SelectionResult,
+  SelectionUses,
+} from "./selection"
 import type { EmptyRecord, QueryState } from "./state"
 import type { ConflictUpdateSet, UpdateValues } from "./values"
 import { toAssignments, toInsertRows } from "./values"
@@ -232,12 +238,11 @@ export class MutationQuery<
   select<
     S extends RecordMutationState,
     Kind extends SelectQueryKind,
-    // Without keys, TypeScript would infer the constraint, every column, whereas the call adds no column.
-    K extends keyof S["table"]["columns"] & string = never,
+    const Keys extends readonly (keyof S["table"]["columns"] & string)[],
   >(
     this: MutationQuery<S, Kind>,
-    ...keys: K[]
-  ): MutationQuery<RecordsState<S, Pick<Selectable<S["table"]>, K>>, Kind>
+    ...keys: Keys
+  ): MutationQuery<RecordsState<S, PickSelectedColumns<Selectable<S["table"]>, Keys>>, Kind>
   /**
    * Returns the expressions and nested queries that `callback` returns for each changed row, replacing fields under their keys, instead of the number of the rows.
    *

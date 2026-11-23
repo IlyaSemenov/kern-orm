@@ -13,6 +13,7 @@ import { isOperandSource, operandNode, toExpression } from "../expression/expres
 import type { ScalarField } from "../result/result"
 import type { AnyRowSource } from "../table/table"
 import { requireColumn } from "../table/table"
+import type { IsIndexKey } from "../utils/type-helpers"
 
 import { isSelectedAsValue } from "./aggregate"
 import type { QueryContext } from "./column-refs"
@@ -58,7 +59,12 @@ export type OrderTerm = AnyExpression | ScalarQuery | Ordering
  *
  * A field of nested rows or of a literal is among them in types, but reading it throws; a field of an aggregate or of `exists` gives its value.
  */
-export type SelectedRefs<R> = { readonly [K in keyof R & string]: AnyExpression<R[K]> }
+export type SelectedRefs<R> = {
+  // An index signature may name a missing projection with or without `noUncheckedIndexedAccess`.
+  readonly [K in keyof R as K & string]:
+    | AnyExpression<R[K]>
+    | (IsIndexKey<K> extends true ? undefined : never)
+}
 
 /** Sort keys returned by the callback of `orderBy`: one or an array of them. */
 export type OrderTerms = OrderTerm | readonly OrderTerm[]

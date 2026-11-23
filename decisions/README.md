@@ -10,6 +10,7 @@ Query objects, their types, and the methods that choose rows.
 - [Query methods typed by `this`](queries/query-methods-typed-by-this.md): a query is covariant in its state, so comparing queries compares states.
 - [State-changing methods on unions of queries](queries/state-changing-methods-on-unions.md): a union of queries of different states rejects them.
 - [Query classes without a base class](queries/query-classes-without-base-class.md): each class repeats a few declarations.
+- [Dynamic column keys in `select`](queries/dynamic-column-keys.md): optional fields for keys a call may omit.
 - [Row locks rejected by the state in types](queries/row-lock-state.md).
 - [Relations in the references of callbacks](queries/relations-in-callbacks.md).
 - [One parameter of `$execute` for every class of query](queries/execute-parameter.md).

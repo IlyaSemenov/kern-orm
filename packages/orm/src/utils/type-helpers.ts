@@ -6,3 +6,8 @@ export type Simplify<T> = IsAny<T> extends true ? T : { [K in keyof T]: T[K] } &
 
 /** Tells whether `T` is a union of several types. */
 export type IsUnion<T, Whole = T> = T extends unknown ? ([Whole] extends [T] ? false : true) : false
+
+/** Tells whether a record keyed by `K` can omit every property, as with a string or template index signature. */
+export type IsIndexKey<K extends PropertyKey> =
+  // No member inherited from Object can satisfy a required property of type never.
+  {} extends Record<K, never> ? true : false

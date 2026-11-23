@@ -122,6 +122,66 @@ describe("select", () => {
     expectTypeOf(db.post.select()).resolves.toEqualTypeOf<EmptyRecord[]>()
   })
 
+  test("requires only column keys guaranteed by the arguments", () => {
+    const key = flag ? "id" : "hint"
+    const keys: (typeof key)[] = []
+    const columns = ["id", "hint"] as const
+    expectTypeOf(db.post.select(...columns)).resolves.toEqualTypeOf<
+      { id: string; hint: string | null }[]
+    >()
+    expectTypeOf(db.post.select(key)).resolves.toEqualTypeOf<
+      { id?: string; hint?: string | null }[]
+    >()
+    expectTypeOf(db.post.select(...keys)).resolves.toEqualTypeOf<
+      { id?: string; hint?: string | null }[]
+    >()
+    expectTypeOf(db.post.select("id", key)).resolves.toEqualTypeOf<
+      { id: string; hint?: string | null }[]
+    >()
+    expectTypeOf(db.post.select("id", ...keys)).resolves.toEqualTypeOf<
+      { id: string; hint?: string | null }[]
+    >()
+    expectTypeOf(db.post.select(...keys, "id")).resolves.toEqualTypeOf<
+      { id: string; hint?: string | null }[]
+    >()
+
+    const alternatives = flag ? (["id"] as const) : (["hint"] as const)
+    expectTypeOf(db.post.select(...alternatives)).resolves.toEqualTypeOf<
+      ({ id: string } | { hint: string | null })[]
+    >()
+  })
+
+  test("requires selected columns whose keys name Object methods", () => {
+    const entries = from(
+      defineTable("entry", {
+        id: t.integer,
+        toString: t.integer,
+        valueOf: t.text,
+      }),
+    )
+    const listed = entries.select("toString", "id")
+    expectTypeOf<ResultOf<typeof listed>>().toEqualTypeOf<{ toString: number; id: number }>()
+    const chained = entries.select("toString").select("valueOf")
+    expectTypeOf<ResultOf<typeof chained>>().toEqualTypeOf<{ toString: number; valueOf: string }>()
+    chained.orderBy((_columns, fields) => fields.toString)
+    chained.groupBy("id").having((_columns, fields) => fields.valueOf.ilike("draft%"))
+  })
+
+  test("makes references to dynamically selected fields optional", () => {
+    const keys: ("id" | "hint")[] = []
+    const query = db.post.select(...keys)
+    // @ts-expect-error The reference may be absent.
+    query.orderBy((_columns, selected) => selected.id)
+    // @ts-expect-error The reference may be absent.
+    query.groupBy("id").having((_columns, selected) => selected.id.eq("id"))
+    // @ts-expect-error The projection is an optional group key.
+    query.groupBy((_columns, selected) => selected.id)
+    // @ts-expect-error The projection is an optional distinct key.
+    query.distinctOn((_columns, selected) => selected.id)
+    query.orderBy((columns, selected) => selected.id ?? columns.title)
+    query.groupBy("id").having((columns, selected) => (selected.id ?? columns.id).eq("id"))
+  })
+
   test("accepts any selection on a query of any result", () => {
     const query: SelectQuery<AnyResultState> = from(post).select("id")
     query.select(() => ({
@@ -190,6 +250,22 @@ describe("select", () => {
     expectTypeOf<ResultOf<typeof query>>().toEqualTypeOf<{ "0": number }>()
   })
 
+  test("keeps the previous value when a dynamic selection omits its key", () => {
+    const keys: ("id" | "hint")[] = []
+    const previous = db.post.select(() => ({
+      id: sql(t.integer)`1`,
+    }))
+    expectTypeOf(previous.select(...keys)).resolves.toEqualTypeOf<
+      {
+        id: number | string | undefined
+        hint?: string | null
+      }[]
+    >()
+    expectTypeOf(previous.select(...keys).select("id")).resolves.toEqualTypeOf<
+      { id: string; hint?: string | null }[]
+    >()
+  })
+
   test("keeps the previous field when an optional selection is absent", () => {
     const fields: { id?: TypedExpression<number> } = {}
     const query = from(post)
@@ -224,6 +300,89 @@ describe("select", () => {
       // @ts-expect-error A selected field has a string key.
       [key]: columns.id,
     }))
+  })
+})
+
+describe("select with open column keys", () => {
+  const definitions: Record<string, typeof t.text> = { title: t.text, name: t.text }
+  const posts = from(defineTable("post", definitions))
+  const key: string = "title"
+  const length = { title: sql(t.integer)`1` }
+
+  test("requires only the explicit column name beside a string key", () => {
+    const query = posts.select("name", key)
+    type Row = ResultOf<typeof query>
+    expectTypeOf<Row["name"]>().toEqualTypeOf<string>()
+    expectTypeOf<Row[string]>().toEqualTypeOf<string | undefined>()
+    query.orderBy((_columns, selected) => {
+      expectTypeOf<(typeof selected)[string]>().toEqualTypeOf<
+        AnyExpression<string | undefined> | undefined
+      >()
+      return selected.name
+    })
+    query.groupBy("name").having((_columns, selected) => {
+      expectTypeOf<undefined>().toMatchTypeOf<(typeof selected)[string]>()
+      return selected.name.eq("known")
+    })
+  })
+
+  test("includes an overlapping field in indexed reads in either selection order", () => {
+    const dynamic = posts.select(() => length).select(key)
+    type Row = ResultOf<typeof dynamic>
+    expectTypeOf<Row>().toMatchTypeOf<{ title: string | number | undefined }>()
+    expectTypeOf<Row[string]>().toEqualTypeOf<string | number | undefined>()
+    const repeated = dynamic.select(key)
+    expectTypeOf<ResultOf<typeof repeated>[string]>().toEqualTypeOf<Row[string]>()
+    const explicit = dynamic.select("title")
+    expectTypeOf<ResultOf<typeof explicit>["title"]>().toEqualTypeOf<string>()
+
+    const reversed = posts.select(key).select(() => length)
+    expectTypeOf<ResultOf<typeof reversed>["title"]>().toEqualTypeOf<number>()
+    expectTypeOf<ResultOf<typeof reversed>[string]>().toEqualTypeOf<Row[string]>()
+    reversed.groupBy("title").having((_columns, fields) => fields.title.gt(1))
+    // @ts-expect-error The dynamic selection may have kept the numeric expression.
+    dynamic.groupBy("title").having((_columns, fields) => fields.title.ilike("draft%"))
+  })
+
+  test("keeps an explicit Object method key when a string index may replace it", () => {
+    const dynamic = posts
+      .select(() => ({
+        toString: sql(t.integer)`1`,
+      }))
+      .select(key)
+    type Row = ResultOf<typeof dynamic>
+    expectTypeOf<Row>().toMatchTypeOf<{ toString: number | string | undefined }>()
+    expectTypeOf<Row["toString"]>().toEqualTypeOf<number | string | undefined>()
+    expectTypeOf<Row[string]>().toEqualTypeOf<number | string | undefined>()
+    dynamic.map(row => {
+      // @ts-expect-error The selected value is a number or text.
+      row.toString()
+      return row
+    })
+    const repeated = dynamic.select(key)
+    expectTypeOf<ResultOf<typeof repeated>["toString"]>().toEqualTypeOf<
+      number | string | undefined
+    >()
+    const explicit = dynamic.select("toString")
+    expectTypeOf<ResultOf<typeof explicit>["toString"]>().toEqualTypeOf<string>()
+  })
+
+  test("widens an indexed read only with fields whose keys it can name", () => {
+    type Key = `col_${number}`
+    const definitions: Record<Key, typeof t.text> = { col_1: t.text }
+    const columns = from(defineTable("entry", definitions))
+    const select = (key: Key) =>
+      columns
+        .select(() => ({
+          col_1: sql(t.integer)`1`,
+          label: sql(t.boolean)`true`,
+        }))
+        .select(key)
+    type Row = ResultOf<ReturnType<typeof select>>
+    expectTypeOf<Row["label"]>().toEqualTypeOf<boolean>()
+    expectTypeOf<Row[Key]>().toEqualTypeOf<number | string | undefined>()
+    const selected = (key: Key) => columns.select(key)
+    expectTypeOf<ResultOf<ReturnType<typeof selected>>[Key]>().toEqualTypeOf<string | undefined>()
   })
 })
 
