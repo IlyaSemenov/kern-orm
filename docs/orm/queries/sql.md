@@ -24,7 +24,7 @@ To get the rows that the statement returns, pass the types of their columns to `
 import * as t from "kern-orm/types"
 
 const forms = await db.$query`
-  INSERT INTO ${db.form} (id, name) VALUES (${formId}, ${name})
+  INSERT INTO ${db.form} (id, name, published) VALUES (${formId}, ${name}, ${false})
   ON CONFLICT (id) DO UPDATE SET name = excluded.name
   RETURNING id, name, (xmax = 0) AS inserted
 `.select({
