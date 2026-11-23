@@ -153,5 +153,6 @@ export const document = defineTable("document", {
 })
 ```
 
-A type defined without the ORM has the same `transform`, `nullable`, `of`, and `withParameters`, but no operators; to define one, use `defineType` of `kern-orm/db`, as [Types](../database/types#custom-types) of kern-db describes.
+A type defined without the ORM has the same `transform`, `nullable`, `of`, and `withParameters`, but no operators.
+To define one, import `defineType` from `kern-orm/db` and follow [Custom Types](../database/custom-types) of kern-db.
 `kern-orm/db/types` exports such types for the built-in types, under the names of `kern-orm/types`.

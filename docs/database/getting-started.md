@@ -82,7 +82,8 @@ await database.transaction(async () => {
 
 - [Drivers](./drivers): the drivers of postgres.js and node-postgres.
 - [SQL Queries and Scripts](./sql): SQL fragments, names known at runtime, JSON and arrays in statements, and scripts.
-- [Types](./types): the values of the built-in types, nullable and narrowed values, and types of your own.
+- [Types](./types): the values of the built-in types, and nullable and narrowed values.
+- [Custom Types](./custom-types): use a PostgreSQL type that kern-db does not provide, such as `ltree` from an extension.
 - [Transactions](./transactions): nest transactions, join the current one, and set the isolation level and the search path.
 - [Locks](./locks): lock rows, take advisory locks, and limit how long a statement waits for a lock.
 - [Sessions](./sessions): run statements outside a transaction on one connection, and keep a session open.

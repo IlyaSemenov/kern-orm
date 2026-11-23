@@ -104,7 +104,11 @@ export default defineConfig({
           text: "Queries",
           items: [
             { text: "SQL Queries and Scripts", link: "/database/sql" },
-            { text: "Types", link: "/database/types" },
+            {
+              text: "Types",
+              link: "/database/types",
+              items: [{ text: "Custom Types", link: "/database/custom-types" }],
+            },
           ],
         },
         {

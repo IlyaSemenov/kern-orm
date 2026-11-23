@@ -118,7 +118,8 @@ See [Database of the current context](./schemas#database-of-the-current-context)
 - [Tables and Views](./tables): define tables and views, declare the keys of tables, and map column names.
 - [Schemas and Relations](./schemas): bind a schema to a database, relate tables, and choose a PostgreSQL schema.
 - [Multiple Schemas](./multiple-schemas): reuse tables across tenant schemas and a shared schema.
-- [Types](./types): column types, nullable columns, and your own types.
+- [Types](./types): column types and nullable columns.
+- [Custom Types](./custom-types): use a PostgreSQL type such as `ltree` in queries, and add operators to its expressions.
 - [Queries](./queries/): select, filter, and sort records, load their related records, and insert, update, and delete them.
 - [Related Records](./queries/relations): load the related records of each row in the same query.
 - [Transactions](./transactions): run queries in a transaction without passing it around.
