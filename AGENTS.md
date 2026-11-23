@@ -102,4 +102,4 @@ Do not catalog files or restate information evident from their names and locatio
   Warn when the growth is substantial, such as when existing queries become more expensive to type-check.
 - Run the `test` and `test:node` scripts when behavior changes.
 - Run the `test:package` script when package exports, declarations, build configuration, `engines`, or module-level code change, or when transactions or test helpers change; it builds the packages first.
-- Run the `docs:build` script when site pages, the VitePress configuration, or links to the site in the root or package READMEs change.
+- Run the `docs:build` script when site pages, the VitePress configuration, or links in the READMEs, `AGENTS.md`, or the project documentation, such as `architecture/`, change.
