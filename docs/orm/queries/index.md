@@ -19,8 +19,7 @@ A method never changes the query it is called on, so a query can be extended in 
 - [Aggregates and Grouping](./aggregates): count rows and compute other aggregates, also of each group of rows, and filter and sort the groups by them.
 - [Expressions](./expressions): replace `NULL`, take the largest or the smallest of several values, choose a value by conditions, select a constant, or define an expression once and reuse it across queries.
 - [Operators](./operators): see which operators each type has for conditions and computed values.
-- [Composing Queries](./composing): add clauses conditionally, or define them once and reuse them across queries of a table.
-- [Reusable Queries](./reusable): define a query once and execute it in several places, also with a `Db` known only at runtime.
+- [Composing and Reusing Queries](./composing): add clauses conditionally, share clauses across queries of a table, or reuse a query, also with a `Db` known only at runtime.
 - [SQL Statements](./sql): run SQL that queries do not cover, such as an upsert, get its rows, or run a script of several statements.
 
 ## Comments

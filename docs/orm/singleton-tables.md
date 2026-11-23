@@ -148,4 +148,4 @@ const maxFormFields = await config.get("maxFormFields")
 await config.update({ maxFormFields: 200 })
 ```
 
-Each `await` runs the query again, as of any [reusable query](./queries/reusable), and rejects with `NotFoundError` if the row has been deleted.
+Each `await` runs the query again, as of any [reusable query](./queries/composing#reusable-queries), and rejects with `NotFoundError` if the row has been deleted.

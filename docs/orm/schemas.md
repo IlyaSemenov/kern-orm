@@ -16,7 +16,7 @@ The schema only describes the tables and their relations, and `db` executes quer
 A schema of kern-orm is not a PostgreSQL schema, which holds tables in the database: to query the tables of a PostgreSQL schema, pass it to `bindSchema` as `schemaName`; see [PostgreSQL schemas](#postgresql-schemas).
 
 Start queries from the tables of `db`, such as `db.form`; see [Queries](./queries/).
-Where code has no `Db`, such as code shared by several Dbs, start them from the schema instead; see [Queries without a Db](./queries/reusable#queries-without-a-db).
+Where code has no `Db`, such as code shared by several Dbs, start them from the schema instead; see [Queries without a Db](./queries/composing#queries-without-a-db).
 
 Table keys cannot start with `$`, which schemas and `Db` reserve for their own members.
 
