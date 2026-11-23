@@ -42,6 +42,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Joins](joins.md): queries with joined tables.
 - [Values before an update](values-before-an-update.md): `old` and `new` in `RETURNING` of PostgreSQL 18.
 - [Statement timeout of test transactions](statement-timeout-of-test-transactions.md): opt-in `statement_timeout` and `lock_timeout` of each test level.
+- [Cost of deriving query nodes](cost-of-deriving-query-nodes.md): profiling the copy and the freeze of a node by each method of a query.
 - [Helper effects of their calls](helper-effects-of-their-calls.md): effects that record calls, so that types check what the runtime checks.
 - [Relations of conditions in types](relations-of-conditions-in-types.md): whether types check the relations that a condition reads.
 - [Aggregates by the type of their argument](aggregates-by-the-type-of-their-argument.md): types reject an argument that PostgreSQL cannot aggregate.
