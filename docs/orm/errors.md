@@ -86,6 +86,15 @@ It returns `false` after a `ConnectionError` whose `unsent` is `true`.
 `false` does not mean that the operation applied nothing: a query that ran may still reject, such as when its result fails to decode.
 Pass it the error of the outermost transaction rather than one that its callback caught: a transaction of `$transaction` rolls back after such an error anyway.
 
+## Other errors
+
+Besides `QueryError` and the errors of [lost connections](#lost-connections), queries and transactions reject with these errors:
+
+- `NotFoundError` when a query requires one row and finds none; see [One row](./queries/selecting#one-row).
+- `RequiredRelationError` when a nested query expects a record that a [required relation](./queries/relations) guarantees and finds none.
+- `ResultDecodeError` when a value of the result fails to decode, a [SQL statement](./queries/sql#rows) omits a selected column, or a callback of [`map` or `transform`](./queries/selecting#results-converted-in-code) throws; the error of the decoder or the callback is its `cause`.
+- `SuppressedError` from `$transaction` when its rollback fails after an error, keeping the original error in its `suppressed` chain; when the outermost transaction loses its connection during that rollback, its [`TransactionConnectionError`](#lost-connections) has the `SuppressedError` as its `cause`.
+
 ## Failures to release a connection
 
 To log a failure to release the connection of a transaction or a session, including a failure to release the advisory locks or restore the search path of a session, pass `onReleaseError` to `createDatabase`:

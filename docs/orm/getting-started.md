@@ -123,4 +123,4 @@ See [Database of the current context](./schemas#database-of-the-current-context)
 - [Related Records](./queries/relations): load the related records of each row in the same query.
 - [Transactions](./transactions): run queries in a transaction without passing it around.
 - [Testing](./testing): run each test in a transaction that rolls back.
-- [Errors](./errors): statements that PostgreSQL rejects and lost connections.
+- [Errors](./errors): statements that PostgreSQL rejects, lost connections, missing rows, and results that fail to decode.

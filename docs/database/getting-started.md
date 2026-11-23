@@ -87,4 +87,4 @@ await database.transaction(async () => {
 - [Locks](./locks): lock rows, take advisory locks, and limit how long a statement waits for a lock.
 - [Sessions](./sessions): run statements outside a transaction on one connection, and keep a session open.
 - [Testing](./testing): run each test in a transaction that rolls back.
-- [Errors](./errors): statements that PostgreSQL rejects and lost connections.
+- [Errors](./errors): statements that PostgreSQL rejects, lost connections, missing rows, and results that fail to decode.
