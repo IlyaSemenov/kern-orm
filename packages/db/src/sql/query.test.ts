@@ -10,6 +10,7 @@ import { boolean } from "../type/builtins/boolean"
 import { integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
 
+import { createSqlColumns } from "./columns"
 import { identifier, param } from "./fragment"
 import type { AnySqlQuery } from "./query"
 import { startSqlQuery } from "./query"
@@ -129,6 +130,100 @@ describe("rows", () => {
     ])
   })
 
+  describe("of the columns of records", () => {
+    const job = createSqlColumns(
+      [
+        { key: "id", name: "id", type: integer },
+        { key: "runAt", name: "run_at", type: text },
+      ],
+      { alias: "j", prefix: "job", key: ["id"] },
+    )
+    const queue = createSqlColumns([{ key: "id", name: "id", type: integer }], { alias: "q" })
+    const result = {
+      columns: ["q__id", "job__runAt", "lag", "job__id"].map(name => ({ name, type: 25 })),
+      rows: [
+        ["7", "noon", "5", "1"],
+        ["8", null, "6", null],
+      ],
+    }
+
+    it("are records of their own under the keys of select, read from their result columns, beside the fields of types, and null of nullable columns without their row", async () => {
+      const { database, statements } = createRecordedDatabase(result)
+
+      const rows = await database.query`
+        SELECT ${queue}, ${job}, q.id - 2 AS lag FROM queue q LEFT JOIN job j ON j.queue_id = q.id
+      `.select({
+        job: job.nullable(),
+        lag: integer,
+        queue,
+      })
+
+      expect(rows).toEqual([
+        { job: { id: 1, runAt: "noon" }, lag: 5, queue: { id: 7 } },
+        { job: null, lag: 6, queue: { id: 8 } },
+      ])
+      expect(statements[0]!.text).toContain(
+        'SELECT "q"."id" AS "q__id", "j"."id" AS "job__id", "j"."run_at" AS "job__runAt", q.id - 2 AS lag FROM queue q',
+      )
+    })
+
+    it("are replaced as a whole under their key, by other columns or by a type", async () => {
+      const { database } = createRecordedDatabase(result)
+      const query = database.query`SELECT`.select({
+        job: job.nullable(),
+        lag: integer,
+      })
+
+      expect(
+        await query.select({
+          job: queue,
+        }),
+      ).toEqual([
+        { lag: 5, job: { id: 7 } },
+        { lag: 6, job: { id: 8 } },
+      ])
+      expect(
+        await database.query`SELECT`
+          .select({
+            lag: queue,
+          })
+          .select({
+            lag: integer,
+          }),
+      ).toEqual([{ lag: 5 }, { lag: 6 }])
+    })
+
+    it("reject fields that read one result column", () => {
+      const { database } = createRecordedDatabase()
+      const query = database.query`SELECT`
+      const unprefixed = createSqlColumns([{ key: "id", name: "id", type: integer }])
+
+      expect(() =>
+        query.select({
+          id: integer,
+          queue: unprefixed,
+        }),
+      ).toThrow(
+        'Fields "id" and "queue.id" read one result column "id"; give the columns of records prefixes that make the names of their result columns differ',
+      )
+      expect(() =>
+        query
+          .select({
+            queue,
+          })
+          .select({
+            other: queue,
+          }),
+      ).toThrow('Fields "queue.id" and "other.id" read one result column "q__id"')
+      expect(() =>
+        query.select({
+          job__id: integer,
+          job,
+        }),
+      ).toThrow('Fields "job__id" and "job.id" read one result column "job__id"')
+    })
+  })
+
   it("of take reject without a row and with several, unless optional or nullable allows no row", async () => {
     const fields = {
       id: integer,
@@ -206,7 +301,9 @@ describe("rows", () => {
     // @ts-expect-error A string is not a type.
     expect(() => query.get("integer")).toThrow("get takes a type")
     // @ts-expect-error A string is not a type.
-    expect(() => query.select({ id: "integer" })).toThrow('field "id" takes a type')
+    expect(() => query.select({ id: "integer" })).toThrow(
+      'field "id" takes a type or the columns of a record',
+    )
     expect(() => query.select({ [Symbol("id")]: integer } as never)).toThrow(
       "A selected field must have a string key",
     )

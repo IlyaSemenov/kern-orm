@@ -41,6 +41,19 @@ export { isQueryError } from "./error-condition"
 export { isOutcomeUnknown, TransactionConnectionError } from "./transaction/connection-loss"
 export type { OneRow, OneValueRows, ResultByRows, ResultRows, ValueRows } from "./result"
 export { NotFoundError, ResultDecodeError } from "./result"
+export type {
+  AnySqlColumns,
+  HasColumnsKey,
+  NullableColumnsArguments,
+  NullableColumnsOptions,
+  PresenceKey,
+  SqlColumn,
+  SqlColumns,
+  SqlColumnsField,
+  SqlColumnsOptions,
+  SqlColumnsRecord,
+} from "./sql/columns"
+export type { GuaranteedColumnKeys, IsIndexKey, PickSelectedColumns } from "./selected-columns"
 export type { SqlFragment, SqlValue } from "./sql/fragment"
 export { identifier, param, sql } from "./sql/fragment"
 export type { UntypedValue } from "./sql/parameter"

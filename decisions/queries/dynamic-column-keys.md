@@ -6,6 +6,7 @@ Representing a union-valued key by optional fields lets callers read the possibl
 
 Inferring only the union of all arguments costs fewer type instantiations, but it gives a dynamic key such as `"id" | "name"` the same result as the two arguments `"id", "name"`.
 Rejecting such arguments would also reject lists of columns chosen at runtime.
+The lists of the columns of records in SQL text, of `columnsOf` and `createSqlColumns`, follow the same rule, so that one list of keys requires the same fields in either API; the values of the fields of `createSqlColumns` are [told by key](../sql-queries/values-of-columns-by-key.md).
 
 For a fixed tuple of individual column names, every field is required and the type skips the recursive walk.
 The [two-column benchmark](../../benchmarks/types/queries.bench.ts) takes 267 instantiations, compared with 234 for inferring the union alone and 289 for walking every tuple recursively.

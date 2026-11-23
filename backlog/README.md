@@ -5,6 +5,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 
 ## Next
 
+- [Read expression of a type](read-expression-of-a-type.md): a custom type read by a SQL expression of its own, such as epoch seconds of a timestamp.
 - [JSON operators](json-operators.md): `->`, `->>`, and functions of JSON paths typed by the shape.
 - [Updating records with values of each](updating-records-with-values-of-each.md): `UPDATE ... FROM (VALUES ...)` matched by a key.
 - [Through and many-to-many relations](through-and-many-to-many-relations.md): relations through other relations and through a join table.
@@ -50,6 +51,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [`$select` as a field of a selection](select-as-a-field-of-a-selection.md): a nested query of `$select`.
 - [Scalar fragments of kern-orm in pages after an offset](scalar-fragments-of-kern-orm-in-pages-after-an-offset.md): marking fragments known to be scalar.
 - [SQL fragments of users in pages after an offset](sql-fragments-of-users-in-pages-after-an-offset.md): whether a fragment of a user keeps a page on its table.
+- [Column keys of string enums](column-keys-of-string-enums.md): a key typed as a member of a string enum told as the column of its value.
 - [Unions of queries of `find` and `findBy` by different keys](unions-of-queries-of-find-and-findby-by-different-keys.md): a type parameter of the key apart from the state.
 - [Schema views](schema-views.md): restricted views of schemas for shared business logic.
 - [Recurrent SQL of migrations](recurrent-sql-of-migrations.md): functions and views run again after every migration.

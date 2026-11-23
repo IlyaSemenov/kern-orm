@@ -6,6 +6,8 @@ import { createDatabase } from "../database"
 import { bigint, integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
 
+import { createSqlColumns } from "./columns"
+
 const database = createDatabase({ driver: createRecordingDriver().driver })
 
 describe("results", () => {
@@ -26,6 +28,40 @@ describe("results", () => {
         id: text,
       }),
     ).toEqualTypeOf<{ id: string; note: string | null }[]>()
+  })
+
+  test("have the records of the columns of select under their keys, null of nullable columns, replaced as other fields are", async () => {
+    const columns = [
+      { key: "id", name: "id", type: integer },
+      { key: "note", name: "note", type: text.nullable() },
+    ] as const
+    const job = createSqlColumns(columns, { alias: "j", key: ["id"] })
+    const claimed = createSqlColumns(columns, { alias: "c", key: ["id"] }).nullable()
+    const query = database.query`SELECT`.select({
+      job,
+      claimed,
+      lag: integer,
+    })
+
+    expectTypeOf(await query).toEqualTypeOf<
+      {
+        job: { id: number; note: string | null }
+        claimed: { id: number; note: string | null } | null
+        lag: number
+      }[]
+    >()
+    expectTypeOf(
+      await query.select({
+        claimed: text,
+        job: claimed,
+      }),
+    ).toEqualTypeOf<
+      {
+        job: { id: number; note: string | null } | null
+        claimed: string
+        lag: number
+      }[]
+    >()
   })
 
   test("are one record after take, optional, and nullable, before or after select", async () => {

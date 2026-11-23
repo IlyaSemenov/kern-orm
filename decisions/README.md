@@ -11,6 +11,7 @@ Query objects, their types, and the methods that choose rows.
 - [State-changing methods on unions of queries](queries/state-changing-methods-on-unions.md): a union of queries of different states rejects them.
 - [Query classes without a base class](queries/query-classes-without-base-class.md): each class repeats a few declarations.
 - [Dynamic column keys in `select`](queries/dynamic-column-keys.md): optional fields for keys a call may omit.
+- [Column keys typed as string literals](queries/string-literal-column-keys.md): a key typed as a member of a string enum is not told as the column of its value, rather than naming each field of every selection by the name of its key.
 - [Row locks rejected by the state in types](queries/row-lock-state.md).
 - [Relations in the references of callbacks](queries/relations-in-callbacks.md).
 - [One parameter of `$execute` for every class of query](queries/execute-parameter.md).
@@ -62,6 +63,10 @@ Filters, queries in expressions, and SQL fragments.
 
 - [Columns of SQL text checked after the statement](sql-queries/columns-of-sql-text.md).
 - [Indexing wide result column lookups](sql-queries/result-column-lookup.md): scans for small lookups, an index of selected names for larger ones, resolved once per result.
+- [Result columns of a record named by its fragment](sql-queries/result-columns-of-records.md): rather than read by the names of the columns of the table or by position.
+- [Values of the columns of a record told by key](sql-queries/values-of-columns-by-key.md): a key has the values of every column of the list that names it, rather than of the column at the position that guarantees it or of the columns whose keys overlap its names.
+- [Return type of `columnsOf` kept out of inference](sql-queries/columns-of-return-type.md): `NoInfer`, rather than a plain return type, which a call in a field of `select` infers the keys from, or two overloads.
+- [A missing row told by the key columns](sql-queries/missing-row-by-key-columns.md): the columns of a record that is `null` without its row include their key or name the columns that tell a missing row in `by`.
 
 ## SQL generation
 

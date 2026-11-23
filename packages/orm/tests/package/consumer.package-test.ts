@@ -97,6 +97,25 @@ async function readPackedImports(name: string): Promise<{ file: string; specifie
   return imports
 }
 
+/**
+ * Checks that the declarations that consumer project `consumer` has emitted name the types of the packages by their entry points, never by a file of a build.
+ *
+ * TypeScript names a type that no loaded entry point exports by the path of its file, which only this installation has.
+ */
+async function expectPortableDeclarations(consumer: string): Promise<void> {
+  const declarations = join(consumer, "declarations")
+  const files: string[] = []
+  for (const file of await readdir(declarations)) {
+    if (
+      file.endsWith(".d.ts") &&
+      (await readFile(join(declarations, file), "utf8")).includes("node_modules")
+    ) {
+      files.push(file)
+    }
+  }
+  expect(files).toEqual([])
+}
+
 /** Packs the package of directory `dir` into `work` without running its lifecycle scripts, and returns the path of the tarball. */
 function pack(dir: string): string {
   // `changeset publish` publishes with npm, which, unlike Bun, leaves protocols such as `catalog:` as they are.
@@ -334,7 +353,11 @@ beforeAll(async () => {
     ],
   )
   dbConsumer = await createConsumer("db", ["kern-db", "kern-migrations"], [], {
-    programs: { types: ["types-helper.ts"] },
+    programs: {
+      types: ["types-helper.ts"],
+      builder: ["builder-helper.ts"],
+      "builder-types": ["builder-types-helper.ts"],
+    },
   })
   await serveDependency(
     await realpath(join(root, "packages/orchid-interop/node_modules/orchid-orm")),
@@ -494,30 +517,37 @@ describe.each([
     run([...tsc, "-p", "tsconfig.declarations.json"], orchidConsumer)
   }, 60_000)
 
-  test("emits declarations of a consumer of kern-orm and type-checks their consumer with Node.js module resolution", () => {
+  test("emits declarations of a consumer of kern-orm and type-checks their consumer with Node.js module resolution", async () => {
     run([...tsc, "-p", ormConsumer], ormConsumer)
+    await expectPortableDeclarations(ormConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], ormConsumer)
     run([...tsc, "-p", "tsconfig.type-tests.json"], ormConsumer)
   }, 60_000)
 
-  test("emits declarations of a consumer of kern-orm that cannot resolve kern-db, also of a module that imports only the root, and type-checks them", () => {
+  test("emits declarations of a consumer of kern-orm that cannot resolve kern-db, also of a module that imports only the root, and type-checks them", async () => {
     // npm installs kern-db only under kern-orm, so the declarations name its types through the entry points of kern-orm.
     expect(existsSync(join(isolatedOrmConsumer, "node_modules/kern-db"))).toBe(false)
     run([...tsc, "-p", isolatedOrmConsumer], isolatedOrmConsumer)
     run([...tsc, "-p", "tsconfig.root.json"], isolatedOrmConsumer)
+    await expectPortableDeclarations(isolatedOrmConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], isolatedOrmConsumer)
   }, 60_000)
 
-  test("emits declarations of a module that imports only kern-orm/types, kern-orm/db/types, or kern-db/types, and type-checks them", () => {
+  test("emits declarations of a module that imports only kern-orm/types, kern-orm/db/types, kern-db/types, kern-db/builder, or kern-db/builder with kern-db/types, and type-checks them", async () => {
     run([...tsc, "-p", "tsconfig.types.json"], isolatedOrmConsumer)
     run([...tsc, "-p", "tsconfig.db-types.json"], isolatedOrmConsumer)
+    await expectPortableDeclarations(isolatedOrmConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], isolatedOrmConsumer)
     run([...tsc, "-p", "tsconfig.types.json"], dbConsumer)
+    run([...tsc, "-p", "tsconfig.builder.json"], dbConsumer)
+    run([...tsc, "-p", "tsconfig.builder-types.json"], dbConsumer)
+    await expectPortableDeclarations(dbConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], dbConsumer)
   }, 60_000)
 
-  test("emits declarations of a consumer of kern-db and the migrator without kern-orm and pg and checks them with the declarations of the packages", () => {
+  test("emits declarations of a consumer of kern-db and the migrator without kern-orm and pg and checks them with the declarations of the packages", async () => {
     run([...tsc, "-p", dbConsumer], dbConsumer)
+    await expectPortableDeclarations(dbConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], dbConsumer)
   }, 60_000)
 

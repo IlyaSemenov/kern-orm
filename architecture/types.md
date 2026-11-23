@@ -189,6 +189,8 @@
   - JSON and arrays take `param` with a type.
 - `param` takes a type, also of the ORM, and the values that the type accepts, and casts its parameter to its cast type, as `param` of the ORM does.
   - The cast is in parentheses, since text after it could continue its type name, such as a subscript `[1]` after `integer[]`.
+- The [columns of a record](sql-queries.md#columns-of-records) are a fragment of a class of their own, `SqlColumns`, which extends `SqlFragment`, so that every template takes them as a fragment.
+  The constructor of `SqlFragment` freezes a fragment of any other class, also of a class of another package that extends it.
 - A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a type, so a fragment created without these functions cannot pass one.
 - `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
   - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.

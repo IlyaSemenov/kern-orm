@@ -1,6 +1,12 @@
 // Mutations of a table: inserts, updates, and deletes, which return the number of the rows they change or the fields of those rows.
 
-import type { OneValueRows, ResultRows, SqlStatement, ValueRows } from "kern-db"
+import type {
+  OneValueRows,
+  PickSelectedColumns,
+  ResultRows,
+  SqlStatement,
+  ValueRows,
+} from "kern-db"
 import { toValueRows } from "kern-db/builder"
 
 import { combineFilters } from "../ast/boolean"
@@ -31,13 +37,7 @@ import { mergeProjections, projectValue } from "./projections"
 import type { QueryResult } from "./rows"
 import type { AnySelectQuery } from "./select"
 import { requireDerived } from "./select"
-import type {
-  MergeSelection,
-  PickSelectedColumns,
-  Selection,
-  SelectionResult,
-  SelectionUses,
-} from "./selection"
+import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
 import type { EmptyRecord, QueryState } from "./state"
 import type { ConflictUpdateSet, UpdateValues } from "./values"
 import { toAssignments, toInsertRows } from "./values"

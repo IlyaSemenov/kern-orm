@@ -1,5 +1,5 @@
-// API for authors of query builders on top of kern-db: compiling SQL fragments into statements of a builder, queries of SQL text of the statements that a builder compiles, and the rules by which kern-db encodes parameters, quotes names, and decodes results.
-export { quoteIdentifier } from "./identifier"
+// API for authors of query builders on top of kern-db: compiling SQL fragments into statements of a builder, queries of SQL text of the statements that a builder compiles, the columns of the records of a builder, such as of its tables, in SQL text, and the rules by which kern-db encodes parameters, quotes names, and decodes results.
+export { cutIdentifier, maxCharacterBytes, maxIdentifierBytes, quoteIdentifier } from "./identifier"
 export type { ResultMode } from "./result"
 export {
   createFieldDecodeError,
@@ -9,6 +9,22 @@ export {
   toMissingResult,
   toValueRows,
 } from "./result"
+export type {
+  AnySqlColumns,
+  HasColumnsKey,
+  NullableColumnsArguments,
+  NullableColumnsOptions,
+  PresenceKey,
+  SqlColumn,
+  SqlColumns,
+  SqlColumnsField,
+  SqlColumnsOptions,
+  SqlColumnsRecord,
+} from "./sql/columns"
+export { createSqlColumns } from "./sql/columns"
+export type { GuaranteedColumnKeys, IsIndexKey, PickSelectedColumns } from "./selected-columns"
+// The types that the columns of a builder name, so that a module that imports only this entry point emits its declarations.
+export type { AnyType, TypeOutput } from "./type/type"
 export type { ParameterBinder } from "./sql/fragment"
 export { renderFragment, SqlFragment } from "./sql/fragment"
 export { assertUntypedValue, bindParameter, encodeParameter } from "./sql/parameter"

@@ -1,5 +1,7 @@
 // Sort keys of queries: the arguments of `orderBy`, the functions that give an expression or a query of one value a direction, and the references of its callback to the selected fields.
 
+import type { IsIndexKey } from "kern-db"
+
 import type {
   ExpressionNode,
   OrderNode,
@@ -13,7 +15,6 @@ import { isOperandSource, operandNode, toExpression } from "../expression/expres
 import type { ScalarField } from "../result/result"
 import type { AnyRowSource } from "../table/table"
 import { requireColumn } from "../table/table"
-import type { IsIndexKey } from "../utils/type-helpers"
 
 import { isSelectedAsValue } from "./aggregate"
 import type { QueryContext } from "./column-refs"

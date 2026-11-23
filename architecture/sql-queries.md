@@ -16,13 +16,50 @@
   - `take`, `optional`, and `nullable` change the rows mode as for a query of a table, before or after a selection; before a selection, they check the number of the rows as for a mutation of one row.
   - `take` adds no limit, since kern-db does not change the text of a statement, so a query of one row rejects several rows.
   - Types cannot check what the statement returns: the type of a field declares the values of its column, including whether it is nullable, as `sql(type)` does, and decoding keeps `NULL` as `null` whatever the type.
-- The database layer decodes the result by a flat plan (`decodeFlatResult` of `result.ts`), which has no nested rows, literals, or conversions.
-- Records are read by matching the keys of their fields to `name` of each result column, rather than by position: the statement chooses the order of its columns, and two columns of one type in another order would decode silently.
+- The database layer decodes the result by a flat plan (`decodeFlatResult` of `result.ts`), which has no nested rows, literals, or conversions; its only nested records are those of the [columns of records](#columns-of-records), read from result columns of their own.
+- Records are read by matching the name of each field to `name` of each result column, rather than by position: the statement chooses the order of its columns, and two columns of one type in another order would decode silently.
+  The name of a field of a type is its key, and the fields of the [columns of a record](#columns-of-records) have the names that their fragment gives its result columns.
   - The positions are resolved once per result, before its rows are decoded.
     Up to four fields, or fewer than 256 field-to-column comparisons, use scans; larger lookups build a result-local index of only the selected names ([decision](../decisions/sql-queries/result-column-lookup.md)).
   - A missing column, or a column that the result has twice, rejects with `ResultDecodeError`; other columns are ignored, such as those of `RETURNING *`.
   - A value of `get` and `pluck` is read from the only column, whatever its name, and another number of columns rejects.
   - Decoding fails after the statement, so a statement that changes rows has made its change, as a mutation has ([decision](../decisions/sql-queries/columns-of-sql-text.md)).
+
+## Columns of records
+
+- **Columns of a record** (`sql/columns.ts`): a `SqlColumns`, the list of the result columns of a record that a statement selects, such as of a row of a table, with the fields that read the record from them.
+  - It is a [SQL fragment](types.md#sql-fragments-of-the-database-layer) without parameters, so every template interpolates it, also of a script, and `text` gives its SQL for a statement built as text.
+  - The fragment selects each column under the name of a result column of its own, the key of the column after the prefix of the columns, such as `"j"."run_at" AS "job__runAt"`, so that the record has the keys of its columns whatever their names in SQL, and the result columns of several records of one statement must have different names, such as by prefixes of their own, which a selection checks ([decision](../decisions/sql-queries/result-columns-of-records.md)).
+    The prefix is the alias that qualifies the columns unless they take another, since the sources of a statement already differ by their aliases; columns without both name a result column by its key alone.
+  - A statement must select the columns by the fragment or its text; a list written by hand must give the same names to its result columns.
+  - `createSqlColumns` of the [builder API](sql.md) creates it from the columns of a source of a query builder, with the alias that qualifies them and the prefix, typed by the record of the columns that it takes; it rejects a column twice, a key that a record cannot have, a name of a result column that may take more than the 63 bytes that PostgreSQL keeps in a server encoding, counted as the [identifiers of the compiler](sql.md#statements) are, and a name that is not well-formed, which a driver changes when it encodes the statement.
+  - Only `createSqlColumns` creates it: no entry point exports its class as a value, and its text and fields are frozen, so that the SQL of the columns cannot differ from what a selection reads.
+  - The record requires a column only when the list guarantees its key, by the rule of `select` of a query by keys (`selected-columns.ts` of `kern-db`, [decision](../decisions/queries/dynamic-column-keys.md)): the column of a union of columns or of keys, of a spread array, or of a key typed as `string` or another index key is optional, a column of one known key written before or after a spread is required, and a union of lists makes a union of records, each of the values of its own columns.
+    A key has the values of every column of the list that names it, whatever their positions, and a key of an index signature, `string` or a template, those of every column, so that types need not compare the names that it may have with the keys of the other columns ([decision](../decisions/sql-queries/values-of-columns-by-key.md)).
+    A key must be typed as string literals, `string`, or a template: types do not tell which columns a key of another type, such as a branded `string` or a member of a string enum, may name ([decision](../decisions/queries/string-literal-column-keys.md)).
+    Columns whose keys are all typed as `string`, such as of `SqlColumn[]`, make a record of any keys.
+  - Its options tell in types whether the columns have their key: `true` for a key that is a non-empty tuple, such as written in the call, `false` without one, and `boolean` for options whose type does not tell, such as options that may be missing or a key of an array type.
+    With `boolean`, types let `nullable` go without `by`, which then rejects at runtime when the columns have no key.
+    `true` holds for every list of the columns, also of a union of lists, since `createSqlColumns` rejects a column of the key that the columns do not include when it creates them.
+- `select` takes the columns of a record as a field, which is a record of its own under the key of the field: a group of the fields of the flat plan, read from the result columns of their names.
+  - A later selection replaces a group as a whole under its key, as it replaces a field of a type.
+  - A selection rejects fields that read one result column, such as the columns of two records without prefixes that share a key, when it is made: the statement cannot return a column of that name for each.
+  - A field of a group is `NULL` as any other field is, whatever its type.
+- `nullable` of the columns makes their record `null` without its row, such as of a table joined with `LEFT JOIN`, which decoding tells by the result columns of the key of the record being all `NULL`, without decoding the others ([decision](../decisions/sql-queries/missing-row-by-key-columns.md)).
+  - The key is the columns that `createSqlColumns` takes as never `NULL` in a row, such as a primary key; columns without all of them, or without a key, require the columns in `by`.
+  - A column of the key or of `by` must be among the columns and must not be nullable, since its `NULL` would read as a missing row.
+    Types reject in `by` a column whose values include `null` and a column that is optional in any record of a union of records, which the fragment may not select, and take one whose values are `unknown`, such as of a JSON column, which only its type tells, and a key of an index signature, which `nullable` checks at runtime.
+    A record of an index signature of `string` has no known keys for types to tell apart: they take any key in `by`, or none when the values of the index signature are known to include `null`.
+  - A row with only some of these columns `NULL` rejects with `ResultDecodeError` of the path of the group.
+- `columnsOf` of the ORM (`query/columns-of.ts`) creates the columns of a table or view, of a query of a table without clauses, such as `db.form`, or of its definition, by the physical names and the types of its columns, all of them or those of its `columns` option in their order.
+  - The record requires a column of the `columns` option only when the list guarantees its key, as that of `createSqlColumns`.
+    Types take an empty list, which rejects when the columns are created: a check of the list would reject a list of a type parameter that a function passes on.
+    Its return type is `NoInfer`, so that a call in a field of `select` does not infer the list from the type of the field, which would compute the record of every column of the table as a list ([decision](../decisions/sql-queries/columns-of-return-type.md)).
+  - Their key is the primary key of the table when the columns include all its columns; a view has none.
+    In types, selecting all the columns includes the primary key of the table, if it has one.
+    An explicit list includes it only when it guarantees each column of the primary key, in every list of a union of lists: a key typed as an index key, such as `string` of a table of any columns or `` `key${number}` ``, may name another column.
+  - It rejects another query of the table, whose rows the statement does not have.
+  - The columns are read by a query of SQL text only: a query of a table selects its fields itself.
 
 ## Scripts
 

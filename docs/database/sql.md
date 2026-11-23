@@ -32,7 +32,7 @@ const forms = await database.query`SELECT id, name, published FROM form ORDER BY
 // forms: { id: string; name: string; published: boolean }[]
 ```
 
-`select` reads each field from the column of its name, whatever their order.
+Here, `select` reads each field from the column of its name, whatever their order.
 Give a column that can be `NULL` a [nullable type](./types#nullable-values), such as `t.text.nullable()`.
 
 To get one row, add `take`: it rejects with `NotFoundError` without the row, unless you add `optional`, which gives `undefined` then, or `nullable`, which gives `null`.

@@ -1,6 +1,7 @@
 // Results of statements: how rows modes make the rows of a statement its result, the keys that a decoded record can have, the errors of a result that breaks its contract, and the decoding of flat results, whose rows hold no nested rows.
 
 import type { DriverColumn, DriverResult, TextValue } from "./driver"
+import { quoteIdentifier } from "./identifier"
 import type { AnyType } from "./type/type"
 
 /**
@@ -57,18 +58,36 @@ export class NotFoundError extends Error {
   }
 }
 
-/** Field of a flat result: the key of a record, which names the result column of its value, and the type that decodes the value. */
+/** Field of a flat result: the key of its value in its record, the name of the result column of the value, and the type that decodes the value. */
 export interface FlatField {
   readonly key: string
+  /** Name of the result column: the key of a field of the record of a row, and a name of its own for a field of a group. */
+  readonly name: string
   readonly type: AnyType
+  /** Group whose record holds the field instead of the record of the row; the fields of a group follow each other. */
+  readonly group?: FlatGroup | undefined
+}
+
+/** Group of fields of a flat result: a record nested in the record of a row under a key, read from result columns of its own, such as of the columns of a joined table. */
+export interface FlatGroup {
+  /** Key of the record of the group in the record of the row. */
+  readonly key: string
+  /** Number of the fields of the group. */
+  readonly size: number
+  /**
+   * Positions among the fields of the group of those that tell whether the statement has a row of the record, such as of a primary key: the record is `null` when all of them are `NULL`, such as without a match of an outer join.
+   *
+   * `undefined` for a group whose record is never `null`.
+   */
+  readonly presence: readonly number[] | undefined
 }
 
 /** How a flat result decodes the result of a statement. */
 export interface FlatResultPlan extends ResultMode {
   /**
-   * Fields read from the result columns of their keys, or from the only column for a value, whatever its name; `undefined` for a result that is the number of the rows of the command tag.
+   * Fields read from the result columns of their names, or from the only column for a value, whatever its name; `undefined` for a result that is the number of the rows of the command tag.
    *
-   * The key of the field of a value names it only in decoding errors.
+   * The key of the field of a value names it only in decoding errors, and its name is not read.
    */
   readonly fields: readonly FlatField[] | undefined
 }
@@ -141,7 +160,8 @@ export function createFieldDecodeError(path: string, cause: unknown): ResultDeco
 /**
  * Decodes the result of a statement by a flat plan: its rows, or the number of the rows of its command tag for a plan without fields.
  *
- * Fields are read from the result columns of their keys rather than by position, since the statement chooses the order of its columns: a missing column, a column that the result has twice, and another number of columns than one for a value reject with `ResultDecodeError`, and the other columns of records are ignored.
+ * Fields are read from the result columns of their names rather than by position, since the statement chooses the order of its columns: a missing column, a column that the result has twice, and another number of columns than one for a value reject with `ResultDecodeError`, and the other columns of records are ignored.
+ * The fields of a group make a record of their own under the key of the group, or `null` when the result columns that tell its row are all `NULL`; some of them `NULL` reject.
  * A row of the driver of another width than the result columns rejects too, rather than reading a missing value as `NULL`.
  * A number of rows of a query of one row rejects as its rows do, with `NotFoundError` without a row unless it is optional or nullable, and with several rows.
  */
@@ -217,14 +237,14 @@ function findColumns(
       ? indexSelectedColumns(fields, columns)
       : undefined
   const indexes: number[] = []
-  for (const { key } of fields) {
+  for (const { name } of fields) {
     let column = -1
     if (byName) {
-      column = byName.get(key)!
+      column = byName.get(name)!
     } else {
       // A match is not enough: a later column can make the requested name ambiguous.
       for (let candidate = 0; candidate < columns.length; candidate++) {
-        if (columns[candidate]!.name === key) {
+        if (columns[candidate]!.name === name) {
           if (column !== -1) {
             column = -2
             break
@@ -234,10 +254,10 @@ function findColumns(
       }
     }
     if (column === -1) {
-      throw new ResultDecodeError(`Statement returned no column "${key}"`, undefined)
+      throw new ResultDecodeError(`Statement returned no column "${name}"`, undefined)
     }
     if (column === -2) {
-      throw new ResultDecodeError(`Statement returned column "${key}" more than once`, undefined)
+      throw new ResultDecodeError(`Statement returned column "${name}" more than once`, undefined)
     }
     indexes.push(column)
   }
@@ -254,7 +274,7 @@ function indexSelectedColumns(
   columns: readonly DriverColumn[],
 ): Map<string, number> {
   const byName = new Map<string, number>()
-  for (const { key } of fields) byName.set(key, -1)
+  for (const { name } of fields) byName.set(name, -1)
   for (let index = 0; index < columns.length; index++) {
     const name = columns[index]!.name
     const column = byName.get(name)
@@ -266,6 +286,7 @@ function indexSelectedColumns(
 /** Failure to decode the value of a field of a row, which the result turns into its error once it adds the index of the row. */
 class FieldFailure extends Error {
   constructor(
+    /** Path of the field from the record of the row, such as `label` or `job.id`. */
     readonly key: string,
     override readonly cause: unknown,
   ) {
@@ -298,13 +319,99 @@ function decodeFlatRow(
       return decodeFlatValue(fields[0]!.type, row[columns[0]!])
     }
     const record: Record<string, unknown> = {}
-    for (; index < fields.length; index++) {
+    while (index < fields.length) {
       const field = fields[index]!
-      record[field.key] = decodeFlatValue(field.type, row[columns[index]!])
+      const { group } = field
+      if (group === undefined) {
+        record[field.key] = decodeFlatValue(field.type, row[columns[index]!])
+        index++
+      } else {
+        record[group.key] = decodeFlatGroup(group, fields, columns, row, index)
+        index += group.size
+      }
     }
     return record
   } catch (error) {
-    throw new FieldFailure(fields[index]!.key, error)
+    // A group names its own field.
+    throw error instanceof FieldFailure ? error : new FieldFailure(fields[index]!.key, error)
+  }
+}
+
+/**
+ * Returns the failure of a row of `group` with only some of the result columns that tell a missing row `NULL`, naming those that are `NULL` and those that are not.
+ *
+ * A column without a value, such as of a sparse row, fails as a field whose value the driver did not return, since it is neither `NULL` nor a value.
+ */
+function createPartialPresenceFailure(
+  group: FlatGroup,
+  fields: readonly FlatField[],
+  row: readonly TextValue[],
+  columns: readonly number[],
+  start: number,
+): FieldFailure {
+  let nulls = ""
+  let values = ""
+  for (const position of group.presence!) {
+    const field = fields[start + position]!
+    const value = row[columns[start + position]!]
+    if (value === undefined) {
+      return new FieldFailure(`${group.key}.${field.key}`, new Error("Driver returned no value"))
+    }
+    // Quoted, so that a name with a quote or a comma reads as one column.
+    const name = quoteIdentifier(field.name)
+    if (value === null) {
+      nulls += nulls === "" ? name : `, ${name}`
+    } else {
+      values += values === "" ? name : `, ${name}`
+    }
+  }
+  return new FieldFailure(
+    group.key,
+    new Error(
+      `Expected the result columns that tell a missing row to be all NULL or all not NULL; NULL: ${nulls}; not NULL: ${values}`,
+    ),
+  )
+}
+
+/**
+ * Decodes the record of `group`, whose fields start at `start` of `fields`, from a row of the driver, or returns `null` when the result columns that tell its row are all `NULL`, without decoding the others.
+ *
+ * It rejects with a `FieldFailure` of the field whose value fails, or of the group when only some of those columns are `NULL`.
+ */
+function decodeFlatGroup(
+  group: FlatGroup,
+  fields: readonly FlatField[],
+  columns: readonly number[],
+  row: readonly TextValue[],
+  start: number,
+): Record<string, unknown> | null {
+  const { presence } = group
+  if (presence !== undefined) {
+    let missing = 0
+    for (let index = 0; index < presence.length; index++) {
+      if (row[columns[start + presence[index]!]!] === null) {
+        missing++
+      }
+    }
+    if (missing === presence.length) {
+      return null
+    }
+    if (missing !== 0) {
+      // Columns that are never NULL in a row of the record, so the result is not of the statement that the group describes.
+      throw createPartialPresenceFailure(group, fields, row, columns, start)
+    }
+  }
+  // One try per group rather than per value; the offset tells which field failed.
+  let offset = 0
+  try {
+    const record: Record<string, unknown> = {}
+    for (; offset < group.size; offset++) {
+      const field = fields[start + offset]!
+      record[field.key] = decodeFlatValue(field.type, row[columns[start + offset]!])
+    }
+    return record
+  } catch (error) {
+    throw new FieldFailure(`${group.key}.${fields[start + offset]!.key}`, error)
   }
 }
 

@@ -7,6 +7,7 @@ import {
   avg,
   caseWhen,
   coalesce,
+  columnsOf,
   count,
   defineHelper,
   desc,
@@ -46,6 +47,11 @@ const withMappedName = defineHelper(formsSchema.form, form =>
 
 bench.baseline(async () => {
   await tenantDb.form.where({ name: "baseline" }).pluck("id")
+  // Another table and other fields, as for the references below.
+  await storeDb.$query`SELECT`.select({
+    brand: columnsOf(storeDb.brand, { alias: "b", columns: ["id"] }).nullable(),
+    total: t.integer,
+  })
   await tenantDb.field.where(field => field.label.eq("baseline")).pluck("id")
   // Another table, since reading the references instantiates the columns of the table, which the other benchmarks count.
   await storeDb.brand.where(brand => matches(brand, { name: "baseline" })).pluck("id")
@@ -724,3 +730,26 @@ bench("transaction of an async callback", async () => {
 bench("transaction of a callback that returns a query", async () => {
   await tenantDb.$transaction(() => tenantDb.form.where({ published: true }).pluck("name"))
 }).types([526, "instantiations"])
+
+bench("query of SQL text of fields of types", async () => {
+  await tenantDb.$query`SELECT`.select({
+    id: t.uuid,
+    name: t.text,
+  })
+}).types([61, "instantiations"])
+
+bench("columns of a table", () => {
+  columnsOf(tenantDb.form, { alias: "f" })
+}).types([51, "instantiations"])
+
+bench("nullable columns of some columns of a table", () => {
+  columnsOf(tenantDb.field, { alias: "d", columns: ["id", "label"] }).nullable()
+}).types([154, "instantiations"])
+
+bench("query of SQL text of the columns of two tables", async () => {
+  await tenantDb.$query`SELECT`.select({
+    form: columnsOf(tenantDb.form, { alias: "f" }),
+    field: columnsOf(tenantDb.field, { alias: "d" }).nullable(),
+    total: t.integer,
+  })
+}).types([174, "instantiations"])

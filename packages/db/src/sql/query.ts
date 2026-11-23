@@ -12,20 +12,28 @@ import type {
   ValueRows,
 } from "../result"
 import { decodeFlatResult, isRecordKey, toValueRows } from "../result"
-import type { AnyType, TypeOutput } from "../type/type"
+import type { AnyType, TypeOutput, typeValues } from "../type/type"
 import { isType } from "../type/type"
+
+import type { AnySqlColumns } from "./columns"
+import { SqlColumns } from "./columns"
 
 /** Compiles the statement of a query of SQL text, each time the query executes or compiles, so that what it reads when it compiles, such as a PostgreSQL schema of the current tenant, is current. */
 export type StatementSource = () => SqlStatement
 
-/** Types of the fields of the rows of a query of SQL text by the names of the result columns that they decode. */
+/**
+ * Fields of the rows of a query of SQL text by their keys: a type, which decodes the result column named by the key, or the columns of a record, which make a record of their own from their result columns.
+ */
 export interface FieldTypes {
-  readonly [key: string]: AnyType
+  readonly [key: string]: AnyType | AnySqlColumns
   readonly [key: symbol]: never
 }
 
-/** Record of the values that the types of fields `F` decode. */
-export type DecodedFields<F extends FieldTypes> = { -readonly [K in keyof F]: TypeOutput<F[K]> }
+// Columns declare their record as a type declares its values, so that one lookup reads both without a conditional type for each field.
+/** Record of the values that the types of fields `F` decode, and of the records of their columns. */
+export type DecodedFields<F extends FieldTypes> = {
+  -readonly [K in keyof F]: F[K][typeof typeValues]["output"]
+}
 
 /**
  * State in types of a query of SQL text: its result, which is the number of the rows of its command tag until a selection returns their fields, how its rows become its result, and the rows mode of the rows that its statement returns.
@@ -131,8 +139,10 @@ export class SqlQuery<out S extends SqlQueryState> {
   }
 
   /**
-   * Returns the records of the rows of the statement instead of their number, with the values of the result columns named by the keys of `fields`, decoded by their types; it adds the fields to those selected earlier, replacing fields under their keys.
+   * Returns the records of the rows of the statement instead of their number, with the fields of `fields` under their keys; it adds the fields to those selected earlier, replacing fields under their keys.
    *
+   * A field of a type, such as `id: t.integer`, is the value of the result column of its key, `id`, decoded by the type.
+   * A field of the columns of a record, such as `claimed: job` of `columnsOf` of kern-orm, is a record under its key, `claimed`, read from the result columns that the columns name, such as `j__id`, or `null` without its row for columns of `nullable`.
    * A type of a column that can be `NULL` must be nullable.
    * The statement rejects without a column of a field, or with the column twice; other columns are ignored.
    */
@@ -158,14 +168,19 @@ export class SqlQuery<out S extends SqlQueryState> {
       )
     }
     if (typeof fields !== "object" || fields === null) {
-      throw new TypeError("select takes an object of the types of the fields by their columns")
+      throw new TypeError(
+        "select takes an object of fields by their keys: types of values, or columns of records",
+      )
     }
     // `Object.keys` would skip a symbol key and a key that is not enumerable, leaving a field that the result type promises.
     const added = Reflect.ownKeys(fields)
     const selected: FlatField[] = []
+    let hasGroups = false
     for (const field of plan.fields ?? []) {
-      if (!added.includes(field.key)) {
+      // A group is replaced as a whole under its key.
+      if (!added.includes(field.group?.key ?? field.key)) {
         selected.push(field)
+        hasGroups ||= field.group !== undefined
       }
     }
     for (const key of added) {
@@ -175,7 +190,23 @@ export class SqlQuery<out S extends SqlQueryState> {
       if (!isRecordKey(key)) {
         throw new Error(`Field "${key}" cannot be a key of a record`)
       }
-      selected.push(Object.freeze({ key, type: requireType(fields[key], `field "${key}"`) }))
+      const field: unknown = fields[key]
+      if (field instanceof SqlColumns) {
+        hasGroups = true
+        const group = Object.freeze({ key, size: field.fields.length, presence: field.presence })
+        for (const column of field.fields) {
+          selected.push(
+            Object.freeze({ key: column.key, name: column.column, type: column.type, group }),
+          )
+        }
+      } else if (isType(field)) {
+        selected.push(Object.freeze({ key, name: key, type: field, group: undefined }))
+      } else {
+        throw new TypeError(`field "${key}" takes a type or the columns of a record`)
+      }
+    }
+    if (hasGroups) {
+      rejectSharedColumns(selected)
     }
     return this.derive({ fields: selected, rows: plan.rows, value: false })
   }
@@ -272,7 +303,12 @@ export class SqlQuery<out S extends SqlQueryState> {
   /** Creates the query that returns the value of the only column of each row in rows mode `rows`, decoded by `type` of `method`. */
   private deriveValue(type: unknown, method: string, rows: ResultRows): AnySqlQuery {
     // The key names no record field: it only names the value in decoding errors.
-    const field = Object.freeze({ key: "value", type: requireType(type, method) })
+    const field = Object.freeze({
+      key: "value",
+      name: "value",
+      type: requireType(type, method),
+      group: undefined,
+    })
     return this.derive({ fields: [field], rows, value: true })
   }
 
@@ -303,4 +339,23 @@ function requireType(value: unknown, what: string): AnyType {
     throw new TypeError(`${what} takes a type`)
   }
   return value
+}
+
+/**
+ * Rejects fields of a selection that read one result column, such as the columns of two records without prefixes that have a column of one key each, or of prefixes `a` and `a_` with keys `_b` and `b`: the statement cannot return a column of that name for each.
+ *
+ * Only the columns of a record name a result column apart from the key of a field, so a selection without them needs no check.
+ */
+function rejectSharedColumns(fields: readonly FlatField[]): void {
+  const paths = new Map<string, string>()
+  for (const field of fields) {
+    const path = field.group === undefined ? field.key : `${field.group.key}.${field.key}`
+    const other = paths.get(field.name)
+    if (other !== undefined) {
+      throw new Error(
+        `Fields "${other}" and "${path}" read one result column "${field.name}"; give the columns of records prefixes that make the names of their result columns differ`,
+      )
+    }
+    paths.set(field.name, path)
+  }
 }

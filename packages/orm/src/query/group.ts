@@ -1,12 +1,13 @@
 // Groups of the rows of queries: the keys of `groupBy` and `distinctOn`, and the filter of `having`.
 
+import type { IsIndexKey } from "kern-db"
+
 import { combineNodes } from "../ast/boolean"
 import type { ExpressionNode } from "../ast/nodes"
 import type { GroupValue } from "../expression/aggregates"
 import type { AnyExpression, Expression } from "../expression/expression"
 import { isOperandSource, operandNode } from "../expression/expression"
 import type { AnyRowSource } from "../table/table"
-import type { IsIndexKey } from "../utils/type-helpers"
 
 import { isAggregateQuery } from "./aggregate"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"

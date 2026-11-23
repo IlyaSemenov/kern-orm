@@ -36,6 +36,8 @@ Queries come in two kinds that share the query methods and differ only by execut
 - A query returns only explicitly selected fields: without `select` its records have no fields, and all columns require `select("*")`.
   A fixed argument that names a single column guarantees its field.
   Keys chosen from a union, an index signature, or an array of unknown length are optional in the result and in references to selected fields unless another selection or argument guarantees them ([decision](../decisions/queries/dynamic-column-keys.md)).
+  A key must be typed as string literals, `string`, or a template: a key typed as a member of a string enum is not told as the column of its value, so that it loses or mistypes the field beside a key or a selected field of that value ([decision](../decisions/queries/string-literal-column-keys.md)).
+  A record is a plain object, so reading an optional field whose key names a member of `Object.prototype`, such as `toString`, gives the inherited member when the query does not select it, which its type does not include ([open question](#open-questions)).
 - A selected field other than a literal is a projection: an expression, the key of the field, and the type of the expression, which decodes its values; the projections are the result fields of the compiled query.
   A projection of nested rows has the result plan of their query instead of a type.
   An expression without a type, such as `sql<T>`, cannot be selected, since a TypeScript type does not determine how to decode its values; it is rejected at runtime by its missing type and in types by the mark of `TypedExpression`, which selection requires, `Expression` includes, and `AnyExpression`, such as an operand of a generic operator, lacks.
@@ -498,3 +500,8 @@ Queries come in two kinds that share the query methods and differ only by execut
 - A helper checks the query it is applied to by the constraint of its state rather than by a conditional type: TypeScript defers a conditional type of a generic state and accepts a query for it only when the query fits both branches, one of which is the error.
   So a function generic over the state applies every helper that the constraint of its state allows: one that selects fields or ends with `nullable` when the constraint has `value: false`, and one that reads relations when the constraint has a schema context with them.
   The constraint of `value` is `false` or the error that names what the helper cannot do, so that the error of a query of values names it; for a missing relation, TypeScript names the relation itself.
+
+## Open questions
+
+- An optional field of a dynamically selected column whose key names a member of `Object.prototype`, such as `toString`, reads the inherited member when the query does not select it, whereas its type is the value of the column or `undefined`.
+  Records without a prototype would change every record that queries return, such as for `toStrictEqual`, string conversion, and the speed of objects in V8, and adding the type of the inherited member to such fields needs another check of every key; neither is done.

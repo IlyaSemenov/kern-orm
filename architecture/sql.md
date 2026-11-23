@@ -35,13 +35,14 @@
   Whether an operand needs parentheses depends only on its node kind, the precedence of its operator, and its position in the parent, decided in one place (`parentheses.ts`), so that the SQL keeps the structure of the tree with the fewest parentheses.
 - **Result** (`result/`): decodes driver rows and packed nested rows by the result plan of a compiled query, or the number of the rows of the command tag of a mutation without `RETURNING`, and converts the result as the plan tells.
   The database layer (`result.ts`) holds the rows modes, how a query of one row takes its row, the keys that a record can have, and `NotFoundError` and `ResultDecodeError`, which the ORM throws too; `RequiredRelationError` is of the ORM.
-  The layer also decodes the flat results of [queries of SQL text](sql-queries.md#results), from the result columns of the keys of their fields.
+  The layer also decodes the flat results of [queries of SQL text](sql-queries.md#results), from the result columns of the names of their fields.
   The result plan is internal: `toSQL` and `$compile` return only the text and parameters of a statement.
 - **Nested rows** (`lowering/nested.ts`): builds a query that packs the rows of a nested query as JSON, with the result plan that decodes them.
 - **Builder API** (`builder.ts` of `kern-db`, the entry point `kern-db/builder`): the rules of the database layer by which a query builder on top of it compiles statements and decodes their results.
   It is a public entry point under [package compatibility](compatibility.md), since the ORM uses the layer only as any query builder can ([decision](../decisions/packages/database-package.md#an-internal-entry-point-of-the-builder-api)).
-  - `renderFragment` renders a [fragment of the layer](types.md#sql-fragments-of-the-database-layer) into a statement of the builder through its `ParameterBinder`; `bindParameter`, `encodeParameter`, and `assertUntypedValue` add and encode parameters by the rules of the layer, and `quoteIdentifier` quotes a name as `identifier` does.
+  - `renderFragment` renders a [fragment of the layer](types.md#sql-fragments-of-the-database-layer) into a statement of the builder through its `ParameterBinder`; `bindParameter`, `encodeParameter`, and `assertUntypedValue` add and encode parameters by the rules of the layer, `quoteIdentifier` quotes a name as `identifier` does, and `cutIdentifier` cuts a name to the bytes that a caller allows, such as the 63 of `maxIdentifierBytes`, in any server encoding (`identifier.ts`), by which the compiler names what it generates.
   - `startSqlQuery` starts a [query of SQL text](sql-queries.md) of a `StatementSource`, which compiles the statement of the builder each time the query executes, as `$query` of a `Db` does.
+  - `createSqlColumns` creates the [columns of a record](sql-queries.md#columns-of-records) of a source of the builder, such as of a table, as `columnsOf` of the ORM does.
   - `takeOnlyRow`, `toMissingResult`, `toValueRows`, and `isRecordKey` apply the rows modes of `ResultMode` and the keys that a record can have, and `createResultDecodeError` and `createFieldDecodeError` create `ResultDecodeError`, so that a result of the builder fails as a result of the layer does.
 
 ## Statements

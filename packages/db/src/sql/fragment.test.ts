@@ -62,8 +62,11 @@ describe("sql", () => {
     expect(() => sql`SELECT ${undefined}`).toThrow("Query parameter is undefined")
   })
 
-  it("is frozen", () => {
+  it("is frozen, also as an instance of another class of fragments", () => {
+    class CustomFragment extends SqlFragment {}
+
     expect(Object.isFrozen(sql`SELECT ${1}`)).toBe(true)
+    expect(Object.isFrozen(new CustomFragment(["SELECT 1"], []))).toBe(true)
   })
 })
 

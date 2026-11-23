@@ -1,11 +1,11 @@
 import type { TextValue } from "kern-db"
 import type { ParameterBinder } from "kern-db/builder"
-import { bindParameter } from "kern-db/builder"
+import { bindParameter, cutIdentifier } from "kern-db/builder"
 
 import type { AnyDb } from "../../execution/db"
 import type { AnyRowSource } from "../../table/table"
 
-import { cutIdentifier, maxNameBytes } from "./identifier"
+import { maxNameBytes } from "./identifier"
 
 /**
  * State of one compilation shared by all queries of the statement, never by reusable nodes: parameters and the aliases of all sources.

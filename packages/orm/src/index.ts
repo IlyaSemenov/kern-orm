@@ -125,7 +125,23 @@ export type {
   TransactionOptions,
 } from "kern-db"
 export { createDatabase } from "kern-db"
-export type { SqlFragment, SqlValue } from "kern-db"
+export type {
+  AnySqlColumns,
+  GuaranteedColumnKeys,
+  HasColumnsKey,
+  IsIndexKey,
+  NullableColumnsArguments,
+  NullableColumnsOptions,
+  PickSelectedColumns,
+  PresenceKey,
+  SqlColumn,
+  SqlColumns,
+  SqlColumnsField,
+  SqlColumnsOptions,
+  SqlColumnsRecord,
+  SqlFragment,
+  SqlValue,
+} from "kern-db"
 export type {
   Connection,
   Driver,
@@ -209,6 +225,8 @@ export type {
 } from "./query/conversion"
 export type { FilteredRows, QueryResult } from "./query/rows"
 export type { ColumnRefs, QueryContext, RelationRefs } from "./query/column-refs"
+export type { ColumnsOfOptions, ColumnsRecord, IncludesPrimaryKey } from "./query/columns-of"
+export { columnsOf } from "./query/columns-of"
 export type {
   EqValue,
   WhereCallback,
@@ -243,7 +261,6 @@ export type {
   GroupSelectionResult,
   MergeSelection,
   NestedQuery,
-  PickSelectedColumns,
   SelectedFieldTypes,
   Selection,
   SelectionFieldTypes,

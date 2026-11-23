@@ -115,6 +115,64 @@ const binder: ParameterBinder = {
 
 Give each call of `bind` a placeholder of its own: PostgreSQL types a parameter without a cast by its place in the statement.
 
+## Columns of your tables
+
+To let your users select the rows of a table of your builder in a statement of SQL text, such as of `database.query`, without listing its columns twice, create the columns of the table with `createSqlColumns`:
+
+```ts
+import { createSqlColumns } from "kern-db/builder"
+import * as t from "kern-db/types"
+
+const job = createSqlColumns(
+  [
+    { key: "id", name: "id", type: t.integer },
+    { key: "runAt", name: "run_at", type: t.timestamptz },
+  ],
+  { alias: "j", key: ["id"] },
+)
+
+const claimed = await database.query`
+  UPDATE job j SET locked_by = ${worker} WHERE j.id = ${jobId}
+  RETURNING ${job}, now() - j.run_at AS lag
+`.select({
+  job,
+  lag: t.interval,
+})
+// claimed: { job: { id: number; runAt: string }; lag: string }[]
+```
+
+The columns are a SQL fragment, `"j"."id" AS "j__id", "j"."run_at" AS "j__runAt"`, and a field of `select` that reads the record from these result columns.
+The fragment names each result column by the key of its column after the `prefix` option, which is the alias by default; the names of the result columns of several tables of one statement must differ.
+For a statement that you build as text, insert `job.text` instead.
+
+`key` lists the columns that are never `NULL` in a row, such as a primary key: `job.nullable()` then makes the record `null` when they are all `NULL`, such as without a match of a `LEFT JOIN`.
+The record has the keys and the types of the columns that you write in the call, and the `key` option tells whether the columns have their key.
+A column that the list does not guarantee, such as one of a union of columns or of a spread array, is optional in the record; a column of one known key written before or after a spread is required.
+Type the key of a column as a string literal, a union of them, `string`, or a template literal type: the record does not tell the columns of a key of another type, such as a branded `string` or a member of a string enum.
+`createSqlColumns` rejects a column of `key` that the columns do not include when it creates them, so `nullable()` without `by` is safe for columns that have their key.
+For columns that your builder collects at runtime, such as an array of `SqlColumn`, the types do not tell the keys of the record, so declare the record in your own function by the type of your table, as kern-orm does for `columnsOf`.
+Here a table carries the type of its row in a member that only types have, and every table has a primary key:
+
+```ts
+import type { SqlColumn, SqlColumns } from "kern-db/builder"
+
+declare const rowType: unique symbol
+
+interface MyTable<Row> {
+  columns: SqlColumn[]
+  primaryKey: readonly [string, ...string[]]
+  /** Type of a row of the table, for types only. */
+  readonly [rowType]: Row
+}
+
+function columnsOfTable<Row>(table: MyTable<Row>, alias: string) {
+  return createSqlColumns(table.columns, { alias, key: table.primaryKey }) as SqlColumns<Row, true>
+}
+```
+
+`createSqlColumns` rejects a name of a result column that may take more than 63 bytes in the encoding of a server, since PostgreSQL truncates a longer name: it counts a character other than ASCII as 4 bytes, the most that a server encoding takes.
+To keep a name that your builder generates within a number of bytes counted the same way, cut it with `cutIdentifier(name, maxBytes)`; `maxIdentifierBytes` is the 63 bytes of PostgreSQL.
+
 ## Results of your own
 
 When your builder returns results that a query of SQL text does not decode, such as related records nested as JSON, execute the statement with `database.execute` and decode its rows yourself.

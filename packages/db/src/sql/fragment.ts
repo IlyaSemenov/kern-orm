@@ -10,6 +10,13 @@ import type { UntypedValue } from "./parameter"
 import { assertUntypedValue, bindParameter, encodeParameter, rejectUntypedValue } from "./parameter"
 
 /**
+ * Static member of a class of the layer that extends `SqlFragment` and freezes its instances itself, after it sets their members.
+ *
+ * No entry point exports it, so a fragment of another class is frozen as it is created.
+ */
+export const freezesItself: unique symbol = Symbol("kern-db.freezesItself")
+
+/**
  * SQL fragment: text with the parameters and the fragments interpolated into it, which `sql`, `identifier`, and `param` create.
  *
  * It is immutable, and its parameters are numbered only when a statement is compiled, so a fragment can be interpolated into several statements.
@@ -25,7 +32,10 @@ export class SqlFragment {
     /** Interpolated values: a fragment, the parameter of `param`, or the value of a parameter without a type. */
     readonly values: readonly unknown[],
   ) {
-    Object.freeze(this)
+    // A class of the layer that sets members of its own, such as of the columns of a record, freezes itself after them.
+    if (!(freezesItself in new.target)) {
+      Object.freeze(this)
+    }
   }
 }
 
