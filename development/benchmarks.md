@@ -39,5 +39,6 @@ Measure the type-check cost of the API with the Attest benchmarks `benchmarks/ty
 
 - Warm up a benchmark of a repeated call, such as a query, with a call of the same kind on other columns in `bench.baseline`, so that it counts each further call rather than the first.
 - Run them with `bun run --cwd benchmarks bench:types`, which prints the change of each count from the one written in its file, and write the measured counts with `-u`.
+- Read the change of a benchmark from its `Result` and `Baseline` lines: a count that changes by more than 20% prints `exceeded baseline` or `was under baseline` instead of the `Delta` line of a smaller change.
 - Find the types that a benchmark instantiates on each call with `bun run --cwd benchmarks profile:types types/<file> <name>`; the header of `benchmarks/types/profile.ts` describes its options.
 - Read [benchmarks/types/PROFILING.md](../benchmarks/types/PROFILING.md) before measuring a cost that the benchmarks do not cover or looking for its cause.
