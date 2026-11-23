@@ -178,7 +178,7 @@ const total = await db.field.select("formId", "position").distinct().count()
 // total: number
 ```
 
-The other [aggregates](#aggregates) and `exists` read the distinct rows too.
+The other [aggregates](./aggregates#aggregates) and `exists` read the distinct rows too.
 An aggregate of a column takes only a selected column, since duplicates can differ in any other column:
 
 ```ts
@@ -186,7 +186,7 @@ const labels = await db.field.pluck("label").distinct().orderBy("label").stringA
 // labels: string | null
 ```
 
-To count the distinct values of one column, call [`countDistinct`](#aggregates) without `distinct`.
+To count the distinct values of one column, call [`countDistinct`](./aggregates#aggregates) without `distinct`.
 
 ## First row of each group
 
@@ -202,7 +202,7 @@ const latest = await db.submission
 Each group gives its first row in the order of the query, and the rows keep that order.
 Without an order, each group gives any of its rows.
 
-To use an expression as a key, such as the day of a submission, select it and take it from the second parameter of the callbacks of `distinctOn` and `orderBy`, as for [grouping](./grouping#keys-of-expressions):
+To use an expression as a key, such as the day of a submission, select it and take it from the second parameter of the callbacks of `distinctOn` and `orderBy`, as for [grouping](./aggregates#keys-of-expressions):
 
 ```ts
 import { sql } from "kern-orm"
@@ -226,7 +226,7 @@ const users = await latest.count()
 // users: number
 ```
 
-The other [aggregates](#aggregates) and `exists` read the first rows too, in the order of the query, such as `latest.min("createdAt")` for the latest submission of the user who submitted least recently.
+The other [aggregates](./aggregates#aggregates) and `exists` read the first rows too, in the order of the query, such as `latest.min("createdAt")` for the latest submission of the user who submitted least recently.
 
 ## One value
 
@@ -261,100 +261,6 @@ const hint = await db.field.find(fieldId).get("hint").coalesce("")
 `coalesce` replaces only `NULL`: without a row, the query still rejects or gives `undefined`.
 After `pluck`, it replaces each `NULL` value.
 To replace a missing row too, or `NULL` of a column of each record, use the [function `coalesce`](./expressions#replacing-null).
-
-## Aggregates
-
-To count the rows of a query, such as the published forms, call `count`:
-
-```ts
-const publishedCount = await db.form.where({ published: true }).count()
-// publishedCount: number
-```
-
-To compute another aggregate of a column or an expression over the rows of a query, such as the last position of the fields of a form, call its method with the column or a callback, as for [`get`](#one-value):
-
-```ts
-const lastPosition = await db.field.where({ formId }).max("position")
-// lastPosition: number | null
-```
-
-- `count` of a column counts its values other than `NULL`, and `countDistinct` the distinct ones.
-- `min` and `max` give the smallest and the largest value.
-- `sum` and `avg` give the sum and the average.
-- `every` and `some` tell whether all or any of the Boolean values are true.
-- `stringAgg` joins the values with the delimiter that it takes after the column, in the order of the query, set by [`orderBy`](./sorting) before or after it.
-
-To average a `bigint` column, pass it in a fragment of a type that can represent fractional values, such as ``avg(file => sql(t.doublePrecision)`${file.size}`)``, since its average can have a fractional part.
-
-An aggregate skips `NULL` values and gives `null` without other values, while the counts give `0`.
-To get another value instead, such as `0` for a form without fields, pass it to `coalesce`:
-
-```ts
-const lastPosition = await db.field.where({ formId }).max("position").coalesce(0)
-// lastPosition: number
-```
-
-`coalesce` also takes an expression of the values of the aggregate, such as a column of the parent row of [related records](./relations#aggregates-of-related-records), or a query of one such value.
-
-An aggregate keeps the filters of the query and ignores its selected fields, apart from those that [`distinct`](#distinct-rows) compares.
-With [`limit` and `offset`](./sorting#pagination), it aggregates the rows of the page, which the order of the query chooses.
-
-### Several aggregates at once
-
-To read several aggregates in one statement, such as the number of the fields of a form and the position of the last one, select the functions of the same names as the [aggregate methods](#aggregates):
-
-```ts
-import { count, max } from "kern-orm"
-
-const stats = await db.field
-  .where({ formId })
-  .select(field => ({
-    total: count(),
-    lastPosition: max(field.position),
-  }))
-  .take()
-// stats: { total: number; lastPosition: number | null }
-```
-
-`count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, and `some` take an expression or a query of one value, such as a column or an aggregate of related records, and give the values that the methods give.
-`count()` without an argument counts the rows.
-
-To aggregate only some of the rows, such as to count the published forms beside the total, pass a condition as `filter`:
-
-```ts
-const stats = await db.form
-  .select(form => ({
-    total: count(),
-    published: count({ filter: form.published }),
-  }))
-  .take()
-// stats: { total: number; published: number }
-```
-
-To join text values, select `stringAgg` with a delimiter, and pass `orderBy` with what the callback of [`orderBy`](./sorting) returns to join them in that order:
-
-```ts
-import { count, stringAgg } from "kern-orm"
-
-const summary = await db.field
-  .where({ formId })
-  .select(field => ({
-    total: count(),
-    labels: stringAgg(field.label, ", ", { orderBy: field.position }),
-  }))
-  .take()
-// summary: { total: number; labels: string | null }
-```
-
-Without `orderBy`, PostgreSQL joins the values in any order.
-
-Each returns an expression with the operators of its type, so pass it to a function or call an operator on it, such as `coalesce(sum(field.position), 0)` or `count().gt(1)`.
-
-Such a query returns one row, so call `take` to get the record instead of an array of it.
-`limit` and `offset` apply to this row rather than to the rows that it aggregates, so `limit(10)` beside `count()` counts every row.
-To aggregate the rows of a page, call the method, such as `limit(10).count()`.
-
-To compute them for each group of rows, such as the number of the fields of each form, see [Grouping](./grouping).
 
 ## Whether rows exist
 
@@ -412,7 +318,7 @@ const slug = await db.form.where({ name: "Survey" }).take().get("name").optional
 // slug: string | undefined
 ```
 
-A `NULL` value is a value of its row, so handle `null` in the callback, or replace it with [`coalesce`](#aggregates) before `map`.
+A `NULL` value is a value of its row, so handle `null` in the callback, or replace it with [`coalesce`](#one-value) before `map`.
 
 SQL does not see what `map` converts, so keep choosing the rows after it, such as with `where`, `orderBy`, `limit`, and `take`:
 

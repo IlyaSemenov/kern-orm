@@ -66,7 +66,7 @@ const median = await db.$query`
 // median: number | null
 ```
 
-A query of one value, such as of [`count`](./selecting#aggregates), becomes its value, as in a [condition](./filtering#values-of-other-queries).
+A query of one value, such as of [`count`](./aggregates#aggregates), becomes its value, as in a [condition](./filtering#values-of-other-queries).
 Start the query from the same `Db` as the statement.
 
 ## Names known at runtime

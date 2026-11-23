@@ -67,7 +67,7 @@ The rows are sorted by the same values that the records get.
 
 After `pluck` or `get`, the second parameter is the expression of the value.
 
-To sort groups of rows by their aggregates, see [Grouping](./grouping#sorting-groups).
+To sort groups of rows by their aggregates, see [Sorting groups](./aggregates#sorting-groups).
 
 When you select a field only under a condition and otherwise fill it with [`literal`](./selecting#values-from-code), sort by it under the same condition:
 
@@ -119,7 +119,7 @@ const page = await db.form.orderBy("name", "id").limit(20).offset(40).select("id
 
 Sort by columns that tell every row apart, such as `id` last, so that rows with equal values of the other columns come in the same order on every request.
 
-To get a page together with the number of rows of all pages, select both in [`$select`](./selecting#several-queries-at-once), and call [`count`](./selecting#aggregates) on the query without `limit` and `offset`:
+To get a page together with the number of rows of all pages, select both in [`$select`](./selecting#several-queries-at-once), and call [`count`](./aggregates#aggregates) on the query without `limit` and `offset`:
 
 ```ts
 const published = db.form.where({ published: true })

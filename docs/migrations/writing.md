@@ -56,7 +56,7 @@ export default defineMigration({
 })
 ```
 
-### Code in a migration
+## Code in a migration
 
 When a step needs code, such as to compute values from existing rows, pass a function instead of SQL.
 It receives the database of the migration, whose `query`, `script`, and `execute` run in the transaction of the migration:

@@ -4,7 +4,7 @@ To compute a value of each row from columns and other queries, such as a fallbac
 Use the resulting expression as you use a column: select it, filter and sort by it, or pass it to an aggregate or an update.
 To use one expression in several queries, [define it once](#reusable-expressions).
 
-To compute a value over the rows of a query, such as `count()` or `max(field.position)`, call an [aggregate function](./selecting#several-aggregates-at-once) instead.
+To compute a value over the rows of a query, such as `count()` or `max(field.position)`, call an [aggregate function](./aggregates#several-aggregates-at-once) instead.
 
 To change the case of text or get its length, call an [operator](./operators) of the column instead.
 To combine conditions, call [`and`, `or`, and `not`](./filtering#combining-conditions), and to write what no function or operator covers, use a [`sql` fragment](./filtering#sql-fragments).

@@ -110,7 +110,7 @@ await db.form
 
 Start such a query from the same `Db` as the query that it filters.
 
-A condition can also be another query of one Boolean value, such as [`some`](./selecting#aggregates) of the related records, or `get` of a column of a related record, such as `field => field.form.get("published")`.
+A condition can also be another query of one Boolean value, such as [`some`](./aggregates#aggregates) of the related records, or `get` of a column of a related record, such as `field => field.form.get("published")`.
 
 ## Values of other queries
 
@@ -120,7 +120,7 @@ To compare a column with a value that another query gives, such as to find the f
 await db.field.where({ formId: db.form.where({ name: "Feedback" }).get("id") }).select("id")
 ```
 
-The query gives one value, such as of `get` or of an [aggregate](./selecting#aggregates); without a row, it gives `NULL`, which matches no record.
+The query gives one value, such as of `get` or of an [aggregate](./aggregates#aggregates); without a row, it gives `NULL`, which matches no record.
 Operators take such a query too, such as to find the last field of each form:
 
 ```ts
@@ -173,7 +173,7 @@ const numberedDraft = sql<boolean>`name ~ '^draft [0-9]+$'`
 
 A type argument exists only in TypeScript, so such a fragment has only `eq`, `ne`, `in`, and `isNull`.
 
-A query interpolated into a fragment becomes a subquery in parentheses, or its value for a query of one value, such as of an [aggregate](./selecting#aggregates), as in [SQL statements](./sql#queries-in-statements).
+A query interpolated into a fragment becomes a subquery in parentheses, or its value for a query of one value, such as of an [aggregate](./aggregates#aggregates), as in [SQL statements](./sql#queries-in-statements).
 
 To write SQL that reads a table directly, such as to pick a random sample of about 1% of the submissions, interpolate its table of `db`, which becomes its name:
 

@@ -8,6 +8,7 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
+    outline: [2, 3],
     nav: [
       { text: "ORM", link: "/orm/getting-started", activeMatch: "^/orm/" },
       { text: "Database", link: "/database/getting-started", activeMatch: "^/database/" },
@@ -52,7 +53,7 @@ export default defineConfig({
             { text: "Related Records", link: "/orm/queries/relations" },
             { text: "Sorting and Pagination", link: "/orm/queries/sorting" },
             { text: "Inserting, Updating, and Deleting", link: "/orm/queries/mutations" },
-            { text: "Grouping", link: "/orm/queries/grouping" },
+            { text: "Aggregates and Grouping", link: "/orm/queries/aggregates" },
             { text: "Expressions", link: "/orm/queries/expressions" },
             { text: "Operators", link: "/orm/queries/operators" },
             { text: "Composing Queries", link: "/orm/queries/composing" },

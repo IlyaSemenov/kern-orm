@@ -69,7 +69,7 @@ Without the record, it gives `undefined` for a relation that is not required or 
 
 ## Aggregates of related records
 
-To get the number of the related records of each row, such as the number of fields of each form, or [another aggregate](./selecting#aggregates) of them, select it on the relation:
+To get the number of the related records of each row, such as the number of fields of each form, or [another aggregate](./aggregates#aggregates) of them, select it on the relation:
 
 ```ts
 const forms = await db.form.select("id").select(form => ({
@@ -79,7 +79,7 @@ const forms = await db.form.select("id").select(form => ({
 // forms: { id: string; fieldCount: number; lastPosition: number | null }[]
 ```
 
-To get a value instead of `null` for a row without related records, pass it to [`coalesce`](./selecting#aggregates), such as `form.fields.max("position").coalesce(0)`; it also takes an expression, such as a column of the row.
+To get a value instead of `null` for a row without related records, pass it to [`coalesce`](./aggregates#aggregates), such as `form.fields.max("position").coalesce(0)`; it also takes an expression, such as a column of the row.
 
 To select the result of an operator on such a value, such as whether each form has more than 3 fields, call [`expr`](./filtering#values-of-other-queries) on the query and the operator on its result:
 
@@ -92,7 +92,7 @@ const forms = await db.form.select("id").select(form => ({
 
 ## Values of related records
 
-To get a value from the related records of each row instead of selecting it as a field, return a query of one value from the callback of `pluck`, `get`, or an [aggregate](./selecting#aggregates):
+To get a value from the related records of each row instead of selecting it as a field, return a query of one value from the callback of `pluck`, `get`, or an [aggregate](./aggregates#aggregates):
 
 ```ts
 const fieldCounts = await db.form.orderBy("name").pluck(form => form.fields.count())

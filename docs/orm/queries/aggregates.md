@@ -1,6 +1,100 @@
-# Grouping
+# Aggregates and Grouping
 
-To get aggregates of groups of rows, such as the number of the submissions of each form, list the columns of the groups in `groupBy` and select the [aggregate functions](./selecting#several-aggregates-at-once) beside them:
+## Aggregates
+
+To count the rows of a query, such as the published forms, call `count`:
+
+```ts
+const publishedCount = await db.form.where({ published: true }).count()
+// publishedCount: number
+```
+
+To compute another aggregate of a column or an expression over the rows of a query, such as the last position of the fields of a form, call its method with the column or a callback, as for [`get`](./selecting#one-value):
+
+```ts
+const lastPosition = await db.field.where({ formId }).max("position")
+// lastPosition: number | null
+```
+
+- `count` of a column counts its values other than `NULL`, and `countDistinct` the distinct ones.
+- `min` and `max` give the smallest and the largest value.
+- `sum` and `avg` give the sum and the average.
+- `every` and `some` tell whether all or any of the Boolean values are true.
+- `stringAgg` joins the values with the delimiter that it takes after the column, in the order of the query, set by [`orderBy`](./sorting) before or after it.
+
+To average a `bigint` column, pass it in a fragment of a type that can represent fractional values, such as ``avg(file => sql(t.doublePrecision)`${file.size}`)``, since its average can have a fractional part.
+
+An aggregate skips `NULL` values and gives `null` without other values, while the counts give `0`.
+To get another value instead, such as `0` for a form without fields, pass it to `coalesce`:
+
+```ts
+const lastPosition = await db.field.where({ formId }).max("position").coalesce(0)
+// lastPosition: number
+```
+
+`coalesce` also takes an expression of the values of the aggregate, such as a column of the parent row of [related records](./relations#aggregates-of-related-records), or a query of one such value.
+
+An aggregate keeps the filters of the query and ignores its selected fields, apart from those that [`distinct`](./selecting#distinct-rows) compares.
+With [`limit` and `offset`](./sorting#pagination), it aggregates the rows of the page, which the order of the query chooses.
+
+### Several aggregates at once
+
+To read several aggregates in one statement, such as the number of the fields of a form and the position of the last one, select the functions of the same names as the [aggregate methods](#aggregates):
+
+```ts
+import { count, max } from "kern-orm"
+
+const stats = await db.field
+  .where({ formId })
+  .select(field => ({
+    total: count(),
+    lastPosition: max(field.position),
+  }))
+  .take()
+// stats: { total: number; lastPosition: number | null }
+```
+
+`count`, `countDistinct`, `min`, `max`, `sum`, `avg`, `every`, and `some` take an expression or a query of one value, such as a column or an aggregate of related records, and give the values that the methods give.
+`count()` without an argument counts the rows.
+
+To aggregate only some of the rows, such as to count the published forms beside the total, pass a condition as `filter`:
+
+```ts
+const stats = await db.form
+  .select(form => ({
+    total: count(),
+    published: count({ filter: form.published }),
+  }))
+  .take()
+// stats: { total: number; published: number }
+```
+
+To join text values, select `stringAgg` with a delimiter, and pass `orderBy` with what the callback of [`orderBy`](./sorting) returns to join them in that order:
+
+```ts
+import { count, stringAgg } from "kern-orm"
+
+const summary = await db.field
+  .where({ formId })
+  .select(field => ({
+    total: count(),
+    labels: stringAgg(field.label, ", ", { orderBy: field.position }),
+  }))
+  .take()
+// summary: { total: number; labels: string | null }
+```
+
+Without `orderBy`, PostgreSQL joins the values in any order.
+
+Each returns an expression with the operators of its type, so pass it to a function or call an operator on it, such as `coalesce(sum(field.position), 0)` or `count().gt(1)`.
+
+Such a query returns one row, so call `take` to get the record instead of an array of it.
+`limit` and `offset` apply to this row rather than to the rows that it aggregates, so `limit(10)` beside `count()` counts every row.
+To aggregate the rows of a page, call the method, such as `limit(10).count()`.
+
+## Grouping
+
+To get aggregates of groups of rows, such as the number of the submissions of each form, list the columns of the groups in `groupBy` and select the [aggregate functions](#several-aggregates-at-once) beside them:
 
 ```ts
 import { count } from "kern-orm"
@@ -29,7 +123,7 @@ const totals = await db.submission.groupBy("formId").select(submission => ({
 // totals: { formId: string; submissions: number; recent: number }[]
 ```
 
-To join the text values of each group in an order, select [`stringAgg`](./selecting#several-aggregates-at-once) with `orderBy`.
+To join the text values of each group in an order, select [`stringAgg`](#several-aggregates-at-once) with `orderBy`.
 
 Select an aggregate without `filter` directly to get a value that is `null` only when its argument can be: each returned group has at least one row.
 This works with `select`, `get`, and `pluck`, whether `groupBy` comes before or after them:
@@ -50,7 +144,7 @@ For an expression such as `sum(field.position).gt(0)`, use `coalesce` too if you
 
 To aggregate an enclosing query from inside a grouped query, write an explicitly nullable SQL expression, such as ``sql(t.integer.nullable())`sum(${outer.position})` ``.
 
-## Keys of expressions
+### Keys of expressions
 
 To group by an expression, such as the day of a submission, select it and take it from the second parameter of the callback of `groupBy`:
 
@@ -109,7 +203,7 @@ To sort by such a key without selecting it, create each of its parameters once w
 
 A key with a query cannot be read in `having`.
 
-## Filtering groups
+### Filtering groups
 
 To keep only some groups, such as the forms with several submissions, pass a condition of their aggregates to `having`:
 
@@ -140,7 +234,7 @@ After `pluck` or `get`, the second parameter is the expression of the value.
 `having` takes what [`where`](./filtering) takes, such as an object of the values of a key, and each call adds a condition combined with `AND`.
 Call it after `groupBy`.
 
-## Sorting groups
+### Sorting groups
 
 To sort the groups by an aggregate, select it and take it from the second parameter of the callback of [`orderBy`](./sorting#selected-fields):
 
@@ -163,7 +257,7 @@ To sort by an aggregate that you do not select, return it from the callback, suc
 
 A query with `groupBy` cannot [lock rows](../locks#locking-rows), and neither `update` nor `delete` can be called on it.
 
-## Related records of a group
+### Related records of a group
 
 To select the related records of a key, such as the form of each group, select the relation:
 
@@ -177,9 +271,9 @@ const totals = await db.submission.groupBy("formId").select(submission => ({
 
 The nested query reads the key `formId`, so PostgreSQL takes it; a relation of another column needs that column among the keys.
 
-## Aggregates of groups
+### Aggregates of groups
 
-To get the number of the groups, call [`count`](./selecting#aggregates) on the query, and to compute another aggregate of the groups, such as the largest number of the submissions of a form, call its method with an aggregate function:
+To get the number of the groups, call [`count`](#aggregates) on the query, and to compute another aggregate of the groups, such as the largest number of the submissions of a form, call its method with an aggregate function:
 
 ```ts
 const formCount = await db.submission.groupBy("formId").count()
