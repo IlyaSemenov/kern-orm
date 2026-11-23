@@ -6,6 +6,8 @@ export { addConstraint, changeConstraint, dropConstraint } from "./helpers/const
 export { createEnum, dropEnum } from "./helpers/enums"
 export type { ExtensionOptions } from "./helpers/extensions"
 export { createExtension } from "./helpers/extensions"
+export type { FunctionParameter } from "./helpers/functions"
+export { createFunction, dropFunction, replaceFunction } from "./helpers/functions"
 export type { IndexOptions, SingletonIndexOptions } from "./helpers/indexes"
 export { createIndex, createSingletonIndex, dropIndex, dropSingletonIndex } from "./helpers/indexes"
 export type { SequenceOptions, SequenceState } from "./helpers/sequences"

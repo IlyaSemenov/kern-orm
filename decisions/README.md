@@ -129,6 +129,8 @@ The SQL that loads nested queries and relations.
 - [Rejecting a call in a transaction at a stricter isolation level](migrations/strict-isolation-in-a-transaction.md): when it has migrations to run, rather than running from the snapshot, detecting a change since it, or rejecting also a target that is up to date.
 - [A valid index of the name counts as built](migrations/valid-index-counts-as-built.md): `createIndex` with `concurrently` completes a migration whose record failed, rather than failing on the index, keeping it with `IF NOT EXISTS`, or building it again.
 - [Rollback of `replaceView` chosen by an option](migrations/view-rollback-option.md): `rollback: "recreate"` for a change that cannot be replaced back, rather than detecting it when rollback runs.
+- [Parameters of a function by name](migrations/function-parameters-by-name.md): a default and a mode as properties of an object, rather than a SQL string of the parameter that the helper reads, dropping by the name alone, or an option of defaults.
+- [`replaceFunction` as a helper of its own](migrations/replace-function-helper.md): rather than an option of `createFunction`, such as `replace: true`, whose rollback would drop the function.
 - [The temporary schema last in the search path of migrations](migrations/temporary-schema-last.md): a temporary table of the session does not take the place of a table of the target schema, at the cost of `pg_temp` as the schema that a statement with no other schema creates in.
 - [A partitioned table indexed by a step of its own](migrations/concurrent-index-of-partitioned-table.md): `concurrently` leaves PostgreSQL to reject a partitioned table, rather than indexing each partition or building without `CONCURRENTLY`.
 

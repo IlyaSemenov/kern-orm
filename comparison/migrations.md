@@ -76,6 +76,18 @@ The migrator records a migration outside a transaction after its change in a sta
 - Rails, fails: after a build failed with a lock timeout, `add_index` with `algorithm: :concurrently, if_not_exists: true` accepted the index that the build left not valid, and the issue was closed as not one of Rails ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/connection_adapters/abstract/schema_creation.rb#L106-L122), [rails#52583](https://github.com/rails/rails/issues/52583)).
   A migration can check the index with `index_exists?(table, columns, valid: true)`, which `add_index` does not call ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/connection_adapters/abstract/schema_statements.rb#L100-L105)).
 
+## Parameters of a function
+
+`createFunction` takes each parameter by its name as its type, or as an object of its type, mode, and default, and drops the function by the parameters without their defaults, which `DROP FUNCTION` rejects.
+
+- node-pg-migrate, same: `createFunction` takes each parameter as a string or as an object of `mode`, `name`, `type`, and `default`, and its reverse `dropFunction` removes `default` of an object ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/operations/functions/dropFunction.ts#L25-L33)).
+
+## Replacing a function
+
+`replaceFunction` takes the definition before and after the change, replaces it with `CREATE OR REPLACE FUNCTION`, and restores the previous definition on rollback.
+
+- node-pg-migrate, fails: `createFunction` with `replace: true` builds `CREATE OR REPLACE FUNCTION` ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/operations/functions/createFunction.ts#L82-L86)), and its reverse is `dropFunction` ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/operations/functions/createFunction.ts#L92)), so rolling back a migration that replaces a function drops it.
+
 ## Verifying a history
 
 Verification applies each migration, rolls it back and requires the structure that the migration found, and applies it again.

@@ -11,7 +11,7 @@ export default defineMigration([
 ])
 ```
 
-Pass the names of tables, columns, indexes, constraints, sequences, enum types, and views without quotes: helpers quote them.
+Pass the names of tables, columns, indexes, constraints, sequences, enum types, views, functions, and parameters without quotes: helpers quote them.
 Pass definitions, conditions, defaults, the columns of an index, and the queries of views as SQL, quoting a name in them where SQL needs it, such as `'"order"'`.
 The old query of `replaceView` and the query of `dropView` must give the columns that the view has.
 When the view was created of `SELECT *` and the table has gained columns since, list the columns of the view in them.
@@ -24,6 +24,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
 - Sequences: `createSequence(name, options)` and `dropSequence` with the same arguments, `renameSequence(from, to)`, and `changeSequence(name, from, to)`; the options are `type`, `increment`, `minValue`, `maxValue`, `start`, `cache`, and `cycle`.
 - Views: `createView(name, query, options)` and `dropView` with the same arguments, and [`replaceView(name, from, to, options)`](#replace-the-query-of-a-view); the options of all three are `checkOption`, `securityBarrier`, and `securityInvoker`, and `replaceView` also takes [`rollback`](#replace-the-query-of-a-view).
+- Functions: [`createFunction(name, parameters, definition)`](#create-a-function) and `dropFunction` with the same arguments, and [`replaceFunction(name, parameters, from, to)`](#replace-the-definition-of-a-function).
 - Enum types: `createEnum(name, values)` and `dropEnum` with the same arguments; pass the values without quotes, such as `createEnum("user_role", ["admin", "member"])`.
 - Extensions: `createExtension(name, { schema })`.
 
@@ -76,7 +77,55 @@ replaceView("public_form", "SELECT id FROM form", "SELECT id, name FROM form", {
 Rolling back then drops the view and creates it again from the old query.
 The view loses its grants, comment, and triggers, and rolling back fails when other views depend on it.
 
-## Drop a table, column, index, constraint, sequence, view, or enum type
+## Create a function
+
+Pass `createFunction` the parameters of the function by name, and the rest of the function after its parameters.
+Give a parameter as its type, such as `"text"`, or as an object of:
+
+- `type`: the type of the parameter, such as `"jsonb"`;
+- `mode`: `"in"`, the default, `"out"`, `"inout"`, or `"variadic"`;
+- `default`: the SQL value that a call without the parameter takes, such as `"null"`.
+
+```ts
+createFunction(
+  "enqueue",
+  {
+    task: "text",
+    payload: { type: "jsonb", default: "null" },
+    id: { mode: "out", type: "bigint" },
+  },
+  `LANGUAGE sql
+  BEGIN ATOMIC
+    INSERT INTO job (task, payload) VALUES (enqueue.task, enqueue.payload) RETURNING job.id;
+  END`,
+)
+```
+
+Rolling back drops the function by the types of its parameters, so it drops this function and keeps its overloads.
+It fails when other objects depend on the function, such as a trigger.
+
+## Replace the definition of a function
+
+Pass `replaceFunction` the parameters of the function and its definition before and after the change:
+
+```ts
+replaceFunction(
+  "add",
+  {
+    a: "integer",
+    b: "integer",
+  },
+  "RETURNS integer LANGUAGE sql IMMUTABLE RETURN a + b",
+  "RETURNS integer LANGUAGE sql IMMUTABLE RETURN coalesce(a, 0) + coalesce(b, 0)",
+)
+```
+
+Applying replaces the definition with `CREATE OR REPLACE FUNCTION`, which keeps the owner and grants of the function and the objects that depend on it, and fails when the target schema has no such function.
+Rolling back restores the previous definition the same way.
+Give the parameters that the function has: both directions keep them.
+To change what `CREATE OR REPLACE FUNCTION` cannot change, such as the types of the parameters or the return type, drop the function with `dropFunction` and create it again with `createFunction`.
+
+## Drop a table, column, index, constraint, sequence, view, function, or enum type
 
 Pass a drop helper the definition of what it drops: rolling back creates it again from the definition.
 
@@ -105,7 +154,7 @@ An index of a `PRIMARY KEY` or `UNIQUE` constraint goes with its constraint.
 
 Rolling back a dropped sequence creates it again from its `start` rather than from its current value.
 
-Rolling back a dropped view does not restore its grants, comment, and triggers.
+Rolling back a dropped view does not restore its grants, comment, and triggers, and rolling back a dropped function does not restore its grants and comment.
 
 ## Index names
 
