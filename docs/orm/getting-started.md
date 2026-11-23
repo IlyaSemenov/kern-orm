@@ -116,10 +116,10 @@ See [Database of the current context](./schemas#database-of-the-current-context)
 ## Next steps
 
 - [Tables and Schemas](./schemas): keys of tables, schemas, and relations between tables.
+- [Multiple Schemas](./multiple-schemas): reuse tables across tenant schemas and a shared schema.
 - [Types](./types): column types, nullable columns, and your own types.
 - [Queries](./queries/): select, filter, and sort records, load their related records, and insert, update, and delete them.
 - [Related Records](./queries/relations): load the related records of each row in the same query.
 - [Transactions](./transactions): run queries in a transaction without passing it around.
 - [Testing](./testing): run each test in a transaction that rolls back.
-- [Multiple Schemas](./multiple-schemas): reuse tables across tenant schemas and a shared schema.
 - [Errors](./errors): statements that PostgreSQL rejects and lost connections.

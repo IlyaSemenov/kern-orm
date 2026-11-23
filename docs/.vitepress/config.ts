@@ -17,57 +17,98 @@ export default defineConfig({
     sidebar: {
       "/orm/": [
         {
-          text: "ORM",
+          text: "Introduction",
           items: [
             { text: "Getting Started", link: "/orm/getting-started" },
             { text: "Comparison", link: "/orm/comparison" },
-            { text: "Tables and Schemas", link: "/orm/schemas" },
-            { text: "Types", link: "/orm/types" },
+          ],
+        },
+        {
+          text: "Data Model",
+          items: [
             {
-              text: "Queries",
-              link: "/orm/queries/",
+              text: "Tables and Schemas",
+              link: "/orm/schemas",
               items: [
-                { text: "Selecting", link: "/orm/queries/selecting" },
-                { text: "Filtering", link: "/orm/queries/filtering" },
-                { text: "Related Records", link: "/orm/queries/relations" },
-                { text: "Sorting and Pagination", link: "/orm/queries/sorting" },
-                { text: "Inserting, Updating, and Deleting", link: "/orm/queries/mutations" },
-                { text: "Expressions", link: "/orm/queries/expressions" },
-                { text: "Grouping", link: "/orm/queries/grouping" },
-                { text: "Operators", link: "/orm/queries/operators" },
-                { text: "Composing Queries", link: "/orm/queries/composing" },
-                { text: "Reusable Queries", link: "/orm/queries/reusable" },
-                { text: "SQL Statements", link: "/orm/queries/sql" },
+                { text: "Singleton Tables", link: "/orm/singleton-tables" },
+                { text: "Multiple Schemas", link: "/orm/multiple-schemas" },
               ],
             },
+            {
+              text: "Types",
+              link: "/orm/types",
+              items: [{ text: "Custom Types", link: "/orm/custom-types" }],
+            },
+          ],
+        },
+        {
+          text: "Queries",
+          items: [
+            { text: "Overview", link: "/orm/queries/", docFooterText: "Queries" },
+            { text: "Selecting", link: "/orm/queries/selecting" },
+            { text: "Filtering", link: "/orm/queries/filtering" },
+            { text: "Related Records", link: "/orm/queries/relations" },
+            { text: "Sorting and Pagination", link: "/orm/queries/sorting" },
+            { text: "Inserting, Updating, and Deleting", link: "/orm/queries/mutations" },
+            { text: "Grouping", link: "/orm/queries/grouping" },
+            { text: "Expressions", link: "/orm/queries/expressions" },
+            { text: "Operators", link: "/orm/queries/operators" },
+            { text: "Composing Queries", link: "/orm/queries/composing" },
+            { text: "Reusable Queries", link: "/orm/queries/reusable" },
+            { text: "SQL Statements", link: "/orm/queries/sql" },
+          ],
+        },
+        {
+          text: "Execution and Testing",
+          items: [
             { text: "Transactions", link: "/orm/transactions" },
             { text: "Testing", link: "/orm/testing" },
-            { text: "Multiple Schemas", link: "/orm/multiple-schemas" },
-            { text: "Singleton Tables", link: "/orm/singleton-tables" },
             { text: "Errors", link: "/orm/errors" },
+          ],
+        },
+        {
+          text: "Interop",
+          items: [
             {
-              text: "Advanced",
-              items: [
-                { text: "Custom Types", link: "/orm/custom-types" },
-                { text: "Interop", link: "/orm/interop" },
-                { text: "Orchid ORM Interop", link: "/orm/orchid-interop" },
-              ],
+              text: "Other Libraries",
+              link: "/orm/interop",
+              docFooterText: "Interop with Other Libraries",
+            },
+            {
+              text: "Orchid ORM",
+              link: "/orm/orchid-interop",
+              docFooterText: "Orchid ORM Interop",
             },
           ],
         },
       ],
       "/database/": [
         {
-          text: "Database",
+          text: "Introduction",
           items: [
             { text: "Getting Started", link: "/database/getting-started" },
             { text: "Drivers", link: "/database/drivers" },
+          ],
+        },
+        {
+          text: "Queries",
+          items: [
             { text: "SQL Queries and Scripts", link: "/database/sql" },
             { text: "Types", link: "/database/types" },
+          ],
+        },
+        {
+          text: "Execution and Testing",
+          items: [
             { text: "Transactions", link: "/database/transactions" },
             { text: "Testing", link: "/database/testing" },
             { text: "Errors", link: "/database/errors" },
-            { text: "Interop", link: "/database/interop" },
+            { text: "Interop with Other Libraries", link: "/database/interop" },
+          ],
+        },
+        {
+          text: "For Library Authors",
+          items: [
             { text: "Custom Drivers", link: "/database/custom-drivers" },
             { text: "Building Query Builders", link: "/database/query-builders" },
             { text: "Building Packages", link: "/database/packages" },
@@ -76,15 +117,28 @@ export default defineConfig({
       ],
       "/migrations/": [
         {
-          text: "Migrations",
+          text: "Introduction",
+          items: [{ text: "Getting Started", link: "/migrations/getting-started" }],
+        },
+        {
+          text: "Writing",
           items: [
-            { text: "Getting Started", link: "/migrations/getting-started" },
             { text: "Writing Migrations", link: "/migrations/writing" },
-            { text: "Helpers", link: "/migrations/helpers" },
+            { text: "Schema Helpers", link: "/migrations/helpers" },
             { text: "Migrations Outside a Transaction", link: "/migrations/outside-transaction" },
+          ],
+        },
+        {
+          text: "Running and Testing",
+          items: [
             { text: "Applying Migrations", link: "/migrations/applying" },
             { text: "Command Line", link: "/migrations/cli" },
             { text: "Testing Migrations", link: "/migrations/testing" },
+          ],
+        },
+        {
+          text: "Extending",
+          items: [
             { text: "Custom Migration Helpers", link: "/migrations/custom-helpers" },
             { text: "Migrations in a Package", link: "/migrations/package-migrations" },
           ],

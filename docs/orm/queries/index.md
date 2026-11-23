@@ -16,8 +16,8 @@ A method never changes the query it is called on, so a query can be extended in 
 - [Related Records](./relations): load the related records of each row in the same query.
 - [Sorting and Pagination](./sorting): sort rows by columns, expressions, and related records, and get them page by page.
 - [Inserting, Updating, and Deleting](./mutations): change records and get the fields of the changed ones.
-- [Expressions](./expressions): replace `NULL`, take the largest or the smallest of several values, choose a value by conditions, select a constant, or define an expression once and reuse it across queries.
 - [Grouping](./grouping): compute the aggregates of groups of rows, filter the groups by them, and sort by them.
+- [Expressions](./expressions): replace `NULL`, take the largest or the smallest of several values, choose a value by conditions, select a constant, or define an expression once and reuse it across queries.
 - [Operators](./operators): see which operators each type has for conditions and computed values.
 - [Composing Queries](./composing): add clauses conditionally, or define them once and reuse them across queries of a table.
 - [Reusable Queries](./reusable): define a query once and execute it in several places, also with a `Db` known only at runtime.

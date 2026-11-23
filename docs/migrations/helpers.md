@@ -1,4 +1,4 @@
-# Helpers
+# Schema Helpers
 
 Build the steps of typical changes, such as creating a table or an index, with helpers: each helper builds the SQL of the change together with the SQL that undoes it.
 

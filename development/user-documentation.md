@@ -6,7 +6,12 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
 
 - Keep package READMEs short and link to the site.
 - Group the pages of the site by the package they document, ORM, Database, and Migrations, each with a sidebar of its own, and keep the pages of each group in its directory: `docs/orm/`, `docs/database/`, and `docs/migrations/`, each starting with its Getting Started page.
-- Add every new page of a group to the sidebar of its group in `docs/.vitepress/config.ts`.
+- Add every new page to the sidebar of its package in `docs/.vitepress/config.ts`.
+  Choose the section that fits the task and audience of the page, such as Data Model or For Library Authors.
+  Within the section, nest a page that specializes another one under it, as Singleton Tables under Tables and Schemas.
+  Do not add a section of leftovers, such as Advanced.
+- When a sidebar label is clear only under its section, such as Overview, set `docFooterText` to a name of the page that is clear on its own, for the previous and next links at the bottom of pages.
+- Keep the Next steps of each Getting Started page in the order of the sidebar.
 - Write the pages of the ORM group for an application of kern-orm, with a `Db` and imports from `kern-orm` and its subpaths, and the pages of the Database group for code without the ORM, with a `database` and imports from `kern-db` and its subpaths.
 - Document types, transactions, interop with other libraries, test helpers, and errors, which both packages give, on a page of each group with examples of its own API, and update both pages with a change of what they share; document drivers and custom drivers in the Database group alone.
 - Open a page of the Database group that has a counterpart in the ORM group, such as Transactions, with an `info` box titled `Using the ORM?` that links the counterpart; give every `info` box a title of its own, since VitePress titles it `INFO` otherwise.
