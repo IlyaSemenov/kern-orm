@@ -1,5 +1,15 @@
 # kern-orm
 
+## 0.22.0
+
+### Minor Changes
+
+- 18b8a16: Add `query.comment(label)` to identify a query in PostgreSQL activity and logs.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.9.1
+
 ## 0.21.0
 
 ### Minor Changes

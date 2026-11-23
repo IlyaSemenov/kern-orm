@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.9.1
+
+### Patch Changes
+
+- ce8f3d6: Tell in the errors of date and `bytea` values in another `DateStyle` or `bytea_output` that the connection options of the client can set them.
+
 ## 0.9.0
 
 ### Minor Changes
