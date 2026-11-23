@@ -1,5 +1,13 @@
 # kern-db
 
+## 0.10.0
+
+### Minor Changes
+
+- b7ac15c: Add the `read` option of `defineType`, the SQL expression by which queries read the values of a custom type, such as `` read: value => `extract(epoch from ${value})` `` for a `timestamptz` read as seconds since the epoch.
+- 495a983: Add `createSqlColumns` to `kern-db/builder`, which creates the columns of a record that a statement of SQL text selects; `select` of `database.query` reads them as a nested record.
+  Add `cutIdentifier` to `kern-db/builder`, which cuts a name to fit a number of bytes in any server encoding.
+
 ## 0.9.1
 
 ### Patch Changes

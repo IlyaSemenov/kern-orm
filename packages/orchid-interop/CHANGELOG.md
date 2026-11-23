@@ -1,5 +1,11 @@
 # @kern-orm/orchid-interop
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.10.0
+
 ## 0.1.1
 
 ### Patch Changes

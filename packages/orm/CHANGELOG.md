@@ -1,5 +1,18 @@
 # kern-orm
 
+## 0.24.0
+
+### Minor Changes
+
+- 495a983: Add `columnsOf`, which gives the columns of a table for a statement of `db.$query`.
+  `select` reads them as the record of the row, which `nullable` makes `null` without a match of an outer join.
+- b7ac15c: Add the `read` option of `defineType`, the SQL expression by which queries read the values of a custom type, such as `` read: value => `extract(epoch from ${value})` `` for a `timestamptz` read as seconds since the epoch.
+
+### Patch Changes
+
+- 530b7e4: Fix `select` on queries and mutations typing dynamically chosen columns as always present.
+- Updated dependencies: kern-db@0.10.0
+
 ## 0.23.0
 
 ### Minor Changes
