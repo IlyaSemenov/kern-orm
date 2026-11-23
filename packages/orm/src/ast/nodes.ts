@@ -303,6 +303,11 @@ export interface SelectNode<
   readonly conversion?: ResultConversion | undefined
 }
 
+/** Select statement whose clauses can be replaced until lowering freezes it. */
+export type UnfrozenSelectNode<From extends SourceNode | undefined = SourceNode | undefined> = {
+  -readonly [K in keyof SelectNode<From>]: SelectNode<From>[K]
+}
+
 /** Assignment of `SET` of an update: the value of the column under `key`. */
 export interface AssignmentNode {
   readonly key: string

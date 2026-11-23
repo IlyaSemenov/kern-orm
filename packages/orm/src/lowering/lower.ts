@@ -1,6 +1,13 @@
 // Lowering of a query, a mutation, or a statement of SQL text to the SQL statement that executes it.
 
-import type { RawSqlNode, SelectNode, StatementNode, TableSourceNode } from "../ast/nodes"
+import type {
+  RawSqlNode,
+  SelectNode,
+  SourceNode,
+  StatementNode,
+  TableSourceNode,
+  UnfrozenSelectNode,
+} from "../ast/nodes"
 import { noFilters, noJoins, noOrder } from "../ast/nodes"
 import type { AnyDb } from "../execution/db"
 import { isAggregateQuery } from "../query/aggregate"
@@ -136,10 +143,7 @@ function lowerSelectStatement(
     node.guaranteed && relation !== undefined
       ? formatRelationName(relation.key, relation.name)
       : undefined
-  // `lowerPage` reads the order of the sort expressions, so the statement takes the order of positions only after it, before it is frozen.
-  const statement: {
-    -readonly [K in keyof SelectNode<TableSourceNode>]: SelectNode<TableSourceNode>[K]
-  } = {
+  const statement: UnfrozenSelectNode<TableSourceNode> = {
     kind: "select",
     from: node.from,
     joins: noJoins,
@@ -158,14 +162,12 @@ function lowerSelectStatement(
     guaranteedBy,
     recordTemplate,
   }
-  const page = lowerPage(statement, selected, positions)
-  if (page !== undefined) {
-    return page
+  // Resolve sort expressions against the final projections because `lowerPage` can replace both the projections and the sort keys.
+  const lowered: UnfrozenSelectNode<SourceNode> = lowerPage(statement, selected) ?? statement
+  if (positions && lowered.orderBy.length > 0) {
+    lowered.orderBy = sortByPositions(lowered.orderBy, lowered.projections)
   }
-  if (positions && orderBy.length > 0) {
-    statement.orderBy = sortByPositions(orderBy, projections)
-  }
-  return Object.freeze(statement)
+  return Object.freeze(lowered)
 }
 
 /** Lowers a query of `exists` to a statement without a source of one row of `EXISTS` of its rows. */

@@ -8,6 +8,7 @@ import type {
   SelectNode,
   SourceNode,
   TableSourceNode,
+  UnfrozenSelectNode,
 } from "../ast/nodes"
 import { createNode, noFilters, noJoins } from "../ast/nodes"
 import { findValueProjection } from "../ast/projections"
@@ -16,7 +17,7 @@ import type { SqlSelectedNode } from "../query/node"
 import { isNestedSelection } from "../query/node"
 import { text } from "../type/builtins/text"
 
-import { deriveOrderedSource, sortByPositions } from "./order"
+import { deriveOrderedSource } from "./order"
 
 /**
  * Lowers `query`, the statement of a query on its table that sorts by its sort expressions, to a statement that evaluates its nested queries, apart from those that it sorts by, groups by, or compares, over the rows of a derived page, or returns `undefined` for a query that keeps its page on its table.
@@ -29,13 +30,13 @@ import { deriveOrderedSource, sortByPositions } from "./order"
  * The source selects the columns of the table that the fields and the nested queries of the query read, under their keys, and the other scalar fields of the query, which it evaluates before the limit and the offset as the query would, such as a window function over all its rows or an aggregate of a group.
  * A field of an aggregate or of `exists` that the query sorts by or that is a key is such a scalar field: the order and the keys need its value for every row.
  * A column that no field reads stays out of the source, which could not select it beside an aggregate of a SQL fragment, such as `count(*)`.
- * The order of a derived source does not carry into the query that reads it, so the statement sorts the rows of the page again by the sort keys of the source, by positions when `positions` is set.
+ * The order of a derived source does not carry into the query that reads it, so the statement sorts the rows of the page again by the sort keys of the source.
+ * The caller freezes the statement after optionally replacing sort expressions with projection positions.
  */
 export function lowerPage(
   query: SelectNode<TableSourceNode>,
   queryFields: readonly SqlSelectedNode[],
-  positions: boolean,
-): SelectNode<SourceNode> | undefined {
+): UnfrozenSelectNode<SourceNode> | undefined {
   const { from, projections, orderBy, groupBy, distinctOn, offset } = query
   // PostgreSQL evaluates the select list also for the rows that an offset skips, so the nested queries of a page after an offset read its rows from a derived source.
   // Without a limit, it evaluates the select list of `DISTINCT ON` also for the rows after the first of each group, so the nested queries of a query of `distinctOn` read its first rows from a derived source too.
@@ -128,20 +129,20 @@ export function lowerPage(
           }),
     )
   }
-  return Object.freeze({
+  return {
     kind: "select",
     from: page.source,
     joins: noJoins,
     projections: selected,
     filters: noFilters,
-    orderBy: positions ? sortByPositions(page.order, selected) : page.order,
+    orderBy: page.order,
     limit: undefined,
     offset: undefined,
     rows: query.rows,
     value: query.value,
     guaranteedBy: query.guaranteedBy,
     recordTemplate: query.recordTemplate,
-  })
+  }
 }
 
 /**
