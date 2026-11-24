@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
-import type { SqlColumns } from "kern-db"
+import type { RecordOf, SqlColumns } from "kern-db"
 import { createDatabase } from "kern-db"
 
 import { bindSchema } from "../execution/db"
@@ -243,5 +243,38 @@ describe("columns", () => {
         lag: number
       }[]
     >()
+  })
+
+  test("have records that RecordOf names, as select decodes them", async () => {
+    const tasks: "task"[] = []
+    const all = columnsOf(db.job, "*")
+    const claimed = columnsOf(db.job, ["id", "task"], { alias: "j" })
+    const partial = columnsOf(db.job, ["id", ...tasks], { alias: "p" })
+    const joined = columnsOf(membership, "*", { alias: "m" }).nullable()
+    const row = await db.$query`SELECT`
+      .select({
+        all,
+        claimed,
+        partial,
+        joined,
+      })
+      .take()
+
+    expectTypeOf<RecordOf<typeof all>>().toEqualTypeOf<{
+      id: number
+      task: string
+      lockedBy: string | null
+    }>()
+    expectTypeOf<RecordOf<typeof all>>().toEqualTypeOf<typeof row.all>()
+    expectTypeOf<RecordOf<typeof claimed>>().toEqualTypeOf<{ id: number; task: string }>()
+    expectTypeOf<RecordOf<typeof claimed>>().toEqualTypeOf<typeof row.claimed>()
+    expectTypeOf<RecordOf<typeof partial>>().toEqualTypeOf<{ id: number; task?: string }>()
+    expectTypeOf<RecordOf<typeof partial>>().toEqualTypeOf<typeof row.partial>()
+    expectTypeOf<RecordOf<typeof joined>>().toEqualTypeOf<{
+      userId: number
+      teamId: number
+      role: string
+    } | null>()
+    expectTypeOf<RecordOf<typeof joined>>().toEqualTypeOf<typeof row.joined>()
   })
 })

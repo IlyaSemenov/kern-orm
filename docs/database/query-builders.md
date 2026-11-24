@@ -150,6 +150,15 @@ The fragment names each result column by the key of its column after the `prefix
 `createSqlColumns` applies the read expression of the type of each column that has one.
 For a statement that you build as text, insert `job.text` instead.
 
+To name the type of the record, pass the columns to `RecordOf`; for the columns of `nullable()`, it includes `null`:
+
+```ts
+import type { RecordOf } from "kern-db/builder"
+
+type ClaimedJob = RecordOf<typeof job>
+// ClaimedJob: { id: number; runAt: string }
+```
+
 `key` lists the columns that are never `NULL` in a row, such as a primary key: `job.nullable()` then makes the record `null` when they are all `NULL`, such as without a match of a `LEFT JOIN`.
 The record has the keys and the types of the columns that you write in the call, and the `key` option tells whether the columns have their key.
 A column that the list does not guarantee, such as one of a union of columns or of a spread array, is optional in the record; a column of one known key written before or after a spread is required.

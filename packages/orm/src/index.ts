@@ -144,6 +144,7 @@ export type {
   NullableColumnsOptions,
   PickSelectedColumns,
   PresenceKey,
+  RecordOf,
   SqlColumn,
   SqlColumns,
   SqlColumnsField,

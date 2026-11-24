@@ -66,6 +66,7 @@ Filters, queries in expressions, and SQL fragments.
 - [Result columns of a record named by its fragment](sql-queries/result-columns-of-records.md): rather than read by the names of the columns of the table or by position.
 - [Values of the columns of a record told by key](sql-queries/values-of-columns-by-key.md): a key has the values of every column of the list that names it, rather than of the column at the position that guarantees it or of the columns whose keys overlap its names.
 - [Return type of `columnsOf` kept out of inference](sql-queries/columns-of-return-type.md): `NoInfer`, rather than a plain return type, which a call in a field of `select` also infers the columns from, or two overloads.
+- [`RecordOf` of the columns of a record](sql-queries/record-of-columns.md): a type of its own in `kern-db`, rather than `ResultOf` of both packages, whose tried forms reject passing a record of generic columns from kern-orm to `kern-db`, or a type of any field of `select`.
 - [A missing row told by the key columns](sql-queries/missing-row-by-key-columns.md): the columns of a record that is `null` without its row include their key or name the columns that tell a missing row in `by`.
 
 ## SQL generation

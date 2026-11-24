@@ -50,6 +50,7 @@ export type {
   NullableColumnsArguments,
   NullableColumnsOptions,
   PresenceKey,
+  RecordOf,
   SqlColumn,
   SqlColumns,
   SqlColumnsField,

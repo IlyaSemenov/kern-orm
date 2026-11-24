@@ -78,6 +78,15 @@ The field `form` is the record of the row, with the keys and the types of the co
 As with [`select`](./selecting#fields), name the columns explicitly: `"*"` takes all the columns of the table, and a list of keys, such as `columnsOf(db.form, ["id", "name"])`, takes those columns in its order.
 As in `select` by keys, a column whose key is chosen at runtime is optional in the record unless the list also names it explicitly.
 
+To name the type of the record, pass the columns to `RecordOf`; for the columns of `nullable`, it includes `null`:
+
+```ts
+import type { RecordOf } from "kern-orm"
+
+type FormRecord = RecordOf<typeof form>
+// FormRecord: { id: string; name: string; published: boolean }
+```
+
 When the statement gives the table an alias, pass it as `alias`; it is also the prefix of the names of the result columns by default, which must differ for several tables of one statement:
 
 ```ts

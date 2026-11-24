@@ -1,10 +1,13 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+
+import { createDatabase } from "../database"
 import { jsonb } from "../type/builtins/json"
 import { integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
 
-import type { SqlColumn, SqlColumns, SqlColumnsOptions } from "./columns"
+import type { RecordOf, SqlColumn, SqlColumns, SqlColumnsOptions } from "./columns"
 import { createSqlColumns } from "./columns"
 
 const id = { key: "id", name: "id", type: integer } as const
@@ -12,8 +15,9 @@ const runAt = { key: "runAt", name: "run_at", type: text } as const
 const note = { key: "note", name: "note", type: text.nullable() } as const
 
 /** Record of the columns that `createSqlColumns` creates from columns `C`. */
-type RecordOf<C extends readonly SqlColumn[]> =
-  ReturnType<typeof createSqlColumns<C>> extends SqlColumns<infer R, boolean> ? R : never
+type CreatedRecord<C extends readonly SqlColumn[]> = RecordOf<
+  ReturnType<typeof createSqlColumns<C>>
+>
 
 describe("createSqlColumns", () => {
   test("types the record by the keys and the types of its columns", () => {
@@ -29,7 +33,7 @@ describe("createSqlColumns", () => {
     const columns: SqlColumn[] = [id, runAt]
 
     // oxlint-disable-next-line typescript/no-explicit-any -- the values of columns of any type
-    expectTypeOf<RecordOf<typeof columns>>().toEqualTypeOf<{ [key: string]: any }>()
+    expectTypeOf<CreatedRecord<typeof columns>>().toEqualTypeOf<{ [key: string]: any }>()
   })
 
   test("types a column that the list does not guarantee as optional, as select of kern-orm by keys does", () => {
@@ -38,29 +42,29 @@ describe("createSqlColumns", () => {
     const rest: (typeof runAt)[] = []
     const either = Math.random() < 0.5 ? ([id] as const) : ([runAt] as const)
 
-    expectTypeOf<RecordOf<[typeof some]>>().toEqualTypeOf<{ id?: number; runAt?: string }>()
+    expectTypeOf<CreatedRecord<[typeof some]>>().toEqualTypeOf<{ id?: number; runAt?: string }>()
     expectTypeOf<
-      RecordOf<[{ key: typeof key; name: string; type: typeof integer }]>
+      CreatedRecord<[{ key: typeof key; name: string; type: typeof integer }]>
     >().toEqualTypeOf<{
       id?: number
       runAt?: number
     }>()
-    expectTypeOf<RecordOf<[typeof id, ...typeof rest]>>().toEqualTypeOf<{
+    expectTypeOf<CreatedRecord<[typeof id, ...typeof rest]>>().toEqualTypeOf<{
       id: number
       runAt?: string
     }>()
-    expectTypeOf<RecordOf<[...typeof rest, typeof id]>>().toEqualTypeOf<{
+    expectTypeOf<CreatedRecord<[...typeof rest, typeof id]>>().toEqualTypeOf<{
       id: number
       runAt?: string
     }>()
-    expectTypeOf<RecordOf<typeof either>>().toEqualTypeOf<{ id: number } | { runAt: string }>()
+    expectTypeOf<CreatedRecord<typeof either>>().toEqualTypeOf<{ id: number } | { runAt: string }>()
   })
 
   test("types each list of a union of lists by the values of its own columns", () => {
     const textId = { key: "id", name: "id", type: text } as const
 
     expectTypeOf<
-      RecordOf<readonly [typeof id, typeof runAt] | readonly [typeof textId]>
+      CreatedRecord<readonly [typeof id, typeof runAt] | readonly [typeof textId]>
     >().toEqualTypeOf<{ id: number; runAt: string } | { id: string }>()
   })
 
@@ -69,20 +73,20 @@ describe("createSqlColumns", () => {
     // oxlint-disable-next-line typescript/no-explicit-any -- the values of a column of any type
     type Expected = { [key: string]: any; id: number }
 
-    expectTypeOf<RecordOf<[typeof id, typeof other]>>().toEqualTypeOf<Expected>()
+    expectTypeOf<CreatedRecord<[typeof id, typeof other]>>().toEqualTypeOf<Expected>()
   })
 
   test("reads under a key of an index signature the values of every column", () => {
     const ids: (typeof id)[] = []
 
-    expectTypeOf<RecordOf<[SqlColumn<string, typeof text>, ...typeof ids]>>().toEqualTypeOf<{
+    expectTypeOf<CreatedRecord<[SqlColumn<string, typeof text>, ...typeof ids]>>().toEqualTypeOf<{
       [key: string]: string | number | undefined
     }>()
   })
 
   test("reads under a key that the list does not guarantee the values of every column that it may name", () => {
     expectTypeOf<
-      RecordOf<
+      CreatedRecord<
         [
           SqlColumn<"outside" | `key${number}`, typeof integer>,
           SqlColumn<"key1" | "x", typeof text>,
@@ -97,7 +101,7 @@ describe("createSqlColumns", () => {
 
   test("reads under a key the values of the columns that name it, not those of every column beside a key of an index signature", () => {
     expectTypeOf<
-      RecordOf<[typeof id, SqlColumn<"id" | `key${number}`, typeof text>, SqlColumn<"meta">]>
+      CreatedRecord<[typeof id, SqlColumn<"id" | `key${number}`, typeof text>, SqlColumn<"meta">]>
     >().toEqualTypeOf<{
       // oxlint-disable-next-line typescript/no-explicit-any -- the values of a column of any type
       [key: `key${number}`]: any
@@ -189,5 +193,32 @@ describe("nullable", () => {
     createSqlColumns([{ key: "toString", name: "to_string", type: jsonb }]).nullable({
       by: ["toString"],
     })
+  })
+})
+
+describe("RecordOf", () => {
+  test("is the type of the field that select decodes, and includes null for the whole record after nullable", async () => {
+    const database = createDatabase({ driver: createRecordingDriver().driver })
+    const job = createSqlColumns([id, note], { alias: "j", key: ["id"] })
+    const claimed = createSqlColumns([id, note], { alias: "c", key: ["id"] }).nullable()
+    const row = await database.query`SELECT`
+      .select({
+        job,
+        claimed,
+      })
+      .take()
+
+    expectTypeOf<RecordOf<typeof job>>().toEqualTypeOf<{ id: number; note: string | null }>()
+    expectTypeOf<RecordOf<typeof job>>().toEqualTypeOf<typeof row.job>()
+    expectTypeOf<RecordOf<typeof claimed>>().toEqualTypeOf<{
+      id: number
+      note: string | null
+    } | null>()
+    expectTypeOf<RecordOf<typeof claimed>>().toEqualTypeOf<typeof row.claimed>()
+  })
+
+  test("rejects a type", () => {
+    // @ts-expect-error RecordOf takes the columns of a record.
+    expectTypeOf<RecordOf<typeof integer>>()
   })
 })

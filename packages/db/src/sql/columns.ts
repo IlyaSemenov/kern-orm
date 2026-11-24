@@ -198,6 +198,13 @@ export class SqlColumns<out R, out HasKey extends boolean = boolean> extends Sql
   }
 }
 
+/**
+ * Record that columns `C` read from one row, as `select` of a query of SQL text decodes it for their field, such as the record of the columns of `columnsOf` of kern-orm or of `createSqlColumns`.
+ *
+ * It is the record as the columns type it, `null` included for the columns of `nullable`.
+ */
+export type RecordOf<C extends AnySqlColumns> = C[typeof typeValues]["output"]
+
 /** Columns of any record. */
 // oxlint-disable-next-line typescript/no-explicit-any -- any columns regardless of their record
 export type AnySqlColumns = SqlColumns<any, any>
