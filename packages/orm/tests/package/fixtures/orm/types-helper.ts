@@ -26,6 +26,18 @@ export const status = t.text.of<"draft" | "published">()
 /** Nullable JSON type of a declared shape; see the file header. */
 export const payload = t.jsonb.of<{ url: string }>().nullable()
 
+/** JSON type that reads `NULL` as `undefined`; see the file header. */
+export const optionalPayload = t.jsonb.nullableAs(() => undefined)
+
+/** Method of a type, whose declaration names the types of its signatures; see the file header. */
+export const nullableOfText = t.text.nullable
+
+/** Method of a type whose result names the reason that types reject it for the values of `text`; see the file header. */
+export const nullableAsOfText = t.text.nullableAs
+
+/** Method of a type with PostgreSQL type parameters whose result names the reason that types reject it for the values of `varchar`; see the file header. */
+export const nullableAsOfVarchar = t.varchar.nullableAs
+
 /** Array type of an element type with type parameters; see the file header. */
 export const codes = t.array(t.varchar.with(8))
 

@@ -3,6 +3,7 @@
 import type { DriverColumn, DriverResult, TextValue } from "./driver"
 import { quoteIdentifier } from "./identifier"
 import type { AnyType } from "./type/type"
+import { decodeNull } from "./type/type"
 
 /**
  * How a query returns its rows: `many` as an array; `one` as one row, rejecting without it; `nullable` as one row or `null` without it; `optional` as one row or `undefined` without it.
@@ -415,12 +416,12 @@ function decodeFlatGroup(
   }
 }
 
-/** Decodes a value of a row of the driver with `type`, keeping `NULL` as `null`, and rejecting a missing value, such as of a sparse row. */
+/** Decodes a value of a row of the driver with `type`, `NULL` as `decodeNull` gives it, and rejecting a missing value, such as of a sparse row. */
 function decodeFlatValue(type: AnyType, value: TextValue | undefined): unknown {
   if (value === undefined) {
     throw new Error("Driver returned no value")
   }
-  return value === null ? null : type.decode(value)
+  return value === null ? decodeNull(type) : type.decode(value)
 }
 
 /** Returns the error of the result of a `FieldFailure`, adding `prefix`, such as the index of the row, before the key of its field. */

@@ -162,6 +162,51 @@ describe("nullable", () => {
   })
 })
 
+describe("nullableAs", () => {
+  test("returns the value of its function in place of null, and accepts null", () => {
+    const optional = timestamptz.nullableAs(() => undefined)
+    expectTypeOf<TypeOutput<typeof optional>>().toEqualTypeOf<string | undefined>()
+    expectTypeOf<TypeInput<typeof optional>>().toEqualTypeOf<string | Date | null>()
+    expectTypeOf(optional).toExtend<Type<string | undefined, string | Date | null>>()
+
+    const flag = text.nullable().nullableAs(() => false as const)
+    expectTypeOf<TypeOutput<typeof flag>>().toEqualTypeOf<string | false>()
+    expectTypeOf<TypeInput<typeof flag>>().toEqualTypeOf<string | null>()
+  })
+
+  test("keeps the values of a type that include a JSON null value", () => {
+    const payload = jsonb.nullableAs(() => undefined)
+    expectTypeOf<TypeOutput<typeof payload>>().toEqualTypeOf<unknown>()
+    expectTypeOf<TypeInput<typeof payload>>().toEqualTypeOf<{} | null>()
+
+    type Options = { choices: string[] }
+    const options = jsonb.of<Options>().nullableAs(() => undefined)
+    expectTypeOf<TypeOutput<typeof options>>().toEqualTypeOf<Options | undefined>()
+    expectTypeOf<TypeInput<typeof options>>().toEqualTypeOf<Options | null>()
+  })
+
+  test("keeps type parameters", () => {
+    numeric.nullableAs(() => undefined).with(10)
+  })
+
+  test("takes a function that returns a value other than null", () => {
+    // @ts-expect-error The function cannot return null, which a type returns without it.
+    text.nullableAs(() => null)
+    // @ts-expect-error The value of NULL is returned by a function.
+    text.nullableAs(undefined)
+  })
+
+  test("takes a function that returns its value synchronously", () => {
+    // @ts-expect-error The function returns its value synchronously.
+    text.nullableAs(async () => undefined)
+    // @ts-expect-error The function returns its value synchronously.
+    text.nullableAs((): false | Promise<false> => false)
+    // @ts-expect-error The function returns its value synchronously, also as a thenable that is not a PromiseLike of its full signature.
+    text.nullableAs(() => ({ then: (resolve: (value: number) => void) => resolve(1) }))
+    text.nullableAs(() => ({ then: 1 }))
+  })
+})
+
 describe("of", () => {
   type FieldType = "text" | "email" | "choice"
 

@@ -33,4 +33,10 @@ export type {
 } from "./expression/operators/vector"
 export type { Column } from "./table/column"
 export type { ExactNumberTypeOperators, NumberTypeOperators } from "./type/number"
-export type { BaseType, Type } from "./type/type"
+export type { BaseType, Type, ValuesWithoutNull } from "./type/type"
+export type {
+  BaseDerivableType,
+  DerivableType,
+  DerivableTypeWithParameters,
+  SynchronousResult,
+} from "kern-db"

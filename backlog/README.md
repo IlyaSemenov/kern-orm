@@ -46,7 +46,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Helper effects of their calls](helper-effects-of-their-calls.md): effects that record calls, so that types check what the runtime checks.
 - [Relations of conditions in types](relations-of-conditions-in-types.md): whether types check the relations that a condition reads.
 - [Aggregates by the type of their argument](aggregates-by-the-type-of-their-argument.md): types reject an argument that PostgreSQL cannot aggregate.
-- [Decoding `NULL` to a value](decoding-null-to-a-value.md): types that map `NULL` and a value both ways.
+- [Passing a value as `NULL`](passing-a-value-as-null.md): types that map `NULL` and a value both ways, and `nullableAs` of types of the ORM whose values have no `null`.
 - [`$select` as a field of a selection](select-as-a-field-of-a-selection.md): a nested query of `$select`.
 - [Scalar fragments of kern-orm in pages after an offset](scalar-fragments-of-kern-orm-in-pages-after-an-offset.md): marking fragments known to be scalar.
 - [SQL fragments of users in pages after an offset](sql-fragments-of-users-in-pages-after-an-offset.md): whether a fragment of a user keeps a page on its table.

@@ -5,6 +5,7 @@ import type {
   PickSelectedColumns,
   ResultRows,
   SqlStatement,
+  SynchronousResult,
   ValueRows,
 } from "kern-db"
 import { toValueRows } from "kern-db/builder"
@@ -23,7 +24,6 @@ import { findKey, requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { createComment } from "./comment"
-import type { SynchronousResult } from "./conversion"
 import { addMap, addTransform } from "./conversion"
 import type { KeyCheck } from "./find"
 import { toConflictTarget } from "./find"
@@ -325,7 +325,7 @@ export class MutationQuery<
   /**
    * Converts each record or value that the mutation returns in code, after decoding, such as to add a field that SQL cannot compute; select the fields before it, since the number of the rows has no rows to convert, which `transform` converts instead.
    *
-   * `callback` receives one record or value, also `null` of a `NULL` value, and is not called for a missing row; it returns its result synchronously.
+   * `callback` receives one record or value, also what a `NULL` value decodes to, such as `null`, and is not called for a missing row; it returns its result synchronously.
    * A failure of `callback` rejects with `ResultDecodeError`, after the mutation has changed its rows.
    */
   map<S extends ReturningMutationState, Kind extends SelectQueryKind, R>(

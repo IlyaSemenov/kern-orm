@@ -215,7 +215,8 @@ export class SqlQuery<out S extends SqlQueryState> {
    * Returns the value of the only column of the row of the statement instead of the number of the rows, decoded by `type`.
    *
    * Without a row, it rejects with `NotFoundError` unless `optional` makes the query resolve to `undefined`; it rejects several rows.
-   * A `NULL` value is `null`, so a type of a column that can be `NULL` must be nullable.
+   * A `NULL` value is `null`, or the value that `type` decodes `NULL` to, so a type of a column that can be `NULL` must be nullable.
+   * With a type that decodes `NULL` to `undefined`, `optional` does not tell a missing row from `NULL`, which a record of `select` tells.
    */
   get<S extends SqlQueryState, C extends AnyType>(
     this: SqlQuery<S>,
@@ -229,7 +230,7 @@ export class SqlQuery<out S extends SqlQueryState> {
   /**
    * Returns the values of the only column of the rows of the statement instead of their number, decoded by `type`, keeping whether the query returns an array or one value.
    *
-   * A `NULL` value is `null`, so a type of a column that can be `NULL` must be nullable.
+   * A `NULL` value is `null`, or the value that `type` decodes `NULL` to, so a type of a column that can be `NULL` must be nullable.
    */
   pluck<S extends SqlQueryState, C extends AnyType>(
     this: SqlQuery<S>,

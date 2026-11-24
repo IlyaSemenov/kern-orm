@@ -146,6 +146,26 @@ describe("nullable", () => {
     withKey.nullable({ by: ["note"] })
   })
 
+  test("types a column of a type that decodes NULL to a value by that value, and does not tell it as one that can be NULL", () => {
+    const payload = {
+      key: "payload",
+      name: "payload",
+      type: jsonb.nullableAs(() => undefined),
+    } as const
+    const hint = {
+      key: "hint",
+      name: "hint",
+      type: text.nullableAs(() => undefined),
+    } as const
+    const columns = createSqlColumns([id, payload, hint], { key: ["id"] })
+
+    expectTypeOf(columns.nullable()).toEqualTypeOf<
+      SqlColumns<{ id: number; payload: unknown; hint: string | undefined } | null, true>
+    >()
+    // The values do not tell that the column can be `NULL`, so `nullable` rejects it by its type when it is called.
+    void (() => columns.nullable({ by: ["hint"] }))
+  })
+
   test("rejects in by a column that the list does not guarantee", () => {
     const rest: (typeof runAt)[] = []
     const columns = createSqlColumns([id, ...rest])

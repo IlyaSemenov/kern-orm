@@ -5,6 +5,7 @@ import type {
   PickSelectedColumns,
   ResultRows,
   SqlStatement,
+  SynchronousResult,
   ValueRows,
 } from "kern-db"
 import { toValueRows } from "kern-db/builder"
@@ -33,7 +34,7 @@ import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { noContext } from "./column-refs"
 import { createComment } from "./comment"
-import type { SynchronousResult, TransformedQuery, TransformedQueryState } from "./conversion"
+import type { TransformedQuery, TransformedQueryState } from "./conversion"
 import { addMap, transformQuery } from "./conversion"
 import type { ExistsValueType } from "./exists"
 import { getExistsProjection, isExistsQuery } from "./exists"
@@ -325,7 +326,7 @@ export class SelectQuery<
    *
    * Without a row, it rejects with `NotFoundError`, or with `RequiredRelationError` when a required relation still guarantees the row, such as of `field.form`.
    * An optional or nullable query resolves to `undefined` without a row instead.
-   * A `NULL` value is `null`.
+   * A `NULL` value is `null`, or the value that the type of the value decodes `NULL` to.
    */
   get<
     S extends UnaggregatedQueryState,
@@ -353,7 +354,7 @@ export class SelectQuery<
    * It may return a query of one value, such as of an aggregate of related records, which gives `NULL` without its row.
    * Without a row, it rejects with `NotFoundError`, or with `RequiredRelationError` when a required relation still guarantees the row, such as of `field.form`.
    * An optional or nullable query resolves to `undefined` without a row instead.
-   * A `NULL` value is `null`.
+   * A `NULL` value is `null`, or the value that the type of the value decodes `NULL` to.
    */
   get<S extends UnaggregatedQueryState, Kind extends SelectQueryKind, E extends TypedOperand>(
     this: SelectQuery<S, Kind>,
@@ -492,14 +493,18 @@ export class SelectQuery<
     return this.aggregateBy("countDistinct", arg)
   }
 
-  /** Replaces the selected fields with the smallest value of the column among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`. */
+  /**
+   * Replaces the selected fields with the smallest value of the column among the rows of the query and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+   */
   min<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
   /**
-   * Replaces the selected fields with the smallest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`.
+   * Replaces the selected fields with the smallest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
    *
    * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
    */
@@ -511,14 +516,18 @@ export class SelectQuery<
     return this.aggregateBy("min", arg)
   }
 
-  /** Replaces the selected fields with the largest value of the column among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`. */
+  /**
+   * Replaces the selected fields with the largest value of the column among the rows of the query and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+   */
   max<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
   /**
-   * Replaces the selected fields with the largest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`.
+   * Replaces the selected fields with the largest value of the expression returned by `callback` among the rows of the query and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
    *
    * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
    */
@@ -530,14 +539,18 @@ export class SelectQuery<
     return this.aggregateBy("max", arg)
   }
 
-  /** Replaces the selected fields with the sum of the values of the column among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`. */
+  /**
+   * Replaces the selected fields with the sum of the values of the column among the rows of the query and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+   */
   sum<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
   /**
-   * Replaces the selected fields with the sum of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`.
+   * Replaces the selected fields with the sum of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
    *
    * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
    */
@@ -549,14 +562,18 @@ export class SelectQuery<
     return this.aggregateBy("sum", arg)
   }
 
-  /** Replaces the selected fields with the average of the values of the column among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`; for `bigint` values, average an expression of a type that can represent fractional values. */
+  /**
+   * Replaces the selected fields with the average of the values of the column among the rows of the query and returns it instead of the rows; for `bigint` values, average an expression of a type that can represent fractional values.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+   */
   avg<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
   /**
-   * Replaces the selected fields with the average of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows, or `null` without values other than `NULL`; for `bigint` values, average an expression of a type that can represent fractional values.
+   * Replaces the selected fields with the average of the values of the expression returned by `callback` among the rows of the query and returns it instead of the rows; for `bigint` values, average an expression of a type that can represent fractional values.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
    *
    * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
    */
@@ -568,14 +585,18 @@ export class SelectQuery<
     return this.aggregateBy("avg", arg)
   }
 
-  /** Replaces the selected fields with whether every value of the Boolean column other than `NULL` among the rows of the query is true and returns it instead of the rows, or `null` without such values. */
+  /**
+   * Replaces the selected fields with whether every value of the Boolean column other than `NULL` among the rows of the query is true and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+   */
   every<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
   /**
-   * Replaces the selected fields with whether every value other than `NULL` of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows, or `null` without such values.
+   * Replaces the selected fields with whether every value other than `NULL` of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
    *
    * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
    */
@@ -587,14 +608,18 @@ export class SelectQuery<
     return this.aggregateBy("every", arg)
   }
 
-  /** Replaces the selected fields with whether any value of the Boolean column among the rows of the query is true and returns it instead of the rows, or `null` without values other than `NULL`. */
+  /**
+   * Replaces the selected fields with whether any value of the Boolean column among the rows of the query is true and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+   */
   some<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
     K extends keyof S["table"]["columns"] & string,
   >(this: SelectQuery<S, Kind>, key: K): SelectQuery<ColumnAggregateState<S, K>, Kind>
   /**
-   * Replaces the selected fields with whether any value of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows, or `null` without values other than `NULL`.
+   * Replaces the selected fields with whether any value of the Boolean expression returned by `callback` among the rows of the query is true and returns it instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
    *
    * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
    */
@@ -606,7 +631,10 @@ export class SelectQuery<
     return this.aggregateBy("some", arg)
   }
 
-  /** Replaces the selected fields with the values of the text column other than `NULL` among the rows of the query, joined with `delimiter` in the order of the query, and returns them instead of the rows, or `null` without such values. */
+  /**
+   * Replaces the selected fields with the values of the text column other than `NULL` among the rows of the query, joined with `delimiter` in the order of the query, and returns them instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+   */
   stringAgg<
     S extends UnaggregatedQueryState,
     Kind extends SelectQueryKind,
@@ -617,7 +645,8 @@ export class SelectQuery<
     delimiter: string,
   ): SelectQuery<ColumnAggregateState<S, K>, Kind>
   /**
-   * Replaces the selected fields with the values other than `NULL` of the text expression returned by `callback` among the rows of the query, joined with `delimiter` in the order of the query, and returns them instead of the rows, or `null` without such values.
+   * Replaces the selected fields with the values other than `NULL` of the text expression returned by `callback` among the rows of the query, joined with `delimiter` in the order of the query, and returns them instead of the rows.
+   * Without values other than `NULL`, it returns what its type decodes `NULL` to.
    *
    * `callback` receives the columns and the queries of the relations of the table and returns an expression or a query of one value.
    */
@@ -1127,7 +1156,7 @@ export class SelectQuery<
   /**
    * Converts each record or value of the result in code, after decoding, executed or nested, such as to add a field that SQL cannot compute.
    *
-   * `callback` receives one record or value, also `null` of a `NULL` value, and is not called for a missing row, so an optional query still resolves to `undefined` without a row; it returns its result synchronously.
+   * `callback` receives one record or value, also what a `NULL` value decodes to, such as `null`, and is not called for a missing row, so an optional query still resolves to `undefined` without a row; it returns its result synchronously.
    * The SQL stays as it is, so the methods that read the fields, such as `select` and `count`, and expressions reject the query after it, whereas `where`, `orderBy`, `limit`, `take`, and further `map` apply.
    * A failure of `callback` rejects with `ResultDecodeError`, whose cause is the error.
    */

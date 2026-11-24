@@ -9,7 +9,7 @@ import { defineType } from "../type"
 /**
  * Creates a one-dimensional array type of `element` values.
  *
- * A `NULL` element decodes to `null`; a nullable `element` type, such as `array(text.nullable())`, types such elements.
+ * A `NULL` element decodes to `null`, or to the value that the `element` type decodes `NULL` to; a nullable `element` type, such as `array(text.nullable())`, types such elements.
  * Elements are separated by commas, as in arrays of all built-in types; a custom type with another delimiter, such as `box`, is not supported.
  * An array has `eq`, `ne`, and `in` when its element type has SQL `=`.
  */

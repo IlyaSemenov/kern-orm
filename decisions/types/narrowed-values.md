@@ -1,6 +1,6 @@
 # Values narrowed in types by `of`
 
-`of<T>()` of every type narrows the values that it returns and accepts to `T` only in TypeScript, such as to a union of strings that a `CHECK` constraint allows, to numbers of a `smallint`, or to the shape of JSON values, and returns the type itself at runtime:
+`of<T>()` of a type narrows the values that it returns and accepts to `T` only in TypeScript, such as to a union of strings that a `CHECK` constraint allows, to numbers of a `smallint`, or to the shape of JSON values, and, when it takes the type, returns the type itself at runtime:
 
 ```ts
 type FieldType = "text" | "email" | "choice"

@@ -45,7 +45,7 @@
   - `renderFragment` renders a [fragment of the layer](types.md#sql-fragments-of-the-database-layer) into a statement of the builder through its `ParameterBinder`; `bindParameter`, `encodeParameter`, and `assertUntypedValue` add and encode parameters by the rules of the layer, `quoteIdentifier` quotes a name as `identifier` does, and `cutIdentifier` cuts a name to the bytes that a caller allows, such as the 63 of `maxIdentifierBytes`, in any server encoding (`identifier.ts`), by which the compiler names what it generates.
   - `startSqlQuery` starts a [query of SQL text](sql-queries.md) of a `StatementSource`, which compiles the statement of the builder each time the query executes, as `$query` of a `Db` does.
   - `createSqlColumns` creates the [columns of a record](sql-queries.md#columns-of-records) of a source of the builder, such as of a table, as `columnsOf` of the ORM does.
-  - `takeOnlyRow`, `toMissingResult`, `toValueRows`, and `isRecordKey` apply the rows modes of `ResultMode` and the keys that a record can have, and `createResultDecodeError` and `createFieldDecodeError` create `ResultDecodeError`, so that a result of the builder fails as a result of the layer does.
+  - `decodeNull` returns what `NULL` of a value decodes to with its type, `takeOnlyRow`, `toMissingResult`, `toValueRows`, and `isRecordKey` apply the rows modes of `ResultMode` and the keys that a record can have, and `createResultDecodeError` and `createFieldDecodeError` create `ResultDecodeError`, so that a result of the builder fails as a result of the layer does.
 
 ## Statements
 
@@ -102,7 +102,7 @@
 - The result plan of a query with literals has a record template, which gives every field in its order and the value of each literal.
   Decoding creates each record from the template, so its keys keep the order of the selection, and assigns the values of a row by position among the fields that SQL selects.
 - Result decoding rejects a driver row or a packed row that does not match the result fields instead of reading a missing value as `NULL`.
-  A query of one row rejects more than one row, since it may have no limit; a `NULL` value of a query of values is `null`, not a missing row.
+  A query of one row rejects more than one row, since it may have no limit; a `NULL` value of a query of values is `null`, or the value that its type [decodes `NULL` to](types.md#values-of-null), not a missing row.
 - The class of a decoding error tells which contract the result breaks, wherever its query is nested:
   - A missing row of rows `one` is `NotFoundError`, executed or nested, such as in a field of `$select`.
   - A missing row of a query whose row a required relation guarantees is `RequiredRelationError`, which names the relation: the database breaks the guarantee rather than misses a record that the query looks up.
@@ -146,7 +146,7 @@
   - A scalar value is its PostgreSQL text representation from `format('%s', value)`, which uses the output function of the type, so one `decode` serves the values of a driver row and of a packed row alike, including extension types; an SQL array or a JSON column is a scalar too.
     A scalar of a type with a [read expression](#read-expressions) is the text of the result of the expression, `format('%s', extract(epoch from value))`, as a driver row has it.
     A cast to `text` is not used: those of `boolean`, `inet`, `cidr`, and `char` differ from their output, such as `true` instead of `t`.
-  - SQL `NULL` is JSON `null` through `IS NOT DISTINCT FROM NULL`, since `format` turns it into an empty string, and `IS NULL` also holds for a composite whose fields are all `NULL`.
+  - SQL `NULL` is JSON `null` through `IS NOT DISTINCT FROM NULL`, since `format` turns it into an empty string, and `IS NULL` also holds for a composite whose fields are all `NULL`; decoding reads it as `NULL` of a driver row, by `decodeNull` of the type of its field.
     The test reads the value itself rather than the result of its read expression, which is `NULL` only for `NULL`, so the expression is evaluated once.
   - Nested rows stay JSON inside a packed row and never pass through `format`.
   - A row lock of the nested query stays in the derived source that reads its rows, since PostgreSQL rejects it beside the aggregate.

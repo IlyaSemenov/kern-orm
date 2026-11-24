@@ -98,6 +98,20 @@ const hints = await database.query`SELECT hint FROM form_field`.pluck(t.text.nul
 
 In an array, it applies to the level it is called on: `array(text.nullable())` allows `NULL` elements, and `array(text).nullable()` allows a `NULL` array.
 
+To read `NULL` as another value, such as `undefined` in an application that has no `null`, use `nullableAs` with a function that returns the value synchronously, since decoding does not wait for a Promise:
+
+```ts
+const hint = t.text.nullableAs(() => undefined)
+
+const hints = await database.query`SELECT hint FROM form_field`.pluck(hint)
+// hints: (string | undefined)[]
+```
+
+Statements return the value that the function returns for each `NULL`, also for a `NULL` element of an array of the type, and `param` passes `null` as `NULL`, as for every nullable type.
+Call it after the other changes of the values: the type takes no `transform`, `of`, `nullable`, or `nullableAs` after it, while `with` keeps it.
+
+With `undefined` for `NULL`, `get` of a column gives `undefined` both for `NULL` and, with `optional`, for a missing row; select the column in a record with `select` to tell them apart.
+
 ## Narrowing values
 
 To type a column whose values are a union, such as the type of a form field that a `CHECK` constraint limits, narrow its type with `of`:
@@ -126,7 +140,7 @@ To work with values in another representation, such as `Date` or `Decimal`, deri
 `decode` cannot return `null`: it stands for `NULL`, which [`nullable`](#nullable-values) adds.
 An `encode` that takes `null`, also as `unknown`, makes the type nullable, since a parameter passes `null` as `NULL`.
 
-Every method of a type creates a new type that keeps the changes made before it, so a derived type can be shared and refined further where it is used, such as `decimal` below:
+Every method of a type returns a type that keeps the changes made before it and leaves the type that it is called on as it is, so a derived type can be shared and refined further where it is used, such as `decimal` below; only a type of [`nullableAs`](#nullable-values) takes no further `transform`, `of`, or `nullable`:
 
 ```ts
 import * as t from "kern-db/types"
@@ -154,7 +168,26 @@ await database.query`UPDATE product SET price = ${param(decimal, price)} WHERE i
 
 ## JSON `null` values
 
-To tell a JSON `null` value from `NULL` in a `json` or `jsonb` column, where both read as `null`, derive a type that gives a JSON `null` value a value of your own, such as a symbol:
+A `json` or `jsonb` column that can be `NULL` reads both `NULL` and a JSON `null` value as `null`.
+To tell them apart, read `NULL` as `undefined`:
+
+```ts
+import * as t from "kern-db/types"
+
+const payloadType = t.jsonb.nullableAs(() => undefined)
+
+const payloads = await database.query`SELECT payload FROM job`.pluck(payloadType)
+// undefined for NULL, and null for a JSON null value
+```
+
+`param` passes `null` as `NULL`.
+To write a value that may be a JSON `null` value, pass its JSON text and cast it:
+
+```ts
+await database.query`INSERT INTO job (payload) VALUES (${JSON.stringify(payload)}::jsonb)`
+```
+
+To pass a JSON `null` value as a value of the type instead, derive a type that gives it a value of your own, such as a symbol, while `NULL` stays `null`:
 
 ```ts
 import { param } from "kern-db"

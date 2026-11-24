@@ -1,5 +1,4 @@
 import { describe, expect, it } from "bun:test"
-import { runInNewContext } from "node:vm"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import { createDatabase, NotFoundError, ResultDecodeError } from "kern-db"
@@ -327,40 +326,6 @@ describe("decoding by a recording driver", () => {
     expect(chained?.cause).toMatchObject({
       message: expect.stringContaining("The callback of map"),
     })
-  })
-
-  it("handles the rejection of a Promise that a callback returned, also a later one or of another realm, so that it stays out of unhandled rejections", async () => {
-    const { db } = connect([["a"]])
-    const unhandled: unknown[] = []
-    const onUnhandled = (reason: unknown) => unhandled.push(reason)
-    process.on("unhandledRejection", onUnhandled)
-    try {
-      const rejected = await captureFailure(
-        db.form.pluck("name").transform((): unknown => Promise.reject(new Error("Rejected"))),
-      )
-      const later = await captureFailure(
-        db.form.pluck("name").map(
-          (): unknown =>
-            new Promise((_, reject) => {
-              setTimeout(() => reject(new Error("Rejected later")))
-            }),
-        ),
-      )
-      const ofAnotherRealm = await captureFailure(
-        db.form
-          .pluck("name")
-          .transform((): unknown => runInNewContext("Promise.reject(new Error('Rejected'))")),
-      )
-      // Longer than the timer of the Promise, and than the turn in which a runtime reports an unhandled rejection.
-      await new Promise(resolve => setTimeout(resolve, 10))
-
-      expect(rejected).toBeInstanceOf(ResultDecodeError)
-      expect(later).toBeInstanceOf(ResultDecodeError)
-      expect(ofAnotherRealm).toBeInstanceOf(ResultDecodeError)
-      expect(unhandled).toEqual([])
-    } finally {
-      process.off("unhandledRejection", onUnhandled)
-    }
   })
 
   it("does not execute a bound query that a callback returned", async () => {

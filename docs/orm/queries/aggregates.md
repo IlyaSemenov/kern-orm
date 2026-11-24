@@ -24,7 +24,7 @@ const lastPosition = await db.field.where({ formId }).max("position")
 
 To average a `bigint` column, pass it in a fragment of a type that can represent fractional values, such as ``avg(file => sql(t.doublePrecision)`${file.size}`)``, since its average can have a fractional part.
 
-An aggregate skips `NULL` values and gives `null` without other values, while the counts give `0`.
+An aggregate skips `NULL` values and gives `NULL` without other values, which a query returns as `null`, or as the value that the type of the column [reads `NULL` as](../types#json-null-values), while the counts give `0`.
 To get another value instead, such as `0` for a form without fields, pass it to `coalesce`:
 
 ```ts

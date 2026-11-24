@@ -5,6 +5,15 @@ import * as t from "kern-db/types"
 /** Nullable type; see the file header. */
 export const nullableText = t.text.nullable()
 
+/** Method of a type, whose declaration names the types of its signatures; see the file header. */
+export const nullableOfText = t.text.nullable
+
+/** Method of a type that reads `NULL` as another value, whose declaration names the check of the result of its function; see the file header. */
+export const nullableAsOfText = t.text.nullableAs
+
+/** Type that reads `NULL` as `undefined`; see the file header. */
+export const optionalText = t.text.nullableAs(() => undefined)
+
 /** Type with PostgreSQL type parameters; see the file header. */
 export const decimal = t.numeric.with(10, 2)
 

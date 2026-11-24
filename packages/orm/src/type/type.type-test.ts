@@ -1,11 +1,14 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
-import type { Type as DbType } from "kern-db"
+import type { DerivableType, Type as DbType } from "kern-db"
 import { defineType as defineDbType } from "kern-db"
 
+import { coalesce } from "../expression/functions"
 import type { NoOperators } from "../expression/operators/definitions"
 import { orderingOperators } from "../expression/operators/ordering"
 import { param, sql } from "../expression/sql"
+import type { QueryResult } from "../query/rows"
+import type { AnySelectQuery } from "../query/select"
 import { from } from "../query/select"
 import type { InsertValues } from "../query/values"
 import type { Selectable } from "../table/table"
@@ -220,6 +223,100 @@ describe("transform", () => {
     // @ts-expect-error Without `encode`, compared values stay those of the original type.
     sql(length)`length(name)`.eq(3)
     sql(length)`name`.eq("abc")
+  })
+})
+
+describe("nullableAs", () => {
+  /** Result of executing query `Q`. */
+  type Executed<Q extends AnySelectQuery> = QueryResult<Q["types"]>
+
+  const job = defineTable("job", {
+    id: t.uuid.primaryKey().hasDefault(),
+    payload: t.jsonb.nullableAs(() => undefined),
+  })
+
+  test("keeps the values of a type that include null, accepts null, and keeps the operators", () => {
+    const payload = t.jsonb.nullableAs(() => undefined)
+    expectTypeOf<TypeOutput<typeof payload>>().toEqualTypeOf<unknown>()
+    expectTypeOf<TypeInput<typeof payload>>().toEqualTypeOf<{} | null>()
+    expectTypeOf(payload.operators).toEqualTypeOf(t.jsonb.operators)
+    expectTypeOf(payload).toExtend<DbType<unknown, {} | null>>()
+    t.json.nullable().nullableAs(() => false)
+
+    // @ts-expect-error The function cannot return null, which a type returns without it.
+    t.jsonb.nullableAs(() => null)
+    // @ts-expect-error The function returns its value synchronously.
+    t.jsonb.nullableAs(async () => undefined)
+  })
+
+  test("rejects a type whose values have no null, by which types tell NULL of an expression", () => {
+    // @ts-expect-error The values of `text` have no null.
+    t.text.nullableAs(() => undefined)
+    // @ts-expect-error The values of a nullable type have no null apart from that of NULL.
+    t.varchar
+      .with(255)
+      .nullable()
+      .nullableAs(() => undefined)
+    // @ts-expect-error A shape of `of` has no null.
+    t.jsonb.of<{ choices: string[] }>().nullableAs(() => undefined)
+    // @ts-expect-error A decoder of `transform` returns no null.
+    t.jsonb.transform({ decode: value => ({ value }) }).nullableAs(() => undefined)
+  })
+
+  test("gives a derivable type of kern-db rather than a type of kern-orm for values without null where `this` is not checked, such as of the method passed as a callback", () => {
+    const [hint] = [() => undefined].map(t.text.nullableAs)
+    // @ts-expect-error The result names the reason and is not a column of kern-orm.
+    defineTable("field", { hint: hint! })
+    // @ts-expect-error The result has no operators of kern-orm.
+    void hint!.operators
+
+    const [payload] = [() => undefined].map(t.jsonb.nullableAs)
+    expectTypeOf<TypeOutput<NonNullable<typeof payload>>>().toEqualTypeOf<unknown>()
+  })
+
+  test("leaves a type a derivable type of kern-db, such as for a function of derivable types", () => {
+    const toNullable = <T>(type: DerivableType<T>) => type.nullable()
+    expectTypeOf(toNullable(t.text)).toEqualTypeOf<DerivableType<string | null>>()
+    const contract: DbType<string> = t.text
+    void contract
+  })
+
+  test("leaves `nullable` a method of one signature, which `ReturnType` and a callback read", () => {
+    expectTypeOf<ReturnType<typeof t.text.nullable>>().toEqualTypeOf(t.text.nullable())
+    // @ts-expect-error `nullable` takes no value of NULL.
+    t.text.nullable(() => undefined)
+  })
+
+  test("types the selected values of a column as its values, and its expressions as ones that can be NULL", () => {
+    expectTypeOf<Selectable<typeof job>>().toEqualTypeOf<{ id: string; payload: unknown }>()
+    const payload = from(job).take().get("payload")
+    expectTypeOf<Executed<typeof payload>>().toEqualTypeOf<unknown>()
+    const selected = from(job)
+      .take()
+      .select(job => ({
+        payload: job.payload,
+        isEmpty: job.payload.eq({}),
+        fallback: coalesce(job.payload, {}),
+      }))
+    expectTypeOf<Executed<typeof selected>>().toEqualTypeOf<{
+      payload: unknown
+      isEmpty: boolean | null
+      fallback: unknown
+    }>()
+  })
+
+  test("takes null as NULL in an insert, an update, and a condition, and lets an insert omit the column", () => {
+    const omitted: InsertValues<typeof job> = {}
+    const nulls: InsertValues<typeof job> = { payload: null }
+    void [omitted, nulls]
+    from(job).where({ payload: null })
+    from(job).where(job => job.payload.isNull())
+    from(job).update({ payload: null })
+  })
+
+  test("makes a column that a primary key rejects", () => {
+    // @ts-expect-error A primary key column is not nullable.
+    t.jsonb.nullableAs(() => undefined).primaryKey()
   })
 })
 

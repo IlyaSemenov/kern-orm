@@ -14,6 +14,7 @@ export type {
   typeValues,
 } from "./type/type"
 export { defineType, isType } from "./type/type"
+export type { NotSynchronous, SynchronousResult } from "./utils/synchronous"
 export type {
   Database,
   DatabaseOptions,

@@ -15,7 +15,7 @@
 - A query resolves to the number of the rows of the command tag of its statement, as a mutation without `RETURNING` does; `select` returns records instead, and `get` and `pluck` values, decoded by the types they take, also of the ORM.
   - `take`, `optional`, and `nullable` change the rows mode as for a query of a table, before or after a selection; before a selection, they check the number of the rows as for a mutation of one row.
   - `take` adds no limit, since kern-db does not change the text of a statement, so a query of one row rejects several rows.
-  - Types cannot check what the statement returns: the type of a field declares the values of its column, including whether it is nullable, as `sql(type)` does, and decoding keeps `NULL` as `null` whatever the type.
+  - Types cannot check what the statement returns: the type of a field declares the values of its column, including whether it is nullable, as `sql(type)` does, and decoding keeps `NULL` as `null`, or as the value that the type [decodes `NULL` to](types.md), whether or not the type is nullable.
     A field of a type with a [read expression](types.md) decodes the result of the expression, so the statement must select the field by it.
 - The database layer decodes the result by a flat plan (`decodeFlatResult` of `result.ts`), which has no nested rows, literals, or conversions; its only nested records are those of the [columns of records](#columns-of-records), read from result columns of their own.
 - Records are read by matching the name of each field to `name` of each result column, rather than by position: the statement chooses the order of its columns, and two columns of one type in another order would decode silently.
@@ -47,11 +47,12 @@
 - `select` takes the columns of a record as a field, which is a record of its own under the key of the field: a group of the fields of the flat plan, read from the result columns of their names.
   - A later selection replaces a group as a whole under its key, as it replaces a field of a type.
   - A selection rejects fields that read one result column, such as the columns of two records without prefixes that share a key, when it is made: the statement cannot return a column of that name for each.
-  - A field of a group is `NULL` as any other field is, whatever its type.
+  - A field of a group decodes `NULL` as any other field does, whatever its type.
 - `nullable` of the columns makes their record `null` without its row, such as of a table joined with `LEFT JOIN`, which decoding tells by the result columns of the key of the record being all `NULL`, without decoding the others ([decision](../decisions/sql-queries/missing-row-by-key-columns.md)).
   - The key is the columns that `createSqlColumns` takes as never `NULL` in a row, such as a primary key; columns without all of them, or without a key, require the columns in `by`.
   - A column of the key or of `by` must be among the columns and must not be nullable, since its `NULL` would read as a missing row.
-    Types reject in `by` a column whose values include `null` and a column that is optional in any record of a union of records, which the fragment may not select, and take one whose values are `unknown`, such as of a JSON column, which only its type tells, and a key of an index signature, which `nullable` checks at runtime.
+    Types reject in `by` a column whose values include `null` and a column that is optional in any record of a union of records, which the fragment may not select, and take one whose values are `unknown`, such as of a JSON column, and one of a type of the database layer that decodes `NULL` to a value other than `null`, such as `string | undefined`, which only their types tell, and a key of an index signature, which `nullable` checks at runtime.
+    The presence of a record is told by the `NULL` of its result columns before they are decoded, so a field of a type that decodes `NULL` to a value reads as that value in a record that has its row.
     A record of an index signature of `string` has no known keys for types to tell apart: they take any key in `by`, or none when the values of the index signature are known to include `null`.
   - A row with only some of these columns `NULL` rejects with `ResultDecodeError` of the path of the group.
 - `columnsOf` of the ORM (`query/columns-of.ts`) creates the columns of a table or view, of a query of a table without clauses, such as `db.form`, or of its definition, by the physical names and the types of its columns, all of them or those of its `columns` option in their order.

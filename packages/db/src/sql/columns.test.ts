@@ -203,4 +203,19 @@ describe("nullable", () => {
       'Column "note" is nullable, so its NULL does not tell a missing row of the record',
     )
   })
+
+  it("rejects a column of a type that decodes NULL to a value, in by and in the key, which types do not tell", () => {
+    const payload = {
+      key: "payload",
+      name: "payload",
+      type: text.nullableAs(() => undefined),
+    } as const
+    const message =
+      'Column "payload" is nullable, so its NULL does not tell a missing row of the record'
+
+    expect(() => createSqlColumns([...columns, payload]).nullable({ by: ["payload"] })).toThrow(
+      message,
+    )
+    expect(() => createSqlColumns([...columns, payload], { key: ["payload"] })).toThrow(message)
+  })
 })

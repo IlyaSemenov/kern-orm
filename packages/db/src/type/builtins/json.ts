@@ -16,8 +16,8 @@ export function stringifyJson(value: unknown): string {
   return text
 }
 
-// The values are `unknown`, which includes a JSON `null` value, decoded to `null`, which kern-db does not tell from `NULL`.
-// The accepted values are `{}`, since a `null` that a query passes is `NULL`, so that only `nullable` makes the type nullable.
+// The values are `unknown`, which includes a JSON `null` value, decoded to `null`, as `NULL` is unless `nullableAs` decodes it to another value.
+// The accepted values are `{}`, since a `null` that a query passes is `NULL`, so that only `nullable` and `nullableAs` make the type nullable.
 function defineJsonType(sqlType: string): DerivableType<unknown, {}> {
   // `transform` rejects a decoder that may return `null`, which a JSON `null` value is here.
   return defineType({ sqlType }).transform<{}, {}>({

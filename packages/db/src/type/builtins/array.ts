@@ -2,12 +2,12 @@
 
 import type { TextValue } from "../../driver"
 import type { DerivableType, Type } from "../type"
-import { defineType } from "../type"
+import { decodeNull, defineType } from "../type"
 
 /**
  * Creates a type of one-dimensional arrays of `element` values.
  *
- * A `NULL` element decodes to `null`; a nullable `element` type, such as `array(text.nullable())`, types such elements.
+ * A `NULL` element decodes to `null`, or to the value that the `element` type decodes `NULL` to; a nullable `element` type, such as `array(text.nullable())`, types such elements.
  * Elements are separated by commas, as in arrays of all built-in types; a custom type with another delimiter, such as `box`, is not supported.
  * It rejects an `element` type with a read expression.
  */
@@ -31,7 +31,7 @@ export function array<Output, Input>(
       const values: unknown[] = parseArray(text)
       for (let index = 0; index < values.length; index++) {
         const value = values[index] as TextValue
-        values[index] = value === null ? null : element.decode(value)
+        values[index] = value === null ? decodeNull(element) : element.decode(value)
       }
       return values as Output[]
     },

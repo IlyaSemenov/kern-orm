@@ -52,6 +52,13 @@ describe("array", () => {
     expect(texts.decode(texts.encode(elements))).toEqual(elements)
   })
 
+  it("decodes a NULL element to the value that the element type decodes NULL to, and encodes null as NULL", () => {
+    const texts = array(text.nullableAs(() => undefined))
+
+    expect(texts.decode('{"a",NULL,"NULL"}')).toStrictEqual(["a", undefined, "NULL"])
+    expect(texts.encode(["a", null])).toBe('{"a",NULL}')
+  })
+
   it("keeps the type parameters of the element in the SQL type and not in the cast type", () => {
     expect(array(varchar.with(255)).sqlType).toBe("varchar(255)[]")
     expect(array(varchar.with(255)).castType).toBe("varchar[]")

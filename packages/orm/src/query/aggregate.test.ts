@@ -74,6 +74,24 @@ it("decodes a sum of integer values by their type, rejecting a sum outside the s
   expect(typeOf(from(post).sum("stars")).decode("6")).toEqual({ stars: 6 })
 })
 
+it("decodes NULL of a sum of integer values, such as without rows, as their type does", () => {
+  // A type of any values, since `nullableAs` applies only to values that include null.
+  const anyInteger: AnyType = t.integer
+  const scored = defineTable("scored", {
+    views: t.integer,
+    bonus: anyInteger.nullableAs(() => undefined),
+  })
+  const sum = typeOf(from(scored).sum("bonus"))
+
+  expect(sum.decodeNull!()).toBeUndefined()
+  expect(sum.decode("6")).toBe(6)
+  expect(() => sum.decode(beyondSafe)).toThrow(
+    `Sum ${beyondSafe} is outside the safe integer range of numbers`,
+  )
+  expect(typeOf(from(scored).sum("views")).decodeNull).toBeUndefined()
+  expect(typeOf(from(scored).max("bonus"))).toBe(scored.columns.bonus.type)
+})
+
 it("rejects a sum of integer values of a type with a read expression, whose result its check of the range cannot read", () => {
   const read = (value: string) => `'#' || ${value}`
   const tag = defineTable("tag", {

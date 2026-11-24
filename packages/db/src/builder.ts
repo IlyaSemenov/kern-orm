@@ -25,6 +25,8 @@ export { createSqlColumns } from "./sql/columns"
 export type { GuaranteedColumnKeys, IsIndexKey, PickSelectedColumns } from "./selected-columns"
 // The types that the columns of a builder name, so that a module that imports only this entry point emits its declarations.
 export type { AnyType, TypeOutput } from "./type/type"
+export { decodeNull } from "./type/type"
+export { rejectThenable } from "./utils/synchronous"
 export type { ParameterBinder } from "./sql/fragment"
 export { renderFragment, SqlFragment } from "./sql/fragment"
 export { assertUntypedValue, bindParameter, encodeParameter } from "./sql/parameter"

@@ -1,5 +1,8 @@
 // Types: the contract by which the database layer converts the values of a PostgreSQL type, and the types that `defineType` creates.
 
+import type { SynchronousResult } from "../utils/synchronous"
+import { rejectThenable } from "../utils/synchronous"
+
 declare const typeValues: unique symbol
 // Exported so that a type of a query builder declares the members of a type without extending `Type`.
 export type { typeValues }
@@ -36,6 +39,8 @@ export interface Type<Output, Input = Output> {
    * Statements returning a value of this type must select it through this expression.
    */
   readonly read: ((value: string) => string) | undefined
+  /** Optional function that returns the value that a result has for `NULL` instead of `null`, such as `undefined`; it does not read `this`. */
+  readonly decodeNull: (() => Exclude<Output, null>) | undefined
 }
 
 /** Type of any values. */
@@ -95,6 +100,17 @@ export interface BaseDerivableType<
   }): DerivableType<NewOutput | AcceptedNull<Input>, Input, Parameters>
   /** Creates a type whose values include `null`, which stands for `NULL`. */
   nullable(): DerivableType<Output | null, Input | null, Parameters>
+  /**
+   * Creates a nullable type that returns the value of `decodeNull` for `NULL` instead of `null`, such as `undefined`, which tells `NULL` of a `jsonb` value from a JSON `null` value.
+   *
+   * `decodeNull` is called for each `NULL`, so it can return a new object each time; it must return its value synchronously, and not `null`.
+   * The type accepts `null`, which stands for `NULL`, as every nullable type does.
+   * Its values are final: its `transform`, `of`, and `nullable` reject, so call them before it.
+   * Its `nullableAs` rejects too, so call it once with one function.
+   */
+  nullableAs<Null extends {} | undefined>(
+    decodeNull: () => Null & SynchronousResult<Null>,
+  ): DerivableType<Exclude<Output, null> | Null, Input | null, Parameters>
   /**
    * Narrows the values of this type to `T` in TypeScript, such as to a union of strings that a `CHECK` constraint allows, or to the shape of JSON values.
    *
@@ -199,6 +215,7 @@ export function defineType(
     encode: keepText,
     decode: keepText,
     read,
+    decodeNull: undefined,
     isNullable: false,
     formatSqlType: undefined,
   })
@@ -217,6 +234,25 @@ export function isType(value: unknown): value is AnyType {
   return typeof value === "object" && value !== null && typeBrand in value
 }
 
+/**
+ * Returns the value that a result has for `NULL` of a value of `type`: `null`, or the value of `decodeNull` of a type that has it.
+ *
+ * It rejects a thenable that `decodeNull` returns, such as of an async function, which types reject: it would leave a Promise in the result and lose its error.
+ */
+export function decodeNull(type: AnyType): unknown {
+  const decode = type.decodeNull
+  if (decode === undefined) {
+    return null
+  }
+  const value = decode()
+  rejectThenable(value, decodeNullMessage)
+  return value
+}
+
+/** Message of the error of a thenable that `decodeNull` of a type returns. */
+const decodeNullMessage =
+  "The function of nullableAs() must return the value of NULL synchronously, not a Promise or a query"
+
 interface TypeState {
   readonly sqlType: string
   readonly castType: string
@@ -224,6 +260,7 @@ interface TypeState {
   readonly encode: (value: any) => string
   readonly decode: (text: string) => unknown
   readonly read: ((value: string) => string) | undefined
+  readonly decodeNull: (() => unknown) | undefined
   readonly isNullable: boolean
   /** Formats the SQL type name with type parameters; types without parameters have none. */
   readonly formatSqlType: ((...parameters: never[]) => string) | undefined
@@ -231,6 +268,16 @@ interface TypeState {
 
 function createType(state: TypeState): AnyDerivableType {
   const derive = (changes: Partial<TypeState>) => createType({ ...state, ...changes })
+  // The values of a type do not tell in types what its `NULL` decodes to, so the types of a type derived from them would give `null` for it.
+  const rejectDecodedNull = (method: string) => {
+    if (state.decodeNull !== undefined) {
+      throw new TypeError(
+        method === "nullableAs"
+          ? "nullableAs() cannot change a type that decodes NULL to a value; call it once with one function"
+          : `${method}() cannot change a type that decodes NULL to a value, which nullableAs() creates`,
+      )
+    }
+  }
   const { formatSqlType } = state
   // The brand and the members are own enumerable properties, so that an object that copies them, with members of its own, is a type.
   const type: AnyDerivableType = Object.freeze({
@@ -241,21 +288,37 @@ function createType(state: TypeState): AnyDerivableType {
     encode: state.encode,
     decode: state.decode,
     read: state.read,
+    decodeNull: state.decodeNull,
     // oxlint-disable-next-line typescript/no-explicit-any -- the caller types the values
-    transform: ({ decode, encode }: Partial<TypeTransform<any, any, any, any>>) =>
-      derive({
+    transform: ({ decode, encode }: Partial<TypeTransform<any, any, any, any>>) => {
+      rejectDecodedNull("transform")
+      return derive({
         encode: encode ? value => state.encode(encode(value)) : state.encode,
         decode: text => decode!(state.decode(text)),
-      }),
+      })
+    },
     withParameters: (format: (...parameters: never[]) => string) =>
       derive({ formatSqlType: format }),
     // Type parameters change only the SQL type name, so the other changes of the type are kept.
     ...(formatSqlType && {
       with: (...parameters: never[]) => derive({ sqlType: formatSqlType(...parameters) }),
     }),
-    nullable: () => derive({ isNullable: true }),
-    // The narrowed values exist only in TypeScript.
-    of: () => type,
+    nullable: () => {
+      rejectDecodedNull("nullable")
+      return derive({ isNullable: true })
+    },
+    nullableAs: (decodeNull: () => unknown) => {
+      rejectDecodedNull("nullableAs")
+      if (typeof decodeNull !== "function") {
+        throw new TypeError("nullableAs() takes a function that returns the value of NULL")
+      }
+      return derive({ isNullable: true, decodeNull })
+    },
+    of: () => {
+      rejectDecodedNull("of")
+      // The narrowed values exist only in TypeScript.
+      return type
+    },
   }) as unknown as AnyDerivableType
   return type
 }

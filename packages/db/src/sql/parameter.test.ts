@@ -59,6 +59,15 @@ describe("encodeParameter", () => {
     expect(getThrownError(() => encodeParameter(undefined, undefined))).toEqual(error)
     expect(() => encodeParameter(undefined, type)).toThrow("Query parameter is undefined")
   })
+
+  it("passes null as NULL and rejects undefined with a type that decodes NULL to undefined", () => {
+    const optional = text.nullableAs(() => undefined)
+
+    expect(encodeParameter(null, optional)).toBeNull()
+    expect(getThrownError(() => encodeParameter(undefined, optional))).toEqual(
+      new TypeError("Query parameter is undefined; use null for NULL"),
+    )
+  })
 })
 
 describePostgres("values without a type in PostgreSQL", ({ database, testTransaction }) => {

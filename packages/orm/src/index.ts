@@ -107,7 +107,15 @@ export type {
   TypeOptions,
   TypeTransform,
 } from "kern-db"
-export type { AnyType, BaseType, Type, TypeInput, TypeOperators, TypeOutput } from "./type/type"
+export type {
+  AnyType,
+  BaseType,
+  Type,
+  TypeInput,
+  TypeOperators,
+  TypeOutput,
+  ValuesWithoutNull,
+} from "./type/type"
 export { defineType } from "./type/type"
 export type { CompileOptions } from "./compiler/postgres/compile"
 export type { OneRow, OneValueRows, ResultByRows, ResultRows, ValueRows } from "kern-db"
@@ -216,10 +224,9 @@ export type {
   SqlQueryState,
 } from "kern-db"
 export type { AnyRecordQuery, RecordQuery, RecordQueryState, SelectionState } from "./query/record"
+export type { NotSynchronous, SynchronousResult } from "kern-db"
 export type {
   AnyTransformedQuery,
-  NotSynchronous,
-  SynchronousResult,
   TransformedQuery,
   TransformedQueryState,
 } from "./query/conversion"

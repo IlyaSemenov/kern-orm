@@ -1,8 +1,7 @@
 // Conversions of results: `map` and `transform` of a query, whose result code converts after decoding, with the SQL of that query.
 
-import { types } from "node:util"
-
-import type { SqlStatement } from "kern-db"
+import type { SqlStatement, SynchronousResult } from "kern-db"
+import { rejectThenable } from "kern-db/builder"
 
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
@@ -10,7 +9,6 @@ import { operandNode } from "../expression/expression"
 import type { ResultConversion } from "../result/result"
 import type { UsedRelation } from "../schema/relation"
 import type { AnyRowSource } from "../table/table"
-import type { IsAny } from "../utils/type-helpers"
 
 import { createComment } from "./comment"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
@@ -18,19 +16,6 @@ import { compileToSQL, executeOnAwait } from "./kind"
 import type { QueryNode } from "./node"
 import type { QueryResult } from "./rows"
 import type { QueryState } from "./state"
-
-/** Type that the result of a callback of `transform` and `map` is checked against when it may be a Promise. */
-export interface NotSynchronous {
-  readonly "the callback must return its result synchronously": never
-}
-
-// Decoding is synchronous, so nothing would wait for a Promise in a field of nested rows, and `then` and `$execute` would need to type each result by what `await` makes of it.
-/** Check of `R`, the result of a callback of `transform` and `map`: it fails against `NotSynchronous` when `R` may be a Promise, such as a union with one, but not for `any` and `unknown`. */
-export type SynchronousResult<R> = [Extract<R, PromiseLike<unknown>>] extends [never]
-  ? unknown
-  : IsAny<R> extends true
-    ? unknown
-    : NotSynchronous
 
 /** State of a query of `transform` of a table in types: over table `T`, whose whole result is `R`, selecting records of relations `U`. */
 export interface TransformedQueryState<
@@ -187,21 +172,10 @@ function createConversion(
   if (typeof callback !== "function") {
     throw new TypeError(`${method} takes a callback`)
   }
+  const message = `The callback of ${method} must return its result synchronously, not a Promise or a query`
   return value => {
     const result = callback(value)
-    if (typeof (result as { then?: unknown } | null | undefined)?.then === "function") {
-      // The query fails here, so a rejection of the Promise would reach no code, and end the process as an unhandled rejection.
-      // Only a Promise, of any realm: calling `then` of another value, such as a bound query, could execute it.
-      if (types.isPromise(result)) {
-        result.catch(ignoreRejection)
-      }
-      throw new TypeError(
-        `The callback of ${method} must return its result synchronously, not a Promise or a query`,
-      )
-    }
+    rejectThenable(result, message)
     return result
   }
 }
-
-/** Handles the rejection of a Promise that a callback returned, whose query has failed already. */
-function ignoreRejection(): void {}

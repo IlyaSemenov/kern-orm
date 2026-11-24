@@ -41,6 +41,22 @@ describe("records", () => {
     ])
   })
 
+  it("decodes NULL of a field of a type that decodes it to a value as that value", () => {
+    const payload = t.jsonb.nullableAs(() => undefined)
+
+    expect(
+      decodeResult(createRecordsPlan([fields[0]!, { key: "payload", type: payload }]), [
+        ["1", null],
+        ["2", "null"],
+        ["3", '"x"'],
+      ]),
+    ).toStrictEqual([
+      { id: 1, payload: undefined },
+      { id: 2, payload: null },
+      { id: 3, payload: "x" },
+    ])
+  })
+
   it("starts a record from the template of the plan, keeping its keys in order and its values as they are", () => {
     const value = { nested: true }
     const [record] = decodeResult(
@@ -295,6 +311,28 @@ describe("nested rows", () => {
 
     expect(decodeResult(plan, [[null, '[[null], [[null]], [["Name"]]]']])).toEqual([
       { label: undefined, fields: [{ label: undefined }, { label: null }, { label: "Name" }] },
+    ])
+  })
+
+  it("decodes NULL of a nested value of a type that decodes it to a value as that value, and a missing nested row by its rows mode", () => {
+    const payloadField: ResultField = {
+      key: "payload",
+      type: t.jsonb.nullableAs(() => undefined),
+    }
+    const payload: ResultField = {
+      key: "payload",
+      nested: { fields: [payloadField], rows: "nullable", value: true },
+    }
+    const plan = createRecordsPlan([payload, nestedField("jobs", [payloadField], "many")])
+
+    expect(
+      decodeResult(plan, [
+        [null, '[[null], ["null"], ["1"]]'],
+        ["[null]", "[]"],
+      ]),
+    ).toStrictEqual([
+      { payload: null, jobs: [{ payload: undefined }, { payload: null }, { payload: 1 }] },
+      { payload: undefined, jobs: [] },
     ])
   })
 

@@ -28,6 +28,14 @@ A custom type declares `read`, the SQL expression that reads its values, such as
 - Drizzle ORM, lacks: `customType` has `fromDriver` and `toDriver`, and a select list selects the column as it is ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/columns/custom.ts#L185-L197), [drizzle-orm#554](https://github.com/drizzle-team/drizzle-orm/issues/554)).
   Drizzle ORM 1.0.0-rc.6 has `forJsonSelect`, which changes the SQL of a column inside JSON functions, such as of relational queries, and not in a select list ([source](https://github.com/drizzle-team/drizzle-orm/blob/v1.0.0-rc.6/drizzle-orm/src/pg-core/columns/custom.ts#L272-L325)).
 
+## `NULL` read as another value
+
+A type of `nullableAs` returns the value of its function for `NULL` instead of `null`, such as `undefined`, in every result that the type decodes, and takes `null` as `NULL`.
+
+- Orchid ORM, differs: `parseNull` of a column replaces a selected `null` with the value of its function ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/common-column-methods.md#parsenull), [source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/columns/column.utils.ts#L28-L30)).
+  - On node-postgres, the driver parses a `jsonb` value to JavaScript before `parseNull`, so a JSON `null` value reads as the value of the function too, as `NULL` does ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/adapters/node-postgres.ts#L58-L64)).
+  - An insert of one record does not call `encode` of a column for `null`, which it writes as `NULL`, while `insertMany` calls it for `null` ([one record](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/basic-features/mutate/create.ts#L525-L532), [many](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/basic-features/mutate/create.ts#L571-L577)).
+
 ## Column naming conventions
 
 `createTableFactory` takes any conversion of column keys to physical names, such as `toSnakeCase` or one of a legacy database.

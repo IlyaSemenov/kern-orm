@@ -57,7 +57,7 @@ bench("chain of nullable, transform, and with", () => {
     .nullable()
     .transform({ decode: value => Number(value) })
     .with(10, 2)
-}).types([150, "instantiations"])
+}).types([145, "instantiations"])
 
 bench("array", () => {
   return t.array(t.text)

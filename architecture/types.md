@@ -7,7 +7,7 @@
   - `Type` of `kern-db` has only these members, without the methods that derive types, so that an API that takes a type infers its values from them alone.
   - `encode` and `decode` are properties of function types rather than methods, whose parameters TypeScript compares bivariantly, so a type is not a type of more accepted values, such as of numbers for `text`.
     They must not read `this`, so that an object that copies them calls the same functions.
-  - `defineType` of `kern-db` creates a `DerivableType`, which adds `nullable`, `transform`, `of`, and `withParameters`, and, once `withParameters` gave it a format, `with`; each returns a derivable type, by the rules of the same methods of a type of the ORM.
+  - `defineType` of `kern-db` creates a `DerivableType`, which adds `nullable`, `nullableAs`, `transform`, `of`, and `withParameters`, and, once `withParameters` gave it a format, `with`; each returns a derivable type, by the rules of the same methods of a type of the ORM, except that its `nullableAs` applies whatever the values of the type, and that of the ORM only to values that include `null` ([values of `NULL`](#values-of-null)).
     It rejects a type, also of the ORM, in place of its options, in types and at runtime, since it would take only its SQL type names and lose its conversion and nullability.
   - A type is told from other objects at runtime by its brand, never by its shape.
     Its brand and members are own enumerable properties, so that an object that copies them, with members of its own, is a type too.
@@ -20,23 +20,33 @@
       An expression that needs the value at several places calls a PostgreSQL function of one argument; a scalar subquery of the value would evaluate a value that refers to no row, such as `random()`, once for the statement.
     - The expression takes the value in the PostgreSQL type of the expression that a query reads, which is wider than the type of the column where PostgreSQL computes it in another type, such as the `numeric` average of `integer` values, as `decode` takes the text of that type.
     - A statement must select a value of such a type by the expression wherever it returns the value: the columns of a record and the [queries of the ORM](sql.md#read-expressions) do, and a statement of SQL text written by hand must select it itself.
-    - The expression must be `NULL` for `NULL` and for no other value: decoding keeps `NULL` as `null` without `decode`, packing tests the value itself, and the columns of a record tell a missing row by the `NULL` of the result columns of their key, so a column of a key may have such a type.
+    - The expression must be `NULL` for `NULL` and for no other value: decoding reads `NULL` without `decode`, packing tests the value itself, and the columns of a record tell a missing row by the `NULL` of the result columns of their key, so a column of a key may have such a type.
     - The built-in types have none, so the SQL of their queries does not depend on it.
     - `array` rejects an element type with one, since the expression does not apply to the elements of an array; it rejects when it is called, since the values of a type do not tell its expression in types.
+  - A nullable type may decode `NULL` to a value other than `null`, by the function that `nullableAs` takes, which returns the value, such as `undefined`, which tells `NULL` of a `jsonb` value from a JSON `null` value ([decision](../decisions/types/null-decoded-to-a-value.md)).
+    - It is the member `decodeNull` of the contract, `undefined` for a type whose `NULL` is `null`; an object that copies the members of a type keeps it, such as a type of the ORM.
+      `decodeNull` of the layer (`type/type.ts`) returns what `NULL` decodes to with a type, which every place that decodes a value calls for `NULL` alone, so a value other than `NULL` costs nothing more: a flat result, a `NULL` element of `array`, and the result of a builder, which takes it from `kern-db/builder`.
+    - The function is called for each `NULL`, so it can return a new object each time; it must not read `this`, must not return `null`, and must return its value synchronously, since decoding is synchronous, which types check.
+      At runtime, `decodeNull` of the layer rejects a thenable that it returns, such as of an async function, so that it fails decoding rather than leaving a Promise in the result, as a callback of `map` of a query does ([converting results](queries.md#converting-results)); a value other than `NULL` does not reach the check.
+    - It changes only what a result returns: the type accepts `null`, which a parameter passes as `NULL`, and rejects `undefined` as every parameter does, also when it returns `undefined` for `NULL`.
+    - The values that such a type returns do not tell in types what its `NULL` decodes to, also when they have no `null`, such as `string | undefined` of `text`, so a type derived from them would return `null` for `NULL` in types.
+      So its `transform`, `of`, `nullable`, and `nullableAs` reject when they are called, and `nullableAs` must be the last change of the values of a type; `withParameters` and `with` keep it.
+    - `nullableAs` is a method of its own rather than an overload of `nullable` ([decision](../decisions/types/null-decoded-to-a-value.md)).
+    - The values of `decode` in types include the value of `decodeNull`, since the contract types both by the values that the type returns.
   - The built-in types live in `type/builtins/`, under their names; a built-in type of `kern-orm/types` is `defineType` of the ORM of the type of `kern-db/types` with the operators of the type.
-    `array` of the layer builds only the representation of an array of a type, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type of the ORM adds `orderingOperators`.
+    `array` of the layer builds only the representation of an array of a type, whose `NULL` elements decode as its element type decodes `NULL`, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type of the ORM adds `orderingOperators`.
 - **Type of the ORM** (`type/` of `kern-orm`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
   A type of the ORM is a type of the database layer with operators and the factories of columns.
   `defineType` of the ORM creates a type from the options of `defineType` of `kern-db`, from a derivable type of `kern-db`, such as one defined without the ORM, or from another type of the ORM; it keeps the values and the type parameters of the type it takes, without the operators of a type of the ORM.
   PostgreSQL type parameters, such as `varchar.with(255)`, change only the SQL type name and not the cast type of parameters, so they apply at any point of a chain of type changes.
   `nullable` adds `null` to the values that a type returns and accepts, where it stands for `NULL`, as `coalesce`, object conditions, and the results of operators read it, so the decoder of `transform` cannot return `null` in types; it can return `undefined`, which stays a value and reaches the decoder of a type derived from it.
   A type is nullable when it accepts `null`, which a query always passes as `NULL`: `primaryKey`, the keys of a table, `of`, and `transform` read nullability from the values that a type accepts rather than from those that it returns ([decision](../decisions/types/nullability-of-accepted-values.md)), so an `encode` of `transform` that takes `null`, also as `unknown`, makes the type nullable.
-  At runtime, only `nullable` sets `isNullable`, which `defineTable` and `$relations` check, since a function does not tell the values it takes.
-  - The values of `json` and `jsonb` are `unknown`, which includes a JSON `null` value: it decodes to `null`, which kern-orm does not tell from `NULL`.
-    They accept `{}`, the values other than `null`, so that only `nullable` makes them nullable.
+  At runtime, only `nullable` and `nullableAs` set `isNullable`, which `defineTable` and `$relations` check, since a function does not tell the values it takes.
+  - The values of `json` and `jsonb` are `unknown`, which includes a JSON `null` value: it decodes to `null`, which kern-orm does not tell from `NULL` unless the type [decodes `NULL` to a value](#values-of-null).
+    They accept `{}`, the values other than `null`, so that only `nullable` and `nullableAs` make them nullable.
   - For such values, `coalesce` keeps `unknown`, and the result of an operator includes `null`, such as of `eq` of a `jsonb` column that is not nullable, until `of` declares a shape, which has no `null`.
     Consumers require `strictNullChecks`, without which `null` belongs to every type; `primaryKey` then rejects every type and column with an error that names the option.
-    `of<T>()` of every type narrows the values that it returns and accepts to `T` only in types, and returns the type itself at runtime, since values are not validated ([decision](../decisions/types/narrowed-values.md)).
+    `of<T>()` of a type narrows the values that it returns and accepts to `T` only in types, and returns the type itself at runtime, since values are not validated ([decision](../decisions/types/narrowed-values.md)); it rejects a type that [decodes `NULL` to a value](#values-of-null).
   - `T` must be among the values that the type both returns and accepts, since a narrowed value reaches its encoder; a type that accepts none of the values it returns, such as one whose `transform` decodes text into numbers without `encode`, rejects every `T` with an error that names the reason.
   - `nullable` adds `null` before or after `of`, which keeps it beside `T`.
   - Generic operators, such as `eq`, `in`, and `lt`, read `T` from the expression, while an operator defined as a function keeps the values of the type it was added to, and a pattern of `like` stays a string.
@@ -57,6 +67,26 @@
   Its `Self` constraint checks which types can receive it through `withOperators`, independently of its method signature on derived types; the implementation accepts any expression because `transform` can change the value representation.
   An expression without a type, such as `sql<T>`, has `isNull` and the operators of `equalityOperators`, because a TypeScript type does not determine a SQL type.
 
+## Values of `NULL`
+
+- A type of `nullableAs` returns the value of its function for every `NULL` that it decodes, and takes `null` as `NULL` as every nullable type does.
+  - A result has the value wherever the type decodes it: a field of a column or of an expression of the type, in the row of a statement and in a packed row, the value of `get` and `pluck`, and `NULL` of an expression that has the type, such as of `param` of the type with `null`.
+    The type of a sum of `smallint` and `integer` values keeps `decodeNull` of its argument, so that a sum decodes `NULL` as the other aggregates of its values do.
+  - A missing row is told apart from the type: nested rows of rows `nullable` are `null` and of rows `optional` `undefined` without their row, whatever their value decodes `NULL` to.
+    A query of `get` of rows `optional` of a type that decodes `NULL` to `undefined` resolves to `undefined` for both, which a record of the row tells apart.
+  - Queries pass `NULL` as `null`: an insert, an update, an object condition, `param`, and the plain `null` of `caseWhen`; `undefined` keeps its meaning, a column that an insert omits and an update keeps, and no parameter.
+    So a query cannot pass the value that such a type returns for `NULL` back as `NULL`, and `jsonb` cannot take a JSON `null` value as a plain value, which a `sql` fragment writes.
+- Types tell that an expression can be `NULL` by `null` among its values, so `nullableAs` of a type of the ORM applies only when the values of the type include `null` beside that of `NULL`, such as the `unknown` values of `json` and `jsonb` without a shape of `of`, which keep `null` beside the value of `decodeNull`.
+  - The expressions of such a type are typed as those of the type of `nullable`: the result of an operator, such as `eq`, includes `null`, and `coalesce` keeps `unknown`.
+  - Types reject another type, such as `text`, `jsonb` with a shape, or a type of `transform`, whose values would have no `null`, with an error that names the reason: the result of an operator of another type, such as `eq` or `length`, would be typed without `null` although it is `NULL` when the expression is.
+    The runtime does not tell the values of a type, so only types reject it.
+    The result of the method is typed as the reason too, so that the method passed as a callback, whose `this` types do not check, gives no type of the ORM.
+  - The result of the method for values without `null` is typed as the reason and as a `DerivableType` of the database layer, which has no operators and which a table rejects, so that `nullableAs` does not keep a type of the ORM from a function of derivable types, such as `t.text` from a parameter of `DerivableType<string>`.
+    Typed as a `DerivableType`, a type of the ORM applies `nullableAs` whatever its values and returns a type of the ORM at runtime.
+  - `defineType` of the ORM rejects a type that decodes `NULL` to a value when it is called, also a type of the ORM, since it does not check the values; `nullableAs` of the type that it defines applies when its values include `null`.
+    A type of the database layer has no expressions, so its `nullableAs` applies whatever its values.
+  - Lifting the restriction needs nullability apart from the values, which the [backlog](../backlog/passing-a-value-as-null.md) keeps.
+
 ## Expression objects
 
 - Library code builds expressions from nodes and calls no expression method except `eq` for an object condition, so a custom operator changes only its own calls and the object conditions of its type.
@@ -75,7 +105,7 @@
 - Built-in Boolean expressions carry the Boolean runtime type for encoding and decoding.
   Their nullability is tracked only in TypeScript: results include `null` when the value of the expression an operator is called on or of an operand can be `NULL`, such as of a nullable column, of a query of `get` without its row, or among the values of a query of `in`.
   `isNull` and `in` with an empty list never include it, and `and`/`or` include it when any operand does, such as a query of a condition whose value can be `NULL` ([queries](queries.md#queries-in-expressions)).
-  The shared runtime type does not describe whether an expression can evaluate to `NULL`; result decoding preserves `NULL` independently of it.
+  The shared runtime type does not describe whether an expression can evaluate to `NULL`; result decoding reads `NULL` independently of it.
 
 ## Functions of expressions
 

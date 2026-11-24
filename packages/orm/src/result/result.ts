@@ -4,6 +4,7 @@ import type { ResultMode } from "kern-db/builder"
 import {
   createFieldDecodeError,
   createResultDecodeError,
+  decodeNull,
   takeOnlyRow,
   toMissingResult,
 } from "kern-db/builder"
@@ -39,7 +40,7 @@ export interface RecordTemplateField {
 
 /** How code converts the decoded result of a query, by `map` and `transform` of the query: `map` runs before `transform`, since `map` does not apply after `transform`. */
 export interface ResultConversion {
-  /** Converts each record or value, also `null` of a `NULL` value, and is not called for a missing row. */
+  /** Converts each record or value, also what a `NULL` value decodes to, such as `null`, and is not called for a missing row. */
   readonly map: ((row: unknown) => unknown) | undefined
   /** Converts the whole result, once: an array of rows, one row, or `null` or `undefined` of a missing row. */
   readonly transform: ((result: unknown) => unknown) | undefined
@@ -329,7 +330,7 @@ function createRecord(plan: ResultPlan): Record<string, unknown> {
   return record
 }
 
-/** Decodes the value of a field in a row of the driver: a scalar from its text, keeping `NULL` as `null`, or nested rows from JSON text. */
+/** Decodes the value of a field in a row of the driver: a scalar from its text, `NULL` as `decodeNull` gives it, or nested rows from JSON text. */
 function decodeDriverValue(field: ResultField, value: unknown): unknown {
   if (value === undefined) {
     throw new Error("Driver returned no value")
@@ -337,16 +338,16 @@ function decodeDriverValue(field: ResultField, value: unknown): unknown {
   if (field.nested !== undefined) {
     return decodeNested(field.nested, value === null ? null : JSON.parse(value as string))
   }
-  return value === null ? null : field.type.decode(value as string)
+  return value === null ? decodeNull(field.type) : field.type.decode(value as string)
 }
 
-/** Decodes the value of a field in a packed row: a scalar from its text, keeping JSON `null` as `null`, or nested rows from parsed JSON. */
+/** Decodes the value of a field in a packed row: a scalar from its text, JSON `null`, which stands for `NULL`, as `decodeNull` gives it, or nested rows from parsed JSON. */
 function decodePackedValue(field: ResultField, value: unknown): unknown {
   if (field.nested !== undefined) {
     return decodeNested(field.nested, value)
   }
   if (value === null) {
-    return null
+    return decodeNull(field.type)
   }
   if (typeof value !== "string") {
     throw new TypeError(`Nested value must be text, not ${describeJson(value)}`)

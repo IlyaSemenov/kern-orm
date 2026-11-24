@@ -736,7 +736,7 @@ bench("query of SQL text of fields of types", async () => {
     id: t.uuid,
     name: t.text,
   })
-}).types([65, "instantiations"])
+}).types([69, "instantiations"])
 
 bench("columns of a table", () => {
   columnsOf(tenantDb.form, { alias: "f" })

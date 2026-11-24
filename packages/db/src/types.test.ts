@@ -9,7 +9,7 @@ import { param, sql } from "./sql/fragment"
 import type { AnyType } from "./type/type"
 import * as t from "./types"
 
-it("loads only the modules of types", async () => {
+it("loads only the modules of types and the generic helpers", async () => {
   const sources = fileURLToPath(new URL(".", import.meta.url))
   const { metafile } = await build({
     entryPoints: ["./types.ts"],
@@ -23,8 +23,10 @@ it("loads only the modules of types", async () => {
   })
 
   const modules = Object.keys(metafile.inputs).filter(path => path !== "types.ts")
-  // No other module of kern-db, such as the transaction coordinator.
-  expect(modules.filter(path => !path.startsWith("type/"))).toEqual([])
+  // No other module of kern-db, such as the transaction coordinator, apart from its generic helpers.
+  expect(modules.filter(path => !path.startsWith("type/") && !path.startsWith("utils/"))).toEqual(
+    [],
+  )
   expect(modules).toContain("type/builtins/datetime.ts")
 })
 

@@ -278,7 +278,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 - An aggregate method makes a query of the value of an aggregate function over the rows of the query, as a value of rows `one`, whatever its rows and value, unless it is an aggregate query or a query of [`exists`](#exists): it replaces the projections with the projection of the aggregate and ends the guarantee of the row, since an aggregate query always returns one row.
   - `count` without an argument is `count(*)`; with a column or an expression, `count` and `countDistinct` count its values other than `NULL`, each distinct value once for `countDistinct`.
-  - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `null` without values other than `NULL`.
+  - `min`, `max`, `sum`, `avg`, `every`, `some`, and `stringAgg` call `min`, `max`, `sum`, `avg`, `bool_and`, `bool_or`, and `string_agg`, whose value is `NULL` without values other than `NULL`, which the type of the aggregate decodes, to `null` unless it [decodes `NULL` to a value](types.md#values-of-null).
   - The argument is a column key or a callback that returns an expression with a type or a query of one value, as of `get` and `pluck`.
     Types do not check that PostgreSQL has the aggregate for the type of the argument, such as `sum` of `text` or `max` of `uuid`, which PostgreSQL rejects when the statement runs.
 - A count is a `bigint` of PostgreSQL decoded as a number, with the operators of `orderingOperators`; a count outside the safe integer range of numbers fails to decode with `ResultDecodeError`, and a fragment of `sql(t.bigint)` gives a `bigint`.
@@ -427,11 +427,13 @@ Queries come in two kinds that share the query methods and differ only by execut
   `map` calls its callback with each record or value, and `transform` once with what the query resolves to, also `null` or `undefined` of a missing row.
   Conversions run in their order, and the earlier ones feed the later ones; every `map` runs before every `transform`, since `map` does not apply after `transform`.
   - `map` does not call its callback for a missing row, which it tells from the absence of the row rather than from the value, since a row may decode to `null` or `undefined`.
-  - `map` calls its callback with `null` for a `NULL` value, such as of an aggregate without rows, since it is a value of its row rather than a missing row ([result modes](#result-modes)), and types tell the callback to handle it.
+  - `map` calls its callback with what a `NULL` value decodes to, `null` unless its type [decodes `NULL` to a value](types.md#values-of-null), such as of an aggregate without rows, since it is a value of its row rather than a missing row ([result modes](#result-modes)), and types tell the callback to handle it.
   - The callback of `map` takes one argument, and `transform` of the array gives the index ([backlog](../backlog/index-in-the-callback-of-map.md)).
   - A callback must return its result synchronously, since decoding is synchronous.
     Nothing would wait for a Promise in a field of nested rows, and `then` and `$execute` would need to type each result by what `await` makes of it, on every query.
-    Types reject a result that may be a Promise, including a bound query, through `SynchronousResult`, which `any` and `unknown` pass, and at runtime such a result fails decoding, whichever the type tells, without calling its `then`, which would execute a bound query.
+    Types reject a result of which a member of the union has a method `then`, such as a Promise or a bound query, through `SynchronousResult`, which `any`, `unknown`, and a `then` that may be `undefined` pass.
+    At runtime, a result with a callable `then` fails decoding, whichever the type tells, without calling its `then`, which would execute a bound query.
+    Both checks are those of `kern-db` (`utils/synchronous.ts`), which the function of `nullableAs` of a type shares ([types](types.md#values-of-null)).
     The rejection of a Promise that it fails on stays handled, since it would otherwise end the process after the query has reported the failure.
   - A callback that throws fails decoding, as a decoder of a type does ([SQL generation](sql.md#result-decoding)).
 - They apply to a query of a table and to a [mutation](mutations.md#results); a query of `$select` and a [query of SQL text](sql-queries.md) lack them.

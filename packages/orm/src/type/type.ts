@@ -4,6 +4,7 @@ import type {
   AnyDerivableType,
   DerivableType,
   DerivableTypeWithParameters,
+  SynchronousResult,
   TypeOptions,
   TypeTransform,
   typeValues,
@@ -71,6 +72,8 @@ export interface BaseType<
    * Queries apply this expression to each result field of this type.
    */
   readonly read: ((value: string) => string) | undefined
+  /** Optional function that returns the value that a result has for `NULL` instead of `null`, such as `undefined`; it does not read `this`. */
+  readonly decodeNull: (() => Exclude<Output, null>) | undefined
   /** Operators of expressions of this type, in addition to `isNull` or replacing it. */
   readonly operators: Operators
   /**
@@ -115,7 +118,28 @@ export interface BaseType<
   transform<NewOutput extends {} | undefined>(options: {
     decode: (value: Exclude<Output, null>) => NewOutput
   }): Type<NewOutput | AcceptedNull<Input>, Input, Operators, Parameters>
+  /** Creates a type whose values include `null`, which stands for `NULL`. */
   nullable(): Type<Output | null, Input | null, Operators, Parameters>
+  /**
+   * Creates a nullable type that returns the value of `decodeNull` for `NULL` instead of `null`, such as `undefined`, which tells `NULL` of a `jsonb` column from a JSON `null` value.
+   *
+   * It applies to a type whose values include `null` apart from `NULL`, such as a JSON `null` value of `json` and `jsonb` without a shape of `of`.
+   * `decodeNull` is called for each `NULL`, so it can return a new object each time; it must return its value synchronously, and not `null`.
+   * Queries pass `NULL` to the type as `null`, as to every nullable type, and `isNull`, `coalesce`, and `where` with `null` match `NULL`.
+   * Its values are final: its `transform`, `of`, and `nullable` reject.
+   * Its `nullableAs` rejects too, so call it once with one function.
+   */
+  nullableAs<Null extends {} | undefined>(
+    // The types of expressions tell `NULL` by `null` among the values, which only such a type keeps beside the value of `decodeNull`.
+    this: null extends Exclude<Output, null>
+      ? Type<Output, Input, Operators, Parameters>
+      : ValuesWithoutNull,
+    decodeNull: () => Null & SynchronousResult<Null>,
+    // The result names the reason too: `this` is not checked where the method is passed as a callback, such as to `map` of an array.
+    // It is a derivable type of kern-db too, whose `nullableAs` applies whatever the values, so that `nullableAs` does not keep a type of kern-orm from a parameter of a derivable type, such as `t.text` from one of `DerivableType<string>`.
+  ): null extends Exclude<Output, null>
+    ? Type<Exclude<Output, null> | Null, Input | null, Operators, Parameters>
+    : ValuesWithoutNull & DerivableType<Exclude<Output, null> | Null, Input | null, Parameters>
   /**
    * Narrows the values of this type to `T` in TypeScript, such as to a union of strings that a `CHECK` constraint allows, or to the shape of JSON values.
    *
@@ -175,7 +199,11 @@ export type TypeInput<T extends AnyType> = T[typeof typeValues]["input"]
 export type TypeOperators<T extends AnyType> = T["operators"]
 
 // An overload of its own, since TypeScript 6 does not take every type for a derivable type of kern-db by its members.
-/** Defines a type from `type`, keeping its values and PostgreSQL type parameters, without its operators. */
+/**
+ * Defines a type from `type`, keeping its values and PostgreSQL type parameters, without its operators.
+ *
+ * It rejects a type that decodes `NULL` to a value, as it does for a type of kern-db.
+ */
 export function defineType<Output, Input, Parameters extends unknown[] | undefined>(
   // oxlint-disable-next-line typescript/no-explicit-any -- the operators of the type are left out
   type: Type<Output, Input, any, Parameters>,
@@ -184,6 +212,7 @@ export function defineType<Output, Input, Parameters extends unknown[] | undefin
  * Defines a type from `dbType`, a type of kern-db, such as one defined without kern-orm, keeping its values and PostgreSQL type parameters.
  *
  * Its expressions have only `isNull` until `withOperators` adds operators.
+ * It rejects a type that decodes `NULL` to a value when it is called: call `nullableAs` on the defined type, which checks its values in types.
  */
 export function defineType<Output, Input, Parameters extends unknown[] | undefined>(
   dbType: DerivableType<Output, Input, Parameters>,
@@ -201,7 +230,19 @@ export function defineType(definition: AnyDerivableType | TypeOptions): AnyType 
   const dbType = isDbType(definition)
     ? (definition as AnyDerivableType)
     : defineDbType(definition as TypeOptions)
+  // Only `nullableAs` of a type typed as one of kern-orm checks that the values of the type include `null`, by which the types of expressions tell `NULL`.
+  // A type of kern-orm is rejected too: typed as a type of kern-db, its `nullableAs` applies whatever its values and returns a type of kern-orm.
+  if (dbType.decodeNull !== undefined) {
+    throw new TypeError(
+      "defineType() of kern-orm takes no type that decodes NULL to a value; define the type without nullableAs(), and call nullableAs() on the defined type, which takes it when its values include null apart from NULL",
+    )
+  }
   return createType(dbType, Object.freeze({}))
+}
+
+/** Type that a type of kern-orm that decodes `NULL` to a value is checked against when its values have no `null`, naming the reason. */
+export interface ValuesWithoutNull {
+  readonly "nullableAs applies in kern-orm to a type whose values include null apart from NULL, such as jsonb without of, since types tell NULL of an expression by null among its values": never
 }
 
 /** Type that the options of `defineType` are checked against when they are a type of kern-db typed without the methods that derive types, naming the reason. */
@@ -266,8 +307,13 @@ function createType(dbType: AnyDerivableType, operators: OperatorDefinitions): A
         derive((dbType as DbTypeWithAnyParameters).with(...parameters)),
     }),
     nullable: () => derive(dbType.nullable()),
-    // The narrowed values exist only in TypeScript.
-    of: () => type,
+    nullableAs: (decodeNull: () => {} | undefined) => derive(dbType.nullableAs(decodeNull)),
+    of: () => {
+      // The type of kern-db rejects narrowing a type that decodes `NULL` to a value.
+      dbType.of()
+      // The narrowed values exist only in TypeScript.
+      return type
+    },
     columnName: (name: string) => new Column(type, { ...noColumnAttributes, name }),
     primaryKey: () => new Column(type, { ...noColumnAttributes, keyKind: "primaryKey" }),
     unique: () => new Column(type, { ...noColumnAttributes, keyKind: "unique" }),

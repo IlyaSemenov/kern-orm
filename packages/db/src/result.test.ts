@@ -88,6 +88,63 @@ describe("flat results", () => {
     ).toEqual({ id: 1, title: "Draft" })
   })
 
+  it("read NULL of a type that decodes it to a value as that value, in a record and as one value", () => {
+    const note = text.nullableAs(() => undefined)
+    const rows = [
+      ["1", null],
+      ["2", "x"],
+    ]
+
+    expect(
+      decodeFlatResult(
+        {
+          fields: [createField("id", integer), createField("note", note)],
+          rows: "many",
+          value: false,
+        },
+        createDriverResult(2, rows, ["id", "note"]),
+      ),
+    ).toStrictEqual([
+      { id: 1, note: undefined },
+      { id: 2, note: "x" },
+    ])
+    expect(
+      decodeFlatResult(
+        { fields: [createField("note", note)], rows: "many", value: true },
+        createDriverResult(2, [[null], ["x"]], ["note"]),
+      ),
+    ).toStrictEqual([undefined, "x"])
+  })
+
+  it("reject NULL of a type whose function of NULL returns a thenable, such as of an async function, in a record and as one value", () => {
+    // @ts-expect-error The function returns its value synchronously.
+    const note = text.nullableAs(async () => undefined)
+    const cause = new TypeError(
+      "The function of nullableAs() must return the value of NULL synchronously, not a Promise or a query",
+    )
+    const record = getThrownError(() =>
+      decodeFlatResult(
+        {
+          fields: [createField("id", integer), createField("note", note)],
+          rows: "one",
+          value: false,
+        },
+        createDriverResult(1, [["1", null]], ["id", "note"]),
+      ),
+    )
+    const value = getThrownError(() =>
+      decodeFlatResult(
+        { fields: [createField("note", note)], rows: "one", value: true },
+        createDriverResult(1, [[null]], ["note"]),
+      ),
+    )
+
+    expect(record).toBeInstanceOf(ResultDecodeError)
+    expect(record).toMatchObject({ path: "note", cause })
+    expect(value).toBeInstanceOf(ResultDecodeError)
+    expect(value).toMatchObject({ cause })
+  })
+
   it("reject without a column of a field or with it twice", () => {
     const missing = getThrownError(() =>
       decodeFlatResult(createRecordsPlan(), createDriverResult(0, [], ["id", "name"])),
@@ -303,6 +360,28 @@ describe("flat results", () => {
           createDriverResult(1, [[null, "5", null, "9"]], columns),
         ),
       ).toEqual([{ lag: 5, job: null }])
+    })
+
+    it("read NULL of a field of a group as the value that its type decodes it to, and a group without its row as null", () => {
+      const group = { ...job, presence: [0] }
+      const plan: FlatResultPlan = {
+        fields: [
+          groupFields[0]!,
+          { ...groupFields[1]!, group },
+          { ...groupFields[2]!, type: text.nullableAs(() => undefined), group },
+        ],
+        rows: "many",
+        value: false,
+      }
+      const rows = [
+        [null, "5", "1", "9"],
+        [null, "6", null, "9"],
+      ]
+
+      expect(decodeFlatResult(plan, createDriverResult(2, rows, columns))).toStrictEqual([
+        { lag: 5, job: { id: 1, title: undefined } },
+        { lag: 6, job: null },
+      ])
     })
 
     it("reject a group with only some of the columns that tell its row NULL, naming the group and the columns", () => {

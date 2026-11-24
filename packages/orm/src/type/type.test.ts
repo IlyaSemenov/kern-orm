@@ -1,10 +1,14 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+import type { DerivableType } from "kern-db"
 import { defineType as defineDbType, isType as isDbType } from "kern-db"
+import { jsonb as dbJsonb } from "kern-db/types"
 
 import { orderingOperators } from "../expression/operators/ordering"
 import { sql } from "../expression/sql"
 
+import { jsonb } from "./builtins/json"
 import { numeric } from "./builtins/numeric"
 import { text } from "./builtins/text"
 import { defineType, describeRejectedDbType, isType } from "./type"
@@ -72,6 +76,21 @@ describe("defineType", () => {
     expect(text.read).toBeUndefined()
   })
 
+  it("rejects a type that decodes NULL to a value, whose values only nullableAs of the defined type checks", () => {
+    const error = new TypeError(
+      "defineType() of kern-orm takes no type that decodes NULL to a value; define the type without nullableAs(), and call nullableAs() on the defined type, which takes it when its values include null apart from NULL",
+    )
+    const decodeNull = () => undefined
+    const dbJson = defineDbType({ sqlType: "jsonb" })
+    // A type of kern-orm typed as one of kern-db, whose nullableAs applies whatever its values and returns a type of kern-orm.
+    const dbText: DerivableType<string> = text
+
+    expect(getThrownError(() => defineType(dbJson.nullableAs(decodeNull)))).toEqual(error)
+    expect(getThrownError(() => defineType(dbText.nullableAs(decodeNull)))).toEqual(error)
+    expect(getThrownError(() => defineType(jsonb.nullableAs(decodeNull)))).toEqual(error)
+    expect(defineType(dbJsonb).nullableAs(decodeNull).decodeNull).toBe(decodeNull)
+  })
+
   it("defines a type that is a type of kern-db, unlike a column of it", () => {
     const vector = defineType(dbVector)
 
@@ -125,6 +144,48 @@ describe("operators", () => {
       operators,
     )
     expect(amount.of<"0">().operators).toBe(operators)
+  })
+})
+
+describe("nullableAs", () => {
+  const decodeMissing = () => undefined
+
+  it("creates a nullable type that decodes NULL to its value, which a type created from it keeps with its operators and type parameters", () => {
+    const payload = jsonb.nullableAs(decodeMissing)
+
+    expect(payload.isNullable).toBe(true)
+    expect(payload.decodeNull).toBe(decodeMissing)
+    expect(payload.operators).toBe(jsonb.operators)
+    expect(payload.withOperators({}).decodeNull).toBe(decodeMissing)
+    expect(payload.withParameters(() => "jsonb").with().decodeNull).toBe(decodeMissing)
+    expect(payload.columnName("data").type.decodeNull).toBe(decodeMissing)
+    expect(jsonb.nullable().decodeNull).toBeUndefined()
+  })
+
+  it("takes at runtime a type whose values have no null, which only types reject", () => {
+    // @ts-expect-error The values of numeric have no null, by which types tell NULL of an expression.
+    expect(numeric.nullableAs(decodeMissing).decodeNull).toBe(decodeMissing)
+  })
+
+  it("rejects a later change of the values of a type that decodes NULL to a value", () => {
+    const payload = jsonb.nullableAs(decodeMissing)
+
+    for (const [method, change] of [
+      ["transform", () => payload.transform({ decode: value => ({ value }) })],
+      ["of", () => payload.of<{ url: string }>()],
+      ["nullable", () => payload.nullable()],
+    ] as const) {
+      expect(getThrownError(change)).toEqual(
+        new TypeError(
+          `${method}() cannot change a type that decodes NULL to a value, which nullableAs() creates`,
+        ),
+      )
+    }
+    expect(getThrownError(() => payload.nullableAs(() => false))).toEqual(
+      new TypeError(
+        "nullableAs() cannot change a type that decodes NULL to a value; call it once with one function",
+      ),
+    )
   })
 })
 

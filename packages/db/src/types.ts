@@ -10,4 +10,5 @@ export { char, text, varchar } from "./type/builtins/text"
 export { uuid } from "./type/builtins/uuid"
 export { vector } from "./type/builtins/vector"
 // The types that the declarations of these values name, so that a module that imports only this entry point emits its declarations: TypeScript names a type only through a module that the program loads.
+export type { NotSynchronous, SynchronousResult } from "./utils/synchronous"
 export type { BaseDerivableType, DerivableType, DerivableTypeWithParameters } from "./type/type"

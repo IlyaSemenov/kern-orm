@@ -72,6 +72,6 @@ Scenarios worth comparing that the topics do not cover yet:
   List a new project there with its link and the version you checked.
 - Do not link comparison/ back to architecture/.
 - Also record a scenario that another project fails while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>`.
-- Keep a capability that another project has and kern-orm lacks, such as `parseNull` of Orchid ORM, in the item of [backlog/](../backlog/README.md) that would add it, and move it here when the item is deleted.
+- Keep a capability that another project has and kern-orm lacks, such as `narrowAllTypes` of Orchid ORM, in the item of [backlog/](../backlog/README.md) that would add it, and move it here when the item is deleted.
 - Update [docs/orm/comparison.md](../docs/orm/comparison.md), a summary of comparison/ for choosing a library, when a record that it summarizes changes; it gives the reviewed versions and review date and a link to the evidence of each claim about another project.
 - Add a scenario worth comparing that the topics do not cover yet to [Scenarios to compare](#scenarios-to-compare).

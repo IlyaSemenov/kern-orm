@@ -181,7 +181,7 @@ To keep a name that your builder generates within a number of bytes counted the 
 ## Results of your own
 
 When your builder returns results that a query of SQL text does not decode, such as related records nested as JSON, execute the statement with `database.execute` and decode its rows yourself.
-It runs the statement in the current transaction and returns its rows as the PostgreSQL text representations of their values, with `null` for `NULL`; decode a value with `decode` of its type.
+It runs the statement in the current transaction and returns its rows as the PostgreSQL text representations of their values, with `null` for `NULL`; decode a value with `decode` of its type, and `NULL` with `decodeNull` of `kern-db/builder`, which gives `null` or the value that a type of [`nullableAs`](./types#nullable-values) reads `NULL` as.
 
 For a builder with its own codecs, `columns` of the result gives the `name` and PostgreSQL type OID (`type`) of each column, in the same order as the values in each row.
 The metadata is available even when the query returns no rows:
@@ -233,7 +233,7 @@ Wrap another failure of the result, such as of a conversion of a record, with `c
 
 ```ts
 try {
-  record[key] = text === null ? null : type.decode(text)
+  record[key] = text === null ? decodeNull(type) : type.decode(text)
 } catch (error) {
   throw createFieldDecodeError(`[${index}].${key}`, error)
 }

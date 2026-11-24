@@ -251,7 +251,8 @@ const id = await db.form.where({ name: "Survey" }).get("id").optional()
 // id: string | undefined
 ```
 
-A `NULL` value is `null`, so it differs from a missing row.
+`optional` gives `undefined` without the row, and a `NULL` value of the row is `null`, or the value that the column [reads `NULL` as](../types#json-null-values).
+When that value is `undefined` too, select the column in a record to tell a missing row, as that section shows.
 
 To get another value instead of `NULL`, pass it to `coalesce`:
 
@@ -320,7 +321,7 @@ const slug = await db.form.where({ name: "Survey" }).take().get("name").optional
 // slug: string | undefined
 ```
 
-A `NULL` value is a value of its row, so handle `null` in the callback, or replace it with [`coalesce`](#one-value) before `map`.
+A `NULL` value is a value of its row, so handle `null`, or the value that the column [reads `NULL` as](../types#json-null-values), in the callback, or replace it with [`coalesce`](#one-value) before `map`.
 
 SQL does not see what `map` converts, so keep choosing the rows after it, such as with `where`, `orderBy`, `limit`, and `take`:
 
@@ -368,3 +369,5 @@ To apply `select` and `map` to several queries and mutations alike, define them 
 To convert what a mutation returns, see [Inserting, Updating, and Deleting](./mutations#results).
 
 A callback that throws rejects the query with `ResultDecodeError`, whose `cause` is the error and whose `path` tells the field and the row, when there are any.
+Return the result of a callback of `map` and `transform` synchronously.
+A returned thenable, such as a Promise or a bound query, rejects the query with `ResultDecodeError`.

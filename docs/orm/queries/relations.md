@@ -105,7 +105,7 @@ const largestFieldCount = await db.form.max(form => form.fields.count())
 // largestFieldCount: number | null
 ```
 
-Without its row, such a query gives `null`, while a field of `select` keeps [how the query handles a missing row](./selecting#one-value).
+Without its row, such a query gives `NULL`, which reads as `null`, or as the value of [`nullableAs`](../types#json-null-values) of its type, while a field of `select` keeps [how the query handles a missing row](./selecting#one-value).
 
 ## Whether related records exist
 

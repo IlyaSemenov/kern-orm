@@ -214,7 +214,7 @@ function toArgumentType(argument: AnyType): AnyType {
 
 // PostgreSQL sums `smallint` and `integer` values as a `bigint`, which their `Number` decodes without an error outside the safe integer range.
 /**
- * Returns the type of the sum of the values of type `argument`: for `smallint` and `integer` values, a `bigint` with the operators of `argument` that rejects a sum that a number cannot hold exactly, and `argument` for others.
+ * Returns the type of the sum of the values of type `argument`: for `smallint` and `integer` values, a `bigint` with the operators of `argument` that rejects a sum that a number cannot hold exactly and decodes `NULL` as `argument` does, and `argument` for others.
  *
  * It rejects such a type with a read expression: the type decodes the result of the expression rather than the text of the sum, which the check reads.
  */
@@ -230,15 +230,18 @@ function toSumType(argument: AnyType): AnyType {
   let type = sumTypes.get(argument)
   if (type === undefined) {
     // The check reads the text before `argument` decodes it, so that a type derived with `transform` keeps its values.
-    type = defineType({ sqlType: "bigint" })
-      .transform({
-        decode: text => {
-          decodeSafeInteger(text, "Sum")
-          return argument.decode(text)
-        },
-        encode: (value: unknown) => argument.encode(value as never),
-      })
-      .withOperators(argument.operators)
+    const sum = defineType({ sqlType: "bigint" }).transform({
+      decode: text => {
+        decodeSafeInteger(text, "Sum")
+        return argument.decode(text)
+      },
+      encode: (value: unknown) => argument.encode(value as never),
+    })
+    // A sum without values is `NULL`, which the sum decodes as `argument` does, as the other aggregates of its values do.
+    const { decodeNull } = argument
+    type = (decodeNull === undefined ? sum : sum.nullableAs(decodeNull)).withOperators(
+      argument.operators,
+    )
     sumTypes.set(argument, type)
   }
   return type

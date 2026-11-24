@@ -152,7 +152,7 @@ To work with values in another representation, such as `Date` or `Decimal`, deri
 `decode` cannot return `null`: it stands for `NULL`, which [`nullable`](#nullable-values) adds.
 An `encode` that takes `null`, also as `unknown`, makes the type nullable, since queries pass `null` as `NULL`.
 
-Every method of a type creates a new type that keeps the changes made before it, so a derived type can be shared and refined further where it is used, such as `decimal` below, or derived for a single column:
+Every method of a type returns a type that keeps the changes made before it and leaves the type that it is called on as it is, so a derived type can be shared and refined further where it is used, such as `decimal` below, or derived for a single column; only a type of [`nullableAs`](#json-null-values) takes no further `transform`, `of`, or `nullable`:
 
 ```ts
 import * as t from "kern-orm/types"
@@ -181,7 +181,45 @@ export const product = defineTable("product", {
 
 ## JSON `null` values
 
-To tell a JSON `null` value from `NULL` in a `json` or `jsonb` column, where both read as `null`, derive a type that gives a JSON `null` value a value of your own, such as a symbol:
+A `json` or `jsonb` column that can be `NULL` reads both `NULL` and a JSON `null` value as `null`.
+To tell them apart, read `NULL` as `undefined`, with `nullableAs` instead of `nullable`:
+
+```ts
+import * as t from "kern-orm/types"
+
+export const job = defineTable("job", {
+  id: t.uuid.primaryKey().hasDefault(),
+  payload: t.jsonb.nullableAs(() => undefined),
+})
+
+const payloads = await db.job.pluck("payload")
+// undefined for NULL, and null for a JSON null value
+```
+
+Queries return the value that the function of `nullableAs` returns for each `NULL` of the column, also in related records and in the records of [`columnsOf`](./queries/sql#rows-of-tables); the function must return it synchronously, since decoding does not wait for a Promise.
+They pass `null` as `NULL`, as for every nullable column, and `undefined` keeps its meaning: an insert that omits the column gives it its default, and an update keeps it.
+Pass a JSON `null` value as SQL:
+
+```ts
+import { sql } from "kern-orm"
+
+const jsonNull = sql(t.jsonb)`'null'::jsonb`
+
+await db.job.insert({ payload: payload === null ? jsonNull : payload })
+
+// jobs whose payload is NULL
+await db.job.where({ payload: null })
+// jobs whose payload is a JSON null value
+await db.job.where({ payload: jsonNull })
+```
+
+`get` of the column gives `undefined` both for `NULL` and, with `optional`, for a missing row.
+To tell them apart, select the column in a record: `db.job.find(id).select("payload").optional()` gives `{ payload: undefined }` for `NULL` and `undefined` without the row.
+
+`nullableAs` applies to `json` and `jsonb` without a shape of `of`, whose values include `null`.
+Its values are final: `transform`, `of`, `nullable`, and `nullableAs` of the type that it creates throw, also where a shared type is refined for a column, such as `payload.of<Shape>()`.
+
+For a column with a shape, or to pass a JSON `null` value as a value of the column, derive a type that gives it a value of your own, such as a symbol, while `NULL` stays `null`:
 
 ```ts
 import * as t from "kern-orm/types"
@@ -206,9 +244,9 @@ export const job = defineTable("job", {
 
 Queries return `jsonNull` for a JSON `null` value and `null` for `NULL`, and take them the same way: `insert({ payload: jsonNull })` writes a JSON `null` value, `where({ payload: jsonNull })` finds it, and `where({ payload: null })` finds `NULL`.
 Declare the shape of the values with `of`: without it, their type is `unknown`, which takes in the symbol, so it does not show `jsonNull`.
-`json` has no `=`, so `where` cannot find its JSON `null` value.
+`json` has no `=`, so an object condition, such as `where({ payload: jsonNull })`, cannot find its JSON `null` value.
 
-To read `NULL` as `undefined` and a JSON `null` value as `null`, convert them in [`map`](./queries/selecting#results-converted-in-code):
+To read `NULL` as `undefined` and a JSON `null` value as `null` in such a column, convert them in [`map`](./queries/selecting#results-converted-in-code):
 
 ```ts
 const jobs = await db.job.select("id", "payload").map(job => ({

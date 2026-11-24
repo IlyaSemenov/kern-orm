@@ -97,12 +97,18 @@ export function countDistinct(value: unknown, options?: unknown): unknown {
   return callAggregate("countDistinct", value, options)
 }
 
-/** Returns the smallest of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`. */
+/**
+ * Returns the smallest of the values of `value`, an expression with a type or a query of one value.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function min<E extends TypedOperand>(
   value: E,
   options?: UnfilteredAggregateOptions,
 ): GroupAggregateExpression<E>
-/** Returns the smallest of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`; `options.filter` chooses the rows that it takes. */
+/**
+ * Returns the smallest of the values of `value`, an expression with a type or a query of one value; `options.filter` chooses the rows that it takes.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function min<E extends TypedOperand>(
   value: E,
   options?: AggregateOptions,
@@ -111,12 +117,18 @@ export function min(value: unknown, options?: unknown): unknown {
   return callAggregate("min", value, options)
 }
 
-/** Returns the largest of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`. */
+/**
+ * Returns the largest of the values of `value`, an expression with a type or a query of one value.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function max<E extends TypedOperand>(
   value: E,
   options?: UnfilteredAggregateOptions,
 ): GroupAggregateExpression<E>
-/** Returns the largest of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`; `options.filter` chooses the rows that it takes. */
+/**
+ * Returns the largest of the values of `value`, an expression with a type or a query of one value; `options.filter` chooses the rows that it takes.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function max<E extends TypedOperand>(
   value: E,
   options?: AggregateOptions,
@@ -125,12 +137,18 @@ export function max(value: unknown, options?: unknown): unknown {
   return callAggregate("max", value, options)
 }
 
-/** Returns the sum of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`. */
+/**
+ * Returns the sum of the values of `value`, an expression with a type or a query of one value.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function sum<E extends TypedOperand>(
   value: E,
   options?: UnfilteredAggregateOptions,
 ): GroupAggregateExpression<E>
-/** Returns the sum of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`; `options.filter` chooses the rows that it takes. */
+/**
+ * Returns the sum of the values of `value`, an expression with a type or a query of one value; `options.filter` chooses the rows that it takes.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function sum<E extends TypedOperand>(
   value: E,
   options?: AggregateOptions,
@@ -140,7 +158,8 @@ export function sum(value: unknown, options?: unknown): unknown {
 }
 
 /**
- * Returns the average of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`.
+ * Returns the average of the values of `value`, an expression with a type or a query of one value.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
  *
  * For `bigint` values, average an expression of a type that can represent fractional values.
  */
@@ -149,7 +168,8 @@ export function avg<E extends TypedOperand>(
   options?: UnfilteredAggregateOptions,
 ): GroupAggregateExpression<E>
 /**
- * Returns the average of the values of `value`, an expression with a type or a query of one value, or `null` without values other than `NULL`; `options.filter` chooses the rows that it takes.
+ * Returns the average of the values of `value`, an expression with a type or a query of one value; `options.filter` chooses the rows that it takes.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
  *
  * For `bigint` values, average an expression of a type that can represent fractional values.
  */
@@ -161,12 +181,18 @@ export function avg(value: unknown, options?: unknown): unknown {
   return callAggregate("avg", value, options)
 }
 
-/** Returns whether every value of `value`, a Boolean expression with a type or a query of one Boolean value, other than `NULL` is true, or `null` without such values. */
+/**
+ * Returns whether every value of `value`, a Boolean expression with a type or a query of one Boolean value, other than `NULL` is true.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function every<E extends TypedOperand>(
   value: E,
   options?: UnfilteredAggregateOptions,
 ): GroupAggregateExpression<E>
-/** Returns whether every value of `value`, a Boolean expression with a type or a query of one Boolean value, other than `NULL` is true, or `null` without such values; `options.filter` chooses the rows that it takes. */
+/**
+ * Returns whether every value of `value`, a Boolean expression with a type or a query of one Boolean value, other than `NULL` is true; `options.filter` chooses the rows that it takes.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function every<E extends TypedOperand>(
   value: E,
   options?: AggregateOptions,
@@ -175,12 +201,18 @@ export function every(value: unknown, options?: unknown): unknown {
   return callAggregate("every", value, options)
 }
 
-/** Returns whether any value of `value`, a Boolean expression with a type or a query of one Boolean value, is true, or `null` without values other than `NULL`. */
+/**
+ * Returns whether any value of `value`, a Boolean expression with a type or a query of one Boolean value, is true.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function some<E extends TypedOperand>(
   value: E,
   options?: UnfilteredAggregateOptions,
 ): GroupAggregateExpression<E>
-/** Returns whether any value of `value`, a Boolean expression with a type or a query of one Boolean value, is true, or `null` without values other than `NULL`; `options.filter` chooses the rows that it takes. */
+/**
+ * Returns whether any value of `value`, a Boolean expression with a type or a query of one Boolean value, is true; `options.filter` chooses the rows that it takes.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function some<E extends TypedOperand>(
   value: E,
   options?: AggregateOptions,
@@ -189,13 +221,19 @@ export function some(value: unknown, options?: unknown): unknown {
   return callAggregate("some", value, options)
 }
 
-/** Returns the values other than `NULL` of `value`, a text expression with a type or a query of one text value, joined with `delimiter` in the order of `options.orderBy`, or `null` without such values. */
+/**
+ * Returns the values other than `NULL` of `value`, a text expression with a type or a query of one text value, joined with `delimiter` in the order of `options.orderBy`.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function stringAgg<E extends TypedOperand>(
   value: E,
   delimiter: string,
   options?: UnfilteredStringAggOptions,
 ): GroupAggregateExpression<E>
-/** Returns the values other than `NULL` of `value`, a text expression with a type or a query of one text value, joined with `delimiter` in the order of `options.orderBy`, or `null` without such values; `options.filter` chooses the rows that it takes. */
+/**
+ * Returns the values other than `NULL` of `value`, a text expression with a type or a query of one text value, joined with `delimiter` in the order of `options.orderBy`; `options.filter` chooses the rows that it takes.
+ * Without values other than `NULL`, it returns what its type decodes `NULL` to.
+ */
 export function stringAgg<E extends TypedOperand>(
   value: E,
   delimiter: string,
