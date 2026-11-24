@@ -16,7 +16,7 @@ const forms = await db.form.select(form => ({
 Operators by type:
 
 - every type: `isNull`;
-- types with SQL `=`, which are every built-in type except `json` and arrays of it: `eq`, `ne`, and `in`;
+- types with SQL `=`, which are every built-in type except `json`, `jsonWithJsonNull`, and arrays of them: `eq`, `ne`, and `in`;
 - ordered types, which are numbers, text, `uuid`, dates, times, intervals, `inet`, `cidr`, and enums: `lt`, `lte`, `gt`, and `gte`;
 - `text`, `varchar`, and `char`: `like`, `ilike`, `lower`, `upper`, `trim`, and `length`;
 - numbers: `add`, `sub`, `mul`, and `div`, and for integers and `numeric` also `mod`;

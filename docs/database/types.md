@@ -50,7 +50,8 @@ A value without an exact JavaScript counterpart is a string, so that no precisio
 - `interval`: `string` in the PostgreSQL output format, such as `"1 day 02:00:00"`.
 - `json`, `jsonb`: `unknown`; declare the shape of the values with [`of`](#narrowing-values), such as `jsonb.of<{ choices: string[] }>()`.
   Store a missing value as `NULL` in a column that can be `NULL` rather than as a JSON `null` value.
-  A parameter passes `null` as `NULL`, and a JSON `null` value reads as `null` too; to tell them apart, see [JSON `null` values](#json-null-values).
+  A parameter passes `null` as `NULL`, and a JSON `null` value reads as `null` too.
+- `jsonWithJsonNull`, `jsonbWithJsonNull`: `json` and `jsonb` values in which a top-level JSON `null` value is `jsonNull`, apart from `null` of `NULL`; see [JSON `null` values](#json-null-values).
 - `inet`, `cidr`: `string`.
 - `vector`: `number[]`, for the `vector` type of the [pgvector](https://github.com/pgvector/pgvector) extension.
 - `array(element)`: one-dimensional array of the element values, such as `array(text)`; the elements of a custom type must be separated by commas in PostgreSQL, as those of all built-in types are.
@@ -168,8 +169,47 @@ await database.query`UPDATE product SET price = ${param(decimal, price)} WHERE i
 
 ## JSON `null` values
 
-A `json` or `jsonb` column that can be `NULL` reads both `NULL` and a JSON `null` value as `null`.
-To tell them apart, read `NULL` as `undefined`:
+A `json` or `jsonb` type reads a JSON `null` value as `null`, as it reads `NULL`, and `param` passes `null` as `NULL`.
+To tell them apart, use `jsonbWithJsonNull`, or `jsonWithJsonNull` for `json` values: statements return a JSON `null` value as `jsonNull` and `param` takes it the same way, while `null` stays `NULL`:
+
+```ts
+import type { JsonNull } from "kern-db"
+import { jsonNull, param } from "kern-db"
+import * as t from "kern-db/types"
+
+type Payload = { url?: string | null }
+
+const payloadType = t.jsonbWithJsonNull.of<Payload | JsonNull>()
+
+const payloads = await database.query`SELECT payload FROM job`.pluck(payloadType.nullable())
+// payloads: (Payload | JsonNull | null)[], with jsonNull for a JSON null value and null for NULL
+
+await database.query`INSERT INTO job (payload) VALUES (${param(payloadType, jsonNull)})`
+const ids =
+  await database.query`SELECT id FROM job WHERE payload = ${param(payloadType, jsonNull)}`.pluck(
+    t.uuid,
+  )
+// ids of the jobs whose payload is a JSON null value
+```
+
+Include `JsonNull` in the shape that `of` declares, beside the other values.
+
+- Only a JSON `null` value that is the whole value is `jsonNull`: a `null` inside a value, such as `{ url: null }`, stays `null`.
+  Write `null` inside a value too: `jsonNull` there is lost, as `{ url: jsonNull }` is written as `{}`.
+- Only `jsonNull` writes a JSON `null` value: these types reject another value that JSON writes as `null`, such as `NaN`.
+
+PostgreSQL has no `=` for `json`, so find the JSON `null` values of a `json` column with `json_typeof(payload) = 'null'` rather than by comparing with a parameter.
+
+`jsonNull` is a symbol, which neither JSON nor structured cloning carries.
+`JSON.stringify` leaves out a key whose value is `jsonNull`, writes `jsonNull` in an array as `null`, and returns `undefined` for `jsonNull` itself, and `structuredClone` and a message to a worker throw for a value that has it.
+Convert it where a result leaves the application, to values that the receiver tells apart.
+In a record sent as JSON, `null` for a JSON `null` value and `undefined` for `NULL` do, since JSON leaves out a key of `undefined`.
+A value alone and the values of an array, such as of `pluck`, have no key to leave out: JSON writes `undefined` in an array as `null` too, so convert them to values that JSON carries and that the type cannot hold, such as a string of your own for a type of objects.
+For a type of any JSON value, wrap each value, such as in `["value", payload]`, `["json-null"]`, and `["sql-null"]`.
+
+### `NULL` read as `undefined`
+
+A `json` or `jsonb` type can read `NULL` as `undefined` instead, so that `null` in a result is a JSON `null` value:
 
 ```ts
 import * as t from "kern-db/types"
@@ -186,33 +226,6 @@ To write a value that may be a JSON `null` value, pass its JSON text and cast it
 ```ts
 await database.query`INSERT INTO job (payload) VALUES (${JSON.stringify(payload)}::jsonb)`
 ```
-
-To pass a JSON `null` value as a value of the type instead, derive a type that gives it a value of your own, such as a symbol, while `NULL` stays `null`:
-
-```ts
-import { param } from "kern-db"
-import * as t from "kern-db/types"
-
-export const jsonNull = Symbol("JSON null")
-
-type Payload = { url?: string }
-
-// jsonb values in which a JSON null value is jsonNull, while NULL stays null
-const payloadType = t.jsonb.of<Payload>().transform({
-  // decode never receives NULL, so null here is a JSON null value
-  decode: (value): Payload | typeof jsonNull => (value === null ? jsonNull : value),
-  // jsonb takes no null, which a parameter passes as NULL, so a JSON null value needs a cast
-  encode: (value: Payload | typeof jsonNull) => (value === jsonNull ? (null as never) : value),
-})
-
-const payloads = await database.query`SELECT payload FROM job`.pluck(payloadType.nullable())
-// payloads: (Payload | typeof jsonNull | null)[]
-
-await database.query`INSERT INTO job (payload) VALUES (${param(payloadType, jsonNull)})`
-```
-
-Statements return `jsonNull` for a JSON `null` value and `null` for `NULL`, and `param` takes them the same way.
-Declare the shape of the values with `of`: without it, their type is `unknown`, which takes in the symbol, so it does not show `jsonNull`.
 
 ## Type parameters
 

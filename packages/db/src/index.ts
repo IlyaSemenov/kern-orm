@@ -14,6 +14,8 @@ export type {
   typeValues,
 } from "./type/type"
 export { defineType, isType } from "./type/type"
+export type { JsonNull } from "./type/builtins/json"
+export { jsonNull } from "./type/builtins/json"
 export type { NotSynchronous, SynchronousResult } from "./utils/synchronous"
 export type {
   Database,

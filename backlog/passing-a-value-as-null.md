@@ -2,6 +2,7 @@
 
 A type that maps `NULL` and a value both ways: a type of [`nullableAs`](../architecture/types.md#values-of-null) returns a value for `NULL`, such as `undefined`, and a query still passes `NULL` as `null`, so it cannot pass back the value that a result has, and `jsonb` cannot take a JSON `null` value as `null`.
 The same applies to a type that decodes a value to `null`, such as `""` of a `varchar` column that is not nullable.
+`jsonWithJsonNull` and `jsonbWithJsonNull` tell a JSON `null` value from `NULL` both ways, also with a shape, by the marker `jsonNull` ([types](../architecture/types.md)); this item would add `null` as the JSON `null` value itself, with another value for `NULL`.
 
 - Preliminary decision: the type maps `NULL` and the value both ways: a query passes the value as `NULL`, and an object condition of the value is `IS NULL`, while `null` is a value of the type like any other, such as a JSON `null` value of `jsonb`.
   - An insert omits `undefined` and an update keeps it, so a query cannot pass `undefined` as `NULL`: decide what passes `NULL` for a type that decodes it to `undefined`, such as a constant of `NULL` or `null` as in Orchid ORM, which a JSON `null` value then cannot take.

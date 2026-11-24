@@ -251,7 +251,7 @@ const id = await db.form.where({ name: "Survey" }).get("id").optional()
 // id: string | undefined
 ```
 
-`optional` gives `undefined` without the row, and a `NULL` value of the row is `null`, or the value that the column [reads `NULL` as](../types#json-null-values).
+`optional` gives `undefined` without the row, and a `NULL` value of the row is `null`, or the value that the column [reads `NULL` as](../types#null-read-as-undefined).
 When that value is `undefined` too, select the column in a record to tell a missing row, as that section shows.
 
 To get another value instead of `NULL`, pass it to `coalesce`:
@@ -321,7 +321,7 @@ const slug = await db.form.where({ name: "Survey" }).take().get("name").optional
 // slug: string | undefined
 ```
 
-A `NULL` value is a value of its row, so handle `null`, or the value that the column [reads `NULL` as](../types#json-null-values), in the callback, or replace it with [`coalesce`](#one-value) before `map`.
+A `NULL` value is a value of its row, so handle `null`, or the value that the column [reads `NULL` as](../types#null-read-as-undefined), in the callback, or replace it with [`coalesce`](#one-value) before `map`.
 
 SQL does not see what `map` converts, so keep choosing the rows after it, such as with `where`, `orderBy`, `limit`, and `take`:
 

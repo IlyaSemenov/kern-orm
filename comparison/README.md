@@ -34,6 +34,7 @@ Records of other projects, here and in [decisions](../decisions/README.md), desc
 - [TypeORM](https://github.com/typeorm/typeorm) 1.1.3.
 - [knex](https://github.com/knex/knex) 3.3.0.
 - [MikroORM](https://github.com/mikro-orm/mikro-orm) 7.2.11.
+- [SQLAlchemy](https://github.com/sqlalchemy/sqlalchemy) 2.1.9.
 
 ## Topics
 

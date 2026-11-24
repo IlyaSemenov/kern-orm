@@ -117,6 +117,8 @@ export type {
   ValuesWithoutNull,
 } from "./type/type"
 export { defineType } from "./type/type"
+export type { JsonNull } from "kern-db"
+export { jsonNull } from "kern-db"
 export type { CompileOptions } from "./compiler/postgres/compile"
 export type { OneRow, OneValueRows, ResultByRows, ResultRows, ValueRows } from "kern-db"
 export type { ResultMode } from "kern-db/builder"

@@ -35,6 +35,17 @@
     - The values of `decode` in types include the value of `decodeNull`, since the contract types both by the values that the type returns.
   - The built-in types live in `type/builtins/`, under their names; a built-in type of `kern-orm/types` is `defineType` of the ORM of the type of `kern-db/types` with the operators of the type.
     `array` of the layer builds only the representation of an array of a type, whose `NULL` elements decode as its element type decodes `NULL`, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type of the ORM adds `orderingOperators`.
+  - `jsonWithJsonNull` and `jsonbWithJsonNull` (`type/builtins/json.ts`) are the `json` and `jsonb` values in which a top-level JSON `null` value is the marker `jsonNull`, so that `null` among their values is only `NULL`, which `nullable` adds ([decision](../decisions/types/json-null-marker.md)).
+    - Their values without a shape are `{}`, both returned and accepted, the TypeScript type of every value other than `null` and `undefined`, which includes the marker.
+      A shape of `of` has the marker only when its values include it, such as `Payload | JsonNull`, since `of` narrows only in types.
+    - They decode a value that parses to `null` to the marker, whatever its text, which `json` keeps as written, such as with spaces, and leave a `null` inside a value as it is.
+    - Only the marker encodes to a JSON `null` value: they reject another value that JSON writes as a top-level `null`, such as `NaN` or an object whose `toJSON` returns `null`, which would be read back as a marker that its shape may not name.
+      A marker inside a value is not checked, which would cost a call for each of its values: JSON leaves it out of an object and writes it as `null` in an array.
+    - `json` and `jsonb` decode a JSON `null` value to `null` and reject the marker when encoding, with an error that names the types that write it.
+    - The marker is a symbol, which no JSON value is and which `===` narrows in both branches of a shape that names it apart from its other values, such as `Payload | JsonNull`.
+      It is a symbol of `Symbol.for`, so that it is one value in every copy of `kern-db` ([compatibility](compatibility.md)).
+      Neither JSON nor structured cloning carries a symbol, so a result must convert the marker where it leaves the application.
+    - The roots of `kern-db` and `kern-orm` export `jsonNull` and its type `JsonNull`, and so do their `types` entry points, whose declarations name it.
 - **Type of the ORM** (`type/` of `kern-orm`): a PostgreSQL type, the conversion between JavaScript values and their PostgreSQL text representation, and the operators of its expressions, shared by columns, parameters, and SQL expressions.
   A type of the ORM is a type of the database layer with operators and the factories of columns.
   `defineType` of the ORM creates a type from the options of `defineType` of `kern-db`, from a derivable type of `kern-db`, such as one defined without the ORM, or from another type of the ORM; it keeps the values and the type parameters of the type it takes, without the operators of a type of the ORM.
@@ -43,7 +54,7 @@
   A type is nullable when it accepts `null`, which a query always passes as `NULL`: `primaryKey`, the keys of a table, `of`, and `transform` read nullability from the values that a type accepts rather than from those that it returns ([decision](../decisions/types/nullability-of-accepted-values.md)), so an `encode` of `transform` that takes `null`, also as `unknown`, makes the type nullable.
   At runtime, only `nullable` and `nullableAs` set `isNullable`, which `defineTable` and `$relations` check, since a function does not tell the values it takes.
   - The values of `json` and `jsonb` are `unknown`, which includes a JSON `null` value: it decodes to `null`, which kern-orm does not tell from `NULL` unless the type [decodes `NULL` to a value](#values-of-null).
-    They accept `{}`, the values other than `null`, so that only `nullable` and `nullableAs` make them nullable.
+    They accept `{}`, the values other than `null` and `undefined`, so that only `nullable` and `nullableAs` make them nullable.
   - For such values, `coalesce` keeps `unknown`, and the result of an operator includes `null`, such as of `eq` of a `jsonb` column that is not nullable, until `of` declares a shape, which has no `null`.
     Consumers require `strictNullChecks`, without which `null` belongs to every type; `primaryKey` then rejects every type and column with an error that names the option.
     `of<T>()` of a type narrows the values that it returns and accepts to `T` only in types, and returns the type itself at runtime, since values are not validated ([decision](../decisions/types/narrowed-values.md)); it rejects a type that [decodes `NULL` to a value](#values-of-null).
@@ -51,6 +62,9 @@
   - `nullable` adds `null` before or after `of`, which keeps it beside `T`.
   - Generic operators, such as `eq`, `in`, and `lt`, read `T` from the expression, while an operator defined as a function keeps the values of the type it was added to, and a pattern of `like` stays a string.
   - `enum` narrows its values with `of` rather than with an identity `transform`, which would call a decoder for each value.
+  - `jsonWithJsonNull` and `jsonbWithJsonNull` tell a JSON `null` value from `NULL` by a marker instead, so their values have no `null` apart from `NULL`, also without a shape, and the rules of the `unknown` values of `json` and `jsonb` do not apply to them.
+    Their expressions are typed as those of any type whose values have no `null`: `eq` of a `jsonbWithJsonNull` column that is not nullable with `jsonNull` is `boolean`, and includes `null` only when its operand can be `NULL`; `jsonWithJsonNull` has no `eq`, as `json` has none.
+    Types reject `nullableAs` of them in the ORM, as of every type whose values have no `null` apart from `NULL`; the runtime does not tell the values of a type.
   - A type copies the members of its type of the database layer with the brand, so the database layer takes a type of the ORM wherever it takes its own, and `encode` and `decode` of a type are the functions of its type of the layer, without a call of the type for each value.
   - `nullable`, `transform`, `withParameters`, and `with` of a type derive its type of the database layer and give the result the operators of the type as they are, so an operator defined as a function is wrapped once, by the `withOperators` that added it.
   - `Type` of the ORM declares the members of `Type` of `kern-db` and these methods itself rather than inheriting them, which would cost instantiations for each type derived in user code ([decision](../decisions/types/db-type-members-of-a-type.md)); type tests check that a type of the ORM is assignable to `Type` of `kern-db`.
@@ -75,10 +89,11 @@
   - A missing row is told apart from the type: nested rows of rows `nullable` are `null` and of rows `optional` `undefined` without their row, whatever their value decodes `NULL` to.
     A query of `get` of rows `optional` of a type that decodes `NULL` to `undefined` resolves to `undefined` for both, which a record of the row tells apart.
   - Queries pass `NULL` as `null`: an insert, an update, an object condition, `param`, and the plain `null` of `caseWhen`; `undefined` keeps its meaning, a column that an insert omits and an update keeps, and no parameter.
-    So a query cannot pass the value that such a type returns for `NULL` back as `NULL`, and `jsonb` cannot take a JSON `null` value as a plain value, which a `sql` fragment writes.
+    So a query cannot pass the value that such a type returns for `NULL` back as `NULL`.
+    A query passes `null` to `json` and `jsonb` as `NULL` too, so a JSON `null` value is written on purpose by a `sql` fragment, or by `jsonNull` of `jsonWithJsonNull` and `jsonbWithJsonNull`.
 - Types tell that an expression can be `NULL` by `null` among its values, so `nullableAs` of a type of the ORM applies only when the values of the type include `null` beside that of `NULL`, such as the `unknown` values of `json` and `jsonb` without a shape of `of`, which keep `null` beside the value of `decodeNull`.
   - The expressions of such a type are typed as those of the type of `nullable`: the result of an operator, such as `eq`, includes `null`, and `coalesce` keeps `unknown`.
-  - Types reject another type, such as `text`, `jsonb` with a shape, or a type of `transform`, whose values would have no `null`, with an error that names the reason: the result of an operator of another type, such as `eq` or `length`, would be typed without `null` although it is `NULL` when the expression is.
+  - Types reject another type, such as `text`, `jsonb` with a shape, `jsonbWithJsonNull`, or a type of `transform`, whose values would have no `null`, with an error that names the reason: the result of an operator of another type, such as `eq` or `length`, would be typed without `null` although it is `NULL` when the expression is.
     The runtime does not tell the values of a type, so only types reject it.
     The result of the method is typed as the reason too, so that the method passed as a callback, whose `this` types do not check, gives no type of the ORM.
   - The result of the method for values without `null` is typed as the reason and as a `DerivableType` of the database layer, which has no operators and which a table rejects, so that `nullableAs` does not keep a type of the ORM from a function of derivable types, such as `t.text` from a parameter of `DerivableType<string>`.

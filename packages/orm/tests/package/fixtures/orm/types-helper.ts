@@ -26,6 +26,9 @@ export const status = t.text.of<"draft" | "published">()
 /** Nullable JSON type of a declared shape; see the file header. */
 export const payload = t.jsonb.of<{ url: string }>().nullable()
 
+/** Nullable JSON type of a declared shape that names the marker of a JSON `null` value; see the file header. */
+export const markedPayload = t.jsonbWithJsonNull.of<{ url: string } | t.JsonNull>().nullable()
+
 /** JSON type that reads `NULL` as `undefined`; see the file header. */
 export const optionalPayload = t.jsonb.nullableAs(() => undefined)
 

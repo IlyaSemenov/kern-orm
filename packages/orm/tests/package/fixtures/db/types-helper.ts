@@ -29,6 +29,9 @@ export const status = t.text.of<"draft" | "published">()
 /** Nullable JSON type of a declared shape; see the file header. */
 export const payload = t.jsonb.of<{ url: string }>().nullable()
 
+/** Nullable JSON type of a declared shape that names the marker of a JSON `null` value; see the file header. */
+export const markedPayload = t.jsonbWithJsonNull.of<{ url: string } | t.JsonNull>().nullable()
+
 /** Array type of an element type with type parameters; see the file header. */
 export const codes = t.array(t.varchar.with(8))
 

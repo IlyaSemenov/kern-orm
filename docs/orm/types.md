@@ -83,7 +83,8 @@ Pass PostgreSQL type parameters with `with`, such as `varchar.with(255)` for `va
 - `json`, `jsonb`: `unknown`; declare the shape of the values with [`of`](#narrowing-values), such as `jsonb.of<{ choices: string[] }>()`.
   PostgreSQL has no `=` for `json`, so its expressions have no `eq`, `ne`, or `in`.
   Store a missing value as `NULL` in a [`nullable`](#nullable-values) column rather than as a JSON `null` value.
-  Queries pass `null` as `NULL`, and a JSON `null` value reads as `null` too, while `coalesce`, `isNull`, and `where` with `null` match only `NULL`; to tell them apart, see [JSON `null` values](#json-null-values).
+  Queries pass `null` as `NULL`, and a JSON `null` value reads as `null` too, while `coalesce`, `isNull`, and `where` with `null` match only `NULL`.
+- `jsonWithJsonNull`, `jsonbWithJsonNull`: `json` and `jsonb` values in which a top-level JSON `null` value is `jsonNull`, apart from `null` of `NULL`; see [JSON `null` values](#json-null-values).
 - `inet`, `cidr`: `string`.
 - `vector`, `vector.with(dimensions)`: `number[]`, for the `vector` type of the [pgvector](https://github.com/pgvector/pgvector) extension; sort and filter by its [distances](./queries/operators#vector-distances).
 - `array(element)`: one-dimensional array of the element values, such as `array(text)`; the elements of a custom type must be separated by commas in PostgreSQL, as those of all built-in types are.
@@ -152,7 +153,7 @@ To work with values in another representation, such as `Date` or `Decimal`, deri
 `decode` cannot return `null`: it stands for `NULL`, which [`nullable`](#nullable-values) adds.
 An `encode` that takes `null`, also as `unknown`, makes the type nullable, since queries pass `null` as `NULL`.
 
-Every method of a type returns a type that keeps the changes made before it and leaves the type that it is called on as it is, so a derived type can be shared and refined further where it is used, such as `decimal` below, or derived for a single column; only a type of [`nullableAs`](#json-null-values) takes no further `transform`, `of`, or `nullable`:
+Every method of a type returns a type that keeps the changes made before it and leaves the type that it is called on as it is, so a derived type can be shared and refined further where it is used, such as `decimal` below, or derived for a single column; only a type of [`nullableAs`](#null-read-as-undefined) takes no further `transform`, `of`, or `nullable`:
 
 ```ts
 import * as t from "kern-orm/types"
@@ -181,8 +182,75 @@ export const product = defineTable("product", {
 
 ## JSON `null` values
 
-A `json` or `jsonb` column that can be `NULL` reads both `NULL` and a JSON `null` value as `null`.
-To tell them apart, read `NULL` as `undefined`, with `nullableAs` instead of `nullable`:
+A `json` or `jsonb` column reads a JSON `null` value as `null`, as it reads `NULL`, and queries pass `null` as `NULL`.
+To tell them apart, define the column with `jsonbWithJsonNull`, or with `jsonWithJsonNull` for a `json` column: queries return and take a JSON `null` value as `jsonNull`, while `null` stays `NULL`:
+
+```ts
+import type { JsonNull } from "kern-orm"
+import { jsonNull } from "kern-orm"
+import * as t from "kern-orm/types"
+
+type Payload = { url?: string | null }
+
+export const job = defineTable("job", {
+  id: t.uuid.primaryKey().hasDefault(),
+  payload: t.jsonbWithJsonNull.of<Payload | JsonNull>().nullable(),
+  source: t.jsonWithJsonNull.of<Payload | JsonNull>().nullable(),
+})
+
+await db.job.insert({ payload: jsonNull }) // a JSON null value
+await db.job.insert({ payload: null }) // NULL
+
+// ids of the jobs whose payload is a JSON null value
+await db.job.where({ payload: jsonNull }).pluck("id")
+// ids of the jobs whose payload is NULL
+await db.job.where({ payload: null }).pluck("id")
+
+const payload = await db.job.find(id).get("payload")
+// payload: Payload | JsonNull | null
+if (payload === jsonNull) {
+  // a JSON null value
+}
+```
+
+Include `JsonNull` in the shape that `of` declares, beside the other values of the column.
+Queries return `jsonNull` wherever they return the column, also in related records and in the records of [`columnsOf`](./queries/sql#rows-of-tables), and take it wherever they take a value of the column, such as in `eq`, in `in`, and as a fallback of `coalesce`.
+
+- Only a JSON `null` value that is the whole value of the column is `jsonNull`: a `null` inside a value, such as `{ url: null }`, stays `null`.
+  Write `null` inside a value too: `jsonNull` there is lost, as `{ url: jsonNull }` is written as `{}`.
+- Only `jsonNull` writes a JSON `null` value: these types reject another value that JSON writes as `null`, such as `NaN`.
+
+PostgreSQL has no `=` for `json`, so a `json` column has no `eq`, `ne`, or `in`, and no object condition of a value, such as `where({ source: jsonNull })`.
+Find its JSON `null` values with `json_typeof` in a [SQL fragment](./queries/filtering#sql-fragments):
+
+```ts
+import { sql } from "kern-orm"
+
+// ids of the jobs whose source is a JSON null value
+await db.job.where(job => sql`json_typeof(${job.source}) = 'null'`).pluck("id")
+```
+
+`jsonNull` is a symbol, which neither JSON nor structured cloning carries.
+`JSON.stringify` leaves out a key whose value is `jsonNull`, writes `jsonNull` in an array as `null`, and returns `undefined` for `jsonNull` itself, and `structuredClone` and a message to a worker throw for a value that has it.
+Convert it where a result leaves the application, to values that the receiver tells apart.
+In a record sent as JSON, `null` for a JSON `null` value and `undefined` for `NULL` do, since JSON leaves out a key of `undefined`; convert them in [`map`](./queries/selecting#results-converted-in-code):
+
+```ts
+const jobs = await db.job.select("id", "payload").map(job => ({
+  ...job,
+  // null for a JSON null value, and no key in JSON for NULL
+  payload: job.payload === jsonNull ? null : (job.payload ?? undefined),
+}))
+```
+
+A value alone, such as of `get`, and the values of an array, such as of `pluck`, have no key to leave out: JSON writes `undefined` in an array as `null` too.
+Convert them to values that JSON carries and that the column cannot hold, such as a string of your own for a column of objects.
+For a column of any JSON value, wrap each value, such as in `["value", payload]`, `["json-null"]`, and `["sql-null"]`.
+
+### `NULL` read as `undefined`
+
+A `json` or `jsonb` column without a shape can read `NULL` as `undefined` instead, so that `null` in a result is a JSON `null` value.
+Define it with `nullableAs` instead of `nullable`:
 
 ```ts
 import * as t from "kern-orm/types"
@@ -203,14 +271,14 @@ Pass a JSON `null` value as SQL:
 ```ts
 import { sql } from "kern-orm"
 
-const jsonNull = sql(t.jsonb)`'null'::jsonb`
+const jsonNullValue = sql(t.jsonb)`'null'::jsonb`
 
-await db.job.insert({ payload: payload === null ? jsonNull : payload })
+await db.job.insert({ payload: payload === null ? jsonNullValue : payload })
 
 // jobs whose payload is NULL
 await db.job.where({ payload: null })
 // jobs whose payload is a JSON null value
-await db.job.where({ payload: jsonNull })
+await db.job.where({ payload: jsonNullValue })
 ```
 
 `get` of the column gives `undefined` both for `NULL` and, with `optional`, for a missing row.
@@ -218,42 +286,6 @@ To tell them apart, select the column in a record: `db.job.find(id).select("payl
 
 `nullableAs` applies to `json` and `jsonb` without a shape of `of`, whose values include `null`.
 Its values are final: `transform`, `of`, `nullable`, and `nullableAs` of the type that it creates throw, also where a shared type is refined for a column, such as `payload.of<Shape>()`.
-
-For a column with a shape, or to pass a JSON `null` value as a value of the column, derive a type that gives it a value of your own, such as a symbol, while `NULL` stays `null`:
-
-```ts
-import * as t from "kern-orm/types"
-
-export const jsonNull = Symbol("JSON null")
-
-type Payload = { url?: string }
-
-// jsonb values in which a JSON null value is jsonNull, while NULL stays null
-const payloadType = t.jsonb.of<Payload>().transform({
-  // decode never receives NULL, so null here is a JSON null value
-  decode: (value): Payload | typeof jsonNull => (value === null ? jsonNull : value),
-  // jsonb takes no null, which queries pass as NULL, so a JSON null value needs a cast
-  encode: (value: Payload | typeof jsonNull) => (value === jsonNull ? (null as never) : value),
-})
-
-export const job = defineTable("job", {
-  id: t.uuid.primaryKey().hasDefault(),
-  payload: payloadType.nullable(),
-})
-```
-
-Queries return `jsonNull` for a JSON `null` value and `null` for `NULL`, and take them the same way: `insert({ payload: jsonNull })` writes a JSON `null` value, `where({ payload: jsonNull })` finds it, and `where({ payload: null })` finds `NULL`.
-Declare the shape of the values with `of`: without it, their type is `unknown`, which takes in the symbol, so it does not show `jsonNull`.
-`json` has no `=`, so an object condition, such as `where({ payload: jsonNull })`, cannot find its JSON `null` value.
-
-To read `NULL` as `undefined` and a JSON `null` value as `null` in such a column, convert them in [`map`](./queries/selecting#results-converted-in-code):
-
-```ts
-const jobs = await db.job.select("id", "payload").map(job => ({
-  ...job,
-  payload: job.payload === jsonNull ? null : (job.payload ?? undefined),
-}))
-```
 
 ## Custom types
 
