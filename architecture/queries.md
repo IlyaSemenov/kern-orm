@@ -33,7 +33,7 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Selection
 
-- A query returns only explicitly selected fields: without `select` its records have no fields, and all columns require `select("*")`.
+- A query returns only explicitly selected fields: without `select` its records have no fields, and `select("*")` selects all columns of the table.
   A fixed argument that names a single column guarantees its field.
   Keys chosen from a union, an index signature, or an array of unknown length are optional in the result and in references to selected fields unless another selection or argument guarantees them ([decision](../decisions/queries/dynamic-column-keys.md)).
   A key must be typed as string literals, `string`, or a template: a key typed as a member of a string enum is not told as the column of its value, so that it loses or mistypes the field beside a key or a selected field of that value ([decision](../decisions/queries/string-literal-column-keys.md)).
