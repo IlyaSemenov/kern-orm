@@ -98,6 +98,7 @@ The SQL that loads nested queries and relations.
 - [`NULL` decoded to a value by a nullable type](types/null-decoded-to-a-value.md): `nullableAs`, which changes only what a result returns, and in the ORM applies only to a type whose values include `null` apart from `NULL`, rather than a value mapped to `NULL` both ways, `encodeNull` beside it, an overload of `nullable`, or values without `null` that the types of expressions do not tell.
 - [Separate JSON types for the `jsonNull` marker](types/json-null-marker.md): `jsonWithJsonNull` and `jsonbWithJsonNull`, which return and take a top-level JSON `null` value as `jsonNull`, rather than an option of `of`, a method of the JSON types, a helper for `transform`, a marker of the application, or a marker object.
 - [Read expression declared by a type](types/read-expression-of-a-type.md): as SQL text that its `decode` reads the result of, rather than an option of the columns of a record, a second decoder of a built-in type, or a function of `sql` fragments.
+- [Reusing PostgreSQL date and time fields](types/decoding-dates.md).
 - [Hex of `bytea` converted by the runtime](types/hex-of-bytea.md): by the native hex methods of `Uint8Array`, or by `Buffer` where the runtime lacks them, rather than by a loop of JavaScript, by `Buffer` alone, or by `Buffer` writing into the result without a copy.
 
 ## Tables and schemas

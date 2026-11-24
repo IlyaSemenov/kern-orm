@@ -12,11 +12,19 @@ import {
 } from "./datetime"
 
 describe("normalizeTimestamptz", () => {
+  it("formats UTC output with whole and fractional seconds", () => {
+    expect(normalizeTimestamptz("2026-01-15 10:00:00+00")).toBe("2026-01-15T10:00:00.000000Z")
+    expect(normalizeTimestamptz("2026-01-15 10:00:00.123456+00")).toBe(
+      "2026-01-15T10:00:00.123456Z",
+    )
+  })
+
   it("converts the session time zone to UTC and keeps microseconds", () => {
     expect(normalizeTimestamptz("2026-01-15 14:00:00.123456+07")).toBe(
       "2026-01-15T07:00:00.123456Z",
     )
     expect(normalizeTimestamptz("2026-01-15 00:10:00-03:30")).toBe("2026-01-15T03:40:00.000000Z")
+    expect(normalizeTimestamptz("2024-02-28 23:45:00-00:30")).toBe("2024-02-29T00:15:00.000000Z")
     expect(normalizeTimestamptz("2026-01-01 02:00:00.5+03")).toBe("2025-12-31T23:00:00.500000Z")
   })
 
@@ -40,7 +48,15 @@ describe("normalizeTimestamptz", () => {
 
 it("normalizes timestamp and time values to microseconds", () => {
   expect(normalizeTimestamp("2026-01-15 10:00:00")).toBe("2026-01-15T10:00:00.000000")
+  expect(normalizeTimestamp("2026-01-15 10:00:00.1")).toBe("2026-01-15T10:00:00.100000")
+  expect(normalizeTime("24:00:00")).toBe("24:00:00.000000")
   expect(normalizeTime("10:00:00.25")).toBe("10:00:00.250000")
+})
+
+it("rejects time with a time zone when decoding a local time", () => {
+  for (const text of ["10:00:00+07", "10:00:00.5+00", "10:00:00.123456-03:30"]) {
+    expect(() => normalizeTime(text)).toThrow(`Unsupported time value "${text}"`)
+  }
 })
 
 it("normalizes dates and timestamps of years outside 1 to 9999", () => {

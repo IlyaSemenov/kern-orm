@@ -39,6 +39,7 @@
     Result decoding wraps its error in `ResultDecodeError`.
     Other text, such as `1e3` of an `integer`, decodes to whatever the conversion reads, since a check of the format would cost for each value and only text from a source other than PostgreSQL, such as a fake driver, fails it.
     - `boolean` accepts only `t` and `f`.
+    - Date and time decoders reuse the ISO date and local time fields where PostgreSQL returns them in output order, padding seconds to microseconds and converting the session offset to UTC for `timestamptz` ([decision](../decisions/types/decoding-dates.md)).
     - `bytea` rejects text with an odd number of hex digits, whose last digit it would lose, and text that its conversion does not decode in full, and does not check the digits otherwise.
       It converts hex by the native hex methods of `Uint8Array`, or by `Buffer` of `node:buffer` on a runtime that lacks them, such as Node.js 24, and returns a `Uint8Array` on both ([decision](../decisions/types/hex-of-bytea.md)).
   - `jsonWithJsonNull` and `jsonbWithJsonNull` (`type/builtins/json.ts`) are the `json` and `jsonb` values in which a top-level JSON `null` value is the marker `jsonNull`, so that `null` among their values is only `NULL`, which `nullable` adds ([decision](../decisions/types/json-null-marker.md)).

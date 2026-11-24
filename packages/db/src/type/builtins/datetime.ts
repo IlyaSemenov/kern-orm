@@ -45,8 +45,6 @@ const timestampPattern = /^(\d{4,})(-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.(\d{1,
 
 const datePattern = /^(\d{4,})(-\d{2}-\d{2})( BC)?$/
 
-const timePattern = /^(\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?$/
-
 /** Leading ISO 8601 year that PostgreSQL does not accept: an expanded year, such as `+010000`, or year `0000`. */
 const isoYearPattern = /^([+-]\d{6,}|0000)(-.*)$/s
 
@@ -59,6 +57,10 @@ const infinities = new Set(["infinity", "-infinity"])
  * The fixed format keeps microseconds that `Date` would lose; the arithmetic avoids `Date`, whose range is narrower than that of PostgreSQL.
  */
 export function normalizeTimestamptz(text: string): string {
+  // In ISO output a four-digit AD year and the UTC suffix leave only the separator and precision to change.
+  if (text[4] === "-" && text[10] === " " && text.endsWith("+00")) {
+    return formatLocalTimestamp(text, text.length - 3) + "Z"
+  }
   if (infinities.has(text)) {
     return text
   }
@@ -69,20 +71,29 @@ export function normalizeTimestamptz(text: string): string {
   const offset =
     (match[8] === "-" ? -1 : 1) *
     (Number(match[9]) * 3600 + Number(match[10] ?? 0) * 60 + Number(match[11] ?? 0))
-  const seconds =
-    countDays(toAstronomicalYear(match[1]!, match[12]), Number(match[2]), Number(match[3])) *
-      86400 +
-    Number(match[4]) * 3600 +
-    Number(match[5]) * 60 +
-    Number(match[6]) -
-    offset
-  const days = Math.floor(seconds / 86400)
-  const time = seconds - days * 86400
-  return `${formatDate(days)}T${padTwo(Math.floor(time / 3600))}:${padTwo(Math.floor(time / 60) % 60)}:${padTwo(time % 60)}.${padFraction(match[7])}Z`
+  let time = Number(match[4]) * 3600 + Number(match[5]) * 60 + Number(match[6]) - offset
+  let utcDate: string
+  if (time >= 0 && time < 86400 && match[1]!.length === 4 && !match[12]) {
+    utcDate = text.slice(0, 10)
+  } else {
+    const days = countDays(
+      toAstronomicalYear(match[1]!, match[12]),
+      Number(match[2]),
+      Number(match[3]),
+    )
+    const dayOffset = Math.floor(time / 86400)
+    utcDate = formatDate(days + dayOffset)
+    time -= dayOffset * 86400
+  }
+  return `${utcDate}T${padTwo(Math.floor(time / 3600))}:${padTwo(Math.floor(time / 60) % 60)}:${padTwo(time % 60)}.${padFraction(match[7])}Z`
 }
 
 /** Normalizes a `timestamp` value to ISO 8601 without a time zone, such as `2026-01-15T10:00:00.000000`. */
 export function normalizeTimestamp(text: string): string {
+  // A common SQL type can promote a timestamp to timestamptz, whose offset a local timestamp cannot represent.
+  if (text[4] === "-" && text[10] === " " && hasLocalTimeSuffix(text, 19)) {
+    return formatLocalTimestamp(text, text.length)
+  }
   if (infinities.has(text)) {
     return text
   }
@@ -93,9 +104,14 @@ export function normalizeTimestamp(text: string): string {
   return `${formatYear(toAstronomicalYear(match[1]!, match[5]))}${match[2]}T${match[3]}.${padFraction(match[4])}`
 }
 
+/** Formats the date and local time preceding an optional UTC suffix, for a four-digit AD year. */
+function formatLocalTimestamp(text: string, end: number): string {
+  return text.slice(0, 10) + "T" + padTime(text.slice(11, end))
+}
+
 /** Normalizes a `date` value to ISO 8601, such as `2026-01-15`. */
 export function normalizeDate(text: string): string {
-  if (infinities.has(text)) {
+  if ((text.length === 10 && text[4] === "-") || infinities.has(text)) {
     return text
   }
   const match = datePattern.exec(text)
@@ -107,11 +123,19 @@ export function normalizeDate(text: string): string {
 
 /** Normalizes a `time` value to `HH:MM:SS.ffffff`. */
 export function normalizeTime(text: string): string {
-  const match = timePattern.exec(text)
-  if (!match) {
+  if (text[2] !== ":" || !hasLocalTimeSuffix(text, 8)) {
     throw new Error(`Unsupported time value "${text}"`)
   }
-  return `${match[1]}.${padFraction(match[2])}`
+  return padTime(text)
+}
+
+/** Checks whether the local time ends at the whole seconds or their fraction, both of which precede any PostgreSQL time zone offset. */
+function hasLocalTimeSuffix(text: string, secondsEnd: number): boolean {
+  return text.length === secondsEnd || /\.\d{1,6}$/.test(text)
+}
+
+function padTime(text: string): string {
+  return text.length === 8 ? text + ".000000" : text.padEnd(15, "0")
 }
 
 /** Creates the error of a value of `type` in an output format of another `DateStyle` than `ISO`. */

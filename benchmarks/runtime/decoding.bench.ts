@@ -45,6 +45,34 @@ const decoding: Topic = {
     (index, column) => `\\x${((index + column) % 256).toString(16).padStart(2, "0").repeat(32)}`,
     new Uint8Array(32).fill(13),
   ),
+  "1000 records of 10 date columns": createColumnsScenario(
+    t.date,
+    (index, column) => createDateText(index + column),
+    "2026-01-14",
+  ),
+  "1000 records of 10 time columns": createColumnsScenario(
+    t.time,
+    (index, column) => createTimeText(index + column),
+    "13:15:30.500000",
+  ),
+  "1000 records of 10 timestamp columns": createColumnsScenario(
+    t.timestamp,
+    (index, column) => `${createDateText(index + column)} ${createTimeText(index + column)}`,
+    "2026-01-14T13:15:30.500000",
+  ),
+  "1000 records of 10 timestamptz columns in UTC": createColumnsScenario(
+    t.timestamptz,
+    (index, column) => `${createDateText(index + column)} ${createTimeText(index + column)}+00`,
+    "2026-01-14T13:15:30.500000Z",
+  ),
+  "1000 records of 10 timestamptz columns with nonzero offsets": createColumnsScenario(
+    t.timestamptz,
+    (index, column) => {
+      const value = index + column
+      return `${createDateText(value)} ${createTimeText(value)}${value % 2 ? "+07" : "-03:30"}`
+    },
+    "2026-01-14T06:15:30.500000Z",
+  ),
   "100 records of a vector of 1536 dimensions": async () => {
     const rows: TextValue[][] = []
     for (let index = 0; index < 100; index++) {
@@ -120,6 +148,15 @@ function createColumnsScenario(
     assert.deepEqual(records[10]!.c3, expected)
     return async () => await query
   }
+}
+
+function createDateText(value: number): string {
+  return `2026-01-${String(1 + (value % 28)).padStart(2, "0")}`
+}
+
+function createTimeText(value: number): string {
+  const fraction = ["", ".5", ".123456"][value % 3]
+  return `${String(value % 24).padStart(2, "0")}:15:30${fraction}`
 }
 
 /** Result of a `SELECT` of `rows` with result `columns`. */
