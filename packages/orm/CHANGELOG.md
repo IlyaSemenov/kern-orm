@@ -1,5 +1,15 @@
 # kern-orm
 
+## 0.28.0
+
+### Minor Changes
+
+- aca9182: Add `comment(label)`, which starts a statement with `/* label */`, to the queries of `database.query`, `queryOn`, and `db.$query`.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.14.0
+
 ## 0.27.0
 
 ### Minor Changes

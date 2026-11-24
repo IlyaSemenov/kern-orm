@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.14.0
+
+### Minor Changes
+
+- aca9182: Add `comment(label)`, which starts a statement with `/* label */`, to the queries of `database.query`, `queryOn`, and `db.$query`.
+
 ## 0.13.0
 
 ### Minor Changes
