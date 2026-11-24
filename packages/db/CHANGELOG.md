@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.12.0
+
+### Minor Changes
+
+- b3bae8d: Add `RecordOf`, which names the type of the record that `select` of a query of SQL text decodes from the columns of `columnsOf` or `createSqlColumns`.
+
 ## 0.11.0
 
 ### Minor Changes

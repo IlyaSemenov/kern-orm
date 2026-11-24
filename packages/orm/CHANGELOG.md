@@ -1,5 +1,16 @@
 # kern-orm
 
+## 0.26.0
+
+### Minor Changes
+
+- ac121e8: `columnsOf` takes the columns to select as its required second argument, `"*"` for all the columns of the table or an array of column keys, instead of selecting all the columns without the `columns` option.
+- b3bae8d: Add `RecordOf`, which names the type of the record that `select` of a query of SQL text decodes from the columns of `columnsOf` or `createSqlColumns`.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.12.0
+
 ## 0.25.0
 
 ### Minor Changes
