@@ -1,8 +1,8 @@
 import type { Connection, Driver, DriverResult, SqlStatement } from "./driver"
 import type { SqlValue } from "./sql/fragment"
-import { compileFragment, compileScript, sql } from "./sql/fragment"
+import { compileScript, sql } from "./sql/fragment"
 import type { InitialSqlQueryState, SqlQuery } from "./sql/query"
-import { startSqlQuery } from "./sql/query"
+import { queryOn } from "./sql/query"
 import { TransactionCoordinator } from "./transaction/coordinator"
 
 /**
@@ -249,11 +249,8 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
         typeof script === "string" ? script : compileScript(sql(script, ...values)),
       )
     },
-    query(strings, ...values) {
-      // The template rejects a value that it does not take when the query is created, so that the error points at the template.
-      const fragment = sql(strings, ...values)
-      return startSqlQuery(() => compileFragment(fragment), database)
-    },
+    // The query calls `execute` of the database when it runs, so that it also runs through an `execute` that the application has replaced, such as to record statements.
+    query: queryOn({ execute: statement => database.execute(statement) }),
     execute: statement => coordinator.execute(statement),
     transaction: (callback, options) => coordinator.transaction(callback, options),
     externalTransaction: (connection, callback) =>

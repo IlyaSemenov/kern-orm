@@ -1,7 +1,6 @@
 // Queries of SQL text: a statement that resolves to the number of the rows of its command tag or to the fields of its rows decoded by types.
 
-import type { Database } from "../database"
-import type { SqlStatement } from "../driver"
+import type { SqlStatement, StatementExecutor } from "../driver"
 import type {
   FlatField,
   FlatResultPlan,
@@ -17,6 +16,8 @@ import { isType } from "../type/type"
 
 import type { AnySqlColumns } from "./columns"
 import { SqlColumns } from "./columns"
+import type { SqlValue } from "./fragment"
+import { compileFragment, sql } from "./fragment"
 
 /** Compiles the statement of a query of SQL text, each time the query executes or compiles, so that what it reads when it compiles, such as a PostgreSQL schema of the current tenant, is current. */
 export type StatementSource = () => SqlStatement
@@ -110,7 +111,7 @@ const countPlan: FlatResultPlan = /* @__PURE__ */ Object.freeze({
 })
 
 /**
- * Immutable query of a statement of SQL text, which executes on its database when awaited.
+ * Immutable query of a statement of SQL text, which executes on its executor, such as a database, when awaited.
  *
  * Without a selection, it resolves to the number of the rows of the command tag of its statement, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of the rows of the statement instead, decoded by types.
  */
@@ -121,15 +122,15 @@ export class SqlQuery<out S extends SqlQueryState> {
   constructor(
     /** Compiles the statement of the query. */
     private readonly source: StatementSource,
-    /** Database that executes the statement. */
-    private readonly database: Pick<Database, "execute">,
+    /** Executes the statement. */
+    private readonly executor: StatementExecutor,
     /** How the result of the statement is decoded. */
     private readonly plan: FlatResultPlan,
   ) {
     Object.freeze(this)
   }
 
-  /** Executes the query on its database. */
+  /** Executes the query on its executor. */
   // oxlint-disable-next-line unicorn/no-thenable -- awaiting a query executes it
   then<R1 = SqlQueryResult<S>, R2 = never>(
     onFulfilled?: ((result: SqlQueryResult<S>) => R1 | PromiseLike<R1>) | null,
@@ -283,16 +284,16 @@ export class SqlQuery<out S extends SqlQueryState> {
     return this.source()
   }
 
-  /** Compiles the statement, executes it on the database, and decodes its result by the plan. */
+  /** Compiles the statement, executes it on the executor, and decodes its result by the plan. */
   // An async function, so that a statement that fails to compile rejects the promise.
   private async execute(): Promise<unknown> {
     const statement = this.source()
-    return decodeFlatResult(this.plan, await this.database.execute(statement))
+    return decodeFlatResult(this.plan, await this.executor.execute(statement))
   }
 
   /** Creates the query of the same statement with result plan `plan`. */
   private derive(plan: FlatResultPlan): AnySqlQuery {
-    return new SqlQuery(this.source, this.database, Object.freeze(plan))
+    return new SqlQuery(this.source, this.executor, Object.freeze(plan))
   }
 
   /** Creates the query of the same fields in rows mode `rows`. */
@@ -326,12 +327,38 @@ export class SqlQuery<out S extends SqlQueryState> {
 // oxlint-disable-next-line typescript/no-explicit-any -- any query of SQL text regardless of its result
 export type AnySqlQuery = SqlQuery<any>
 
-/** Starts the query of the statement that `source` compiles, executed on `database`, which resolves to the number of the rows of its command tag. */
+/**
+ * Starts the query that compiles its statement with `source` and executes it on `executor`, such as a database, when awaited.
+ *
+ * The query resolves to the number of the rows of the command tag of its statement.
+ */
 export function startSqlQuery(
   source: StatementSource,
-  database: Pick<Database, "execute">,
+  executor: StatementExecutor,
 ): SqlQuery<InitialSqlQueryState> {
-  return new SqlQuery(source, database, countPlan)
+  return new SqlQuery(source, executor, countPlan)
+}
+
+/**
+ * Returns the template that starts a query of a SQL statement on `executor`, such as a `Driver`, a `Connection`, or an object with `execute` of its own, as `query` of a `Database` starts it on the database: `` queryOn(connection)`SELECT 1` ``.
+ *
+ * The statement runs where `execute` of the executor runs it: a `Database` runs it in its ambient transaction or session, a driver on any pooled connection, and a connection on itself, in the transaction that is open on it, if any.
+ * A call of `execute` of a driver or a connection bypasses the routing of a database over them, and an object of the application runs the statement wherever its `execute` passes it, such as in the routing of a database for one that calls `execute` of the database.
+ */
+export function queryOn(
+  executor: StatementExecutor,
+): (strings: TemplateStringsArray, ...values: SqlValue[]) => SqlQuery<InitialSqlQueryState> {
+  // A template called without an executor, such as queryOn`SELECT 1`, passes its strings here.
+  if (typeof (executor as Partial<StatementExecutor> | null | undefined)?.execute !== "function") {
+    throw new TypeError(
+      "queryOn() takes an object with an execute method, such as a database, a driver, or a connection, and returns the template of a statement: queryOn(executor)`SELECT 1`",
+    )
+  }
+  return (strings, ...values) => {
+    // The template rejects a value that it does not take when the query is created, so that the error points at the template.
+    const fragment = sql(strings, ...values)
+    return startSqlQuery(() => compileFragment(fragment), executor)
+  }
 }
 
 /** Returns `value` that `what` takes as its type, rejecting a value that is not a type. */

@@ -7,6 +7,7 @@ import type {
   PollLockOptions,
   SessionOptions,
   SqlStatement,
+  StatementExecutor,
   TransactionOptions,
 } from "kern-db"
 import { createStatement, isDatabase } from "kern-db"
@@ -332,7 +333,7 @@ interface DatabaseResolver {
   /** Returns the database of the `Db`, calling its function, if any, and rejecting a result that is not a database or another database inside the callback of a transaction or session of the `Db`. */
   resolveDatabase(): Database
   /** Executor of the queries of SQL text of the `Db`, which resolves the database when a query executes rather than when it is built. */
-  executor: Pick<Database, "execute">
+  executor: StatementExecutor
   /** Wraps the callback of `$transaction`, `$ensureTransaction`, or `$session` of the `Db` on `database`, so that `resolveDatabase` in it rejects another database. */
   track<Result>(database: Database, callback: () => PromiseLike<Result>): () => PromiseLike<Result>
 }

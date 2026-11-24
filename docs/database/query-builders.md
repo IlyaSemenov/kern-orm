@@ -75,6 +75,7 @@ const forms = await selectFrom(
 The statement numbers the parameters of the builder and of the fragment in one sequence: `SELECT "id", "name" FROM "form" WHERE "published" = $1 AND (name ILIKE $2)`.
 
 `startSqlQuery` compiles the statement with your function, a `StatementSource`, each time the query executes or `toSQL` is called, so read in the function what may change between runs, such as the PostgreSQL schema of the current tenant.
+It runs the statement on any `StatementExecutor`, such as a driver or a connection instead of the database, as [`queryOn`](./sql#statements-on-a-connection-or-a-driver) does.
 
 To tell a query of SQL text, such as of `database.query`, from the other values that your builder takes, such as to reject it with an error of your own, check `instanceof SqlQuery`.
 

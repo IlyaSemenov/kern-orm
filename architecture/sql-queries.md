@@ -1,14 +1,19 @@
 # Queries of SQL text
 
-- **Query of SQL text** (`sql/query.ts`): immutable query of a statement of the database layer, which `query` of a `Database` and `$query` of a `Db` start, as a `SqlQuery` of a source of its statement and of the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.
-  - The source compiles the statement each time the query executes or `toSQL` compiles it; awaiting the query executes the statement with `execute` of its database and decodes the result by the plan.
+- **Query of SQL text** (`sql/query.ts`): immutable query of a statement of the database layer, which `query` of a `Database`, the template of `queryOn`, and `$query` of a `Db` start, as a `SqlQuery` of a source of its statement, of the executor of the statement, and of the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.
+  - The source compiles the statement each time the query executes or `toSQL` compiles it; awaiting the query executes the statement with `execute` of its executor, called as its method, and decodes the result by the plan.
   - A statement that fails to compile rejects the promise of the query without executing.
-  - `query` of a `Database` compiles a template of `sql` of the layer with `compileFragment`, so it takes its fragments and no table, expression, or query of the ORM.
+  - The executor is a `StatementExecutor` (`driver.ts`): any object whose `execute` takes a statement and returns the result of a driver, such as a `Database`, a `Driver`, a `Connection`, or a wrapper of one.
+    The statement runs where `execute` of the executor runs it: a `Database` routes it to its ambient transaction or session, a driver runs it on any pooled connection, a connection on itself, in the transaction that is open on it, if any, and a wrapper wherever its `execute` passes the statement, such as in the routing of a database for a wrapper that calls `execute` of the database.
+    A call of `execute` of a driver or a connection bypasses the routing of a `Database`: the statement is part of a transaction of the database, also a test transaction, only on the connection of that transaction.
+  - `queryOn` returns the template that starts a query on an executor, and rejects a value without `execute`, such as the strings of a template called without an executor ([decision](../decisions/sql-queries/query-on-an-executor.md)).
+    `query` of a `Database` is this template of the database, whose queries call `execute` of the database when they run, also one that the application has replaced.
+  - The template compiles as a template of `sql` of the layer with `compileFragment`, so it takes its fragments and no table, expression, or query of the ORM.
   - `$query` of a `Db` compiles the raw SQL node of its template, as `sql` builds it, with the lowering and compilation of the `Db` (`lowerTextStatement` and `compileTextStatement`), so that its interpolated tables are named in the PostgreSQL schema that the `Db` resolves at each compilation, and the queries interpolated into it, such as of `exists` in a condition, are lowered and checked against the `Db`.
     The source holds the `Db` in its closure: the query has no `Db` or node of the ORM.
 - `$execute` and `$compile` of a `Db` reject a query of SQL text before they read a node, since it has none.
 - The ORM recognizes a query of SQL text by its class, since the class has no method of the operands of the ORM: it cannot be nested in a selection, used as an operand of an expression, such as an insert or update value or a condition, or interpolated into `sql`.
-- The template of `$query` interpolates values as `sql` does, as [types](types.md#parameters-and-sql-fragments) describe, and the template of `query` as `sql` of the [database layer](types.md#sql-fragments-of-the-database-layer); either runs as one statement with parameters.
+- The template of `$query` interpolates values as `sql` does, as [types](types.md#parameters-and-sql-fragments) describe, and the templates of `query` and `queryOn` as `sql` of the [database layer](types.md#sql-fragments-of-the-database-layer); each runs as one statement with parameters.
 
 ## Results
 

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 
 import { createDatabase, getCoordinator } from "./database"
-import type { Connection, Driver, TextValue } from "./driver"
+import type { Connection, Driver, StatementExecutor, TextValue } from "./driver"
 import { createStatement } from "./driver"
 import { ConnectionError, QueryError } from "./driver-error"
 import type { SqlFragment } from "./sql/fragment"
@@ -34,7 +34,7 @@ export interface DriverContractRunner extends TestHooks {
 }
 
 /** Creates helpers that run raw statements on `target`: a database, a driver, or a reserved connection. */
-function createStatementRunners(target: Pick<Connection, "execute">) {
+function createStatementRunners(target: StatementExecutor) {
   return {
     async runStatement(text: string) {
       await target.execute(createStatement(text))
@@ -395,7 +395,7 @@ export function describeDriverContract(
         const pid = await pool.selectValue("SELECT pg_backend_pid()")
 
         /** Asserts that inserting a duplicate on `target` rejects with the violated constraint, and that its connection stays the same. */
-        async function assertRejected(target: Pick<Connection, "execute">) {
+        async function assertRejected(target: StatementExecutor) {
           const runners = createStatementRunners(target)
           const error = await runners
             .runStatement("INSERT INTO pg_unique_test VALUES (1)")

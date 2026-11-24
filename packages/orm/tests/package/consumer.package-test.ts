@@ -639,9 +639,10 @@ describe.each(["node", "bun"])("%s", runtime => {
   })
 
   describe("consumer of kern-db without kern-orm and pg", () => {
-    test("runs queries of SQL text in a transaction and creates the driver of postgres.js and the test helpers", () => {
+    test("runs queries of SQL text in a transaction and on the driver, and creates the driver of postgres.js and the test helpers", () => {
       expect(JSON.parse(run([runtime, "db.ts"], dbConsumer))).toEqual({
         forms: [{ id: 1, tags: ["draft", "poll"] }],
+        formCount: 1,
         statements: [
           { connection: 1, text: "BEGIN", parameters: [] },
           {
@@ -651,6 +652,11 @@ describe.each(["node", "bun"])("%s", runtime => {
           },
           { connection: 1, text: "COMMIT", parameters: [] },
           { connection: 1, text: "release", parameters: [] },
+          {
+            connection: "pool",
+            text: 'SELECT count(*) FROM form WHERE "form"."name" = $1',
+            parameters: ["Survey"],
+          },
         ],
       })
     })

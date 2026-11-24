@@ -1,19 +1,23 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
 import { describePostgres } from "@kern-orm/test-harness/postgres"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
 import { createDatabase } from "../database"
-import type { DriverResult } from "../driver"
+import type { DriverResult, SqlStatement, StatementExecutor } from "../driver"
+import { isQueryError } from "../error-condition"
 import { NotFoundError } from "../result"
+import { array } from "../type/builtins/array"
 import { boolean } from "../type/builtins/boolean"
+import { timestamptz } from "../type/builtins/datetime"
 import { integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
 
 import { createSqlColumns } from "./columns"
-import { identifier, param } from "./fragment"
+import { identifier, param, sql } from "./fragment"
 import type { AnySqlQuery } from "./query"
-import { startSqlQuery } from "./query"
+import { queryOn, startSqlQuery } from "./query"
 
 /** Database over a recording driver that answers every statement with `result`. */
 function createRecordedDatabase(result: Partial<DriverResult> = {}) {
@@ -45,6 +49,21 @@ describe("statements", () => {
     })
 
     expect(statements.map(statement => statement.connection)).toEqual([1, 1, 1])
+  })
+
+  it("call execute of their database as it is when they run, also one replaced after they were created", async () => {
+    const { database } = createRecordedDatabase()
+    const { execute } = database
+    const executed: string[] = []
+    const query = database.query`SELECT 1`
+    database.execute = statement => {
+      executed.push(statement.text)
+      return execute(statement)
+    }
+
+    await query
+
+    expect(executed).toEqual(["SELECT 1"])
   })
 
   it("compile as they execute, interpolating fragments as SQL", () => {
@@ -84,6 +103,127 @@ describe("statements", () => {
     expect(await query).toBe(1)
     await expect(query.then()).rejects.toThrow("Cannot compile")
     expect(statements).toHaveLength(1)
+  })
+})
+
+describe("queryOn", () => {
+  it("starts a query on a driver, which runs on the pool outside the transaction of a database over it", async () => {
+    const { driver, statements } = createRecordingDriver({ respond: () => ({ count: 2 }) })
+    const database = createDatabase({ driver })
+
+    const count = await database.transaction(
+      async () => await queryOn(driver)`UPDATE form SET name = ${"Survey"}`,
+    )
+
+    expect(count).toBe(2)
+    expect(statements.map(statement => [statement.connection, statement.text])).toEqual([
+      [1, "BEGIN"],
+      ["pool", "UPDATE form SET name = $1"],
+      [1, "COMMIT"],
+    ])
+  })
+
+  it("starts a query on a connection", async () => {
+    const { driver, statements } = createRecordingDriver({
+      respond: () => ({ columns: [{ name: "id", type: 23 }], rows: [["1"], ["2"]] }),
+    })
+    const connection = await driver.acquire()
+
+    const ids = await queryOn(connection)`SELECT id FROM form WHERE id < ${3}`.pluck(integer)
+    await connection.release()
+
+    expect(ids).toEqual([1, 2])
+    expect(statements).toEqual([
+      { connection: 1, text: "SELECT id FROM form WHERE id < $1", parameters: ["3"] },
+    ])
+  })
+
+  it("starts a query on an object with execute, called as its method each time the query is awaited", async () => {
+    class RecordingExecutor implements StatementExecutor {
+      readonly statements: SqlStatement[] = []
+
+      async execute(statement: SqlStatement): Promise<DriverResult> {
+        this.statements.push(statement)
+        return {
+          command: "SELECT",
+          count: 1,
+          columns: [
+            { name: "id", type: 23 },
+            { name: "name", type: 25 },
+          ],
+          rows: [["1", "Survey"]],
+        }
+      }
+    }
+    const executor = new RecordingExecutor()
+    const query = queryOn(executor)`SELECT id, name FROM form WHERE id = ${1}`
+      .select({
+        id: integer,
+        name: text,
+      })
+      .take()
+
+    expect(executor.statements).toEqual([])
+    expect(await query).toEqual({ id: 1, name: "Survey" })
+    expect(await query).toEqual({ id: 1, name: "Survey" })
+    expect(executor.statements).toEqual([
+      { text: "SELECT id, name FROM form WHERE id = $1", parameters: ["1"] },
+      { text: "SELECT id, name FROM form WHERE id = $1", parameters: ["1"] },
+    ])
+  })
+
+  it("starts a query on a database, which runs in its ambient transaction as its query does", async () => {
+    const { database, statements } = createRecordedDatabase()
+
+    await database.transaction(async () => {
+      await queryOn(database)`SELECT pg_advisory_xact_lock(${1})`
+    })
+
+    expect(statements.map(statement => [statement.connection, statement.text])).toEqual([
+      [1, "BEGIN"],
+      [1, "SELECT pg_advisory_xact_lock($1)"],
+      [1, "COMMIT"],
+    ])
+  })
+
+  it("interpolates fragments with their values, binding a value at each place of its fragment", () => {
+    const { driver } = createRecordingDriver()
+    const table = identifier("jobs", "job")
+    const now = sql`coalesce(${param(timestamptz.nullable(), null)}, statement_timestamp())`
+    const due = sql`state = ${"pending"} AND run_at <= ${now}`
+
+    const query = queryOn(
+      driver,
+    )`/* claim */ UPDATE ${table} SET locked_at = ${now}, locked_by = ${"worker"} WHERE ${due} AND id = ANY(${param(array(integer), [1, 2])})`
+
+    expect(query.toSQL()).toEqual({
+      text: '/* claim */ UPDATE "jobs"."job" SET locked_at = coalesce(($1::timestamptz), statement_timestamp()), locked_by = $2 WHERE state = $3 AND run_at <= coalesce(($4::timestamptz), statement_timestamp()) AND id = ANY(($5::integer[]))',
+      parameters: [null, "worker", "pending", null, '{"1","2"}'],
+    })
+  })
+
+  it("rejects a value that the template does not take when the query is created", () => {
+    const { driver } = createRecordingDriver()
+
+    // @ts-expect-error A parameter without a type takes no array.
+    expect(getThrownError(() => queryOn(driver)`SELECT ${[1]}`)).toEqual(
+      new TypeError(
+        "A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not an array; pass JSON or an array with param()",
+      ),
+    )
+  })
+
+  it("rejects a value without an execute method, such as the strings of a template without an executor", () => {
+    const error = new TypeError(
+      "queryOn() takes an object with an execute method, such as a database, a driver, or a connection, and returns the template of a statement: queryOn(executor)`SELECT 1`",
+    )
+
+    // @ts-expect-error The strings of a template are not an executor.
+    expect(getThrownError(() => queryOn`SELECT 1`)).toEqual(error)
+    // @ts-expect-error An object without `execute` is not an executor.
+    expect(getThrownError(() => queryOn({ query: () => {} }))).toEqual(error)
+    // @ts-expect-error `undefined` is not an executor.
+    expect(getThrownError(() => queryOn(undefined))).toEqual(error)
   })
 })
 
@@ -337,6 +477,39 @@ describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
       ])
       expect(await database.query`SELECT count(*) FROM form`.get(integer)).toBe(2)
       expect(await database.query`DELETE FROM form WHERE id = ${2}`.take()).toBe(1)
+    }))
+
+  it("types a value by its place, as text in the select list alone, and reads one value at several places through a common table expression", () =>
+    testTransaction(async () => {
+      const at = new Date("2026-01-15T07:00:00.000Z")
+      const now = sql`coalesce(${at}, statement_timestamp())`
+
+      // The other argument of coalesce types the value, at each place of the fragment.
+      expect(
+        await queryOn(database)`SELECT ${now} = ${now} AND ${now} = ${at}::timestamptz`.get(
+          boolean,
+        ),
+      ).toBe(true)
+      // A value that only the select list reads is text, OID 25.
+      const selected = await database.execute(queryOn(database)`SELECT ${"mail"} AS queue`.toSQL())
+      expect(selected.columns).toMatchObject([{ name: "queue", type: 25 }])
+      // The condition alone does not type the value.
+      const rejection: unknown = await database
+        // A transaction of its own, so that the failed statement leaves the test transaction usable.
+        .transaction(async () => await queryOn(database)`SELECT ${at} IS NULL`)
+        .catch((error: unknown) => error)
+      expect(isQueryError(rejection, "indeterminate_datatype")).toBe(true)
+      expect(
+        await queryOn(database)`
+          WITH input AS (SELECT ${param(text, "mail")} AS queue)
+          SELECT input.queue AS selected, (SELECT queue FROM input) AS nested FROM input
+        `
+          .select({
+            selected: text,
+            nested: text,
+          })
+          .take(),
+      ).toEqual({ selected: "mail", nested: "mail" })
     }))
 
   it("names a table by identifier whose name has a dot and a quote", () =>

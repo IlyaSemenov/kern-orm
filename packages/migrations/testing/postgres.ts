@@ -8,6 +8,7 @@ import type {
   DriverResult,
   IsolationLevel,
   SqlStatement,
+  StatementExecutor,
 } from "kern-db"
 import { createDatabase } from "kern-db"
 import { postgresJsDriver } from "kern-db/postgres-js"
@@ -138,7 +139,7 @@ interface StatementInterceptor {
 
 /** Wraps `driver` to pass every statement and script it executes, on the pool or on a connection, to `interceptor`. */
 function interceptStatements(driver: Driver, interceptor: StatementInterceptor): Driver {
-  const execute = async (target: Pick<Driver, "execute">, statement: SqlStatement) => {
+  const execute = async (target: StatementExecutor, statement: SqlStatement) => {
     interceptor.before(statement.text)
     const result = await target.execute(statement)
     interceptor.after(statement.text, result)

@@ -68,6 +68,7 @@ Filters, queries in expressions, and SQL fragments.
 - [Return type of `columnsOf` kept out of inference](sql-queries/columns-of-return-type.md): `NoInfer`, rather than a plain return type, which a call in a field of `select` also infers the columns from, or two overloads.
 - [`RecordOf` of the columns of a record](sql-queries/record-of-columns.md): a type of its own in `kern-db`, rather than `ResultOf` of both packages, whose tried forms reject passing a record of generic columns from kern-orm to `kern-db`, or a type of any field of `select`.
 - [A missing row told by the key columns](sql-queries/missing-row-by-key-columns.md): the columns of a record that is `null` without its row include their key or name the columns that tell a missing row in `by`.
+- [`queryOn` of an executor of statements](sql-queries/query-on-an-executor.md): a function that returns the template of a driver, a connection, or a wrapper of `execute`, rather than a method of a fragment, `query` of `Driver` and `Connection`, or a `Database` over each of them.
 
 ## SQL generation
 

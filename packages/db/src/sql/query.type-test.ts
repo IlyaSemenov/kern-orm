@@ -2,13 +2,39 @@ import { describe, expectTypeOf, test } from "bun:test"
 
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
+import type { Database } from "../database"
 import { createDatabase } from "../database"
+import type { Connection, Driver, DriverResult, SqlStatement } from "../driver"
 import { bigint, integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
 
 import { createSqlColumns } from "./columns"
+import type { InitialSqlQueryState, SqlQuery } from "./query"
+import { queryOn } from "./query"
 
 const database = createDatabase({ driver: createRecordingDriver().driver })
+
+describe("queryOn", () => {
+  test("takes a database, a driver, a connection, and an object with execute, and starts the query of a database", () => {
+    const template = (
+      executor:
+        | Database
+        | Driver
+        | Connection
+        | { execute: (statement: SqlStatement) => Promise<DriverResult> },
+    ) => queryOn(executor)`SELECT ${1}`
+
+    expectTypeOf(template).returns.toEqualTypeOf<SqlQuery<InitialSqlQueryState>>()
+    expectTypeOf(queryOn(database)).toEqualTypeOf<Database["query"]>()
+  })
+
+  test("rejects an object that does not execute statements, and a value that its template does not take", () => {
+    // @ts-expect-error An executor returns the result of a driver.
+    queryOn({ execute: async (statement: SqlStatement) => statement })
+    // @ts-expect-error An object is not the value of a parameter without a type.
+    void queryOn(database)`SELECT ${{ id: 1 }}`
+  })
+})
 
 describe("results", () => {
   test("are the number of the rows of the command tag without a selection", async () => {

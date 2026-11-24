@@ -2,7 +2,8 @@ import { describe, expect, it } from "bun:test"
 
 import { getThrownError } from "@kern-orm/test-harness/errors"
 import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
-import { createDatabase, createStatement } from "kern-db"
+import type { SqlStatement } from "kern-db"
+import { createDatabase, createStatement, identifier, param, queryOn, sql } from "kern-db"
 import { startSqlQuery } from "kern-db/builder"
 
 import { describePostgres } from "../../testing/postgres"
@@ -221,6 +222,35 @@ describePostgres("in PostgreSQL", ({ database, testTransaction, useTestFixture }
         .take()
 
       expect(row.job).toMatchObject({ id: 1, queueName: "mail", lockedBy: "worker" })
+    }))
+
+  it("reads the records of a claim that a template of queryOn runs on a wrapper of execute, with the values that it binds", () =>
+    testTransaction(async () => {
+      const jobColumns = columnsOf(db.job, ["id", "queueName", "lockedBy"], { alias: "j" })
+      const sent: string[] = []
+      const timed = {
+        execute(statement: SqlStatement) {
+          sent.push(statement.text)
+          return database.execute(statement)
+        },
+      }
+      const now = sql`coalesce(${new Date("2026-01-15T07:00:05Z")}, statement_timestamp())`
+
+      const claims = await queryOn(timed)`
+        /* claim */ WITH due AS (
+          SELECT id FROM ${identifier("job")}
+          WHERE run_at <= ${now} AND id = ANY(${param(t.array(t.integer), [1, 2])})
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE job j SET locked_by = ${"worker"} FROM due WHERE j.id = due.id
+        RETURNING ${jobColumns}, extract(epoch FROM ${now} - j.run_at)::float8 AS lag
+      `.select({
+        job: jobColumns,
+        lag: t.doublePrecision,
+      })
+
+      expect(claims).toEqual([{ job: { id: 1, queueName: "mail", lockedBy: "worker" }, lag: 5 }])
+      expect(sent).toEqual([expect.stringContaining("/* claim */ WITH due AS")])
     }))
 
   it("reads a column of a type with a read expression whatever the DateStyle of the session", () =>

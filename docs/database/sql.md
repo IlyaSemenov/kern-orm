@@ -94,6 +94,84 @@ import * as t from "kern-db/types"
 await database.query`UPDATE form SET tags = ${param(t.array(t.text), tags)} WHERE id = ${formId}`
 ```
 
+## Types of values
+
+PostgreSQL types each interpolated value by its place in the statement, such as by the column that it is compared with or assigned to, so most values need no type.
+In a plain `SELECT ${value}`, a value without a type is `text`.
+In other places that do not tell the type, such as `${value} IS NULL` or an argument of `jsonb_build_object`, PostgreSQL rejects the statement with an error such as `could not determine data type of parameter $1`.
+Give such a value its type with `param`:
+
+```ts
+const forms = await database.query`
+  SELECT id, name FROM form
+  WHERE ${param(t.text.nullable(), search)} IS NULL OR name ILIKE ${search}
+`.select({
+  id: t.uuid,
+  name: t.text,
+})
+```
+
+`param` casts the value to the type and encodes it as the type does.
+A cast written in the statement, such as `${search}::text`, also types a value that needs no encoding.
+
+Each occurrence of a value in a statement is a parameter of its own, also in a fragment that the statement interpolates several times, so each is typed by its place.
+To pass a value once and read it in several places, select it in a common table expression:
+
+```ts
+await database.query`
+  WITH input AS (SELECT ${param(t.timestamptz, now)} AS now)
+  UPDATE job SET locked_at = input.now, lease_until = input.now + interval '1 minute'
+  FROM input
+  WHERE job.run_at <= input.now
+`
+```
+
+## Statements on a connection or a driver
+
+To run a statement on something other than the database, such as a [driver](./drivers), a connection that your code holds, or an object that wraps one to time or record its statements, pass it to `queryOn` and write the statement as the template that it returns:
+
+```ts
+import type { StatementExecutor } from "kern-db"
+import { queryOn } from "kern-db"
+
+function countPendingJobs(executor: StatementExecutor) {
+  return queryOn(executor)`SELECT count(*) FROM job WHERE state = ${"pending"}`.get(t.integer)
+}
+
+const connection = await driver.acquire()
+try {
+  const pending = await countPendingJobs(connection)
+  // pending: number
+} finally {
+  await connection.release()
+}
+```
+
+The template is that of `database.query`, with the same values, fragments, and results.
+`queryOn` takes any object with the `execute` method of a connection, a `StatementExecutor`, and the statement runs when you await the query:
+
+```ts
+let sentAt = 0
+const timed: StatementExecutor = {
+  execute(statement) {
+    sentAt = performance.now()
+    return driver.execute(statement)
+  },
+}
+
+const pending = await countPendingJobs(timed)
+```
+
+The statement runs where `execute` of the object runs it:
+
+- A driver runs it on any connection of its pool.
+- A connection runs it on itself, in the transaction that is open on it, if any.
+- An object of your own runs it wherever its `execute` passes it: `timed` above passes it to the driver, so it runs on the pool.
+- A database runs it in the current [transaction](./transactions) or [session](./sessions), as `database.query` does, so a function that takes a `StatementExecutor` serves all of them.
+
+A statement is part of a transaction of a database only when it runs on the connection of that transaction, where the database runs its own statements.
+What it writes on another connection, such as of the pool of a driver or one that your code acquired, stays when that transaction rolls back, such as the transaction of the [test helpers](./testing).
+
 ## Scripts
 
 To run several statements at once, such as the SQL of a migration file, pass them to `database.script`:

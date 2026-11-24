@@ -239,7 +239,7 @@
 ## SQL fragments of the database layer
 
 - `sql`, `identifier`, and `param` of the database layer (`sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
-  `kern-db` exports them, and `kern-orm/db` re-exports them; both and the root of `kern-orm` export the types `SqlFragment` and `SqlValue`, which the templates of `query` and `script` of a `Database` name.
+  `kern-db` exports them, and `kern-orm/db` re-exports them; both and the root of `kern-orm` export the types `SqlFragment` and `SqlValue`, which the templates of `query` and `script` of a `Database` and of `queryOn` name.
 - The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a type: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
   - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a type tells how PostgreSQL reads an object or an array.
   - JSON and arrays take `param` with a type.

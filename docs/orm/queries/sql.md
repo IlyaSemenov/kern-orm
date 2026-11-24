@@ -168,3 +168,33 @@ The script runs in the current transaction; outside one, PostgreSQL applies all 
 Leave transactions to kern-orm: do not write `BEGIN`, `COMMIT`, or `ROLLBACK` in a script.
 
 In code that has the database but no `Db`, run statements with `database.query` and scripts with `database.script`; see [SQL Queries and Scripts](../../database/sql).
+
+## Statements on a connection or a driver
+
+To run a statement on a driver, a connection that your code holds, or an object that wraps one, write it with `queryOn` of `kern-orm/db`:
+
+```ts
+import { columnsOf } from "kern-orm"
+import type { StatementExecutor } from "kern-orm/db"
+import { queryOn } from "kern-orm/db"
+
+const job = columnsOf(db.job, ["id", "task"], { alias: "j" })
+
+function claimJobs(executor: StatementExecutor, worker: string) {
+  return queryOn(executor)`
+    UPDATE job j SET locked_by = ${worker}
+    WHERE j.locked_by IS NULL
+    RETURNING ${job}
+  `.select({
+    job,
+  })
+}
+
+const claimed = await claimJobs(connection, "worker-1")
+// claimed: { job: { id: number; task: string } }[]
+```
+
+Its template interpolates values, the columns of `columnsOf`, and the `sql`, `identifier`, and `param` fragments of `kern-orm/db`.
+It takes no table or query of a `Db`, so name tables in the SQL, or by `identifier` with their PostgreSQL schema.
+
+For how such a statement relates to transactions and to the rollback of tests, see [SQL Queries and Scripts](../../database/sql#statements-on-a-connection-or-a-driver).

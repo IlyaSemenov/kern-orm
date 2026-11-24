@@ -34,6 +34,7 @@ export type {
   DriverColumn,
   DriverResult,
   SqlStatement,
+  StatementExecutor,
   TextValue,
 } from "./driver"
 export { createStatement, isDriver } from "./driver"
@@ -70,3 +71,4 @@ export type {
   SqlQueryResult,
   SqlQueryState,
 } from "./sql/query"
+export { queryOn } from "./sql/query"

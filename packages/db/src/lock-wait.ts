@@ -1,5 +1,5 @@
 // Test helpers that wait until a backend of PostgreSQL waits for a lock, such as to check that a statement blocks on a row or an advisory lock that another test transaction holds.
-import type { Connection } from "./driver"
+import type { StatementExecutor } from "./driver"
 import { createStatement } from "./driver"
 import { pause } from "./transaction/advisory-lock"
 
@@ -20,7 +20,7 @@ const pollInterval = 5
  *
  * Call it on the connection that will wait for a lock, such as inside its transaction or session: on the pool of a database or a driver, it gives the backend of whichever connection runs the statement.
  */
-export async function getBackendPid(target: Pick<Connection, "execute">): Promise<number> {
+export async function getBackendPid(target: StatementExecutor): Promise<number> {
   const { rows } = await target.execute(createStatement("SELECT pg_backend_pid()"))
   return Number(rows[0]![0])
 }
@@ -32,7 +32,7 @@ export async function getBackendPid(target: Pick<Connection, "execute">): Promis
  * It reads the locks with `pg_blocking_pids`, which reads the current lock state even inside a transaction.
  */
 export async function waitForLock(
-  observer: Pick<Connection, "execute">,
+  observer: StatementExecutor,
   pid: number,
   options: LockWaitOptions = {},
 ): Promise<void> {
@@ -54,7 +54,7 @@ export async function waitForLock(
  * It rejects when no such backend waits in time.
  */
 export async function waitForLockedStatement(
-  observer: Pick<Connection, "execute">,
+  observer: StatementExecutor,
   fragment: string,
   options: LockWaitOptions = {},
 ): Promise<number> {

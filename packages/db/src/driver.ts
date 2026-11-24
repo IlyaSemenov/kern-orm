@@ -34,6 +34,16 @@ export interface DriverResult {
 }
 
 /**
+ * Object that executes statements: a `Database`, a `Driver`, a `Connection`, or an object with `execute` of its own, such as a wrapper of a connection that records the time of each statement.
+ *
+ * `queryOn` starts a query of SQL text on it.
+ */
+export interface StatementExecutor {
+  /** Executes a statement and returns its result with values as text, as `execute` of a `Connection` does. */
+  execute(statement: SqlStatement): Promise<DriverResult>
+}
+
+/**
  * Physical database access: transport, pooling, and connections.
  *
  * A driver sends parameters as text without a declared type, so that the statement text alone determines their types, and returns values as text without parsing them.
