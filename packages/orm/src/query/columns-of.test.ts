@@ -94,36 +94,42 @@ describe("columns", () => {
   })
 
   it('reject a query of the records of a table, another value, columns that are neither "*" nor a list, and a column that the table does not have', () => {
-    expect(() => columnsOf(db.job.where({ id: 1 }), "*")).toThrow(
-      "columnsOf takes a table, such as db.form, not a query of its records; pass the table and keep the conditions of the query in the statement",
+    expect(getThrownError(() => columnsOf(db.job.where({ id: 1 }), "*"))).toEqual(
+      new TypeError(
+        "columnsOf takes a table, such as db.form, not a query of its records; pass the table and keep the conditions of the query in the statement",
+      ),
     )
-    expect(() => columnsOf("job" as never, "*")).toThrow(
-      "columnsOf takes a table or view, such as db.form or its definition",
+    expect(getThrownError(() => columnsOf("job" as never, "*"))).toEqual(
+      new TypeError("columnsOf takes a table or view, such as db.form or its definition"),
     )
     expect(getThrownError(() => columnsOf(db.job, "id" as never))).toEqual(
       new TypeError('columnsOf takes "*" or an array of column keys as its second argument'),
     )
-    expect(() => columnsOf(db.job, ["task" as never])).toThrow('table "job" has no column "task"')
-    expect(() => columnsOf(db.job, [])).toThrow(
-      "Columns of a record must include at least one column",
+    expect(getThrownError(() => columnsOf(db.job, ["task" as never]))).toEqual(
+      new Error('table "job" has no column "task"'),
+    )
+    expect(getThrownError(() => columnsOf(db.job, []))).toEqual(
+      new Error("Columns of a record must include at least one column"),
     )
   })
 
   it("tell a missing row by the primary key when they include all its columns", () => {
+    const missingKey = new Error(
+      "nullable() tells a missing row by the key of the record, which these columns do not include; pass the columns that are never NULL in a row in `by`",
+    )
+
     expect(columnsOf(db.job, "*").nullable().presence).toEqual([0])
     expect(columnsOf(membership, ["role", "teamId", "userId"]).nullable().presence).toEqual([2, 1])
     // @ts-expect-error Columns without the whole primary key take the columns in `by`.
-    expect(() => columnsOf(membership, ["role", "teamId"]).nullable()).toThrow(
-      "nullable() tells a missing row by the key of the record",
+    expect(getThrownError(() => columnsOf(membership, ["role", "teamId"]).nullable())).toEqual(
+      missingKey,
     )
     // @ts-expect-error A view has no primary key.
-    expect(() => columnsOf(pendingJob, "*").nullable()).toThrow(
-      "nullable() tells a missing row by the key of the record",
-    )
+    expect(getThrownError(() => columnsOf(pendingJob, "*").nullable())).toEqual(missingKey)
     expect(columnsOf(pendingJob, "*").nullable({ by: ["id"] }).presence).toEqual([0])
     // @ts-expect-error A column that can be `NULL` does not tell a missing row.
-    expect(() => columnsOf(pendingJob, "*").nullable({ by: ["note"] })).toThrow(
-      'Column "note" is nullable, so its NULL does not tell a missing row of the record',
+    expect(getThrownError(() => columnsOf(pendingJob, "*").nullable({ by: ["note"] }))).toEqual(
+      new Error('Column "note" is nullable, so its NULL does not tell a missing row of the record'),
     )
   })
 
