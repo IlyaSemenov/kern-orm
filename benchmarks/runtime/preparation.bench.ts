@@ -1,6 +1,7 @@
 // Time of preparing a statement, lowering and compiling a query to its SQL text and parameters, as every execution of a query does, measured through `db.$compile`, and compiling a query of SQL text of the database layer, measured through `toSQL`.
 // Each scenario compiles a query built once, apart from one that also builds it on every call.
 // The scenarios of `param` measure binding the parameter of each `param` once in a statement: of one `param` at three places, and of 1000 different ones beside the scenarios of 1000 other parameters.
+// The scenario of bytea values includes encoding the bytes as hex in preparing the statement.
 // Apart from the scenario of `exists`, the queries hold no queries in their expressions, where lowering finds nothing to replace.
 
 import type { Predicate, SqlValue } from "kern-orm"
@@ -31,15 +32,19 @@ function createUuids(): string[] {
   return ids
 }
 
-/** Starts the query of SQL text of `SELECT id FROM form WHERE id IN (...)` of `values`. */
-function selectFormsIn(values: SqlValue[]) {
-  const strings = ["SELECT id FROM form WHERE id IN ("]
+/** Starts the query of SQL text of `values` separated by commas between `head` and `tail`. */
+function queryValues(head: string, values: SqlValue[], tail: string) {
+  const strings = [head]
   for (let index = 1; index < values.length; index++) {
     strings.push(", ")
   }
-  strings.push(")")
+  strings.push(tail)
   return db.$database.query(Object.assign(strings, { raw: strings }), ...values)
 }
+
+/** Starts the query of SQL text of `SELECT id FROM form WHERE id IN (...)` of `values`. */
+const selectFormsIn = (values: SqlValue[]) =>
+  queryValues("SELECT id FROM form WHERE id IN (", values, ")")
 
 const preparation: Topic = {
   select: () => {
@@ -76,6 +81,14 @@ const preparation: Topic = {
   },
   "query of SQL text of 1000 values": () => {
     const query = selectFormsIn(createUuids())
+    return () => query.toSQL()
+  },
+  "query of SQL text of 1000 bytea values of 32 bytes": () => {
+    const values: Uint8Array[] = []
+    for (let index = 0; index < 1000; index++) {
+      values.push(new Uint8Array(32).fill(index % 256))
+    }
+    const query = queryValues("SELECT ", values, "")
     return () => query.toSQL()
   },
   "query of SQL text of 1000 params": () => {

@@ -39,7 +39,8 @@
     Result decoding wraps its error in `ResultDecodeError`.
     Other text, such as `1e3` of an `integer`, decodes to whatever the conversion reads, since a check of the format would cost for each value and only text from a source other than PostgreSQL, such as a fake driver, fails it.
     - `boolean` accepts only `t` and `f`.
-    - `bytea` rejects a literal with an odd number of hex digits, whose last digit it would lose, and does not check the digits.
+    - `bytea` rejects text with an odd number of hex digits, whose last digit it would lose, and text that its conversion does not decode in full, and does not check the digits otherwise.
+      It converts hex by the native hex methods of `Uint8Array`, or by `Buffer` of `node:buffer` on a runtime that lacks them, such as Node.js 24, and returns a `Uint8Array` on both ([decision](../decisions/types/hex-of-bytea.md)).
   - `jsonWithJsonNull` and `jsonbWithJsonNull` (`type/builtins/json.ts`) are the `json` and `jsonb` values in which a top-level JSON `null` value is the marker `jsonNull`, so that `null` among their values is only `NULL`, which `nullable` adds ([decision](../decisions/types/json-null-marker.md)).
     - Their values without a shape are `{}`, both returned and accepted, the TypeScript type of every value other than `null` and `undefined`, which includes the marker.
       A shape of `of` has the marker only when its values include it, such as `Payload | JsonNull`, since `of` narrows only in types.

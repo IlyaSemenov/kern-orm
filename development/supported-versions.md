@@ -11,6 +11,7 @@ How to change the supported versions of PostgreSQL, Node.js, Bun, and TypeScript
 
 - Support only Node.js and Bun versions maintained by their projects.
 - Prefer DX over older runtimes: when a newer runtime version enables a simpler or safer API, raise the minimum version instead of working around older ones.
+- When the minimum Node.js version has `toHex` and `fromHex` of `Uint8Array`, which Node.js 25 added, convert the hex of `bytea` (`packages/db/src/type/builtins/bytea.ts`) by them alone, without `Buffer`.
 - Declare the minimum versions in `engines` of every published package and in the install section of the Getting Started page of each package.
 - Test both runtimes in CI, at the versions pinned in `mise.toml`, against its PostgreSQL service: the `test` script on Bun, the `test:node` script on Node.js, and the `test:package` script, which also runs the scenarios of `node:test` and Vitest.
 - Support TypeScript 6.0 or newer with `strictNullChecks` in consumer projects, and state it in the install section of the Getting Started page of each package.
