@@ -73,6 +73,21 @@ const decoding: Topic = {
     },
     "2026-01-14T06:15:30.500000Z",
   ),
+  "1000 records of 10 text arrays with short quoted elements": createColumnsScenario(
+    t.array(t.text),
+    (index, column) => `{"Event ${index}","Team ${column}"}`,
+    ["Event 10", "Team 3"],
+  ),
+  "1000 records of 10 text arrays with long quoted elements": createColumnsScenario(
+    t.array(t.text),
+    (index, column) => `{"${"Event ".repeat(24)}${index}","${"Team ".repeat(24)}${column}"}`,
+    ["Event ".repeat(24) + "10", "Team ".repeat(24) + "3"],
+  ),
+  "1000 records of 10 text arrays with escaped elements": createColumnsScenario(
+    t.array(t.text),
+    (index, column) => String.raw`{"Event \"${index}\"","Team\\${column}"}`,
+    ['Event "10"', "Team\\3"],
+  ),
   "100 records of a vector of 1536 dimensions": async () => {
     const rows: TextValue[][] = []
     for (let index = 0; index < 100; index++) {

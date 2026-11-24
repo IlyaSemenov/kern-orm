@@ -59,21 +59,22 @@ export function parseArray(text: string): TextValue[] {
     }
     if (text[index] === '"') {
       let element = ""
-      index++
+      let chunkStart = ++index
+      // The character after an escape starts the next slice, so the slice keeps the character and omits its backslash.
       while (index < end && text[index] !== '"') {
         if (text[index] === "\\") {
-          index++
+          element += text.slice(chunkStart, index)
+          chunkStart = ++index
           if (index === end) {
             break
           }
         }
-        element += text[index]
         index++
       }
       if (index === end) {
         throw new Error(`Unterminated quoted element in array value "${text}"`)
       }
-      elements.push(element)
+      elements.push(element + text.slice(chunkStart, index))
       // Skip the closing quote.
       index++
     } else {
