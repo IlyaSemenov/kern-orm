@@ -3,7 +3,7 @@
 The [columns of a record](../../architecture/sql-queries.md#columns-of-records) are a fragment that selects each column under the name of a result column of its own, the key of the column after the prefix of the columns, which is their alias by default, and `select` reads the record from the result columns of these names.
 
 ```ts
-const job = columnsOf(db.job, { alias: "j" })
+const job = columnsOf(db.job, "*", { alias: "j" })
 
 await db.$query`
   UPDATE ${db.job} j SET locked_by = ${worker} WHERE j.id = ${jobId}

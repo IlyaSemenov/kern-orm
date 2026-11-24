@@ -4,10 +4,10 @@
 Decoding tells a missing row by the result columns of the key of the record, such as its primary key, being all `NULL`, so the columns must include their key, or `nullable` takes the columns to read in `by`.
 
 ```ts
-const job = columnsOf(db.job, { alias: "j" }).nullable()
+const job = columnsOf(db.job, "*", { alias: "j" }).nullable()
 
 // Columns without the primary key name the columns that are never NULL in a row
-const summary = columnsOf(db.job, { alias: "j", columns: ["task", "runAt"] }).nullable({
+const summary = columnsOf(db.job, ["task", "runAt"], { alias: "j" }).nullable({
   by: ["task"],
 })
 ```

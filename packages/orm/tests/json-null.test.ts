@@ -183,7 +183,7 @@ describePostgres(
 
     test("reads the columns of a statement of SQL text, also of an outer-joined record, which is null without its row", () =>
       testTransaction(async () => {
-        const jobColumns = columnsOf(db.job, { alias: "j" })
+        const jobColumns = columnsOf(db.job, "*", { alias: "j" })
 
         expect(
           await db.$query`

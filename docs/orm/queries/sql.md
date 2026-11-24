@@ -58,7 +58,7 @@ To get the rows of a table from a statement without listing its columns in the S
 ```ts
 import { columnsOf } from "kern-orm"
 
-const form = columnsOf(db.form)
+const form = columnsOf(db.form, "*")
 
 const upserted = await db.$query`
   INSERT INTO ${db.form} (id, name, published) VALUES (${formId}, ${name}, ${false})
@@ -71,17 +71,18 @@ const upserted = await db.$query`
 // upserted: { form: { id: string; name: string; published: boolean }; inserted: boolean }[]
 ```
 
-The field `form` is the record of the row, with the keys and the types of the columns of the table, as a query of the table returns it.
+The field `form` is the record of the row, with the keys and the types of the columns that `columnsOf` takes, as a query of the table returns it.
 `select` reads it from the result columns that `columnsOf` names in the statement, such as `id`, not from a column named `form`.
 `columnsOf` applies the [read expression](../custom-types#reading-values-by-an-expression) of the type of each column that has one.
-To select only some of the columns, list their keys in the `columns` option.
+
+As with [`select`](./selecting#fields), name the columns explicitly: `"*"` takes all the columns of the table, and a list of keys, such as `columnsOf(db.form, ["id", "name"])`, takes those columns in its order.
 As in `select` by keys, a column whose key is chosen at runtime is optional in the record unless the list also names it explicitly.
 
 When the statement gives the table an alias, pass it as `alias`; it is also the prefix of the names of the result columns by default, which must differ for several tables of one statement:
 
 ```ts
-const form = columnsOf(db.form, { alias: "f" })
-const firstField = columnsOf(db.field, { alias: "d" }).nullable()
+const form = columnsOf(db.form, "*", { alias: "f" })
+const firstField = columnsOf(db.field, "*", { alias: "d" }).nullable()
 
 const forms = await db.$query`
   SELECT ${form}, ${firstField}
@@ -98,7 +99,7 @@ The result columns of each table are named by its alias, such as `f__id`, or by 
 
 `nullable` makes the record `null` when the statement has no row of the table, such as without a match of a `LEFT JOIN`.
 It tells such a row by the columns in its `by` option, which must never be `NULL` in a row, or by the whole primary key of the table without the option.
-For a view, or for columns without the primary key, pass `by`: `columnsOf(db.formStats).nullable({ by: ["formId"] })`.
+For a view, or for columns without the primary key, pass `by`: `columnsOf(db.formStats, "*").nullable({ by: ["formId"] })`.
 
 ## Queries in statements
 

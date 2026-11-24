@@ -14,8 +14,8 @@ import { isTableQuery } from "./node"
 import { SelectQuery } from "./select"
 import type { QueryStateOf } from "./state"
 
-/** Options of `columnsOf` of the columns of keys `C`, in their order. */
-export interface ColumnsOfOptions<C extends readonly string[] = readonly string[]> {
+/** Options of `columnsOf`: the alias of the table and the prefix of the result columns. */
+export interface ColumnsOfOptions {
   /** Alias of the table in the statement, such as `j` of `FROM job j`, which qualifies the columns; without it, the columns are not qualified. */
   readonly alias?: string
   /**
@@ -24,12 +24,6 @@ export interface ColumnsOfOptions<C extends readonly string[] = readonly string[
    * It is the alias by default; without both, a result column has the key of its column as its name.
    */
   readonly prefix?: string
-  /**
-   * Keys of the columns to select, in their order; all the columns of the table without it.
-   *
-   * The record requires a column only when the list guarantees its key, as `select` of a query by keys does: the column of a key that is a union of keys, a key of a spread array, or a key typed as `string` is optional, and a key of one known column written before or after a spread is guaranteed.
-   */
-  readonly columns?: C
 }
 
 /** Record of the columns of keys `K` of table `T`, with the values that their types return. */
@@ -48,47 +42,60 @@ export type IncludesPrimaryKey<T extends AnyRowSource, K> =
     : boolean
 
 /**
- * Returns the columns of the rows of a table or view for a statement of SQL text, such as of `$query`: interpolate them into its text, such as after `SELECT` or `RETURNING`, and pass them to `select` of the query as a field, which is the record of the row, with the keys and the types of the columns of the table.
+ * Returns the columns of the rows of a table or view for a statement of SQL text, such as of `$query`: interpolate them into its text, such as after `SELECT` or `RETURNING`, and pass them to `select` of the query as a field, which is the record of the row, with the keys and the types of its columns.
  *
  * `source` is a table of a `Db`, such as `db.form`, or the definition of a table or view.
+ * `columns` is `"*"` for all the columns of the table, or an array of the keys of the columns in their order.
+ * The record requires a column of a list only when the list guarantees its key, as `select` of a query by keys does: the column of a key that is a union of keys, a key of a spread array, or a key typed as `string` is optional, and a key of one known column written before or after a spread is guaranteed.
  * The statement must name the table by `alias` when it gives the table one, and the result columns of several tables whose columns it selects must have different names, such as by an alias of each.
  */
 export function columnsOf<
   T extends AnyRowSource,
-  // `never` without the option stands for every column of the table, which differs from a list of keys typed as `string` in that it includes the primary key.
-  const C extends readonly (keyof T["columns"] & string)[] = never,
+  const C extends "*" | readonly (keyof T["columns"] & string)[],
 >(
   source: T | SelectQuery<QueryStateOf<T>, SelectQueryKind>,
-  options?: ColumnsOfOptions<C>,
-  // `NoInfer`, so that a call in a field of `select` does not infer `C` from the type of the field, which would compute the record of every column of the table as a list, at nearly three times the instantiations of such a query; decisions/sql-queries/columns-of-return-type.md measures it and the alternatives.
+  columns: C,
+  options?: ColumnsOfOptions,
+  // `NoInfer`, so that a call in a field of `select` does not infer `C` from the type of the field too, which triples the instantiations of such a query; decisions/sql-queries/columns-of-return-type.md measures it and the alternatives.
 ): NoInfer<
   SqlColumns<
-    [C] extends [never]
+    // Distributive, so that a union of `"*"` and a list makes a union of their records.
+    C extends "*"
       ? ColumnsRecord<T, keyof T["columns"] & string>
-      : Simplify<PickSelectedColumns<ColumnsRecord<T, keyof T["columns"] & string>, C>>,
-    IncludesPrimaryKey<T, [C] extends [never] ? keyof T["columns"] : GuaranteedColumnKeys<C>>
+      : Simplify<
+          PickSelectedColumns<ColumnsRecord<T, keyof T["columns"] & string>, Exclude<C, "*">>
+        >,
+    // All the columns include the primary key, whereas a list of keys typed as `string` may leave it out.
+    IncludesPrimaryKey<
+      T,
+      [C] extends ["*"] ? keyof T["columns"] : GuaranteedColumnKeys<Exclude<C, "*">>
+    >
   >
 >
-export function columnsOf(source: unknown, options: ColumnsOfOptions = {}): unknown {
+export function columnsOf(
+  source: unknown,
+  columns: unknown,
+  options: ColumnsOfOptions = {},
+): unknown {
   const table = toRowSource(source)
-  const keys: unknown = options.columns ?? Object.keys(table.columns)
+  const keys = columns === "*" ? Object.keys(table.columns) : columns
   if (!Array.isArray(keys)) {
-    throw new TypeError("The columns option of columnsOf must be an array of column keys")
+    throw new TypeError('columnsOf takes "*" or an array of column keys as its second argument')
   }
-  const columns: SqlColumn[] = []
+  const sqlColumns: SqlColumn[] = []
   for (const key of keys as unknown[]) {
     const column = typeof key === "string" ? findColumn(table, key) : undefined
     if (column === undefined) {
       throw new Error(`${table.kind} "${table.name}" has no column "${String(key)}"`)
     }
-    columns.push({
+    sqlColumns.push({
       key: key as string,
       name: column.attributes.name ?? (key as string),
       type: column.type,
     })
   }
   const { primaryKey } = table.keys
-  return createSqlColumns(columns, {
+  return createSqlColumns(sqlColumns, {
     alias: options.alias,
     prefix: options.prefix,
     // Columns without the whole primary key have no key that tells a missing row.

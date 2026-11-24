@@ -19,7 +19,7 @@ The option is named `read`, so that an expression that writes a parameter of the
 
 The alternatives:
 
-- A `read` option of the columns of a record, such as `columnsOf(db.job, { read: { runAt: value => ... } })`, would not change the contract of `Type` and would cost only the code of the columns.
+- A `read` option of the columns of a record, such as `columnsOf(db.job, "*", { read: { runAt: value => ... } })`, would not change the contract of `Type` and would cost only the code of the columns.
   But each use of the columns would repeat it, a type that decodes its result would decode nothing else, and a query of the table of such a column would return the text of the value to that decoder.
 - A second decoder of a built-in type, such as of `timestamptz`, for the result of an expression that the library chooses, would need no type of the user.
   But the type would decode two texts, by the place that returns its value, and the SQL of existing queries would change or the two decoders would have to agree on every value.

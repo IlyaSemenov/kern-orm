@@ -29,7 +29,7 @@ const job = defineTable("job", {
 })
 
 /** Columns of a table for a statement of SQL text, whose declaration names the columns of kern-db; see the file header. */
-export const jobColumns = columnsOf(job, { alias: "j", prefix: "job" })
+export const jobColumns = columnsOf(job, "*", { alias: "j", prefix: "job" })
 
 /** Columns of a record that is `null` without its row; see the file header. */
 export const joinedJobColumns = jobColumns.nullable()

@@ -1,6 +1,6 @@
 # Column keys typed as string literals
 
-The keys of columns that `select` of a query or a mutation, the `columns` option of `columnsOf`, and `createSqlColumns` take must be typed as string literals, `string`, or templates.
+The keys of columns that `select` of a query or a mutation, the list of keys of `columnsOf`, and `createSqlColumns` take must be typed as string literals, `string`, or templates.
 A key typed as a member of a string enum is not told as the column of its value: TypeScript keeps the member and its value apart as keys of a type, so that `Pick<Row, Column.Id | "id">` has no property.
 
 ```ts
@@ -22,7 +22,7 @@ db.job.select(Column.Id, "id")
 db.job.select(() => ({ id: sql(t.text)`'x'` })).select(Column.Id)
 // { id: never }[]
 
-columnsOf(db.job, { columns: [Column.Id] })
+columnsOf(db.job, [Column.Id])
 // SqlColumns<{ id: number }, false>, although the columns include the primary key
 ```
 

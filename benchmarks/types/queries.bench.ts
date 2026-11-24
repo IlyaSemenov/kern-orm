@@ -49,7 +49,7 @@ bench.baseline(async () => {
   await tenantDb.form.where({ name: "baseline" }).pluck("id")
   // Another table and other fields, as for the references below.
   await storeDb.$query`SELECT`.select({
-    brand: columnsOf(storeDb.brand, { alias: "b", columns: ["id"] }).nullable(),
+    brand: columnsOf(storeDb.brand, ["id"], { alias: "b" }).nullable(),
     total: t.integer,
   })
   await tenantDb.field.where(field => field.label.eq("baseline")).pluck("id")
@@ -739,17 +739,17 @@ bench("query of SQL text of fields of types", async () => {
 }).types([69, "instantiations"])
 
 bench("columns of a table", () => {
-  columnsOf(tenantDb.form, { alias: "f" })
-}).types([51, "instantiations"])
+  columnsOf(tenantDb.form, "*", { alias: "f" })
+}).types([49, "instantiations"])
 
 bench("nullable columns of some columns of a table", () => {
-  columnsOf(tenantDb.field, { alias: "d", columns: ["id", "label"] }).nullable()
+  columnsOf(tenantDb.field, ["id", "label"], { alias: "d" }).nullable()
 }).types([154, "instantiations"])
 
 bench("query of SQL text of the columns of two tables", async () => {
   await tenantDb.$query`SELECT`.select({
-    form: columnsOf(tenantDb.form, { alias: "f" }),
-    field: columnsOf(tenantDb.field, { alias: "d" }).nullable(),
+    form: columnsOf(tenantDb.form, "*", { alias: "f" }),
+    field: columnsOf(tenantDb.field, "*", { alias: "d" }).nullable(),
     total: t.integer,
   })
-}).types([174, "instantiations"])
+}).types([170, "instantiations"])

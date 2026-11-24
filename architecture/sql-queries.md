@@ -55,10 +55,11 @@
     The presence of a record is told by the `NULL` of its result columns before they are decoded, so a field of a type that decodes `NULL` to a value reads as that value in a record that has its row.
     A record of an index signature of `string` has no known keys for types to tell apart: they take any key in `by`, or none when the values of the index signature are known to include `null`.
   - A row with only some of these columns `NULL` rejects with `ResultDecodeError` of the path of the group.
-- `columnsOf` of the ORM (`query/columns-of.ts`) creates the columns of a table or view, of a query of a table without clauses, such as `db.form`, or of its definition, by the physical names and the types of its columns, all of them or those of its `columns` option in their order.
-  - The record requires a column of the `columns` option only when the list guarantees its key, as that of `createSqlColumns`.
+- `columnsOf` of the ORM (`query/columns-of.ts`) creates the columns of a table or view, of a query of a table without clauses, such as `db.form`, or of its definition, by the physical names and the types of its columns: all of them for `"*"`, or those of a list of keys in their order.
+  - The columns to select are required, so that a call chooses them explicitly, as a query returns only explicitly selected fields.
+  - The record requires a column of a list only when the list guarantees its key, as that of `createSqlColumns`.
     Types take an empty list, which rejects when the columns are created: a check of the list would reject a list of a type parameter that a function passes on.
-    Its return type is `NoInfer`, so that a call in a field of `select` does not infer the list from the type of the field, which would compute the record of every column of the table as a list ([decision](../decisions/sql-queries/columns-of-return-type.md)).
+    Its return type is `NoInfer`, so that a call in a field of `select` does not infer the columns from the type of the field too, which triples the instantiations of such a query ([decision](../decisions/sql-queries/columns-of-return-type.md)).
   - Their key is the primary key of the table when the columns include all its columns; a view has none.
     In types, selecting all the columns includes the primary key of the table, if it has one.
     An explicit list includes it only when it guarantees each column of the primary key, in every list of a union of lists: a key typed as an index key, such as `string` of a table of any columns or `` `key${number}` ``, may name another column.
