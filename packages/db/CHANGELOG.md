@@ -1,5 +1,19 @@
 # kern-db
 
+## 0.13.0
+
+### Minor Changes
+
+- d1a0998: `database.query` and `queryOn` bind a `param` that a statement repeats as one parameter.
+- 1131d4e: Add `queryOn`, which starts a query of SQL text on a driver, a connection, or any other object with `execute`, such as ``queryOn(connection)`SELECT count(*) FROM job`.get(t.integer)``, with the template and the results of `database.query`.
+
+### Patch Changes
+
+- 69f5b83: Faster encoding and decoding of `bytea` values.
+- c4b275d: Faster decoding of `date`, `time`, `timestamp`, and `timestamptz` values.
+- f1b9ba9: Faster decoding of arrays with quoted elements.
+- db22877: Stricter decoding of `boolean`, `bytea`, and `vector` values, which rejects text in a format other than that of PostgreSQL.
+
 ## 0.12.0
 
 ### Minor Changes

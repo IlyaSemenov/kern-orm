@@ -1,5 +1,16 @@
 # kern-orm
 
+## 0.27.0
+
+### Minor Changes
+
+- d1a0998: A `param` that a statement repeats binds as one parameter in every query, not only in a query of `groupBy`.
+- 1131d4e: Add `queryOn`, which starts a query of SQL text on a driver, a connection, or any other object with `execute`, such as ``queryOn(connection)`SELECT count(*) FROM job`.get(t.integer)``, with the template and the results of `database.query`.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.13.0
+
 ## 0.26.0
 
 ### Minor Changes
