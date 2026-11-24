@@ -23,7 +23,9 @@
   Closing a driver rejects a new statement or script on the pool and a new connection from its call with `ConnectionError`, waits for the statements already sent and for the transactions on its reserved connections to end, including those still waiting for a connection, and then closes the connections.
 - `execute` of a `Database` passes its statement to the driver or connection as the same object, also in a test transaction, so that a query builder can pass fields of its own to a driver, as the [Orchid adapter](orchid-interop.md) passes the values that postgres.js serializes to the `getNativeParameters` option of the postgres.js driver; `database.test.ts` checks it.
 - `isDriver` of `driver.ts` recognizes a driver by checking that its methods are functions rather than by a brand, since an application may write a driver of its own ([decision](../decisions/drivers/recognizing-drivers-and-databases.md)).
-- A driver of kern-db supports one major version of its client, under a subpath named after the client, such as `kern-db/postgres-js` or `kern-db/node-postgres`, which requires the client by an optional peer dependency, so that importing `kern-db` loads no driver ([decision](../decisions/packages/database-package.md)).
+- A driver of kern-db has its own subpath so that importing `kern-db` loads no driver ([decision](../decisions/packages/database-package.md)).
+  Each packaged client is an optional peer dependency of one major version.
+  Bun supplies its own SQL client, with `@types/bun` as an optional peer dependency for its types.
   Supporting two major versions of a client at once takes a subpath of each.
 
 ## Errors
@@ -63,7 +65,7 @@ A custom driver relies on the contract of `driver.ts`, and on `QueryError`, `Con
 `describeDriverContract` of `kern-db/testing` declares the tests of the contract in PostgreSQL, for the drivers of kern-db and custom drivers:
 
 - It takes the functions of a test runner, as `createTestHelpers` takes its hooks, and asserts with `node:assert/strict`, so that it runs with `node:test`, `bun:test`, and Vitest.
-  The tests of the drivers of kern-db run it with `bun:test` and Vitest from the sources, and the package test with `node:test` against the packed packages.
+  The tests run it with `bun:test` for every built-in driver, with Vitest for drivers that support Node.js, and with `node:test` for postgres.js against the packed packages.
 - It has no check of `DATABASE_URL`: the caller declares it in a block that skips it, in the way of its test runner.
 - It runs on the `Database` of the database layer, with its queries of SQL text, types, and test helpers, and creates its tables as temporary tables or in test transactions, without tables of the ORM.
 - It checks `unsent` of a statement, a script, and a connection after closing and of a driver of `createUnreachableDriver`, whose client cannot connect, and `unsent: false` for a statement whose connection is lost while it runs.
@@ -135,3 +137,25 @@ It sends statements and reads results as follows:
 - It maps each result field's `name` and `dataTypeID` to the `name` and `type` of a `DriverColumn`.
 - It executes a script as a query without `values`, which `pg` sends with the simple protocol, with the same `types`, so that the parsers of the client never run on its ignored results.
 - It gives only the first word of a command tag as `command`, such as `CREATE` of `CREATE TABLE`, as `pg` parses it.
+
+## Bun SQL
+
+`bunSqlDriver` takes a Bun SQL PostgreSQL pool on Bun 1.4.4 or newer, whose results expose PostgreSQL result column names and type OIDs even when there are no rows.
+It requires `prepare: false` for [text results](../decisions/drivers/bun-sql-results.md).
+It requires original result column names because Bun applies its column transform to raw result metadata.
+It sends text parameters with `unsafe` and wraps a parameterless `unsafe` fragment in a tagged query to use the extended protocol even without parameters.
+Scripts use the simple protocol.
+
+The driver reserves a connection even for a single pooled operation so that it can detect a transaction left open.
+Bun can allow a pooled script to leave an explicit transaction open, and `release()` discards such a connection without telling its caller.
+A single statement that starts a block from idle is identified by its server command tag.
+For a successful script with a `BEGIN` or `START TRANSACTION` tag, the driver probes the reserved connection with a savepoint, since `COMMIT AND CHAIN` has the same tag as `COMMIT`.
+SQLSTATE `25P01` means the script ended outside a block and can appear in the server log for a successful script.
+When the probe succeeds, the driver closes the connection and rejects the script.
+Bun checks the server's transaction status on release, including after a rejected statement.
+
+The driver classifies server errors by Bun's `severity` and `errno`, which carries the PostgreSQL SQLSTATE.
+If returning a pooled connection fails after a successful operation, the driver reports a `ConnectionError`.
+If the operation also failed, its original error takes precedence.
+The driver serializes operations of a reservation so that it can reject queued statements after a connection failure.
+It closes a broken connection and counts pending reservations so that closing the pool drains them.

@@ -78,6 +78,13 @@ new Pool({
 })
 ```
 
+```ts [Bun SQL]
+new SQL(process.env.DATABASE_URL!, {
+  prepare: false,
+  connection: { DateStyle: "ISO", bytea_output: "hex" },
+})
+```
+
 :::
 
 A library that runs on the connections of an application, whose settings it does not choose, can read dates by a [read expression](./custom-types#reading-values-by-an-expression) of a type of its own instead.

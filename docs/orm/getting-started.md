@@ -22,7 +22,7 @@ bun add kern-orm postgres
 
 :::
 
-If your application uses [node-postgres](../database/drivers#node-postgres), see Drivers.
+If your application uses [node-postgres](../database/drivers#node-postgres) or [Bun SQL](../database/drivers#bun-sql), see Drivers.
 
 To create and change tables with migrations, also install `kern-migrations`; see [Migrations](../migrations/getting-started).
 

@@ -66,6 +66,9 @@ jobs:
       - name: Test under Bun
         run: bun run test
 
+      - name: Test Bun SQL on its minimum supported version
+        run: mise exec bun@1.4.4 -- bun test packages/db/tests/bun-sql.test.ts
+
       - name: Test under Node.js
         run: bun run test:node
 

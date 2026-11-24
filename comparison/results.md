@@ -14,10 +14,12 @@ Kern drivers return PostgreSQL text values for the query's column codecs to deco
   A bridge that uses unmodified pg parsers changes these legacy result representations.
 - Postgres.js, differs: a query's `.parsers()` accepts parsers by result OID or a function of each column; returning `null` keeps that column as PostgreSQL text.
   This controls results, not parameter serialization ([documentation](https://github.com/porsager/postgres/blob/v4.1.0/README.md#parsers-for-one-query)).
+- Bun SQL 1.4.5, differs: `.values()` gives JavaScript values, and `.raw()` gives the bytes of each field as a buffer or SQL `NULL` as `null`.
+  With named preparation, some PostgreSQL types arrive in binary, while `prepare: false` requests text for every column ([client documentation](https://github.com/oven-sh/bun/blob/bun-v1.4.5/docs/runtime/sql.mdx#L368-L379)).
 
 ## Legacy driver representations
 
-Kern decodes the text values returned by either driver through its column types, rather than through the driver's value parsers.
+Kern decodes the text values returned by its drivers through its column types, rather than through the driver's value parsers.
 
 - Orchid ORM 1.78.59 with pqb 0.73.48, differs: its postgres.js adapter returns timestamp array elements as strings with microsecond precision and parses intervals with zero-valued fields included; node-postgres array parsers return timestamp elements as `Date` values, and its interval parser omits zero-valued fields.
   A read-only comparison with postgres.js 4 and pg 8 checked `ARRAY[TIMESTAMPTZ '2026-01-02 03:04:05.123456+00']` and `INTERVAL '1 day 02:03:04'` ([postgres.js adapter source](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/adapters/postgres-js.ts), [node-postgres adapter source](https://github.com/romeerez/orchid-orm/blob/381b51ffbb85efd6e4defd4170ba79f360f2a9f1/packages/pqb/src/adapters/node-postgres.ts)).

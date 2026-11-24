@@ -29,6 +29,7 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./builder": "./dist/builder.mjs",
+    "./bun-sql": "./dist/bun-sql.mjs",
     "./node-postgres": "./dist/node-postgres.mjs",
     "./postgres-js": "./dist/postgres-js.mjs",
     "./testing": "./dist/testing.mjs",
@@ -49,11 +50,15 @@
     "postgres": "catalog:"
   },
   "peerDependencies": {
+    "@types/bun": "^1.4.4",
     "@types/pg": "^8.0.0",
     "pg": "^8.23.1",
     "postgres": "^4.0.0"
   },
   "peerDependenciesMeta": {
+    "@types/bun": {
+      "optional": true
+    },
     "@types/pg": {
       "optional": true
     },

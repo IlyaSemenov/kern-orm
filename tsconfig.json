@@ -8,6 +8,7 @@
     "paths": {
       "kern-db": ["./packages/db/src/index.ts"],
       "kern-db/builder": ["./packages/db/src/builder.ts"],
+      "kern-db/bun-sql": ["./packages/db/src/bun-sql.ts"],
       "kern-db/node-postgres": ["./packages/db/src/node-postgres.ts"],
       "kern-db/postgres-js": ["./packages/db/src/postgres-js.ts"],
       "kern-db/testing": ["./packages/db/src/testing.ts"],
@@ -20,6 +21,7 @@
       "kern-orm/types": ["./packages/orm/src/types.ts"],
       "kern-orm/db": ["./packages/orm/src/db.ts"],
       "kern-orm/db/builder": ["./packages/orm/src/db/builder.ts"],
+      "kern-orm/db/bun-sql": ["./packages/orm/src/db/bun-sql.ts"],
       "kern-orm/db/node-postgres": ["./packages/orm/src/db/node-postgres.ts"],
       "kern-orm/db/postgres-js": ["./packages/orm/src/db/postgres-js.ts"],
       "kern-orm/db/types": ["./packages/orm/src/db/types.ts"],
