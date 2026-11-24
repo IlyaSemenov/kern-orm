@@ -138,11 +138,37 @@ export function renderFragment(fragment: SqlFragment, binder: ParameterBinder): 
   return text
 }
 
-/** Compiles `fragment` into a statement, numbering its parameters in the order of the text. */
+/**
+ * Compiles `fragment` into a statement, numbering its parameters in the order of the text.
+ *
+ * It binds the parameter of a fragment of `param` once, under one placeholder wherever the statement repeats the fragment, since its cast types it the same at every place; it binds another value at each place, so that PostgreSQL types it by that place.
+ */
 export function compileFragment(fragment: SqlFragment): SqlStatement {
   const parameters: TextValue[] = []
-  const bind = (value: TextValue) => bindParameter(parameters, value)
-  const text = renderFragment(fragment, { bind, bindParam: (_key, value) => bind(value) })
+  // The first `param` is kept apart and the map is created at the second one, so that a statement of one `param` pays nothing for the map.
+  let firstKey: object | undefined
+  let firstPlaceholder = ""
+  let placeholders: Map<object, string> | undefined
+  const text = renderFragment(fragment, {
+    bind: value => bindParameter(parameters, value),
+    bindParam(key, value) {
+      if (key === firstKey) {
+        return firstPlaceholder
+      }
+      if (firstKey === undefined) {
+        firstKey = key
+        firstPlaceholder = bindParameter(parameters, value)
+        return firstPlaceholder
+      }
+      placeholders ??= new Map()
+      let placeholder = placeholders.get(key)
+      if (placeholder === undefined) {
+        placeholder = bindParameter(parameters, value)
+        placeholders.set(key, placeholder)
+      }
+      return placeholder
+    },
+  })
   return createStatement(text, parameters)
 }
 

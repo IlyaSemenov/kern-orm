@@ -14,6 +14,7 @@
 - `$execute` and `$compile` of a `Db` reject a query of SQL text before they read a node, since it has none.
 - The ORM recognizes a query of SQL text by its class, since the class has no method of the operands of the ORM: it cannot be nested in a selection, used as an operand of an expression, such as an insert or update value or a condition, or interpolated into `sql`.
 - The template of `$query` interpolates values as `sql` does, as [types](types.md#parameters-and-sql-fragments) describe, and the templates of `query` and `queryOn` as `sql` of the [database layer](types.md#sql-fragments-of-the-database-layer); each runs as one statement with parameters.
+  - Each binds the parameter of a `param` with a type once wherever the statement repeats it, and another value at each place, which PostgreSQL types by that place, so a template that all of them take gives the same statement through `$query` as through `query` and `queryOn`.
 
 ## Results
 

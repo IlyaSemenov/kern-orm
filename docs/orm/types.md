@@ -350,6 +350,9 @@ Pass a JSON value or an array to `sql` through `param`: a plain value becomes a 
 `param` casts the value to the type, so PostgreSQL applies the operators of the type even to a value on its own: `param(t.integer, 2).lt(10)` compares numbers rather than strings.
 The cast omits type parameters, such as `$1::numeric` for `numeric.with(10, 2)`, so their precision, scale, or length do not constrain the value.
 
+To pass a value once and read it in several places of a statement, create its `param(type, value)` once and use it at each place: the statement binds one parameter wherever it uses the same `param`.
+Each call of `param` is a parameter of its own, and so is each place of a plain value and of a `param` of an expression with a plain value, which has no cast.
+
 Use `param` to [select a constant](./queries/expressions#constant-values).
 
 A column is not a type, so `sql` and `param` do not accept it.

@@ -894,7 +894,7 @@ describe("groups", () => {
     })
   })
 
-  it("binds the parameter of a cast once at every place of a query of groups, and at each place elsewhere", () => {
+  it("binds the parameter of a cast once at every place of a statement, also in a nested query, and a bare parameter at each place", () => {
     const zone = param(t.text, "UTC")
     const day = sql(t.text)`${columns.createdAt} at time zone ${zone}`
     const shifted = sql(t.text)`${columns.title} || ${"x"}`
@@ -918,18 +918,21 @@ describe("groups", () => {
     }
 
     expect(compileStatement(node)).toMatchObject({
-      text: 'SELECT (SELECT "post_2"."created_at" at time zone ($1::text) AS "day" FROM "post" AS "post_2") AS "nested" FROM "post" AS "post" GROUP BY "post"."created_at" at time zone ($2::text), "post"."title" || $3 HAVING "post"."created_at" at time zone ($2::text) > ($2::text) OR "post"."title" || $4 > $5 ORDER BY "post"."created_at" at time zone ($2::text), "post"."title" || $6',
-      parameters: ["UTC", "UTC", "x", "x", "y", "x"],
+      text: 'SELECT (SELECT "post_2"."created_at" at time zone ($1::text) AS "day" FROM "post" AS "post_2") AS "nested" FROM "post" AS "post" GROUP BY "post"."created_at" at time zone ($1::text), "post"."title" || $2 HAVING "post"."created_at" at time zone ($1::text) > ($1::text) OR "post"."title" || $3 > $4 ORDER BY "post"."created_at" at time zone ($1::text), "post"."title" || $5',
+      parameters: ["UTC", "x", "x", "y", "x"],
     })
     expect(
       compileStatement({
         ...createSelectNode(source),
         filters: { user: toNode(sql<boolean>`${day} = ${day}`) },
-      }).parameters,
-    ).toEqual(["UTC", "UTC"])
+      }),
+    ).toMatchObject({
+      text: 'SELECT FROM "post" AS "post" WHERE "post"."created_at" at time zone ($1::text) = "post"."created_at" at time zone ($1::text)',
+      parameters: ["UTC"],
+    })
   })
 
-  it("binds the parameter of param of the database layer once at every place of a query of groups, and at each place elsewhere", () => {
+  it("binds the parameter of param of the database layer once at every place of a statement", () => {
     const zone = paramFragment(text, "UTC")
     const day = sql(t.text)`${columns.createdAt} at time zone ${zone}`
     const node: SelectNode = {
@@ -947,7 +950,7 @@ describe("groups", () => {
         ...createSelectNode(source),
         filters: { user: toNode(sql<boolean>`${day} = ${day}`) },
       }).parameters,
-    ).toEqual(["UTC", "UTC"])
+    ).toEqual(["UTC"])
   })
 
   it("numbers the parameters in the order of the text, with the clauses after WHERE and before ORDER BY", () => {

@@ -75,7 +75,7 @@ Filters, queries in expressions, and SQL fragments.
 Lowering and the statements that the compiler builds, apart from nested rows.
 
 - [Lowering visits every node](sql/lowering-visits-every-node.md).
-- [Parameters bound once only in queries of groups](sql/parameters-of-groups.md).
+- [Parameters of casts bound once in a statement](sql/parameters-of-casts.md): in every statement, by the identity of the cast, rather than at each place or only in a query of groups.
 - [Keys of fields read by a read expression](sql/keys-of-read-fields.md): a query sorts and groups by the value itself, through a derived source where a clause takes the value from its projection, rather than by the position of the field, by a repeated expression, or rejecting the query.
 
 ## Nested rows

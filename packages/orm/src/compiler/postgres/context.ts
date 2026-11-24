@@ -16,9 +16,9 @@ export class CompileContext implements ParameterBinder {
   readonly parameters: TextValue[] = []
   /** Whether a select statement of the compilation locks rows. */
   locksRows = false
-  /** Whether the clauses being compiled belong to a query of groups, where `bindParam` binds the parameter of a cast once. */
-  grouped = false
   readonly #aliases = new Set<string>()
+  #firstKey: object | undefined
+  #firstPlaceholder = ""
   #placeholders: Map<object, string> | undefined
 
   constructor(
@@ -50,16 +50,18 @@ export class CompileContext implements ParameterBinder {
     return bindParameter(this.parameters, value)
   }
 
-  // PostgreSQL takes an expression of a query of groups, such as in `HAVING` or `ORDER BY`, for a key of `GROUP BY` only when it is equal to the key, so the query binds the parameter of a cast once, such as of `param(type, value)`, which is `$1::type` with the same type at every place.
+  // A cast, such as of `param(type, value)`, types its parameter the same at every place, so a statement binds it once, as `compileFragment` of the database layer does: a key of `GROUP BY` that a query of groups repeats in `HAVING` or `ORDER BY` compiles to equal text, which PostgreSQL requires, when all its parameters are such casts.
   // A parameter without a cast takes its type from its place, so binding it once could convert its value by the type of another place, and a lookup of every parameter slows down statements of many parameters.
-  /**
-   * Binds `value` as the parameter of the cast that `key` identifies, such as its node, and returns its placeholder.
-   *
-   * In a query of groups, it binds the parameter unless it has bound it for `key` before.
-   */
+  /** Binds `value` as the parameter of the cast that `key` identifies, such as its node, unless it has bound it for `key` before, and returns its placeholder. */
   bindParam(key: object, value: TextValue): string {
-    if (!this.grouped) {
-      return this.bind(value)
+    if (key === this.#firstKey) {
+      return this.#firstPlaceholder
+    }
+    // The first cast is kept apart and the map is created at the second one, so that a statement of one cast pays nothing for the map.
+    if (this.#firstKey === undefined) {
+      this.#firstKey = key
+      this.#firstPlaceholder = this.bind(value)
+      return this.#firstPlaceholder
     }
     this.#placeholders ??= new Map()
     let placeholder = this.#placeholders.get(key)

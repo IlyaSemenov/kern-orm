@@ -265,9 +265,6 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
   }
 
   const { groupBy, having } = node
-  const { grouped } = context
-  // PostgreSQL matches an expression with the keys of `GROUP BY` only in the query of groups itself, not in the queries nested in it.
-  context.grouped = groupBy !== undefined
   // PostgreSQL accepts an empty select list and returns rows without columns, unless the query is distinct.
   let text = "SELECT"
   if (node.distinct) {
@@ -315,7 +312,6 @@ function compileQuery(context: CompileContext, outer: Scope | undefined, node: S
       text += ` ${lock.onLocked}`
     }
   }
-  context.grouped = grouped
   return text
 }
 

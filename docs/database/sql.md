@@ -114,17 +114,19 @@ const forms = await database.query`
 `param` casts the value to the type and encodes it as the type does.
 A cast written in the statement, such as `${search}::text`, also types a value that needs no encoding.
 
-Each occurrence of a value in a statement is a parameter of its own, also in a fragment that the statement interpolates several times, so each is typed by its place.
-To pass a value once and read it in several places, select it in a common table expression:
+To pass a value once and read it in several places, create its `param` once and interpolate it at each place:
 
 ```ts
+const now = param(t.timestamptz, new Date())
 await database.query`
-  WITH input AS (SELECT ${param(t.timestamptz, now)} AS now)
-  UPDATE job SET locked_at = input.now, lease_until = input.now + interval '1 minute'
-  FROM input
-  WHERE job.run_at <= input.now
+  UPDATE job SET locked_at = ${now}, lease_until = ${now} + interval '1 minute'
+  WHERE job.run_at <= ${now}
 `
 ```
+
+The statement binds one parameter wherever it interpolates the same `param`, also through a fragment that it interpolates several times: `locked_at = ($1::timestamptz)`, `lease_until = ($1::timestamptz) + interval '1 minute'`, and `job.run_at <= ($1::timestamptz)`.
+So an expression whose values are all such `param`s, such as a key of `GROUP BY` that the select list repeats, is equal at each place, as PostgreSQL requires.
+Each call of `param` is a parameter of its own, also with the same value, and so is each occurrence of a value without `param`, which PostgreSQL types by its place.
 
 ## Statements on a connection or a driver
 

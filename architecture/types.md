@@ -250,7 +250,9 @@
 - A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a type, so a fragment created without these functions cannot pass one.
 - `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
   - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.
-  - `compileFragment` compiles a fragment as a statement of its own, which binds every parameter at each place, and `compileScript` as the text of a script, which rejects every parameter.
+  - `compileFragment` compiles a fragment as a statement of its own, and `compileScript` as the text of a script, which rejects every parameter.
+  - `compileFragment` binds the parameter of a `param` fragment once, under one placeholder wherever the statement repeats the fragment, since its cast types it the same at every place; it binds another value at each place, since PostgreSQL types it by its place.
+    It looks the key up by the identity of the fragment, so two calls of `param` with the same value are two parameters, and it keeps the first `param` apart and creates a map of the others at the second, so that a statement of at most one `param` creates no map ([decision](../decisions/sql/parameters-of-casts.md)).
 - The ORM interpolates a fragment of the layer into `sql`, and so into `$query` and `$script`, as a `fragment` node, which the compiler renders with its compile context as the binder.
-  - Its parameters are numbered with those of the statement, and a query of groups binds the parameter of its `param` once, as that of a cast node ([SQL generation](sql.md#statements)).
+  - Its parameters are numbered with those of the statement, and the statement binds the parameter of its `param` once, as that of a cast node ([SQL generation](sql.md#statements)), so a template gives the same statement through `$query` as through `query` of a `Database`.
   - Only these templates take a fragment: an operand of an operator or a function takes an expression.

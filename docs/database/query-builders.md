@@ -25,9 +25,17 @@ export type Condition = { column: string; type: AnyType; value: unknown } | SqlF
 
 function compileSelect(table: string, columns: string[], conditions: Condition[]): SqlStatement {
   const parameters: TextValue[] = []
+  const placeholders = new Map<object, string>()
   const binder: ParameterBinder = {
     bind: value => bindParameter(parameters, value),
-    bindParam: (_key, value) => bindParameter(parameters, value),
+    bindParam(key, value) {
+      let placeholder = placeholders.get(key)
+      if (placeholder === undefined) {
+        placeholder = bindParameter(parameters, value)
+        placeholders.set(key, placeholder)
+      }
+      return placeholder
+    },
   }
   let text = `SELECT ${columns.map(quoteIdentifier).join(", ")} FROM ${quoteIdentifier(table)}`
   for (const [index, condition] of conditions.entries()) {
@@ -99,24 +107,9 @@ Keep the value itself where the statement only computes with it, such as in a co
 Render a fragment of `sql`, `identifier`, or `param` with `renderFragment` and a `ParameterBinder` of your statement: it returns the SQL text of the fragment and adds its parameters through the binder in the order of the text, among the parameters of your statement.
 Tell a fragment from the other values that your builder takes with `instanceof SqlFragment`.
 
-`bind` of the binder receives the value of a parameter that `sql` interpolates, and `bindParam` the value of a [`param`](./sql#json-and-arrays) fragment, with a `key` that is the same object wherever the statement repeats the fragment.
-A `param` fragment casts its parameter, which gives it the same type wherever a statement repeats the fragment.
-When your statement repeats an expression that PostgreSQL must find equal, such as a key of `GROUP BY` in the select list, give each `key` one placeholder:
-
-```ts
-const placeholders = new Map<object, string>()
-const binder: ParameterBinder = {
-  bind: value => bindParameter(parameters, value),
-  bindParam(key, value) {
-    let placeholder = placeholders.get(key)
-    if (placeholder === undefined) {
-      placeholder = bindParameter(parameters, value)
-      placeholders.set(key, placeholder)
-    }
-    return placeholder
-  },
-}
-```
+`bind` of the binder receives the value of a parameter that `sql` interpolates, and `bindParam` the value of a [`param`](./sql#types-of-values) fragment, with a `key` that is the same object wherever the statement repeats the fragment.
+A `param` fragment casts its parameter, which gives it the same type wherever a statement repeats the fragment, so `database.query` binds it once.
+Give each `key` one placeholder, as the binder above does, so that a fragment of your users gives the same statement in your builder as in `database.query`, and a key of `GROUP BY` that the select list repeats with the same fragments keeps the same placeholders.
 
 Give each call of `bind` a placeholder of its own: PostgreSQL types a parameter without a cast by its place in the statement.
 

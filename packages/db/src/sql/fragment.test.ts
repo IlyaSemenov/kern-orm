@@ -33,13 +33,17 @@ describe("sql", () => {
     })
   })
 
-  it("binds the parameters of a fragment at each place of a statement, also the parameter of param", () => {
+  it("binds a value of a fragment at each place of a statement, and the parameter of a param once, numbering it at its first place", () => {
     const name = sql`${"Survey"}`
     const size = param(integer, 1)
 
-    expect(compileFragment(sql`SELECT ${name}, ${name}, ${size}, ${size}`)).toEqual({
-      text: "SELECT $1, $2, ($3::integer), ($4::integer)",
-      parameters: ["Survey", "Survey", "1", "1"],
+    expect(
+      compileFragment(
+        sql`SELECT ${name}, ${size}, ${name}, ${sql`${size} + ${param(integer, 1)}`}, ${size}`,
+      ),
+    ).toEqual({
+      text: "SELECT $1, ($2::integer), $3, ($2::integer) + ($4::integer), ($2::integer)",
+      parameters: ["Survey", "1", "Survey", "1"],
     })
   })
 

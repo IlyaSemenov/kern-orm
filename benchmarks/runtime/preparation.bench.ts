@@ -1,9 +1,12 @@
-// Time of preparing a statement, lowering and compiling a query to its SQL text and parameters, as every execution of a query does, measured through `db.$compile`.
+// Time of preparing a statement, lowering and compiling a query to its SQL text and parameters, as every execution of a query does, measured through `db.$compile`, and compiling a query of SQL text of the database layer, measured through `toSQL`.
 // Each scenario compiles a query built once, apart from one that also builds it on every call.
+// The scenarios of `param` measure binding the parameter of each `param` once in a statement: of one `param` at three places, and of 1000 different ones beside the scenarios of 1000 other parameters.
 // Apart from the scenario of `exists`, the queries hold no queries in their expressions, where lowering finds nothing to replace.
 
-import type { Predicate } from "kern-orm"
-import { and, or } from "kern-orm"
+import type { Predicate, SqlValue } from "kern-orm"
+import { and, or, param, sql } from "kern-orm"
+import { param as paramOfLayer, sql as sqlOfLayer } from "kern-orm/db"
+import * as t from "kern-orm/types"
 
 import { createEvent, createFixture, createUuid } from "./fixture.ts"
 import type { Topic } from "./scenario.ts"
@@ -18,6 +21,25 @@ const selectForms = () =>
     .orderBy({ position: "desc" }, "name")
     .limit(20)
     .select("id", "name", "position")
+
+/** UUIDs of numbers from 0 to 999. */
+function createUuids(): string[] {
+  const ids: string[] = []
+  for (let index = 0; index < 1000; index++) {
+    ids.push(createUuid(index))
+  }
+  return ids
+}
+
+/** Starts the query of SQL text of `SELECT id FROM form WHERE id IN (...)` of `values`. */
+function selectFormsIn(values: SqlValue[]) {
+  const strings = ["SELECT id FROM form WHERE id IN ("]
+  for (let index = 1; index < values.length; index++) {
+    strings.push(", ")
+  }
+  strings.push(")")
+  return db.$database.query(Object.assign(strings, { raw: strings }), ...values)
+}
 
 const preparation: Topic = {
   select: () => {
@@ -34,12 +56,40 @@ const preparation: Topic = {
     return () => db.$compile(query)
   },
   "in of 1000 values": () => {
-    const ids: string[] = []
-    for (let index = 0; index < 1000; index++) {
-      ids.push(createUuid(index))
-    }
+    const query = db.form.where(form => form.id.in(createUuids())).select("id")
+    return () => db.$compile(query)
+  },
+  "in of 1000 params": () => {
+    const ids = createUuids().map(id => param(t.uuid, id))
     const query = db.form.where(form => form.id.in(ids)).select("id")
     return () => db.$compile(query)
+  },
+  "select of a param at 3 places": () => {
+    const size = param(t.integer, 10)
+    const query = db.form
+      .where(form => sql(t.integer)`${form.position} / ${size}`.gt(1))
+      .select(form => ({
+        bucket: sql(t.integer)`${form.position} / ${size}`,
+        next: sql(t.integer)`${form.position} / ${size} + 1`,
+      }))
+    return () => db.$compile(query)
+  },
+  "query of SQL text of 1000 values": () => {
+    const query = selectFormsIn(createUuids())
+    return () => query.toSQL()
+  },
+  "query of SQL text of 1000 params": () => {
+    const query = selectFormsIn(createUuids().map(id => paramOfLayer(t.uuid, id)))
+    return () => query.toSQL()
+  },
+  "query of SQL text of a param at 3 places": () => {
+    // The time of a statement of a queue of jobs, which it reads at several places.
+    const now = sqlOfLayer`coalesce(${paramOfLayer(t.timestamptz.nullable(), null)}, statement_timestamp())`
+    const query = db.$database.query`
+      UPDATE job SET locked_at = ${now}, locked_by = ${"worker"}, lease_until = ${now} + interval '1 minute'
+      WHERE state = ${"pending"} AND run_at <= ${now}
+    `
+    return () => query.toSQL()
   },
   "and/or tree of 256 conditions": () => {
     // A balanced tree of depth 8 that alternates `and` and `or`.

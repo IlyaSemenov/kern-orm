@@ -143,7 +143,7 @@ function lowerQueryOfValues(node: NestedQueryNode, context: LoweringContext): Se
   return context.lowerSelect(node.query, sortsByPositions(node.query))
 }
 
-/** Tells whether the statement of `node` in a subquery sorts by the positions of its projections: PostgreSQL finds a sort expression of `SELECT DISTINCT` or `GROUP BY` only when it is equal to a selected one or a key, and the keys of `DISTINCT ON` with the order only when they are equal, while a repeated expression has aliases of its own and, apart from the parameters of casts in a query of groups, parameters of its own. */
+/** Tells whether the statement of `node` in a subquery sorts by the positions of its projections: PostgreSQL finds a sort expression of `SELECT DISTINCT` or `GROUP BY` only when it is equal to a selected one or a key, and the keys of `DISTINCT ON` with the order only when they are equal, while a repeated expression has aliases of its own and, apart from the parameters of casts, parameters of its own. */
 function sortsByPositions(node: QueryNode): boolean {
   return node.distinct || node.distinctOn.length > 0 || node.groupBy.length > 0
 }

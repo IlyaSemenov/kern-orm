@@ -186,7 +186,7 @@ describe("queryOn", () => {
     ])
   })
 
-  it("interpolates fragments with their values, binding a value at each place of its fragment", () => {
+  it("interpolates fragments with their values, binding a value at each place of its fragment and the parameter of a param once", () => {
     const { driver } = createRecordingDriver()
     const table = identifier("jobs", "job")
     const now = sql`coalesce(${param(timestamptz.nullable(), null)}, statement_timestamp())`
@@ -197,8 +197,8 @@ describe("queryOn", () => {
     )`/* claim */ UPDATE ${table} SET locked_at = ${now}, locked_by = ${"worker"} WHERE ${due} AND id = ANY(${param(array(integer), [1, 2])})`
 
     expect(query.toSQL()).toEqual({
-      text: '/* claim */ UPDATE "jobs"."job" SET locked_at = coalesce(($1::timestamptz), statement_timestamp()), locked_by = $2 WHERE state = $3 AND run_at <= coalesce(($4::timestamptz), statement_timestamp()) AND id = ANY(($5::integer[]))',
-      parameters: [null, "worker", "pending", null, '{"1","2"}'],
+      text: '/* claim */ UPDATE "jobs"."job" SET locked_at = coalesce(($1::timestamptz), statement_timestamp()), locked_by = $2 WHERE state = $3 AND run_at <= coalesce(($1::timestamptz), statement_timestamp()) AND id = ANY(($4::integer[]))',
+      parameters: [null, "worker", "pending", '{"1","2"}'],
     })
   })
 
@@ -479,7 +479,7 @@ describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
       expect(await database.query`DELETE FROM form WHERE id = ${2}`.take()).toBe(1)
     }))
 
-  it("types a value by its place, as text in the select list alone, and reads one value at several places through a common table expression", () =>
+  it("types a value by its place, as text in the select list alone, and reads the same param in the select list, a subquery, and IS NULL", () =>
     testTransaction(async () => {
       const at = new Date("2026-01-15T07:00:00.000Z")
       const now = sql`coalesce(${at}, statement_timestamp())`
@@ -499,17 +499,40 @@ describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
         .transaction(async () => await queryOn(database)`SELECT ${at} IS NULL`)
         .catch((error: unknown) => error)
       expect(isQueryError(rejection, "indeterminate_datatype")).toBe(true)
+      const queue = param(text, "mail")
       expect(
-        await queryOn(database)`
-          WITH input AS (SELECT ${param(text, "mail")} AS queue)
-          SELECT input.queue AS selected, (SELECT queue FROM input) AS nested FROM input
-        `
+        await queryOn(
+          database,
+        )`SELECT ${queue} AS selected, (SELECT ${queue}) AS nested, ${queue} IS NULL AS missing`
           .select({
             selected: text,
             nested: text,
+            missing: boolean,
           })
           .take(),
-      ).toEqual({ selected: "mail", nested: "mail" })
+      ).toEqual({ selected: "mail", nested: "mail", missing: false })
+    }))
+
+  it("groups by an expression of a param that the select list repeats", () =>
+    testTransaction(async () => {
+      const size = param(integer, 10)
+      const bucket = sql`position / ${size}`
+
+      expect(
+        await database.query`
+          SELECT ${bucket} AS bucket, count(*) AS total
+          FROM generate_series(1, 25) AS position
+          GROUP BY ${bucket}
+          ORDER BY ${bucket}
+        `.select({
+          bucket: integer,
+          total: integer,
+        }),
+      ).toEqual([
+        { bucket: 0, total: 9 },
+        { bucket: 1, total: 10 },
+        { bucket: 2, total: 6 },
+      ])
     }))
 
   it("names a table by identifier whose name has a dot and a quote", () =>

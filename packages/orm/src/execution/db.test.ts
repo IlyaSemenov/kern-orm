@@ -249,6 +249,24 @@ describe("$query", () => {
     })
   })
 
+  it("binds each param of the database layer once at its places and a value at each place, as query of the Database does", () => {
+    const { database, db } = connectTenant()
+    const queue = paramFragment(text, "mail")
+    const otherQueue = paramFragment(text, "mail")
+    const queueWithFallback = sqlFragment`coalesce(${queue}, ${"other"})`
+    const expected = {
+      text: "SELECT ($1::text), $2, ($3::text), coalesce(($1::text), $4), ($3::text), $5",
+      parameters: ["mail", "mail", "mail", "other", "mail"],
+    }
+
+    expect(
+      db.$query`SELECT ${queue}, ${"mail"}, ${otherQueue}, ${queueWithFallback}, ${otherQueue}, ${"mail"}`.toSQL(),
+    ).toEqual(expected)
+    expect(
+      database.query`SELECT ${queue}, ${"mail"}, ${otherQueue}, ${queueWithFallback}, ${otherQueue}, ${"mail"}`.toSQL(),
+    ).toEqual(expected)
+  })
+
   it("names a table by identifier as it is, keeping values as parameters", () => {
     const { db } = connectTenant()
 

@@ -41,7 +41,7 @@ it("tells apart aliases of names that differ only by lone surrogates", () => {
   ]).toEqual(["\ufffd".repeat(12), `${"\ufffd".repeat(12)}_2`])
 })
 
-it("binds the parameter of a cast once in a query of groups, numbering it with the other parameters, and at each place elsewhere", () => {
+it("binds the parameter of a cast once, numbering it with the other parameters, and each call of bind apart", () => {
   const context = new CompileContext(undefined)
   const createCast = () =>
     createNode<CastNode>({
@@ -51,14 +51,12 @@ it("binds the parameter of a cast once in a query of groups, numbering it with t
     })
   const zone = createCast()
 
-  context.grouped = true
   expect([
     context.bindParam(zone, "UTC"),
     context.bind("x"),
     context.bindParam(zone, "UTC"),
     context.bindParam(createCast(), "UTC"),
-  ]).toEqual(["$1", "$2", "$1", "$3"])
-  context.grouped = false
-  expect([context.bindParam(zone, "UTC"), context.bindParam(zone, "UTC")]).toEqual(["$4", "$5"])
-  expect(context.parameters).toEqual(["UTC", "x", "UTC", "UTC", "UTC"])
+    context.bind("x"),
+  ]).toEqual(["$1", "$2", "$1", "$3", "$4"])
+  expect(context.parameters).toEqual(["UTC", "x", "UTC", "x"])
 })
