@@ -7,6 +7,7 @@ export default defineConfig({
     "src/types.ts",
     "src/db.ts",
     "src/db/builder.ts",
+    "src/db/bun-sql.ts",
     "src/db/node-postgres.ts",
     "src/db/postgres-js.ts",
     "src/db/types.ts",

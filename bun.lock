@@ -62,11 +62,13 @@
         "postgres": "catalog:",
       },
       "peerDependencies": {
+        "@types/bun": "^1.4.4",
         "@types/pg": "^8.0.0",
         "pg": "^8.23.1",
         "postgres": "^4.0.0",
       },
       "optionalPeers": [
+        "@types/bun",
         "@types/pg",
         "pg",
         "postgres",

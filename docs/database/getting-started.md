@@ -25,7 +25,7 @@ bun add kern-db postgres
 
 :::
 
-If your application uses [node-postgres](./drivers#node-postgres), see Drivers.
+If your application uses [node-postgres](./drivers#node-postgres) or [Bun SQL](./drivers#bun-sql), see Drivers.
 
 To create and change tables with migrations, also install `kern-migrations`; see [Migrations](../migrations/getting-started).
 
@@ -80,7 +80,7 @@ await database.transaction(async () => {
 
 ## Next steps
 
-- [Drivers](./drivers): the drivers of postgres.js and node-postgres.
+- [Drivers](./drivers): the drivers for postgres.js, node-postgres, and Bun SQL.
 - [SQL Queries and Scripts](./sql): SQL fragments, names known at runtime, JSON and arrays in statements, and scripts.
 - [Types](./types): the values of the built-in types, and nullable and narrowed values.
 - [Custom Types](./custom-types): use a PostgreSQL type that kern-db does not provide, such as `ltree` from an extension.

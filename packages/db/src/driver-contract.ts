@@ -502,7 +502,17 @@ export function describeDriverContract(
         new (...args: never) => Error,
       ])[] = [
         ["a statement", own => own.execute(createStatement("BEGIN")), ConnectionError],
+        [
+          "START TRANSACTION",
+          own => own.execute(createStatement("START TRANSACTION")),
+          ConnectionError,
+        ],
         ["a script", own => own.executeScript("BEGIN; SELECT 1"), ConnectionError],
+        [
+          "a script ending in a chained transaction",
+          own => own.executeScript("SELECT 1; START TRANSACTION; COMMIT AND CHAIN"),
+          ConnectionError,
+        ],
         // The failed statement leaves the transaction block open and aborted; the driver rejects with its QueryError or with ConnectionError.
         [
           "a script that fails in the transaction",

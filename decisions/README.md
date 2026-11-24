@@ -134,6 +134,7 @@ The SQL that loads nested queries and relations.
 - [Native parameters of the postgres.js driver](drivers/native-parameters.md): an option of the built-in driver that returns the values of a statement that postgres.js serializes, rather than a driver of the Orchid adapter, a field of every statement that every driver honors, or exported parts of the driver.
 - [Orchid values serialized by postgres.js](drivers/orchid-values.md): JavaScript values in a field of the statement, rather than an operation of kern-db that encodes by the server types with a patch of postgres.js.
 - [Reusing Orchid's postgres.js codecs](drivers/orchid-codecs.md): the configured registries of the client, rather than handwritten codecs.
+- [Text results of Bun SQL](drivers/bun-sql-results.md): raw fields of unnamed statements preserve text that native decoding can lose.
 
 ## Migrations
 

@@ -279,7 +279,6 @@ async function createConsumer(
   await mkdir(join(dir, "node_modules/@types"), { recursive: true })
   for (const { path, name: packageName } of [
     { path: "node_modules/@types/node", name: "@types/node" },
-    { path: "node_modules/@types/bun", name: "@types/bun" },
     { path: "node_modules/vitest", name: "vitest" },
     ...linked,
   ]) {
@@ -346,8 +345,9 @@ beforeAll(async () => {
   ormConsumer = await createConsumer(
     "orm",
     ["kern-orm", "kern-migrations"],
-    // The client of the scenario of node-postgres, whose dependencies the registry does not serve.
     [
+      { path: "node_modules/@types/bun", name: "@types/bun" },
+      // The client of the scenario of node-postgres, whose dependencies the registry does not serve.
       { path: "packages/db/node_modules/pg", name: "pg" },
       { path: "packages/db/node_modules/@types/pg", name: "@types/pg" },
     ],
@@ -378,6 +378,19 @@ beforeAll(async () => {
       "db-types": ["db-types-helper.ts"],
     },
   })
+  await writeFile(
+    join(ormConsumer, "tsconfig.bun-sql.json"),
+    JSON.stringify({
+      extends: "./tsconfig.json",
+      compilerOptions: {
+        types: ["bun"],
+        skipLibCheck: true,
+        rootDir: "bun",
+        outDir: "bun-declarations",
+      },
+      include: ["bun/driver.ts"],
+    }),
+  )
   await writeFile(
     join(ormConsumer, "tsconfig.type-tests.json"),
     JSON.stringify({
@@ -524,9 +537,17 @@ describe.each([
     run([...tsc, "-p", "tsconfig.type-tests.json"], ormConsumer)
   }, 60_000)
 
+  test("emits the inferred driver type of a consumer of kern-orm/db/bun-sql with Bun's types", async () => {
+    run([...tsc, "-p", "tsconfig.bun-sql.json"], ormConsumer)
+    expect(await readFile(join(ormConsumer, "bun-declarations/driver.d.ts"), "utf8")).toContain(
+      'import("kern-orm/db/bun-sql").Driver',
+    )
+  }, 60_000)
+
   test("emits declarations of a consumer of kern-orm that cannot resolve kern-db, also of a module that imports only the root, and type-checks them", async () => {
     // npm installs kern-db only under kern-orm, so the declarations name its types through the entry points of kern-orm.
     expect(existsSync(join(isolatedOrmConsumer, "node_modules/kern-db"))).toBe(false)
+    expect(existsSync(join(isolatedOrmConsumer, "node_modules/@types/bun"))).toBe(false)
     run([...tsc, "-p", isolatedOrmConsumer], isolatedOrmConsumer)
     run([...tsc, "-p", "tsconfig.root.json"], isolatedOrmConsumer)
     await expectPortableDeclarations(isolatedOrmConsumer)
@@ -546,6 +567,7 @@ describe.each([
   }, 60_000)
 
   test("emits declarations of a consumer of kern-db and the migrator without kern-orm and pg and checks them with the declarations of the packages", async () => {
+    expect(existsSync(join(dbConsumer, "node_modules/@types/bun"))).toBe(false)
     run([...tsc, "-p", dbConsumer], dbConsumer)
     await expectPortableDeclarations(dbConsumer)
     run([...tsc, "-p", "tsconfig.declarations.json"], dbConsumer)
@@ -625,6 +647,13 @@ describe.each(["node", "bun"])("%s", runtime => {
         queryErrorCode: null,
       })
     })
+
+    test.skipIf(runtime !== "bun" || !process.env.DATABASE_URL)(
+      "runs a consumer of the Bun SQL driver of kern-orm/db/bun-sql",
+      () => {
+        expect(JSON.parse(run([runtime, "bun/driver.ts"], ormConsumer))).toEqual([["42"]])
+      },
+    )
 
     test.skipIf(!process.env.DATABASE_URL)(
       "migrates the Db of its schema in one transaction with queries of the ORM in PostgreSQL",
