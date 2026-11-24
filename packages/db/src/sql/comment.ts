@@ -1,6 +1,6 @@
-// Labels of `comment` of queries.
+// Labels of `comment` of queries, which start the text of their statements.
 
-// The compiler writes the label between `/* ` and ` */`, so a label that ends with `*`, `/`, or `-` stays inside the comment.
+// `addComment` writes the label between `/* ` and ` */`, so a label that ends with `*`, `/`, or `-` stays inside the comment.
 /**
  * Checks the label of `comment` of a query and returns it, or `undefined` for `null`, which removes the comment.
  *
@@ -25,4 +25,10 @@ export function createComment(label: unknown): string | undefined {
     throw new TypeError("comment cannot contain a NUL character")
   }
   return label
+}
+
+// The comment starts the text, so that `pg_stat_activity` shows it within the length of `track_activity_query_size`, to which it truncates the text of a statement.
+/** Writes `comment`, which `createComment` has checked, as a block comment before the SQL `text` of a statement, or returns `text` without one. */
+export function addComment(text: string, comment: string | undefined): string {
+  return comment === undefined ? text : `/* ${comment} */ ${text}`
 }

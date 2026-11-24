@@ -37,7 +37,7 @@ const forms = await db.form
 
 Give each operation a short label that stays the same on every call, so that one filter finds all its statements, such as `WHERE query LIKE '/* forms:published */%'` in `pg_stat_activity`.
 
-Queries of tables, of [`$select`](./selecting#several-queries-at-once), and inserts, updates, and deletes take a comment; write the comment of a [SQL statement](./sql) in its SQL.
+Queries of tables, [`$select`](./selecting#several-queries-at-once), and [`$query`](./sql#comments), as well as inserts, updates, and deletes, take a comment.
 The queries that you derive from a query with a comment keep it, such as `db.form.find(id).comment("forms:save").update(values)`; a later `comment` replaces it, and `comment(null)` removes it.
 
 Only the query that runs the statement writes its comment: a query nested in another one, such as in a selection or in `in`, leaves its comment out.

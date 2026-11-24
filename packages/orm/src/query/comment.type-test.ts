@@ -50,8 +50,7 @@ describe("comment", () => {
     db.form.comment(1)
   })
 
-  test("is not a method of a query of SQL text, whose text holds its comment", () => {
-    // @ts-expect-error -- the text of the statement holds its comment
-    db.$query`SELECT 1`.comment("one")
+  test("keeps the state of a query of SQL text", async () => {
+    expectTypeOf(await db.$query`SELECT 1`.comment("one").get(t.integer)).toEqualTypeOf<number>()
   })
 })

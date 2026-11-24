@@ -110,6 +110,17 @@ The result columns of each table are named by its alias, such as `f__id`, or by 
 It tells such a row by the columns in its `by` option, which must never be `NULL` in a row, or by the whole primary key of the table without the option.
 For a view, or for columns without the primary key, pass `by`: `columnsOf(db.formStats, "*").nullable({ by: ["formId"] })`.
 
+## Comments
+
+To find the statement in PostgreSQL, label it with `comment`, as you [label a query](./#comments):
+
+```ts
+const total = await db.$query`SELECT count(*) FROM ${db.form}`.comment("forms:count").get(t.integer)
+// SQL: /* forms:count */ SELECT count(*) FROM "form"
+```
+
+A later `comment` replaces the label, and `comment(null)` removes it.
+
 ## Queries in statements
 
 To compute what queries cannot, such as the median number of fields of published forms, interpolate a query into the statement.

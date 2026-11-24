@@ -9,7 +9,7 @@
   - The methods that keep the state in types, `orderBy`, `limit`, `offset`, `distinct`, `distinctOn`, `where` and `having` of a query whose row is not guaranteed, and `use`, which returns the query of its callback, take the whole query, so that they also apply to a union of queries; `where` and `having` of a guaranteed query change its state.
   - A method that changes the state takes the state and the kind of the query, which TypeScript cannot infer from a union of queries of different states, so such a union rejects it ([decision](../decisions/queries/state-changing-methods-on-unions.md)).
   - A parameter that takes queries of other states, such as of `$execute`, `$compile`, and `defineHelper`, and a nested query of a selection are typed by `SelectQuery` of either kind, those of `$execute` and `$compile` also by the `RecordQuery` of `$select`, and those of `$execute` and `$compile` and a nested query also by a [query of `transform`](#converting-results); a copy of a query made by spread or rest lacks its methods, so it is not a query.
-- The classes of queries, `SelectQuery`, `TransformedQuery`, `RecordQuery`, and `MutationQuery`, share no base class, so each declares `types`, `db`, `then`, `toSQL`, and [`comment`](#comments); only these declarations repeat, since `executeOnAwait` and `compileToSQL` of `query/kind.ts` and `createComment` of `query/comment.ts` hold the logic ([decision](../decisions/queries/query-classes-without-base-class.md)).
+- The classes of queries, `SelectQuery`, `TransformedQuery`, `RecordQuery`, and `MutationQuery`, share no base class, so each declares `types`, `db`, `then`, `toSQL`, and [`comment`](#comments); only these declarations repeat, since `executeOnAwait` and `compileToSQL` of `query/kind.ts` and `createComment` of `sql/comment.ts` of `kern-db` hold the logic ([decision](../decisions/queries/query-classes-without-base-class.md)).
 
 Queries come in two kinds that share the query methods and differ only by execution context:
 
@@ -258,20 +258,21 @@ Queries come in two kinds that share the query methods and differ only by execut
 
 ## Comments
 
-- `comment(label)` starts the text of the statement of a query with `/* label */`, also in `toSQL` and `$compile`.
+- `comment(label)` starts the text of the statement of a query with `/* label */`, also in `toSQL`, and in `$compile` of the queries that it takes.
   Monitoring of PostgreSQL finds the statement by the label, such as `pg_stat_activity`, which truncates the text to `track_activity_query_size`, and the log.
-- A query of a table, of `transform`, of `$select`, and a mutation have the method; a [query of SQL text](sql-queries.md) lacks it, since its text holds its comment.
+- A query of a table, of `transform`, of `$select`, a mutation, and a [query of SQL text](sql-queries.md#comments) have the method.
 - The comment belongs to the statement: only the query that runs the statement writes it, and the comment of a query nested anywhere, such as in a selection, a condition, `in`, the values of a mutation, a query of `$select`, or SQL text, is left out, so that a query with a comment can be nested as any other ([decision](../decisions/queries/comments-of-nested-queries.md)).
-  - The semantic node of a query holds the label, `QueryNode`, `RecordQueryNode`, and the `MutationNode` of a mutation, and the two places that compile a query as a statement, `compileToSQL` of `query/kind.ts` and the compilation of a `Db`, pass it to `compileStatement`; lowering does not read it, so no nested query writes one.
+  - A query of the ORM holds the label in its semantic node, `QueryNode`, `RecordQueryNode`, or the `MutationNode` of a mutation.
+    The two places that compile such a query as a statement, `compileToSQL` of `query/kind.ts` and the compilation of a `Db`, pass it to `compileStatement`; lowering does not read it, so no nested query writes one.
 - A later call replaces an earlier one, and `null` removes it.
 - Every query derived from a query with a comment keeps it, also of another class: an aggregate, `exists`, `find` and `findBy`, `map`, `transform`, and the insert, update, delete, and upsert of a query, and a mutation of its `select`, `get`, `pluck`, `map`, `transform`, and the action of `onConflict`.
   - It keeps the state in types and the values of the key of `find` and `findBy` at runtime, so that `upsert` applies after it, and an insert keeps its part `insert` of the state, so that `onConflict` applies after it.
   - A query of a table with a comment and no clauses is still a query of a table without clauses for `isTableQuery`, since a comment does not change the rows.
-- `createComment` rejects with `TypeError` a label of `comment` other than a string or `null`, a label with `/*` or `*/`, and a label with a NUL character:
+- `createComment` of `kern-db`, which the builder API exports to the ORM, rejects with `TypeError` a label of `comment` other than a string or `null`, a label with `/*` or `*/`, and a label with a NUL character:
   - a value of another type would reach SQL as the string it converts to, and `undefined` would remove a comment by mistake;
   - `*/` would end the comment early, and `/*` opens a comment nested in it, as PostgreSQL nests block comments, whose end leaves the outer comment open over the statement ([PostgreSQL](https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-COMMENTS));
   - PostgreSQL rejects a NUL character in the text of a statement.
-    The compiler writes a space before `*/`, so a label that ends with `*`, `/`, or `-` stays in the comment, and PostgreSQL ignores a placeholder in a comment, such as `$1`, which the drivers send as they are.
+    `addComment` of `sql/comment.ts` of `kern-db` writes a space before `*/`, so a label that ends with `*`, `/`, or `-` stays in the comment, and PostgreSQL ignores a placeholder in a comment, such as `$1`, which the drivers send as they are.
 - `pg_stat_statements` computes the identifier of a statement without its comments, so statements that differ only in their comments share an entry, which shows the text of the first of them ([PostgreSQL](https://www.postgresql.org/docs/current/pgstatstatements.html)).
 
 ## Aggregates

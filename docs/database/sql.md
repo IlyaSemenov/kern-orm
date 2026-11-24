@@ -48,6 +48,18 @@ const total = await database.query`SELECT count(*) FROM form`.get(t.integer)
 // total: number
 ```
 
+## Comments
+
+To find a statement in PostgreSQL, such as in `pg_stat_activity` or in the log of slow statements, label it with `comment`, which starts its SQL with the label in a comment:
+
+```ts
+const total = await database.query`SELECT count(*) FROM form`.comment("forms:count").get(t.integer)
+// SQL: /* forms:count */ SELECT count(*) FROM form
+```
+
+Pass a label from your code to `comment`: interpolated into the template, it would become a parameter.
+A later `comment` replaces the label, and `comment(null)` removes it.
+
 ## SQL fragments
 
 To build a part of a statement separately, such as the condition of an optional filter, write it with the `sql` template and interpolate it into the statement:

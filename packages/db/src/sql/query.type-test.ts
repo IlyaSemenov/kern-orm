@@ -119,6 +119,24 @@ describe("results", () => {
     >()
     expectTypeOf(await database.query`SELECT`.take().pluck(text)).toEqualTypeOf<string>()
   })
+
+  test("stay the same after comment, in every state", async () => {
+    expectTypeOf(await database.query`SELECT`.comment("c")).toEqualTypeOf<number>()
+    expectTypeOf(
+      await database.query`SELECT`
+        .comment("c")
+        .select({ id: integer })
+        .take()
+        .comment(null)
+        .optional(),
+    ).toEqualTypeOf<{ id: number } | undefined>()
+    expectTypeOf(await database.query`SELECT`.get(bigint).comment("c").optional()).toEqualTypeOf<
+      bigint | undefined
+    >()
+    expectTypeOf(
+      await database.query`SELECT`.take().comment("c").nullable(),
+    ).toEqualTypeOf<number>()
+  })
 })
 
 describe("methods", () => {

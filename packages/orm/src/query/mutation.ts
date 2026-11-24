@@ -8,7 +8,7 @@ import type {
   SynchronousResult,
   ValueRows,
 } from "kern-db"
-import { toValueRows } from "kern-db/builder"
+import { createComment, toValueRows } from "kern-db/builder"
 
 import { combineFilters } from "../ast/boolean"
 import type { AssignmentNode, ConflictNode, InsertNode, TableSourceNode } from "../ast/nodes"
@@ -23,7 +23,6 @@ import type { AnyRowSource, AnyTable, Selectable } from "../table/table"
 import { findKey, requireColumn } from "../table/table"
 
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
-import { createComment } from "./comment"
 import { addMap, addTransform } from "./conversion"
 import type { KeyCheck } from "./find"
 import { toConflictTarget } from "./find"

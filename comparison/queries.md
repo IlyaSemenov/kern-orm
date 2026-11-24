@@ -50,7 +50,7 @@ The `noWait` option of a row lock adds `NOWAIT`, such as `forUpdate({ noWait: tr
 
 ## Comments of statements
 
-`comment(label)` of a query, also of an insert, an update, or a delete, starts the text of its statement with `/* label */`, so that `pg_stat_activity` shows the label within the text that it truncates; it rejects a label with `/*`, `*/`, or a NUL character, and a nested query leaves its comment out.
+`comment(label)` of a query, also of an insert, an update, a delete, or a statement of SQL text, starts the text of its statement with `/* label */`, so that `pg_stat_activity` shows the label within the text that it truncates; it rejects a label with `/*`, `*/`, or a NUL character, and a nested query leaves its comment out.
 
 - Orchid ORM, lacks: columns take `.comment(text)` ([docs](https://github.com/romeerez/orchid-orm/blob/pqb%400.73.36/docs/src/guide/migration-column-methods.md#L728)) and tables take a `comment` option ([docs](https://github.com/romeerez/orchid-orm/blob/pqb%400.73.36/docs/src/guide/define-tables.md#L22-L23)), for migrations, and a query takes none.
 - Drizzle ORM, lacks: its statements of PostgreSQL have no place for a comment ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/dialect.ts#L140)), and a request for `comment()` was open ([issue](https://github.com/drizzle-team/drizzle-orm/issues/1866)).

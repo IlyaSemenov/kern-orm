@@ -16,6 +16,7 @@ import { isType } from "../type/type"
 
 import type { AnySqlColumns } from "./columns"
 import { SqlColumns } from "./columns"
+import { addComment, createComment } from "./comment"
 import type { SqlValue } from "./fragment"
 import { compileFragment, sql } from "./fragment"
 
@@ -115,7 +116,7 @@ const countPlan: FlatResultPlan = /* @__PURE__ */ Object.freeze({
  *
  * Without a selection, it resolves to the number of the rows of the command tag of its statement, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of the rows of the statement instead, decoded by types.
  */
-// It holds the source of its statement apart from the plan of its result, so that the methods that change the result share the statement, which compiles each time the query executes.
+// It holds the source of its statement apart from the plan of its result and its comment, so that the methods that change them share the statement, which compiles each time the query executes.
 export class SqlQuery<out S extends SqlQueryState> {
   declare readonly types: S
 
@@ -126,6 +127,8 @@ export class SqlQuery<out S extends SqlQueryState> {
     private readonly executor: StatementExecutor,
     /** How the result of the statement is decoded. */
     private readonly plan: FlatResultPlan,
+    /** Label of `comment`, which the text of the statement starts with. */
+    private readonly label?: string,
   ) {
     Object.freeze(this)
   }
@@ -279,21 +282,42 @@ export class SqlQuery<out S extends SqlQueryState> {
     return this.changeOneRow("nullable")
   }
 
+  /**
+   * Starts the SQL of the statement of the query with `label` in a block comment, such as to find the statement in `pg_stat_activity` and in the log of PostgreSQL.
+   *
+   * It replaces an earlier comment of the query, and `null` removes it; the queries derived from it, such as of `select` and `take`, keep it.
+   * It rejects a label that contains the start or the end of a block comment, or a NUL character.
+   */
+  comment(label: string | null): SqlQuery<S> {
+    return new SqlQuery(this.source, this.executor, this.plan, createComment(label))
+  }
+
   /** Compiles the query into SQL text and parameters, as it executes. */
   toSQL(): SqlStatement {
-    return this.source()
+    return this.compile()
   }
 
   /** Compiles the statement, executes it on the executor, and decodes its result by the plan. */
   // An async function, so that a statement that fails to compile rejects the promise.
   private async execute(): Promise<unknown> {
-    const statement = this.source()
+    const statement = this.compile()
     return decodeFlatResult(this.plan, await this.executor.execute(statement))
   }
 
-  /** Creates the query of the same statement with result plan `plan`. */
+  /** Compiles the statement with the source, starting its text with the comment of the query, if any. */
+  private compile(): SqlStatement {
+    const statement = this.source()
+    const { label } = this
+    if (label === undefined) {
+      return statement
+    }
+    // A spread keeps the fields that a builder adds to its statement, such as the values of `getNativeParameters` of the postgres.js driver.
+    return { ...statement, text: addComment(statement.text, label) }
+  }
+
+  /** Creates the query of the same statement and comment with result plan `plan`. */
   private derive(plan: FlatResultPlan): AnySqlQuery {
-    return new SqlQuery(this.source, this.executor, Object.freeze(plan))
+    return new SqlQuery(this.source, this.executor, Object.freeze(plan), this.label)
   }
 
   /** Creates the query of the same fields in rows mode `rows`. */

@@ -1,13 +1,13 @@
 // Queries of `$select`: one record of the values of expressions and of literals and the results of independent queries, in one statement without a source.
 
 import type { SqlStatement } from "kern-db"
+import { createComment } from "kern-db/builder"
 
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
 import type { UsedRelation } from "../schema/relation"
 
-import { createComment } from "./comment"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { RecordQueryNode, SelectedNode } from "./node"

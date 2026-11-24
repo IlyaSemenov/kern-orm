@@ -1,4 +1,4 @@
-// API for authors of query builders on top of kern-db: compiling SQL fragments into statements of a builder, queries of SQL text of the statements that a builder compiles, the columns of the records of a builder, such as of its tables, in SQL text, and the rules by which kern-db encodes parameters, quotes names, and decodes results.
+// API for authors of query builders on top of kern-db: compiling SQL fragments into statements of a builder, queries of SQL text of the statements that a builder compiles, the columns of the records of a builder, such as of its tables, in SQL text, and the rules by which kern-db encodes parameters, quotes names, writes the comments of statements, and decodes results.
 export { cutIdentifier, maxCharacterBytes, maxIdentifierBytes, quoteIdentifier } from "./identifier"
 export type { ResultMode } from "./result"
 export {
@@ -23,6 +23,7 @@ export type {
   SqlColumnsRecord,
 } from "./sql/columns"
 export { createSqlColumns } from "./sql/columns"
+export { addComment, createComment } from "./sql/comment"
 export type { GuaranteedColumnKeys, IsIndexKey, PickSelectedColumns } from "./selected-columns"
 // The types that the columns of a builder name, so that a module that imports only this entry point emits its declarations.
 export type { AnyType, TypeOutput } from "./type/type"

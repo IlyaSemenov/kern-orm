@@ -8,7 +8,7 @@ import type {
   SynchronousResult,
   ValueRows,
 } from "kern-db"
-import { toValueRows } from "kern-db/builder"
+import { createComment, toValueRows } from "kern-db/builder"
 
 import type { ExpressionNode, NestedQueryNode, QueryFilters, ScalarProjection } from "../ast/nodes"
 import { createNode } from "../ast/nodes"
@@ -33,7 +33,6 @@ import type { AggregateMethod, CountValueType } from "./aggregate"
 import { countProjection, isAggregateQuery, projectAggregate } from "./aggregate"
 import type { ColumnRefs, QueryContext, RelationRefs } from "./column-refs"
 import { noContext } from "./column-refs"
-import { createComment } from "./comment"
 import type { TransformedQuery, TransformedQueryState } from "./conversion"
 import { addMap, transformQuery } from "./conversion"
 import type { ExistsValueType } from "./exists"

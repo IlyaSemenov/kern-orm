@@ -1,6 +1,6 @@
 import type { SqlStatement } from "kern-db"
 import { createStatement } from "kern-db"
-import { encodeParameter, quoteIdentifier, renderFragment } from "kern-db/builder"
+import { addComment, encodeParameter, quoteIdentifier, renderFragment } from "kern-db/builder"
 
 import { combineFilters } from "../../ast/boolean"
 import type {
@@ -95,12 +95,6 @@ export function compileStatement(
       }
     }
   }
-}
-
-// The comment starts the text, so that `pg_stat_activity` shows it within the length of `track_activity_query_size`, to which it truncates the text of a statement.
-/** Writes `comment`, which `createComment` has checked, as a block comment before the SQL `text` of a statement, or returns `text` without one. */
-function addComment(text: string, comment: string | undefined): string {
-  return comment === undefined ? text : `/* ${comment} */ ${text}`
 }
 
 /**

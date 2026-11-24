@@ -1,6 +1,7 @@
 # Queries of SQL text
 
-- **Query of SQL text** (`sql/query.ts`): immutable query of a statement of the database layer, which `query` of a `Database`, the template of `queryOn`, and `$query` of a `Db` start, as a `SqlQuery` of a source of its statement, of the executor of the statement, and of the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change.
+- **Query of SQL text** (`sql/query.ts`): immutable query of a statement of the database layer, a `SqlQuery`, which `query` of a `Database`, the template of `queryOn`, and `$query` of a `Db` start.
+  It holds the source of its statement, the executor of the statement, the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change, and the label of its [comment](#comments).
   - The source compiles the statement each time the query executes or `toSQL` compiles it; awaiting the query executes the statement with `execute` of its executor, called as its method, and decodes the result by the plan.
   - A statement that fails to compile rejects the promise of the query without executing.
   - The executor is a `StatementExecutor` (`driver.ts`): any object whose `execute` takes a statement and returns the result of a driver, such as a `Database`, a `Driver`, a `Connection`, or a wrapper of one.
@@ -31,6 +32,13 @@
   - A missing column, or a column that the result has twice, rejects with `ResultDecodeError`; other columns are ignored, such as those of `RETURNING *`.
   - A value of `get` and `pluck` is read from the only column, whatever its name, and another number of columns rejects.
   - Decoding fails after the statement, so a statement that changes rows has made its change, as a mutation has ([decision](../decisions/sql-queries/columns-of-sql-text.md)).
+
+## Comments
+
+- `comment` of a query of SQL text starts the text of its statement with the label, as `comment` of a query of the ORM does, under the contract of [comments](queries.md#comments): `createComment` and `addComment` of `sql/comment.ts` check and write the label for both.
+- It applies in every state of the query and keeps the state; `select`, `get`, `pluck`, `take`, `optional`, and `nullable` keep the label, a later `comment` replaces it, and `null` removes it.
+- The query writes the comment before the text that its source compiles, each time it executes or `toSQL` compiles it, so the source of a builder, such as of `$query`, compiles without it.
+- The statement with a comment is a spread of the statement of the source, so a field that a builder adds to its statement, such as one that it reads in `getNativeParameters` of the postgres.js driver, must be an own enumerable property to stay in it.
 
 ## Columns of records
 

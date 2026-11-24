@@ -1,7 +1,7 @@
 // Conversions of results: `map` and `transform` of a query, whose result code converts after decoding, with the SQL of that query.
 
 import type { SqlStatement, SynchronousResult } from "kern-db"
-import { rejectThenable } from "kern-db/builder"
+import { createComment, rejectThenable } from "kern-db/builder"
 
 import type { CompileOptions } from "../compiler/postgres/compile"
 import type { AnyDb } from "../execution/db"
@@ -10,7 +10,6 @@ import type { ResultConversion } from "../result/result"
 import type { UsedRelation } from "../schema/relation"
 import type { AnyRowSource } from "../table/table"
 
-import { createComment } from "./comment"
 import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
 import { compileToSQL, executeOnAwait } from "./kind"
 import type { QueryNode } from "./node"

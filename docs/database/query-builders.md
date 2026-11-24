@@ -60,7 +60,7 @@ export function selectFrom(
 }
 ```
 
-Your users then await its queries and call `select`, `get`, `pluck`, `take`, `optional`, and `nullable` on them, as on [`database.query`](./sql):
+Your users then await its queries and call `select`, `get`, `pluck`, `take`, `optional`, `nullable`, and `comment` on them, as on [`database.query`](./sql):
 
 ```ts
 import { sql } from "kern-db"
@@ -278,7 +278,7 @@ const { rows } = await database.execute(statement)
 
 postgres.js serializes each value with the serializers of the client, by the type that PostgreSQL resolves for its parameter, as for a query of the client itself.
 `database.execute` passes the statement to the driver as it is, so the values run in the current transaction like any other statement.
-A statement for which the option returns `undefined`, such as of a query of SQL text, sends its text `parameters`.
+A statement for which the option returns `undefined`, such as one of `database.query`, sends its text `parameters`.
 A connection of `postgresJsConnection` sends the text `parameters` of every statement, so in a [transaction of another library](./interop#transactions-of-another-library), PostgreSQL rejects a statement whose values are only in such a field for its missing parameters.
 A value that postgres.js fails to serialize rejects with `ConnectionError`, so a transaction rolls back even if its callback catches it.
 

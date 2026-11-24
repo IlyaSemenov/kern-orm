@@ -453,6 +453,101 @@ describe("rows", () => {
   })
 })
 
+describe("comments", () => {
+  it("start the text of the statement that executes and that toSQL compiles, of database.query and of queryOn", async () => {
+    const { database, statements } = createRecordedDatabase({
+      columns: [{ name: "id", type: 23 }],
+      rows: [["1"]],
+    })
+    const query = queryOn(database)`SELECT id FROM form WHERE id = ${1}`
+      .comment("forms:get")
+      .get(integer)
+
+    expect(query.toSQL()).toEqual({
+      text: "/* forms:get */ SELECT id FROM form WHERE id = $1",
+      parameters: ["1"],
+    })
+    expect(await query).toBe(1)
+    await database.query`DELETE FROM form`.comment("forms:clear")
+    expect(statements.map(statement => statement.text)).toEqual([
+      "/* forms:get */ SELECT id FROM form WHERE id = $1",
+      "/* forms:clear */ DELETE FROM form",
+    ])
+  })
+
+  it("keep the fields that a builder adds to its statement", async () => {
+    const values = Symbol("values")
+    interface NativeStatement extends SqlStatement {
+      readonly [values]?: readonly unknown[]
+    }
+    const executed: NativeStatement[] = []
+    const executor: StatementExecutor = {
+      async execute(statement) {
+        executed.push(statement)
+        return { command: "SELECT", count: 0, columns: [], rows: [] }
+      },
+    }
+    const query = startSqlQuery(
+      () => ({ text: "SELECT $1", parameters: [], [values]: [42] }),
+      executor,
+    )
+
+    await query
+    await query.comment("native")
+
+    expect(executed.map(statement => [statement.text, statement[values]])).toEqual([
+      ["SELECT $1", [42]],
+      ["/* native */ SELECT $1", [42]],
+    ])
+  })
+
+  it("stay through select, get, pluck, take, optional, and nullable, before or after them", () => {
+    const query = createRecordedDatabase().database.query`SELECT 1`
+    const commented = "/* c */ SELECT 1"
+
+    for (const derived of [
+      query.comment("c").select({ id: integer }).take().nullable(),
+      query.select({ id: integer }).take().comment("c").optional(),
+      query.take().comment("c").select({ id: integer }),
+      query.comment("c").get(integer).optional(),
+      query.get(integer).comment("c"),
+      query.comment("c").pluck(integer),
+      query.take().optional().comment("c"),
+    ]) {
+      expect(derived.toSQL().text).toBe(commented)
+    }
+  })
+
+  it("replace an earlier comment, are removed by null, and leave the query they derive from unchanged", () => {
+    const query = createRecordedDatabase().database.query`SELECT 1`
+    const commented = query.comment("first")
+
+    expect(commented.comment("second").toSQL().text).toBe("/* second */ SELECT 1")
+    expect(commented.select({ id: integer }).comment(null).toSQL().text).toBe("SELECT 1")
+    expect(commented.comment("").toSQL().text).toBe("/*  */ SELECT 1")
+    expect(commented.toSQL().text).toBe("/* first */ SELECT 1")
+    expect(query.toSQL().text).toBe("SELECT 1")
+  })
+
+  it("reject a label that would leave the comment, and a value other than a string or null", () => {
+    const query = createRecordedDatabase().database.query`SELECT 1`.take()
+
+    expect(getThrownError(() => query.comment("a */ b"))).toEqual(
+      new TypeError('comment cannot contain "/*" or "*/": "a */ b"'),
+    )
+    expect(getThrownError(() => query.comment("a /* b"))).toEqual(
+      new TypeError('comment cannot contain "/*" or "*/": "a /* b"'),
+    )
+    expect(getThrownError(() => query.comment("a\0b"))).toEqual(
+      new TypeError("comment cannot contain a NUL character"),
+    )
+    // @ts-expect-error A comment takes a string or null.
+    expect(getThrownError(() => query.comment(undefined))).toEqual(
+      new TypeError("comment takes a string, or null to remove the comment"),
+    )
+  })
+})
+
 describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
   it("runs DDL and returns the rows of an upsert, decoded by the names of their columns", () =>
     testTransaction(async () => {
@@ -477,6 +572,15 @@ describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
       ])
       expect(await database.query`SELECT count(*) FROM form`.get(integer)).toBe(2)
       expect(await database.query`DELETE FROM form WHERE id = ${2}`.take()).toBe(1)
+    }))
+
+  it("runs a statement whose text starts with its comment", () =>
+    testTransaction(async () => {
+      const current = await queryOn(database)`SELECT current_query()`
+        .comment("statements:current")
+        .get(text)
+
+      expect(current).toBe("/* statements:current */ SELECT current_query()")
     }))
 
   it("types a value by its place, as text in the select list alone, and reads the same param in the select list, a subquery, and IS NULL", () =>

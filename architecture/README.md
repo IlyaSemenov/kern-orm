@@ -47,7 +47,7 @@ Module paths are relative to the `src/` directory of their package: `packages/db
 
 - [Types and expressions](types.md): `type/` and `expression/` of `kern-orm`, and `type/`, `sql/`, `index.ts`, and `types.ts` of `kern-db`.
 - [Tables, schemas, and Db](schemas.md): `table/`, `schema/`, `execution/db.ts`, and `inspection/`.
-- [Queries](queries.md): `query/` and `execution/db.ts`, and `selected-columns.ts` of `kern-db`.
+- [Queries](queries.md): `query/` and `execution/db.ts`, and `selected-columns.ts` and `sql/comment.ts` of `kern-db`.
 - [Mutations](mutations.md): `query/mutation.ts` and `query/values.ts`.
 - [Queries of SQL text](sql-queries.md): `sql/query.ts`, `sql/columns.ts`, `selected-columns.ts`, and `query` and `script` of `database.ts` of `kern-db`, and `$query` and the scripts of `execution/db.ts` and `query/columns-of.ts` of `kern-orm`.
 - [SQL generation](sql.md): `ast/`, `lowering/`, `compiler/`, and `result/` of `kern-orm`, and `result.ts`, `identifier.ts`, and `builder.ts` of `kern-db`.
