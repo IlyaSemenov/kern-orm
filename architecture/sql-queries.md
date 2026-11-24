@@ -4,6 +4,8 @@
   It holds the source of its statement, the executor of the statement, the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change, and the label of its [comment](#comments).
   - The source compiles the statement each time the query executes or `toSQL` compiles it; awaiting the query executes the statement with `execute` of its executor, called as its method, and decodes the result by the plan.
   - A statement that fails to compile rejects the promise of the query without executing.
+  - `catch` and `finally` execute the query as `then` does, once for each call, and settle as those of a Promise of its result.
+    The query has no `Symbol.toStringTag`, so it fits `PromiseLike` and not `Promise`, which has started and settles once ([decision](../decisions/queries/queries-not-promises.md)).
   - The executor is a `StatementExecutor` (`driver.ts`): any object whose `execute` takes a statement and returns the result of a driver, such as a `Database`, a `Driver`, a `Connection`, or a wrapper of one.
     The statement runs where `execute` of the executor runs it: a `Database` routes it to its ambient transaction or session, a driver runs it on any pooled connection, a connection on itself, in the transaction that is open on it, if any, and a wrapper wherever its `execute` passes the statement, such as in the routing of a database for a wrapper that calls `execute` of the database.
     A call of `execute` of a driver or a connection bypasses the routing of a `Database`: the statement is part of a transaction of the database, also a test transaction, only on the connection of that transaction.

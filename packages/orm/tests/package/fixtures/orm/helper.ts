@@ -76,6 +76,17 @@ export function getExecute(db: DbOf<typeof schema>) {
   return db.$execute
 }
 
+/** Returns `then`, `catch`, and `finally` of a query of a `Db` of the schema, bound to the query, standing for `export const handle = query.catch.bind(query)` in this module without a `Db`; see the file header. */
+export function getHandlers(db: DbOf<typeof schema>) {
+  const names = db.form.pluck("name")
+  return {
+    // Not under the key `then`, which would make the returned object thenable.
+    boundThen: names.then.bind(names),
+    catch: names.catch.bind(names),
+    finally: names.finally.bind(names),
+  }
+}
+
 /** Returns `$select` of a `Db` of the schema, standing for `export const select = db.$select` in this module without a `Db`; see the file header. */
 export function getSelect(db: DbOf<typeof schema>) {
   return db.$select

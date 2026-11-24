@@ -44,8 +44,16 @@ import { toKeyValues, toPrimaryKeyValues } from "./find"
 import type { GroupTerms, QueryHavingFilter } from "./group"
 import { addGroupKeys, addHaving } from "./group"
 import type { AnyHelper, Helper, HelperResult } from "./helper"
-import type { AnyQuery, QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
-import { compileToSQL, executeOnAwait } from "./kind"
+import type {
+  AnyQuery,
+  QueryCatch,
+  QueryDb,
+  QueryFinally,
+  QueryThen,
+  SelectQueryKind,
+  ToSQLArgs,
+} from "./kind"
+import { compileToSQL, executeOnAwait, getQueryCatch, getQueryFinally } from "./kind"
 import type { RowLockOptions } from "./lock"
 import { createRowLock } from "./lock"
 import type { AnyMutationQuery, InitialInsertState, InitialMutationState } from "./mutation"
@@ -1220,6 +1228,17 @@ export class SelectQuery<
   comment(label: string | null): unknown {
     // The key of `find` stays, so that `upsert` applies after the comment.
     return this.derive({ comment: createComment(label), foundKey: this.node.foundKey })
+  }
+
+  /** Function that executes a bound query on its `Db`, as awaiting it does, and handles its rejection, as `catch` of a Promise does; `undefined` for an unbound query. */
+  // An accessor of the class rather than a member that the constructor assigns, as it assigns `then`, so that deriving a query does not assign it.
+  get catch(): QueryCatch<S, Kind> {
+    return getQueryCatch(this)
+  }
+
+  /** Function that executes a bound query on its `Db`, as awaiting it does, and calls its callback once the query resolves or rejects, as `finally` of a Promise does; `undefined` for an unbound query. */
+  get finally(): QueryFinally<S, Kind> {
+    return getQueryFinally(this)
   }
 
   /**

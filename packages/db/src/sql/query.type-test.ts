@@ -139,6 +139,26 @@ describe("results", () => {
   })
 })
 
+describe("catch and finally", () => {
+  const query = database.query`SELECT`.get(integer)
+
+  test("give a Promise of the result, for catch also of the result of its callback", () => {
+    expectTypeOf(query.catch()).toEqualTypeOf<Promise<number>>()
+    expectTypeOf(query.catch(() => null)).toEqualTypeOf<Promise<number | null>>()
+    expectTypeOf(query.catch(async (error: unknown) => String(error))).toEqualTypeOf<
+      Promise<number | string>
+    >()
+    expectTypeOf(query.finally()).toEqualTypeOf<Promise<number>>()
+    expectTypeOf(query.finally(() => {})).toEqualTypeOf<Promise<number>>()
+  })
+
+  test("do not make a query a Promise, which has started and settles once", () => {
+    expectTypeOf(query).toExtend<PromiseLike<number>>()
+    // A query executes with each call of then, catch, and finally, so it is no Promise.
+    expectTypeOf(query).not.toExtend<Promise<number>>()
+  })
+})
+
 describe("methods", () => {
   test("reject optional of many rows, nullable of values, select after get or pluck, and a field of a symbol key", () => {
     // @ts-expect-error A query of many rows is not optional.

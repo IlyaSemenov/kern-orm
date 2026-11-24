@@ -8,8 +8,15 @@ import type { AnyDb } from "../execution/db"
 import { operandNode } from "../expression/expression"
 import type { UsedRelation } from "../schema/relation"
 
-import type { QueryDb, QueryThen, SelectQueryKind, ToSQLArgs } from "./kind"
-import { compileToSQL, executeOnAwait } from "./kind"
+import type {
+  QueryCatch,
+  QueryDb,
+  QueryFinally,
+  QueryThen,
+  SelectQueryKind,
+  ToSQLArgs,
+} from "./kind"
+import { compileToSQL, executeOnAwait, getQueryCatch, getQueryFinally } from "./kind"
 import type { RecordQueryNode, SelectedNode } from "./node"
 import { addSelection } from "./projections"
 import type { MergeSelection, Selection, SelectionResult, SelectionUses } from "./selection"
@@ -72,6 +79,17 @@ export class RecordQuery<
       Object.freeze({ ...this.node, comment: createComment(label) }),
       this.db as AnyDb | undefined,
     )
+  }
+
+  /** Function that executes a bound query on its `Db`, as awaiting it does, and handles its rejection, as `catch` of a Promise does; `undefined` for an unbound query. */
+  // An accessor of the class rather than a member that the constructor assigns, as it assigns `then`, so that deriving a query does not assign it.
+  get catch(): QueryCatch<S, Kind> {
+    return getQueryCatch(this)
+  }
+
+  /** Function that executes a bound query on its `Db`, as awaiting it does, and calls its callback once the query resolves or rejects, as `finally` of a Promise does; `undefined` for an unbound query. */
+  get finally(): QueryFinally<S, Kind> {
+    return getQueryFinally(this)
   }
 
   /**

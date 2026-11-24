@@ -48,6 +48,22 @@ const total = await database.query`SELECT count(*) FROM form`.get(t.integer)
 // total: number
 ```
 
+## `catch` and `finally`
+
+A query has `catch` and `finally` of a Promise, which run the statement as `await` does:
+
+```ts
+const updatedCount = await database.query`UPDATE form SET published = true WHERE id = ${formId}`
+  .catch(handleError)
+  .finally(cleanup)
+```
+
+This chain runs the statement once, because `finally` is called on the Promise that `catch` returns.
+A statement that PostgreSQL rejects aborts its transaction also when `catch` handles the error; see [Errors](./errors).
+
+A query is not a Promise: building it runs nothing, and each `await` and each call of `then`, `catch`, or `finally` of the query itself runs the statement again.
+To pass a query where a `Promise` is required, call its `then()`, which runs the statement and returns the Promise of its result.
+
 ## Comments
 
 To find a statement in PostgreSQL, such as in `pg_stat_activity` or in the log of slow statements, label it with `comment`, which starts its SQL with the label in a comment:

@@ -23,6 +23,25 @@ Each `await` executes the query again; see [Reusable queries](./composing#reusab
 - [Composing and Reusing Queries](./composing): add clauses conditionally, share clauses across queries of a table, or reuse a query, also with a `Db` known only at runtime.
 - [SQL Statements](./sql): run SQL that queries do not cover, such as an upsert, get its rows, or run a script of several statements.
 
+## `catch` and `finally`
+
+A query has `catch` and `finally` of a Promise, and calling either executes the query as `await` does.
+This also applies to the queries of [`db.$query`](./sql).
+
+```ts
+const forms = await db.form
+  .where({ published: true })
+  .select("id", "name")
+  .catch(handleError)
+  .finally(cleanup)
+```
+
+This chain executes the query once, because `finally` is called on the Promise that `catch` returns.
+A statement that PostgreSQL rejects aborts its transaction also when `catch` handles the error; see [Errors](../errors).
+
+A query is not a Promise: building it executes nothing, and each `await` and each call of `then`, `catch`, or `finally` of the query itself executes it again, in the [transaction](../transactions) that is current at that moment.
+To pass a query where a `Promise` is required, call its `then()`, which executes it and returns the Promise of its result, such as `db.form.count().then()`.
+
 ## Comments
 
 To find the statement of a query in PostgreSQL, such as in `pg_stat_activity` or in the log of slow statements, label it with `comment`, which starts its SQL with the label in a comment:

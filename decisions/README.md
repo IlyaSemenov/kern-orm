@@ -10,6 +10,9 @@ Query objects, their types, and the methods that choose rows.
 - [Query methods typed by `this`](queries/query-methods-typed-by-this.md): a query is covariant in its state, so comparing queries compares states.
 - [State-changing methods on unions of queries](queries/state-changing-methods-on-unions.md): a union of queries of different states rejects them.
 - [Query classes without a base class](queries/query-classes-without-base-class.md): each class repeats a few declarations.
+- [A query as a thenable, not a `Promise`](queries/queries-not-promises.md): an awaitable query has `then`, `catch`, and `finally` and fits `PromiseLike`, rather than `Promise`, whose users attach several handlers to work that has started.
+- [The members of a bound query as interfaces](queries/bound-members-as-interfaces.md): `then`, `catch`, and `finally` name interfaces, which cost less to check for each use of a helper than function types written in their conditional types, and 1 instantiation more in 66 of the other benchmarks.
+- [`catch` and `finally` typed by the kind](queries/catch-and-finally-typed-by-kind.md): accessors that return `undefined` for an unbound query, rather than methods typed by `this`, which cost less to check.
 - [Dynamic column keys in `select`](queries/dynamic-column-keys.md): optional fields for keys a call may omit.
 - [Column keys typed as string literals](queries/string-literal-column-keys.md): a key typed as a member of a string enum is not told as the column of its value, rather than naming each field of every selection by the name of its key.
 - [Row locks rejected by the state in types](queries/row-lock-state.md).

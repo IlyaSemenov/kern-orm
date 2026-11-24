@@ -6,6 +6,7 @@ import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 
 import { createDatabase } from "../database"
 import type { DriverResult, SqlStatement, StatementExecutor } from "../driver"
+import { QueryError } from "../driver-error"
 import { isQueryError } from "../error-condition"
 import { NotFoundError } from "../result"
 import { array } from "../type/builtins/array"
@@ -49,6 +50,111 @@ describe("statements", () => {
     })
 
     expect(statements.map(statement => statement.connection)).toEqual([1, 1, 1])
+  })
+
+  describe("with catch and finally", () => {
+    const failure = new QueryError("division by zero", { code: "22012" })
+
+    /** Database over a recording driver that fails the statements that divide by zero with `failure`, and changes 3 rows with the others. */
+    function createFailingDatabase() {
+      const { driver, statements } = createRecordingDriver({
+        respond(statement) {
+          if (statement.text.includes("/ 0")) {
+            throw failure
+          }
+          return { count: 3 }
+        },
+      })
+      return { database: createDatabase({ driver }), statements }
+    }
+
+    it("execute once for catch, which resolves to their result, or to that of its callback with the error of a statement that fails", async () => {
+      const { database, statements } = createFailingDatabase()
+
+      expect(await database.query`UPDATE form SET position = 1`.catch(() => "handled")).toBe(3)
+      expect(
+        await database.query`UPDATE form SET position = 2 / 0`.catch((error: unknown) => error),
+      ).toBe(failure)
+      await expect(database.query`UPDATE form SET position = 3 / 0`.catch()).rejects.toBe(failure)
+
+      expect(statements.map(statement => statement.text)).toEqual([
+        "UPDATE form SET position = 1",
+        "UPDATE form SET position = 2 / 0",
+        "UPDATE form SET position = 3 / 0",
+      ])
+    })
+
+    it("execute once for finally, which calls its callback and passes on their result, or the error of a statement that fails", async () => {
+      const { database, statements } = createFailingDatabase()
+      const settled: string[] = []
+
+      expect(
+        await database.query`UPDATE form SET position = 1`.finally(() => {
+          settled.push("resolved")
+        }),
+      ).toBe(3)
+      await expect(
+        database.query`UPDATE form SET position = 2 / 0`.finally(() => {
+          settled.push("rejected")
+        }),
+      ).rejects.toBe(failure)
+
+      expect(settled).toEqual(["resolved", "rejected"])
+      expect(statements.map(statement => statement.text)).toEqual([
+        "UPDATE form SET position = 1",
+        "UPDATE form SET position = 2 / 0",
+      ])
+    })
+
+    it("reject with the error of the callback of finally, also of an async one, when they resolve", async () => {
+      const { database } = createFailingDatabase()
+      const cleanupFailure = new Error("Cleanup failed")
+
+      await expect(
+        database.query`UPDATE form SET position = 1`.finally(() => {
+          throw cleanupFailure
+        }),
+      ).rejects.toBe(cleanupFailure)
+      await expect(
+        database.query`UPDATE form SET position = 1`.finally(async () => {
+          throw cleanupFailure
+        }),
+      ).rejects.toBe(cleanupFailure)
+    })
+
+    it("execute again for each call, as for each await", async () => {
+      const { database, statements } = createFailingDatabase()
+      const query = database.query`UPDATE form SET position = 1`
+
+      await query.catch(() => {})
+      await query.finally(() => {})
+      await query
+
+      expect(statements).toHaveLength(3)
+    })
+
+    it("run in the ambient transaction", async () => {
+      const { database, statements } = createFailingDatabase()
+
+      await database.transaction(async () => {
+        await database.query`SELECT 1`.catch(() => {})
+        await database.query`SELECT 2`.finally(() => {})
+      })
+
+      expect(statements.map(statement => statement.connection)).toEqual([1, 1, 1, 1])
+    })
+
+    it("reject with the error of a statement that fails to compile, without a statement", async () => {
+      const { database, statements } = createFailingDatabase()
+      const cannotCompile = new Error("Cannot compile")
+      const query = startSqlQuery(() => {
+        throw cannotCompile
+      }, database)
+
+      expect(await query.catch((error: unknown) => error)).toBe(cannotCompile)
+      await expect(query.finally()).rejects.toBe(cannotCompile)
+      expect(statements).toEqual([])
+    })
   })
 
   it("call execute of their database as it is when they run, also one replaced after they were created", async () => {

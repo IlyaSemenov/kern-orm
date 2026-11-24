@@ -142,6 +142,18 @@ export class SqlQuery<out S extends SqlQueryState> {
     return (this.execute() as Promise<SqlQueryResult<S>>).then(onFulfilled, onRejected)
   }
 
+  /** Executes the query on its executor, as awaiting it does, and handles its rejection with `onRejected`, as `catch` of a Promise does. */
+  catch<R = never>(
+    onRejected?: ((reason: unknown) => R | PromiseLike<R>) | null,
+  ): Promise<SqlQueryResult<S> | R> {
+    return (this.execute() as Promise<SqlQueryResult<S>>).catch(onRejected)
+  }
+
+  /** Executes the query on its executor, as awaiting it does, and calls `onFinally` once it resolves or rejects, as `finally` of a Promise does. */
+  finally(onFinally?: (() => void) | null): Promise<SqlQueryResult<S>> {
+    return (this.execute() as Promise<SqlQueryResult<S>>).finally(onFinally)
+  }
+
   /**
    * Returns the records of the rows of the statement instead of their number, with the fields of `fields` under their keys; it adds the fields to those selected earlier, replacing fields under their keys.
    *

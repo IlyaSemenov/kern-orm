@@ -14,11 +14,11 @@ It would take an unbound query as a value: the level would resolve with the quer
 ## Keeping `() => Promise<T>`
 
 A callback would need `async` to return a query, `async () => query`, which runs as `() => query` does.
-Both types cost the same to check for a callback that returns a promise: 394 instantiations for a transaction of an async callback that returns a query, with either type, by `bench:types` on TypeScript 7 ([benchmark](../../benchmarks/types/queries.bench.ts)).
+Both types cost the same to check for a callback that returns a promise: 395 instantiations for a transaction of an async callback that returns a query, with either type, by `bench:types` on TypeScript 7 ([benchmark](../../benchmarks/types/queries.bench.ts)).
 
 ## A thenable with a `then` that is not generic
 
 A type of its own, such as `{ then(onFulfilled: (value: T) => unknown): unknown }`, would cost less to check against a query than `PromiseLike<T>`, whose generic `then` the checker relates to the generic `then` of the query.
-By `bench:types` on TypeScript 7, a transaction of a callback that returns a query of a state that the program has not yet compared costs 526 instantiations with `PromiseLike`, and 472 with such a type in its place, while a transaction of an async callback costs 394 with either type ([benchmark](../../benchmarks/types/queries.bench.ts)).
+By `bench:types` on TypeScript 7, a transaction of a callback that returns a query of a state that the program has not yet compared costs 527 instantiations with `PromiseLike`, and 473 with such a type in its place, while a transaction of an async callback costs 395 with either type ([benchmark](../../benchmarks/types/queries.bench.ts)).
 By `profile:types` on TypeScript 6, which counts each further copy of the same call ([profiling](../../benchmarks/types/PROFILING.md)), each further copy of a call with a query of the same state costs about 39 instantiations with `PromiseLike` for a callback that returns the query, and about 41 for an async callback.
 The public signatures would then name a type of the package rather than the standard `PromiseLike`.

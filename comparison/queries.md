@@ -48,6 +48,14 @@ The `noWait` option of a row lock adds `NOWAIT`, such as `forUpdate({ noWait: tr
 
 - Orchid ORM, fails: its `noWait()` compiles to `NO WAIT`, which PostgreSQL 18 rejects as a syntax error ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/query/basic-features/for/for.ts#L13)).
 
+## Queries as Promises
+
+A query that executes when awaited has `catch` and `finally` of a Promise, each call of which executes it again, as each `await` does, and it fits `PromiseLike` and not `Promise` in types.
+
+- Drizzle ORM, differs: `QueryPromise` implements `Promise` in types, with the `Symbol.toStringTag` `QueryPromise`, and each call of `then`, `catch`, and `finally` executes the query ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/query-promise.ts)).
+- knex, differs: a builder declares `then`, `catch`, and `finally` of `Promise` and a `Symbol.toStringTag` in types ([types](https://github.com/knex/knex/blob/3.3.0/types/index.d.ts)), `object` at runtime, and each call of them runs the query ([source](https://github.com/knex/knex/blob/3.3.0/lib/builder-interface-augmenter.js)).
+- Prisma ORM, differs: `PrismaPromise` extends `Promise` in types ([types](https://github.com/prisma/prisma/blob/7.10.1/packages/client/src/runtime/core/request/PrismaPromise.ts)); it sends its request with the first call of `then`, `catch`, or `finally`, and a later call does not send it again ([source](https://github.com/prisma/prisma/blob/7.10.1/packages/client/src/runtime/core/request/createPrismaPromise.ts)).
+
 ## Comments of statements
 
 `comment(label)` of a query, also of an insert, an update, a delete, or a statement of SQL text, starts the text of its statement with `/* label */`, so that `pg_stat_activity` shows the label within the text that it truncates; it rejects a label with `/*`, `*/`, or a NUL character, and a nested query leaves its comment out.
