@@ -1,5 +1,13 @@
 # kern-db
 
+## 0.15.0
+
+### Minor Changes
+
+- 32495e3: Add `joinSql(items, separator?)`, which joins SQL fragments and values into one fragment, such as the rows of a multi-row `VALUES`, to `kern-db`, `kern-orm/db`, and `kern-orm`.
+- fa6aeaf: Add `bunSqlDriver` from `kern-db/bun-sql` for Bun's built-in PostgreSQL client.
+- 47bd12f: Add `catch()` and `finally()` of a Promise to the queries that execute when awaited: the queries of a `Db`, such as `db.form.select("id")` and `db.$query`, and those of `database.query` and `queryOn`.
+
 ## 0.14.0
 
 ### Minor Changes
