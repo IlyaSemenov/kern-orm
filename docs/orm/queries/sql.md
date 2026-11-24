@@ -139,6 +139,24 @@ const median = await db.$query`
 A query of one value, such as of [`count`](./aggregates#aggregates), becomes its value, as in a [condition](./filtering#values-of-other-queries).
 Start the query from the same `Db` as the statement.
 
+## Lists
+
+To build a list whose length is known only at runtime, such as the rows of a multi-row `VALUES`, pass its items to `joinSql`, which joins them with commas:
+
+```ts
+import { joinSql, sql } from "kern-orm"
+
+await db.$query`
+  INSERT INTO ${db.form} (id, name)
+  VALUES ${joinSql(forms.map(form => sql`(${form.id}, ${form.name})`))}
+`
+```
+
+An item is anything that you interpolate into `sql`, such as a fragment, an expression, or a value, which becomes a parameter.
+To join with another separator, pass it as a fragment, such as ``joinSql(conditions, sql` AND `)``.
+
+When there are no rows to insert, skip the statement: `joinSql` throws for an empty array, since PostgreSQL rejects an empty list in most places, such as `VALUES` and `IN`.
+
 ## Names known at runtime
 
 To name a column or another object known only at runtime, interpolate `identifier` with its name:
@@ -166,7 +184,7 @@ import { readFile } from "node:fs/promises"
 await db.$script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so its template interpolates only tables of `db`, names from `identifier`, and queries and `sql` fragments without parameters:
+A script has no parameters, so its template interpolates only tables of `db`, queries without parameters, and fragments without parameters, such as names from `identifier`:
 
 ```ts
 await db.$script`
@@ -205,7 +223,7 @@ const claimed = await claimJobs(connection, "worker-1")
 // claimed: { job: { id: number; task: string } }[]
 ```
 
-Its template interpolates values, the columns of `columnsOf`, and the `sql`, `identifier`, and `param` fragments of `kern-orm/db`.
+Its template interpolates values, the columns of `columnsOf`, and the `sql`, `joinSql`, `identifier`, and `param` fragments of `kern-orm/db`.
 It takes no table or query of a `Db`, so name tables in the SQL, or by `identifier` with their PostgreSQL schema.
 
 For how such a statement relates to transactions and to the rollback of tests, see [SQL Queries and Scripts](../../database/sql#statements-on-a-connection-or-a-driver).

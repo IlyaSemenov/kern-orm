@@ -42,3 +42,12 @@ Number types have `add`, `sub`, `mul`, and `div`, and integers and `numeric` als
 - Drizzle ORM, differs: `sql.identifier` ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/sql/sql.ts)).
 - Slonik, differs: `sql.identifier` ([docs](https://github.com/gajus/slonik/blob/slonik@49.13.0/README.md#sqlidentifier)).
 - Kysely, differs: `sql.id` ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/raw-builder/sql.ts#L271)).
+
+## Lists of SQL fragments
+
+`joinSql` is a function of its own that joins fragments and values into one fragment, by `, ` or by a separator fragment, making each value a parameter, and rejects an empty array when it is called.
+
+- Drizzle ORM, differs: `sql.join` takes fragments and parameters, joins them by nothing without a separator, and returns empty SQL for an empty array ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/sql/sql.ts#L516-L537)).
+- Slonik, differs: `sql.join` requires its separator, and `sql.list` joins by `, `; both take fragments and values, and reject an empty array when the statement compiles ([source](https://github.com/gajus/slonik/blob/slonik@49.13.0/packages/sql-tag/src/sqlFragmentFactories/createListSqlFragment.ts#L18-L37), [docs](https://github.com/gajus/slonik/blob/slonik@49.13.0/README.md#L1977-L1986)).
+- Kysely, differs: `sql.join` takes fragments, queries, and values, joins them by `` sql`, ` `` by default, and returns empty SQL for an empty array ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/raw-builder/sql.ts#L443-L462)).
+- Prisma ORM, differs: `Prisma.join`, the `join` of sql-template-tag 5.2.1, takes fragments and values, joins them by the text of a string separator, `","` by default, and rejects an empty array when it is called ([source](https://github.com/blakeembrey/sql-template-tag/blob/v5.2.1/src/index.ts#L103-L121), [re-export](https://github.com/prisma/prisma/blob/7.10.1/packages/client-runtime-utils/src/index.ts#L4)).

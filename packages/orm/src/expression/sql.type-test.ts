@@ -1,5 +1,7 @@
 import { describe, expectTypeOf, test } from "bun:test"
 
+import { sql as sqlFragment } from "kern-db"
+
 import type { ResultOf } from "../query/select"
 import { from } from "../query/select"
 import type { ExpressionValue } from "../query/selection"
@@ -10,7 +12,7 @@ import * as t from "../types"
 
 import type { AnyExpression } from "./expression"
 import type { Operand } from "./operators/comparison"
-import { param, sql } from "./sql"
+import { joinSql, param, sql } from "./sql"
 
 describe("sql", () => {
   const account = defineTable("account", {
@@ -36,6 +38,33 @@ describe("sql", () => {
 
   test("has the operators of a type it is given", () => {
     from(account).where(columns => sql(text)`lower(${columns.email})`.ilike("a%"))
+  })
+})
+
+describe("joinSql", () => {
+  const account = defineTable("account", {
+    email: t.text,
+  })
+
+  test("joins expressions, fragments, and values with a separator of sql or of the database layer, into a condition inside `where`", () => {
+    from(account).where(columns =>
+      joinSql([columns.email.eq("a"), sql`${columns.email} LIKE ${"b%"}`], sql` OR `),
+    )
+    from(account).where(columns => joinSql([columns.email, "a"], sqlFragment` = `))
+  })
+
+  test("needs a type argument to be a condition outside `where`", () => {
+    const unknownList = joinSql([sql`a`, sql`b`], sql` OR `)
+    const conditionList = joinSql<boolean>([sql`a`, sql`b`], sql` OR `)
+
+    // @ts-expect-error A list outside `where` needs a type argument to be a condition.
+    from(account).where(unknownList)
+    from(account).where(conditionList)
+  })
+
+  test("rejects a string separator", () => {
+    // @ts-expect-error The separator is SQL, not a string.
+    joinSql([1, 2], " AND ")
   })
 })
 

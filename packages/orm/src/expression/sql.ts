@@ -64,6 +64,66 @@ export function sql(first: TemplateStringsArray | AnyType, ...values: unknown[])
     createFragment(strings, values, first)
 }
 
+const listSeparator = /* @__PURE__ */ createNode<RawSqlNode>({
+  kind: "raw",
+  fragments: [", "],
+  values: [],
+})
+
+/**
+ * Joins `items` into one SQL fragment, such as the rows of a multi-row `VALUES` or the items of an `IN` list known only at runtime.
+ *
+ * It separates them by `separator`, an expression, such as a fragment of `sql`, or a SQL fragment of `kern-orm/db`, or by `, ` without one.
+ *
+ * An item is what the template of `sql` interpolates, such as an expression, a SQL fragment, or a value, which becomes a parameter.
+ * It rejects an empty array, since PostgreSQL rejects an empty list in most places of a list, such as `VALUES` and `IN`.
+ * As for `sql`, the type argument declares the TypeScript type of the fragment and does not convert values at runtime.
+ */
+export function joinSql<T = unknown>(
+  items: readonly unknown[],
+  separator?: AnyExpression | SqlFragment,
+): UntypedExpression<T> {
+  if (!Array.isArray(items)) {
+    throw new TypeError("joinSql() takes an array of expressions, fragments, and values")
+  }
+  if (items.length === 0) {
+    throw new TypeError("joinSql() takes at least one item")
+  }
+  let separatorNode: ExpressionNode = listSeparator
+  if (separator !== undefined) {
+    if (!isExpression(separator) && !(separator instanceof SqlFragment)) {
+      throw new TypeError(
+        "joinSql() takes a separator as an expression or a fragment, such as sql` AND `",
+      )
+    }
+    separatorNode = toInterpolatedNode(separator)
+  }
+  // The text and the values of the separator and of each fragment of `sql` are copied into one node, so that the statement does not nest a node per item.
+  const fragments = [""]
+  const values: ExpressionNode[] = []
+  for (let index = 0; index < items.length; index++) {
+    if (index > 0) {
+      appendNode(fragments, values, separatorNode)
+    }
+    appendNode(fragments, values, toInterpolatedNode(items[index]))
+  }
+  return toExpression(createNode({ kind: "raw", fragments, values })) as UntypedExpression<T>
+}
+
+/** Appends an interpolated `node` to the text and the values of a raw node being built, copying those of a raw node, which an interpolation leaves without parentheses. */
+function appendNode(fragments: string[], values: ExpressionNode[], node: ExpressionNode): void {
+  if (node.kind !== "raw") {
+    values.push(node)
+    fragments.push("")
+    return
+  }
+  fragments[fragments.length - 1] += node.fragments[0]!
+  for (let index = 0; index < node.values.length; index++) {
+    values.push(node.values[index]!)
+    fragments.push(node.fragments[index + 1]!)
+  }
+}
+
 /**
  * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime, for the templates of `sql`, and of `$query` and `$script` of a `Db`; `query` and `script` of a `Database` take `identifier` of `kern-orm/db`.
  *

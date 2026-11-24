@@ -11,7 +11,7 @@ import type { Connection, Driver, SqlStatement } from "./driver"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
 import { postgresJsDriver } from "./drivers/postgres-js"
-import { identifier, param, sql } from "./sql/fragment"
+import { identifier, joinSql, param, sql } from "./sql/fragment"
 import { createTestHelpers, openTestTransaction } from "./test-helpers"
 import { TransactionConnectionError } from "./transaction/connection-loss"
 import * as t from "./types"
@@ -134,12 +134,13 @@ it("executes a script of its text or of a template, which interpolates fragments
 
   await database.script("SET lock_timeout = '1s'; SELECT 1")
   await database.transaction(
-    () => database.script`CREATE INDEX ON ${identifier("app", "form")} (${sql`lower(name)`})`,
+    () =>
+      database.script`CREATE INDEX ON ${identifier("app", "form")} (${joinSql([sql`lower(name)`, identifier("id")])})`,
   )
 
   expect(scripts).toEqual([
     { connection: "pool", script: "SET lock_timeout = '1s'; SELECT 1" },
-    { connection: 1, script: 'CREATE INDEX ON "app"."form" (lower(name))' },
+    { connection: 1, script: 'CREATE INDEX ON "app"."form" (lower(name), "id")' },
   ])
 })
 
@@ -152,6 +153,7 @@ it("rejects a value in the template of a script, also in a fragment that it inte
   await expect(database.script`SELECT ${1}`).rejects.toThrow(message)
   await expect(database.script`SELECT ${sql`upper(${"x"})`}`).rejects.toThrow(message)
   await expect(database.script`SELECT ${param(t.text, "x")}`).rejects.toThrow(message)
+  await expect(database.script`SELECT ${joinSql([sql`1`, 2])}`).rejects.toThrow(message)
   expect(scripts).toEqual([])
 })
 

@@ -7,7 +7,7 @@ import { integer } from "../type/builtins/numeric"
 import type { Type } from "../type/type"
 
 import type { SqlFragment } from "./fragment"
-import { identifier, param, sql } from "./fragment"
+import { identifier, joinSql, param, sql } from "./fragment"
 
 describe("sql", () => {
   test("takes the values of parameters without a type and fragments", () => {
@@ -32,6 +32,22 @@ describe("sql", () => {
     void sql`SELECT ${[1, 2]}`
     // @ts-expect-error NULL is null.
     void sql`SELECT ${undefined}`
+  })
+})
+
+describe("joinSql", () => {
+  test("takes fragments and the values of parameters without a type, and a fragment as its separator", () => {
+    joinSql([sql`(${1}, ${"Survey"})`, identifier("name"), param(integer, 1)]) satisfies SqlFragment
+    joinSql([1, "text", null, new Date()], sql` AND `) satisfies SqlFragment
+  })
+
+  test("rejects an object, undefined, and a separator that is not a fragment", () => {
+    // @ts-expect-error An object takes param with a type, such as of jsonb.
+    void joinSql([{ name: "Survey" }])
+    // @ts-expect-error NULL is null.
+    void joinSql([undefined])
+    // @ts-expect-error The separator is a fragment.
+    void joinSql([1, 2], " AND ")
   })
 })
 

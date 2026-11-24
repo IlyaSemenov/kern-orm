@@ -15,7 +15,7 @@ import { createTestHelpers } from "kern-db/testing"
 import { text } from "kern-db/types"
 
 import { createSubquery } from "../ast/testing"
-import { identifier, sql } from "../expression/sql"
+import { identifier, joinSql, param, sql } from "../expression/sql"
 import { lower } from "../lowering/testing"
 import type { AnySelectQuery } from "../query/select"
 import { from, SelectQuery } from "../query/select"
@@ -249,6 +249,19 @@ describe("$query", () => {
     })
   })
 
+  it("interpolates the rows of joinSql, binding a param that the rows repeat once", () => {
+    const { db } = connectTenant()
+    const title = param(t.text, "Draft")
+    const ids = ["post-1", "post-2"]
+
+    expect(
+      db.$query`INSERT INTO ${db.post} (id, title) VALUES ${joinSql(ids.map(id => sql`(${id}, ${title})`))}`.toSQL(),
+    ).toEqual({
+      text: 'INSERT INTO "app"."post" (id, title) VALUES ($1, ($2::text)), ($3, ($2::text))',
+      parameters: ["post-1", "Draft", "post-2"],
+    })
+  })
+
   it("binds each param of the database layer once at its places and a value at each place, as query of the Database does", () => {
     const { database, db } = connectTenant()
     const queue = paramFragment(text, "mail")
@@ -342,6 +355,16 @@ it("executes a script of a template that interpolates a name from identifier, al
   ])
 })
 
+it("executes a script of a template that interpolates joinSql of names and fragments without values", async () => {
+  const { db, scripts } = connectRecorded()
+
+  await db.$script`CREATE INDEX ON ${db.post} (${joinSql([identifier("title"), sql`lower(id::text)`])})`
+
+  expect(scripts).toEqual([
+    { connection: "pool", script: 'CREATE INDEX ON "app"."post" ("title", lower(id::text))' },
+  ])
+})
+
 it("executes a script of a template that interpolates a query without values as a subquery", async () => {
   const { db, scripts } = connectRecorded()
 
@@ -367,6 +390,7 @@ it("rejects values in the template of a script, also in a query and a sql fragme
   )
   await expect(db.$script`SELECT ${sql`upper(${"x"})`}`).rejects.toThrow(message)
   await expect(db.$script`SELECT ${paramFragment(text, "x")}`).rejects.toThrow(message)
+  await expect(db.$script`SELECT ${joinSql([sql`1`, 2])}`).rejects.toThrow(message)
   expect(scripts).toEqual([])
 })
 

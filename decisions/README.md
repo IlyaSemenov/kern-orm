@@ -28,6 +28,7 @@ Filters, queries in expressions, and SQL fragments.
 - [`expr` of a query of one value](expressions/expr-of-queries.md): the operators of a query value come from an expression, not from methods of the query.
 - [The `valueType` part of the state](expressions/value-type-part.md).
 - [`identifier` as a function of its own](expressions/identifier-function.md).
+- [`joinSql` as a function of its own](expressions/join-sql-function.md): rather than `sql.join`, with an empty array rejected when it is called rather than joined into empty SQL.
 - [`matches` checks its object by its own keys](expressions/matches-checks-own-keys.md).
 - [Recognizing an operand by one lookup](expressions/operand-recognition.md).
 - [Operand of an object condition read from the column type](expressions/object-condition-operand.md).

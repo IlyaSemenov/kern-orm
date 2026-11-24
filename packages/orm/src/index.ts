@@ -309,7 +309,7 @@ export type {
 } from "./schema/relation"
 export { many, one } from "./schema/relation"
 export type { SqlTemplate } from "./expression/sql"
-export { identifier, param, sql } from "./expression/sql"
+export { identifier, joinSql, param, sql } from "./expression/sql"
 export type {
   AnyColumn,
   Column,

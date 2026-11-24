@@ -243,14 +243,23 @@
   - It requires at least one name, and every name must be a non-empty string, since PostgreSQL rejects an empty name; it checks them when it is called.
   - It takes no `undefined` for a missing schema, such as `$schemaName` of a `Db` without one, so that a name never loses its schema silently.
   - It is a function of its own, as `sql` and `param` are ([decision](../decisions/expressions/identifier-function.md)).
+- `joinSql` joins items into one raw node, separated by `, ` or by a separator, an expression such as a fragment of `sql`, or a fragment of the database layer.
+  - An item is what the template of `sql` interpolates, through the same function.
+  - It copies the text and the values of a raw node of an item or of the separator into the node, which interpolation leaves without parentheses anyway, so that a list does not nest a node per item.
+  - Its type argument declares the TypeScript type of the node, as that of `sql` does, so that the list is a condition inside `where`.
+  - It rejects an empty array, as `joinSql` of the [database layer](#sql-fragments-of-the-database-layer) does.
 
 ## SQL fragments of the database layer
 
-- `sql`, `identifier`, and `param` of the database layer (`sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
+- `sql`, `joinSql`, `identifier`, and `param` of the database layer (`sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
   `kern-db` exports them, and `kern-orm/db` re-exports them; both and the root of `kern-orm` export the types `SqlFragment` and `SqlValue`, which the templates of `query` and `script` of a `Database` and of `queryOn` name.
 - The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a type: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
   - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a type tells how PostgreSQL reads an object or an array.
   - JSON and arrays take `param` with a type.
+- `joinSql` joins items into one fragment, separated by `, ` or by a separator fragment.
+  - An item is what the template of `sql` takes: a fragment stays SQL, and another value becomes a parameter, also with its check when it is called.
+  - It copies the text and the values of the separator and of each fragment into one fragment, so that rendering does not recurse into a fragment per item; the values keep the parameter of a `param` as the same object, which a statement binds once.
+  - It rejects an empty array when it is called, since PostgreSQL rejects an empty list in most places of a list, such as `VALUES` and `IN` ([decision](../decisions/expressions/join-sql-function.md)).
 - `param` takes a type, also of the ORM, and the values that the type accepts, and casts its parameter to its cast type, as `param` of the ORM does.
   - The cast is in parentheses, since text after it could continue its type name, such as a subscript `[1]` after `integer[]`.
 - The [columns of a record](sql-queries.md#columns-of-records) are a fragment of a class of their own, `SqlColumns`, which extends `SqlFragment`, so that every template takes them as a fragment.
@@ -263,4 +272,4 @@
     It looks the key up by the identity of the fragment, so two calls of `param` with the same value are two parameters, and it keeps the first `param` apart and creates a map of the others at the second, so that a statement of at most one `param` creates no map ([decision](../decisions/sql/parameters-of-casts.md)).
 - The ORM interpolates a fragment of the layer into `sql`, and so into `$query` and `$script`, as a `fragment` node, which the compiler renders with its compile context as the binder.
   - Its parameters are numbered with those of the statement, and the statement binds the parameter of its `param` once, as that of a cast node ([SQL generation](sql.md#statements)), so a template gives the same statement through `$query` as through `query` of a `Database`.
-  - Only these templates take a fragment: an operand of an operator or a function takes an expression.
+  - Only these templates and `joinSql` take a fragment: an operand of an operator or a function takes an expression.

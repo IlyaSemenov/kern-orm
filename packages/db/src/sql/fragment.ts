@@ -68,6 +68,58 @@ export function sql(strings: TemplateStringsArray, ...values: SqlValue[]): SqlFr
   return new SqlFragment([...strings], values)
 }
 
+const listSeparator = /* @__PURE__ */ new SqlFragment([", "], [])
+
+/**
+ * Joins `items` into one SQL fragment, such as the rows of a multi-row `VALUES` or the items of an `IN` list known only at runtime.
+ *
+ * It separates them by `separator`, or by `, ` without one.
+ *
+ * An item is what the template of `sql` interpolates: a fragment stays SQL, and another value becomes a parameter.
+ * It rejects an empty array, since PostgreSQL rejects an empty list in most places of a list, such as `VALUES` and `IN`.
+ */
+export function joinSql(
+  items: readonly SqlValue[],
+  separator: SqlFragment = listSeparator,
+): SqlFragment {
+  if (!Array.isArray(items)) {
+    throw new TypeError("joinSql() takes an array of fragments and values")
+  }
+  if (items.length === 0) {
+    throw new TypeError("joinSql() takes at least one item")
+  }
+  if (!(separator instanceof SqlFragment)) {
+    throw new TypeError("joinSql() takes a separator as a fragment, such as sql` AND `")
+  }
+  // The text and the values of the separator and of each fragment are copied into one fragment, so that rendering does not recurse into a fragment per item.
+  const strings = [""]
+  const values: unknown[] = []
+  for (let index = 0; index < items.length; index++) {
+    if (index > 0) {
+      appendFragment(strings, values, separator)
+    }
+    const item = items[index]
+    if (item instanceof SqlFragment) {
+      appendFragment(strings, values, item)
+    } else {
+      assertUntypedValue(item)
+      values.push(item)
+      strings.push("")
+    }
+  }
+  return new SqlFragment(strings, values)
+}
+
+/** Appends the text and the values of `fragment` to those of a fragment being built, whose `strings` are one element longer than its `values`. */
+function appendFragment(strings: string[], values: unknown[], fragment: SqlFragment): void {
+  const { strings: added, values: addedValues } = fragment
+  strings[strings.length - 1] += added[0]!
+  for (let index = 0; index < addedValues.length; index++) {
+    values.push(addedValues[index])
+    strings.push(added[index + 1]!)
+  }
+}
+
 /**
  * Creates a SQL fragment of a quoted name, such as of a table or a column known only at runtime.
  *

@@ -18,7 +18,7 @@ import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import { getType, toNode } from "./expression"
-import { identifier, param, sql } from "./sql"
+import { identifier, joinSql, param, sql } from "./sql"
 
 const form = defineTable("form", {
   id: t.integer.primaryKey(),
@@ -143,6 +143,65 @@ it("interpolates a fragment of the database layer as SQL, numbering its paramete
     text: 'SELECT FROM "form" AS "form" WHERE $1 = $2 AND "data" @> ($3::jsonb) AND size > $4 AND $5 = $6',
     parameters: ["1", "1", '{"a":1}', "3", "2", "2"],
   })
+})
+
+it("joins items with commas in one raw node, copying the text and the values of each fragment of sql", () => {
+  const query = from(form).where(() => sql<boolean>`id IN (${joinSql([1, 2])})`)
+  const data = paramFragment(jsonb, { a: 1 })
+  const rows = joinSql([sql`(${1}, ${data})`, sqlFragment`(${2}, ${data})`])
+
+  expect(toNode(rows)).toEqual({
+    kind: "raw",
+    fragments: ["(", ", ", "), ", ""],
+    values: [
+      { kind: "param", value: 1, type: undefined },
+      { kind: "fragment", fragment: data },
+      { kind: "fragment", fragment: sqlFragment`(${2}, ${data})` },
+    ],
+  })
+  expect(query.toSQL()).toEqual({
+    text: 'SELECT FROM "form" AS "form" WHERE id IN ($1, $2)',
+    parameters: ["1", "2"],
+  })
+})
+
+it("joins expressions with a separator of its own: a fragment of sql or of the database layer, or another expression", () => {
+  const query = from(form).where(
+    form =>
+      sql<boolean>`${joinSql([form.id.eq(1), sql`${form.id} < ${5}`], sql` OR `)} AND ${joinSql([form.id, 2], sqlFragment` <> `)}`,
+  )
+
+  expect(query.toSQL()).toEqual({
+    text: 'SELECT FROM "form" AS "form" WHERE ("form"."id" = $1) OR "form"."id" < $2 AND "form"."id" <> $3',
+    parameters: ["1", "5", "2"],
+  })
+  expect(
+    from(form)
+      .where(() => joinSql<boolean>([sql`id BETWEEN `, sql` AND `, sql``], param(t.integer, 4)))
+      .toSQL(),
+  ).toEqual({
+    text: 'SELECT FROM "form" AS "form" WHERE id BETWEEN ($1::integer) AND ($1::integer)',
+    parameters: ["4"],
+  })
+})
+
+it("rejects an empty array, a value that is not an array, a value that a parameter does not take without a type, and a string separator", () => {
+  expect(getThrownError(() => joinSql([]))).toEqual(
+    new TypeError("joinSql() takes at least one item"),
+  )
+  // @ts-expect-error The items are an array.
+  expect(getThrownError(() => joinSql(sql`a`))).toEqual(
+    new TypeError("joinSql() takes an array of expressions, fragments, and values"),
+  )
+  expect(getThrownError(() => joinSql([{ id: 1 }]))).toEqual(
+    new TypeError(
+      "A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not an object; pass JSON or an array with param()",
+    ),
+  )
+  // @ts-expect-error The separator is SQL, not a string.
+  expect(getThrownError(() => joinSql([1, 2], " AND "))).toEqual(
+    new TypeError("joinSql() takes a separator as an expression or a fragment, such as sql` AND `"),
+  )
 })
 
 it("creates an expression of the quoted name of the database layer with identifier", () => {

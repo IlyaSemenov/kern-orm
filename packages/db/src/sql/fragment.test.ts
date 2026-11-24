@@ -1,13 +1,24 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import type { TextValue } from "../driver"
 import { array } from "../type/builtins/array"
+import { timestamptz } from "../type/builtins/datetime"
 import { jsonb } from "../type/builtins/json"
 import { integer, numeric } from "../type/builtins/numeric"
 import { defineType } from "../type/type"
 
 import type { ParameterBinder } from "./fragment"
-import { compileFragment, identifier, param, renderFragment, sql, SqlFragment } from "./fragment"
+import {
+  compileFragment,
+  identifier,
+  joinSql,
+  param,
+  renderFragment,
+  sql,
+  SqlFragment,
+} from "./fragment"
 
 describe("sql", () => {
   it("makes the interpolated values parameters, numbered in the order of the text", () => {
@@ -71,6 +82,73 @@ describe("sql", () => {
 
     expect(Object.isFrozen(sql`SELECT ${1}`)).toBe(true)
     expect(Object.isFrozen(new CustomFragment(["SELECT 1"], []))).toBe(true)
+  })
+})
+
+describe("joinSql", () => {
+  it("joins fragments with commas, numbering their parameters in the order of the text, in one fragment of their text and values", () => {
+    const rows = [
+      { id: 1, name: "Survey" },
+      { id: 2, name: "Quiz" },
+    ]
+    const values = joinSql(rows.map(row => sql`(${row.id}, ${row.name})`))
+
+    expect(values).toEqual(
+      new SqlFragment(["(", ", ", "), (", ", ", ")"], [1, "Survey", 2, "Quiz"]),
+    )
+    expect(compileFragment(sql`INSERT INTO form (id, name) VALUES ${values}`)).toEqual({
+      text: "INSERT INTO form (id, name) VALUES ($1, $2), ($3, $4)",
+      parameters: ["1", "Survey", "2", "Quiz"],
+    })
+  })
+
+  it("joins with a separator of its own, also one with parameters", () => {
+    const conditions = [sql`published`, sql`name = ${"Survey"}`]
+
+    expect(compileFragment(joinSql(conditions, sql` AND `))).toEqual({
+      text: "published AND name = $1",
+      parameters: ["Survey"],
+    })
+    expect(compileFragment(joinSql([1, 2], sql` + ${3} + `))).toEqual({
+      text: "$1 + $2 + $3",
+      parameters: ["1", "3", "2"],
+    })
+  })
+
+  it("makes a value that is not a fragment a parameter, as the template of sql does", () => {
+    expect(compileFragment(sql`SELECT FROM form WHERE id IN (${joinSql([1, 2, 3])})`)).toEqual({
+      text: "SELECT FROM form WHERE id IN ($1, $2, $3)",
+      parameters: ["1", "2", "3"],
+    })
+  })
+
+  it("binds a param that several items interpolate once", () => {
+    const now = param(timestamptz, "2026-01-02T03:04:05.678Z")
+
+    expect(compileFragment(joinSql([sql`(${1}, ${now})`, sql`(${2}, ${now})`], sql`, `))).toEqual({
+      text: "($1, ($2::timestamptz)), ($3, ($2::timestamptz))",
+      parameters: ["1", "2026-01-02T03:04:05.678Z", "2"],
+    })
+  })
+
+  it("rejects an empty array, a value that is not an array, a value that a parameter does not take without a type, and a separator that is not a fragment", () => {
+    expect(getThrownError(() => joinSql([]))).toEqual(
+      new TypeError("joinSql() takes at least one item"),
+    )
+    // @ts-expect-error The items are an array.
+    expect(getThrownError(() => joinSql(sql`a`))).toEqual(
+      new TypeError("joinSql() takes an array of fragments and values"),
+    )
+    // @ts-expect-error A parameter without a type takes no object.
+    expect(getThrownError(() => joinSql([{ id: 1 }]))).toEqual(
+      new TypeError(
+        "A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not an object; pass JSON or an array with param()",
+      ),
+    )
+    // @ts-expect-error The separator is a fragment.
+    expect(getThrownError(() => joinSql([1, 2], " AND "))).toEqual(
+      new TypeError("joinSql() takes a separator as a fragment, such as sql` AND `"),
+    )
   })
 })
 

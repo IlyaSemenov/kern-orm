@@ -15,7 +15,7 @@ import { integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
 
 import { createSqlColumns } from "./columns"
-import { identifier, param, sql } from "./fragment"
+import { identifier, joinSql, param, sql } from "./fragment"
 import type { AnySqlQuery } from "./query"
 import { queryOn, startSqlQuery } from "./query"
 
@@ -194,11 +194,11 @@ describe("queryOn", () => {
 
     const query = queryOn(
       driver,
-    )`/* claim */ UPDATE ${table} SET locked_at = ${now}, locked_by = ${"worker"} WHERE ${due} AND id = ANY(${param(array(integer), [1, 2])})`
+    )`/* claim */ UPDATE ${table} SET locked_at = ${now}, locked_by = ${"worker"} WHERE ${due} AND id = ANY(${param(array(integer), [1, 2])}) AND queue IN (${joinSql(["mail", "push"])})`
 
     expect(query.toSQL()).toEqual({
-      text: '/* claim */ UPDATE "jobs"."job" SET locked_at = coalesce(($1::timestamptz), statement_timestamp()), locked_by = $2 WHERE state = $3 AND run_at <= coalesce(($1::timestamptz), statement_timestamp()) AND id = ANY(($4::integer[]))',
-      parameters: [null, "worker", "pending", '{"1","2"}'],
+      text: '/* claim */ UPDATE "jobs"."job" SET locked_at = coalesce(($1::timestamptz), statement_timestamp()), locked_by = $2 WHERE state = $3 AND run_at <= coalesce(($1::timestamptz), statement_timestamp()) AND id = ANY(($4::integer[])) AND queue IN ($5, $6)',
+      parameters: [null, "worker", "pending", '{"1","2"}', "mail", "push"],
     })
   })
 
@@ -572,6 +572,25 @@ describePostgres("in PostgreSQL", ({ database, testTransaction }) => {
       ])
       expect(await database.query`SELECT count(*) FROM form`.get(integer)).toBe(2)
       expect(await database.query`DELETE FROM form WHERE id = ${2}`.take()).toBe(1)
+    }))
+
+  it("inserts the rows of a multi-row VALUES of joinSql", () =>
+    testTransaction(async () => {
+      await database.script`CREATE TABLE form (id integer PRIMARY KEY, name text NOT NULL)`
+      const rows = [
+        { id: 1, name: "Survey" },
+        { id: 2, name: "Quiz" },
+        { id: 3, name: "Feedback" },
+      ]
+
+      expect(
+        await database.query`INSERT INTO form (id, name) VALUES ${joinSql(rows.map(row => sql`(${row.id}, ${row.name})`))}`,
+      ).toBe(3)
+      expect(
+        await database.query`SELECT name FROM form WHERE id IN (${joinSql([1, 3])}) ORDER BY id`.pluck(
+          text,
+        ),
+      ).toEqual(["Survey", "Feedback"])
     }))
 
   it("runs a statement whose text starts with its comment", () =>

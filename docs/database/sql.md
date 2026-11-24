@@ -78,6 +78,35 @@ const forms = await database.query`SELECT id, name FROM form WHERE ${filter}`.se
 A fragment stays SQL, and the values interpolated into it become parameters of the statement.
 Interpolate a fragment into as many statements and other fragments as you need.
 
+### Lists
+
+To build a list whose length is known only at runtime, such as the rows of a multi-row `VALUES`, pass its items to `joinSql`, which joins them with commas:
+
+```ts
+import { joinSql, sql } from "kern-db"
+
+await database.query`
+  INSERT INTO form (id, name)
+  VALUES ${joinSql(forms.map(form => sql`(${form.id}, ${form.name})`))}
+`
+```
+
+An item that is not a fragment becomes a parameter, as when you interpolate it into `sql`:
+
+```ts
+const forms = await database.query`
+  SELECT id, name FROM form WHERE id IN (${joinSql(formIds)})
+`.select({
+  id: t.uuid,
+  name: t.text,
+})
+```
+
+To join with another separator, pass it as a fragment, such as ``joinSql(conditions, sql` AND `)``.
+
+When there are no rows to insert, skip the statement: `joinSql` throws for an empty array, since PostgreSQL rejects an empty list in most places, such as `VALUES` and `IN`.
+To compare with a list of IDs that may be empty, pass it as one [array](#json-and-arrays) instead, such as `id = ANY(${param(t.array(t.uuid), formIds)})`.
+
 ## Names known at runtime
 
 To name a table, a column, or another object known only at runtime, such as in a loop over tables, interpolate `identifier` with its name:
@@ -196,7 +225,7 @@ import { readFile } from "node:fs/promises"
 await database.script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so interpolate only names from `identifier` and `sql` fragments without values into its template:
+A script has no parameters, so interpolate into its template only fragments without values, such as names from `identifier`:
 
 ```ts
 await database.script`ANALYZE ${identifier(schemaName, tableName)}`
