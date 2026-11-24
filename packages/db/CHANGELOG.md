@@ -1,5 +1,12 @@
 # kern-db
 
+## 0.11.0
+
+### Minor Changes
+
+- fb2df72: Add the types `jsonWithJsonNull` and `jsonbWithJsonNull`, which read and write a top-level JSON `null` value as `jsonNull` and `NULL` as `null`, such as `t.jsonbWithJsonNull.of<Payload | JsonNull>().nullable()`.
+- df302b6: Add `nullableAs` to types, such as `t.jsonb.nullableAs(() => undefined)`, which reads `NULL` as `undefined` and a JSON `null` value as `null`.
+
 ## 0.10.0
 
 ### Minor Changes
