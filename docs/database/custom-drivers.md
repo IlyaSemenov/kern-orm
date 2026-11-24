@@ -75,6 +75,7 @@ Follow these rules in the driver:
 
 - Send parameters as text without declared types, so that PostgreSQL infers their types from the statement.
 - Return values as their text without the parsers of your client, and `NULL` as `null`.
+  The built-in types do not validate the text: text in another format, such as `1e3` for an `integer`, can decode to a value, or fail with `ResultDecodeError`, such as `true` for a Boolean value, which PostgreSQL writes as `t`.
 - Return each result column as `{ name, type }` in `columns`, in the order of the values in a row, including when the result has no rows.
   `type` is the PostgreSQL type OID of that column.
   Read the OIDs from the result metadata of the client, not from the returned values or the table definitions.

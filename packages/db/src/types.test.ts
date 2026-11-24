@@ -111,6 +111,18 @@ describePostgres("built-in types in PostgreSQL", ({ database, testTransaction })
       })
     }))
 
+  it("decode the Boolean values that PostgreSQL writes", () =>
+    testTransaction(async () => {
+      expect(
+        await database.query`SELECT true AS yes, false AS no`
+          .select({
+            yes: t.boolean,
+            no: t.boolean,
+          })
+          .take(),
+      ).toEqual({ yes: true, no: false })
+    }))
+
   it("encode and decode the values of an existing enum", () =>
     testTransaction(async () => {
       await database.script`CREATE TYPE mood AS ENUM ('happy', 'sad')`

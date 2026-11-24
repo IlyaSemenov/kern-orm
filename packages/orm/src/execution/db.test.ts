@@ -439,7 +439,8 @@ it("runs a session of the database with $session and tells a transaction block w
 })
 
 it("takes advisory locks in a transaction of the database with $lock and $tryLock", async () => {
-  const { db, statements } = connectRecorded()
+  const { driver, statements } = createRecordingDriver({ respond: () => ({ rows: [["t"]] }) })
+  const db = bindSchema(schema, createDatabase({ driver }))
 
   await db.$transaction(async () => {
     await db.$lock("import")

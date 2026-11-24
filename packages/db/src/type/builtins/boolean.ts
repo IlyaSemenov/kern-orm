@@ -11,7 +11,13 @@ export function encodeBoolean(value: boolean): string {
   return value ? "t" : "f"
 }
 
-/** Converts the PostgreSQL text representation of a Boolean value, `t` or `f`, to the value. */
+/** Converts the PostgreSQL text representation of a Boolean value, `t` or `f`, to the value; rejects other text. */
 export function decodeBoolean(text: string): boolean {
-  return text === "t"
+  if (text === "t") {
+    return true
+  }
+  if (text === "f") {
+    return false
+  }
+  throw new Error(`Unsupported boolean value "${text}"`)
 }

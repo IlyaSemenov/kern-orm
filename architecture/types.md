@@ -35,6 +35,11 @@
     - The values of `decode` in types include the value of `decodeNull`, since the contract types both by the values that the type returns.
   - The built-in types live in `type/builtins/`, under their names; a built-in type of `kern-orm/types` is `defineType` of the ORM of the type of `kern-db/types` with the operators of the type.
     `array` of the layer builds only the representation of an array of a type, whose `NULL` elements decode as its element type decodes `NULL`, and the type of the ORM adds `equalityOperators` when its element type has them; `enum` of the layer narrows its values with `of`, and the type of the ORM adds `orderingOperators`.
+  - The decoder of a built-in type converts the text that PostgreSQL writes for its type and does not validate it: it rejects only text that it cannot convert, such as of another `DateStyle` or a multidimensional array, and text that a check costing next to nothing tells from the value that it would otherwise read, such as `true` that `boolean` would read as `false`.
+    Result decoding wraps its error in `ResultDecodeError`.
+    Other text, such as `1e3` of an `integer`, decodes to whatever the conversion reads, since a check of the format would cost for each value and only text from a source other than PostgreSQL, such as a fake driver, fails it.
+    - `boolean` accepts only `t` and `f`.
+    - `bytea` rejects a literal with an odd number of hex digits, whose last digit it would lose, and does not check the digits.
   - `jsonWithJsonNull` and `jsonbWithJsonNull` (`type/builtins/json.ts`) are the `json` and `jsonb` values in which a top-level JSON `null` value is the marker `jsonNull`, so that `null` among their values is only `NULL`, which `nullable` adds ([decision](../decisions/types/json-null-marker.md)).
     - Their values without a shape are `{}`, both returned and accepted, the TypeScript type of every value other than `null` and `undefined`, which includes the marker.
       A shape of `of` has the marker only when its values include it, such as `Payload | JsonNull`, since `of` narrows only in types.
@@ -196,7 +201,7 @@
 ## Vector distances
 
 - `vector` (`type/builtins/vector.ts` of both packages) is the type of pgvector, a built-in type although PostgreSQL has it only with the extension `vector`, whose values are arrays of numbers in the text representation `[1,2.5,1e-05]`, which is JSON.
-  - It decodes with `JSON.parse`, which is faster than splitting the text, and encodes with `join`, so that PostgreSQL rejects a `NaN` or an infinite element with the error of pgvector rather than reads the `null` that JSON writes for it.
+  - It decodes with `JSON.parse`, which is faster than splitting the text, and rejects JSON other than an array, which would be another kind of value, without checking its elements, and encodes with `join`, so that PostgreSQL rejects a `NaN` or an infinite element with the error of pgvector rather than reads the `null` that JSON writes for it.
   - Its type of the ORM has `equalityOperators`, since pgvector has `=` for it, and `vectorOperators`, without `orderingOperators`, whose order of vectors has no use.
 - `l2Distance`, `negativeInnerProduct`, `cosineDistance`, and `l1Distance` of `vectorOperators` (`expression/operators/vector.ts`) are the SQL `<->`, `<#>`, `<=>`, and `<+>` of pgvector of an expression with an operand, as a binary node, which the compiler parenthesizes as any operator other than arithmetic.
   - They compile to the operators rather than to the functions of pgvector, such as `l2_distance`, since only an operator in `ORDER BY` can use an index of pgvector.

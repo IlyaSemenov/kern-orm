@@ -17,12 +17,15 @@ export function encodeBytea(bytes: Uint8Array): string {
   return text
 }
 
-/** Decodes a hex `bytea` literal into bytes. */
+/** Decodes a hex `bytea` literal into bytes; rejects a literal with an odd number of hex digits, whose last digit would be lost. */
 export function decodeBytea(text: string): Uint8Array {
   if (!text.startsWith("\\x")) {
     throw new Error(
       "Unsupported bytea value; kern-db expects bytea_output hex, which the connection options of the client can set",
     )
+  }
+  if (text.length % 2 !== 0) {
+    throw new Error("Unsupported bytea value: it has an odd number of hex digits")
   }
   const bytes = new Uint8Array((text.length - 2) / 2)
   for (let index = 0; index < bytes.length; index++) {
