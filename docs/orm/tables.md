@@ -46,7 +46,7 @@ Column attributes set what belongs to the table:
 
 - `.columnName("form_id")` sets the name of the column in the database; see [Column names](#column-names).
 - `.primaryKey()` and `.unique()` mark a [key](#keys) of the table.
-- `.hasDefault()` marks a column that the database fills in when an [insert](./queries/mutations#inserting) omits it, such as by `DEFAULT` or an identity, so that inserts may omit it.
+- `.hasDefault()` lets [inserts](./queries/mutations#inserting) omit a column that the database fills in, such as by `DEFAULT` or an identity.
 - `.default(value)` lets inserts omit the column and inserts `value` instead; see [Defaults in code](#defaults-in-code).
 
 Changes of the type, such as [`nullable`](./types#nullable-values) and [`transform`](./types#deriving-types), come before column attributes: `t.text.nullable().columnName("note")`.
@@ -71,7 +71,7 @@ export const task = defineTable("task", {
 })
 ```
 
-kern-orm calls the function for each record that omits the column, each time the insert runs, so running the same insert again inserts new values.
+kern-orm calls the function for each record that omits the column, each time the insert runs.
 The database needs no default of its own for such a column.
 
 ## Keys
