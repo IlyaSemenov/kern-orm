@@ -1,6 +1,6 @@
 # Database of the current context
 
-`bindSchema` takes a function that returns the database beside the database itself, and a `Db` bound to one calls it for each statement and at the start of each transaction, session, and lock:
+`bindSchema` takes a function that returns the database beside the database itself, and a `Db` bound to one calls it for each statement that it runs on the database and at the start of each transaction, session, and lock:
 
 ```ts
 export const db = bindSchema(schema, () => useDatabase())
@@ -20,7 +20,7 @@ await useDb().$execute(publishedForms)
 
 The function must return the same database within a transaction or session, since the statements of a transaction run on its connection.
 A `Db` checks it only inside the callbacks of its own `$transaction`, `$ensureTransaction`, and `$session`, also of `$ensureTransaction` that joins a transaction of the database: it keeps their database in an `AsyncLocalStorage` of its own, and a call for which the function returns another database there rejects.
-That costs a `Db` bound to a function a run of the storage for each such callback and a read of it for each statement, and a `Db` bound to a database nothing.
+That costs a `Db` bound to a function a run of the storage for each such callback and a read of it each time it resolves the database, and a `Db` bound to a database nothing.
 
 The alternatives weigh the coverage of the check against its cost:
 

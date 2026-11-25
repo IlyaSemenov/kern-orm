@@ -96,7 +96,7 @@ import { install, provide } from "ripple-di"
 install(provide(useDatabase, testDatabase))
 ```
 
-`db` calls the function for each statement, and at the start of `$transaction`, `$session`, and `$lock`, in the async context of the caller; building a query does not call it.
+`db` calls the function for each statement that it runs on the database, and at the start of `$transaction`, `$session`, and `$lock`, in the async context of the caller; building a query does not call it.
 `$isInTransaction()` and `$database` call it too, so that test helpers and [migrations](../migrations/applying) given `db.$database` or `db` use the database of the context.
 
 The function must return the same database within a transaction or session, such as by providing the database for a whole request or test.

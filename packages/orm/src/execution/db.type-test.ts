@@ -109,6 +109,20 @@ describe("$query", () => {
   })
 })
 
+describe("$queryOn", () => {
+  test("takes an executor of statements and gives the template of $query", async () => {
+    const { driver } = createRecordingDriver()
+
+    expectTypeOf(
+      await db.$queryOn(driver)`SELECT * FROM ${db.post}`.select({
+        id: t.uuid,
+      }),
+    ).toEqualTypeOf<{ id: string }[]>()
+    // @ts-expect-error A template takes an executor before its statement.
+    void db.$queryOn`SELECT 1`
+  })
+})
+
 describe("$transaction, $ensureTransaction, and $session", () => {
   test("take a callback that returns a bound query and give the result of the query", () => {
     expectTypeOf(db.$transaction(() => db.post.select("id"))).toEqualTypeOf<

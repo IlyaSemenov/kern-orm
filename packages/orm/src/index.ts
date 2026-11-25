@@ -132,6 +132,7 @@ export type {
   OpenedSession,
   PollLockOptions,
   SessionOptions,
+  StatementExecutor,
   TransactionOptions,
 } from "kern-db"
 export { createDatabase } from "kern-db"
@@ -284,7 +285,15 @@ export type {
   SelectionResult,
   SelectionUses,
 } from "./query/selection"
-export type { AnyDb, BindOptions, Db, DbMutationState, DbOf, DbQueryState } from "./execution/db"
+export type {
+  AnyDb,
+  BindOptions,
+  Db,
+  DbMutationState,
+  DbOf,
+  DbQueryState,
+  DbSqlQueryTemplate,
+} from "./execution/db"
 export { bindSchema } from "./execution/db"
 export type {
   AnySchema,

@@ -74,6 +74,7 @@ Filters, queries in expressions, and SQL fragments.
 - [`RecordOf` of the columns of a record](sql-queries/record-of-columns.md): a type of its own in `kern-db`, rather than `ResultOf` of both packages, whose tried forms reject passing a record of generic columns from kern-orm to `kern-db`, or a type of any field of `select`.
 - [A missing row told by the key columns](sql-queries/missing-row-by-key-columns.md): the columns of a record that is `null` without its row include their key or name the columns that tell a missing row in `by`.
 - [`queryOn` of an executor of statements](sql-queries/query-on-an-executor.md): a function that returns the template of a driver, a connection, or a wrapper of `execute`, rather than a method of a fragment, `query` of `Driver` and `Connection`, or a `Database` over each of them.
+- [`$queryOn` of a `Db`](sql-queries/query-of-a-db-on-an-executor.md): the template of `$query` on an executor, rather than a method of a query of SQL text that replaces its executor, a `Db` bound over an executor, or a `queryOn` of `kern-orm` that compiles by the `Db` of its tables.
 - [`query` of a `Database` as a property](sql-queries/query-of-a-database-as-a-property.md): of the type `SqlQueryTemplate` that `queryOn` returns, rather than a method, which an implementation of `Database` could declare with narrower parameters, and a subclass could override with a method.
 
 ## SQL generation

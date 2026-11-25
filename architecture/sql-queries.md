@@ -1,6 +1,6 @@
 # Queries of SQL text
 
-- **Query of SQL text** (`sql/query.ts`): immutable query of a statement of the database layer, a `SqlQuery`, which `query` of a `Database`, the template of `queryOn`, and `$query` of a `Db` start.
+- **Query of SQL text** (`sql/query.ts`): immutable query of a statement of the database layer, a `SqlQuery`, which `query` of a `Database`, the template of `queryOn`, and `$query` and the template of `$queryOn` of a `Db` start.
   It holds the source of its statement, the executor of the statement, the plan of its result, which `select`, `get`, `pluck`, `take`, `optional`, and `nullable` change, and the label of its [comment](#comments).
   - The source compiles the statement each time the query executes or `toSQL` compiles it; awaiting the query executes the statement with `execute` of its executor, called as its method, and decodes the result by the plan.
   - A statement that fails to compile rejects the promise of the query without executing.
@@ -15,9 +15,12 @@
   - The template compiles as a template of `sql` of the layer with `compileFragment`, so it takes its fragments and no table, expression, or query of the ORM.
   - `$query` of a `Db` compiles the raw SQL node of its template, as `sql` builds it, with the lowering and compilation of the `Db` (`lowerTextStatement` and `compileTextStatement`), so that its interpolated tables are named in the PostgreSQL schema that the `Db` resolves at each compilation, and the queries interpolated into it, such as of `exists` in a condition, are lowered and checked against the `Db`.
     The source holds the `Db` in its closure: the query has no `Db` or node of the ORM.
+  - `$queryOn` of a `Db` returns the template of `$query` on an executor, and rejects a value without `execute`, as `queryOn` does ([decision](../decisions/sql-queries/query-of-a-db-on-an-executor.md)).
+    Its statement compiles as that of `$query`, so it rejects a table or query of another `Db` as `$query` does, and runs only by `execute` of the executor, which need not belong to the database of the `Db`.
+    `$query` and the template of `$queryOn` have the type `DbSqlQueryTemplate`, and `$query` is a property, as `query` of a `Database` is.
 - `$execute` and `$compile` of a `Db` reject a query of SQL text before they read a node, since it has none.
 - The ORM recognizes a query of SQL text by its class, since the class has no method of the operands of the ORM: it cannot be nested in a selection, used as an operand of an expression, such as an insert or update value or a condition, or interpolated into `sql`.
-- The template of `$query` interpolates values as `sql` does, as [types](types.md#parameters-and-sql-fragments) describe, and the templates of `query` and `queryOn` as `sql` of the [database layer](types.md#sql-fragments-of-the-database-layer); each runs as one statement with parameters.
+- The templates of `$query` and `$queryOn` interpolate values as `sql` does, as [types](types.md#parameters-and-sql-fragments) describe, and the templates of `query` and `queryOn` as `sql` of the [database layer](types.md#sql-fragments-of-the-database-layer); each runs as one statement with parameters.
   - Each binds the parameter of a `param` with a type once wherever the statement repeats it, and another value at each place, which PostgreSQL types by that place, so a template that all of them take gives the same statement through `$query` as through `query` and `queryOn`.
 
 ## Results

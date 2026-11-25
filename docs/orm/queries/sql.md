@@ -216,18 +216,17 @@ In code that has the database but no `Db`, run statements with `database.query` 
 
 ## Statements on a connection or a driver
 
-To run a statement on a driver, a connection that your code holds, or an object that wraps one, write it with `queryOn` of `kern-orm/db`:
+To run a statement on a driver, a connection that your code holds, or an object that wraps one, such as to time its statements, write it with the template that `db.$queryOn` returns for it:
 
 ```ts
 import { columnsOf } from "kern-orm"
 import type { StatementExecutor } from "kern-orm/db"
-import { queryOn } from "kern-orm/db"
 
 const job = columnsOf(db.job, ["id", "task"], { alias: "j" })
 
 function claimJobs(executor: StatementExecutor, worker: string) {
-  return queryOn(executor)`
-    UPDATE job j SET locked_by = ${worker}
+  return db.$queryOn(executor)`
+    UPDATE ${db.job} j SET locked_by = ${worker}
     WHERE j.locked_by IS NULL
     RETURNING ${job}
   `.select({
@@ -239,8 +238,16 @@ const claimed = await claimJobs(connection, "worker-1")
 // claimed: { job: { id: number; task: string } }[]
 ```
 
-Its template interpolates values, the columns of `columnsOf`, and the `sql`, `joinSql`, `identifier`, `literal`, `unsafeSql`, and `param` fragments of `kern-orm/db`.
-It takes no table or query of a `Db`, so name tables in the SQL, or by `identifier` with their PostgreSQL schema.
-To keep the template in a field or take it as a parameter, type it as `SqlQueryTemplate` of `kern-orm/db`.
+The template is that of `$query`: it names a table of `db` in the PostgreSQL schema of `db` and takes the same values, fragments, and queries, and its query has the same methods.
+The statement runs where the object that you pass runs it, not through `db`: a driver runs it on any connection of its pool, outside the current transaction of `db`, and a connection on itself.
+To keep the template in a field or take it as a parameter, type it as `DbSqlQueryTemplate` of `kern-orm`.
+
+To run a statement on the connection of a [session that stays open](../sessions#sessions-that-stay-open), return its query from the callback of `run` instead:
+
+```ts
+await session.run(() => db.$query`VACUUM ANALYZE ${db.form}`)
+```
+
+In code that has no `Db`, write the statement with `queryOn` of `kern-orm/db`, whose template takes the `sql`, `joinSql`, `identifier`, `literal`, `unsafeSql`, and `param` fragments of `kern-orm/db` and the columns of `columnsOf`, but no table or query of a `Db`.
 
 For how such a statement relates to transactions and to the rollback of tests, see [SQL Queries and Scripts](../../database/sql#statements-on-a-connection-or-a-driver).

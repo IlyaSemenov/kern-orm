@@ -325,6 +325,82 @@ describe("$query", () => {
   })
 })
 
+describe("$queryOn", () => {
+  /** Db of the schema in the PostgreSQL schema of `tenant.name` over a recording database, and a recording driver apart from it, which answers every statement with `result`. */
+  function connectExecutor(result: Partial<DriverResult> = {}) {
+    const tenant = { name: "app" }
+    const { driver, statements } = createRecordingDriver()
+    const database = createDatabase({ driver })
+    const db = bindSchema(schema, database, { schemaName: () => tenant.name })
+    const executor = createRecordingDriver({ respond: () => result })
+    return {
+      database,
+      db,
+      statements,
+      tenant,
+      executor: executor.driver,
+      executed: executor.statements,
+    }
+  }
+
+  it("executes a statement on the executor, outside the transaction of the database, naming the tables of the Db in the PostgreSQL schema that it resolves at each compilation", async () => {
+    const { db, statements, tenant, executor, executed } = connectExecutor({ count: 2 })
+    const query = db.$queryOn(executor)`UPDATE ${db.post} SET title = ${"Draft"}`
+
+    const count = await db.$transaction(async () => {
+      tenant.name = "tenant"
+      return query
+    })
+
+    expect(count).toBe(2)
+    expect(statements.map(({ text }) => text)).toEqual(["BEGIN", "COMMIT"])
+    expect(executed).toEqual([
+      {
+        connection: "pool",
+        text: 'UPDATE "tenant"."post" SET title = $1',
+        parameters: ["Draft"],
+      },
+    ])
+  })
+
+  it("binds a param of the database layer and starts the statement with the comment of the query", async () => {
+    const { db, executor, executed } = connectExecutor({
+      columns: [{ name: "title", type: 25 }],
+      rows: [["Draft"]],
+    })
+
+    const title = await db.$queryOn(
+      executor,
+    )`SELECT title FROM ${db.post} WHERE title = ${paramFragment(text, "Draft")}`
+      .comment("posts:title")
+      .get(t.text)
+
+    expect(title).toBe("Draft")
+    expect(executed).toEqual([
+      {
+        connection: "pool",
+        text: '/* posts:title */ SELECT title FROM "app"."post" WHERE title = ($1::text)',
+        parameters: ["Draft"],
+      },
+    ])
+  })
+
+  it("rejects a value without execute, and a table of another Db as $query does", async () => {
+    const { database, db, executor, executed } = connectExecutor()
+    const query = bindSchema(schema, database).$queryOn(executor)`SELECT FROM ${db.post}`
+
+    expect(getThrownError(() => db.$queryOn(["SELECT 1"] as never))).toEqual(
+      new TypeError(
+        "$queryOn() takes an object with an execute method, such as a driver or a connection, and returns the template of a statement: db.$queryOn(executor)`SELECT 1`",
+      ),
+    )
+    await expect(Promise.resolve(query)).rejects.toEqual(
+      new Error('Table "post" interpolated into SQL is bound to another Db'),
+    )
+    expect(executed).toEqual([])
+  })
+})
+
 it("executes a script of its text or of a template that names its tables, in the ambient transaction", async () => {
   const { driver, statements, scripts } = createRecordingDriver()
   const db = bindSchema(schema, createDatabase({ driver }), { schemaName: "app" })

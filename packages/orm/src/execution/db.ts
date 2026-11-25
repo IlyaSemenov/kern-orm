@@ -125,7 +125,13 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    *
    * Interpolated values become query parameters, `sql` fragments and expressions stay SQL, a table of the `Db`, such as `db.form`, becomes its name, qualified by the PostgreSQL schema of the `Db`, and another query becomes a subquery, as in `sql`.
    */
-  $query(strings: TemplateStringsArray, ...values: unknown[]): SqlQuery<InitialSqlQueryState>
+  readonly $query: DbSqlQueryTemplate
+  /**
+   * Returns the template that starts a query of a SQL statement on `executor`, such as a driver, a connection, or an object with `execute` of its own: `` db.$queryOn(connection)`SELECT 1 FROM ${db.form}` ``.
+   *
+   * The template interpolates what `$query` does and names the tables of the `Db` in its PostgreSQL schema, but the statement runs where `execute` of the executor runs it, rather than where the `Db` runs its queries: a `Database` runs it in its ambient transaction or session, a driver on any pooled connection, and a connection on itself.
+   */
+  $queryOn(executor: StatementExecutor): DbSqlQueryTemplate
   /**
    * Executes a script of statements without parameters, such as DDL separated by semicolons, in the ambient transaction or session, or on the pool outside of one; outside a transaction, PostgreSQL runs them in one implicit transaction.
    *
@@ -193,6 +199,12 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   $pollLock(key: string, options?: PollLockOptions): Promise<void>
 }
 
+/** Tagged template that starts a query of SQL text of a `Db`, which interpolates its tables: `$query` of a `Db`, and the template that its `$queryOn` returns. */
+export type DbSqlQueryTemplate = (
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+) => SqlQuery<InitialSqlQueryState>
+
 /**
  * `Db` of schema `S`, such as the type of a parameter of code shared by several schemas.
  *
@@ -208,7 +220,7 @@ export type AnyDb = Db<any, any>
  * Binds a schema to a database, placing its tables in a PostgreSQL schema.
  *
  * Schemas bound to the same database, such as tenant and SaaS schemas, share its connections and transactions.
- * Given a function instead of a database, such as one that reads it from dependency injection, the `Db` calls it for each statement and at the start of each transaction, session, and lock, in the async context of the caller.
+ * Given a function instead of a database, such as one that reads it from dependency injection, the `Db` calls it for each statement that it runs on the database and at the start of each transaction, session, and lock, in the async context of the caller.
  * The function must return the same database within a transaction or session; in the callback of a transaction or session of the `Db`, a statement for which it returns another database rejects.
  */
 export function bindSchema<T extends Tables, R extends SchemaRelations>(
@@ -253,6 +265,17 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     )
   }
 
+  /** Starts the query of the template of `strings` and `values` that this `Db` compiles and `target` executes. */
+  function startTextQuery(
+    strings: TemplateStringsArray,
+    values: unknown[],
+    target: StatementExecutor,
+  ): SqlQuery<InitialSqlQueryState> {
+    // The template rejects a value that it does not take when the query is created, so that the error points at the template.
+    const node = toRawSqlNode(strings, values)
+    return startSqlQuery(() => compileText(node), target)
+  }
+
   const methods: DbMethods<T, R> = {
     $schema: schema,
     get $database() {
@@ -278,9 +301,17 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
       return decodeStatement(compiled, result) as QueryResult<Q["types"]>
     },
     $select: selection => startRecordQuery(selection, db),
-    $query(strings, ...values) {
-      const node = toRawSqlNode(strings, values)
-      return startSqlQuery(() => compileText(node), executor)
+    $query: (strings, ...values) => startTextQuery(strings, values, executor),
+    $queryOn(target) {
+      // A template called without an executor, such as db.$queryOn`SELECT 1`, passes its strings here.
+      if (
+        typeof (target as Partial<StatementExecutor> | null | undefined)?.execute !== "function"
+      ) {
+        throw new TypeError(
+          "$queryOn() takes an object with an execute method, such as a driver or a connection, and returns the template of a statement: db.$queryOn(executor)`SELECT 1`",
+        )
+      }
+      return (strings, ...values) => startTextQuery(strings, values, target)
     },
     async $script(script: string | TemplateStringsArray, ...values: unknown[]) {
       if (typeof script === "string") {

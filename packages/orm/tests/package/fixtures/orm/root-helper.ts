@@ -1,6 +1,6 @@
 // Exports custom types, queries of SQL text, and the columns of a table from a module that imports only the root of `kern-orm` and `kern-orm/types`, as a module of presets does.
 // The package test emits its declarations in a program of its own of a consumer that cannot resolve kern-db, where they name the types of kern-db through the root of `kern-orm`.
-import type { Database, RecordOf } from "kern-orm"
+import type { AnyDb, Database, RecordOf } from "kern-orm"
 import { columnsOf, defineTable, defineType, orderingOperators, textOperators } from "kern-orm"
 import * as t from "kern-orm/types"
 
@@ -26,6 +26,11 @@ export function countForms(database: Database) {
 /** Template of the queries of SQL text of `database`, whose declaration names the template of kern-db; see the file header. */
 export function getQueryTemplate(database: Database) {
   return database.query
+}
+
+/** Starter of the templates of `$queryOn` of a `Db`, whose declaration names the executor of kern-db; see the file header. */
+export function getQueryOn(db: AnyDb) {
+  return db.$queryOn
 }
 
 const job = defineTable("job", {

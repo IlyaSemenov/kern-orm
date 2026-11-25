@@ -62,7 +62,7 @@
   `$schemaName` resolves it when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
   `$database` is the database that a `Db` is bound to, typed as the `Database` of the layer, so that code given the `Db` of an application, such as a migrator or a script that closes the database, needs nothing else and nothing of the ORM.
   - `bindSchema` also takes a function that returns the database, such as of dependency injection, so that a module-level `Db` runs on the database of the current context, as `schemaName` resolves its schema.
-    The `Db` calls it in the async context of the caller for each statement, including a query of SQL text when it executes, at the start of `$transaction`, `$ensureTransaction`, `$session`, `$lock`, `$tryLock`, and `$pollLock`, and when `$isInTransaction()`, `$isInTransactionBlock()`, or `$database` is read; never when a database is created, a schema is bound, or a query is built or compiled.
+    The `Db` calls it in the async context of the caller for each statement that it runs on the database, including a query of `$query` when it executes, but not one of `$queryOn`, at the start of `$transaction`, `$ensureTransaction`, `$session`, `$lock`, `$tryLock`, and `$pollLock`, and when `$isInTransaction()`, `$isInTransactionBlock()`, or `$database` is read; never when a database is created, a schema is bound, or a query is built or compiled.
     The methods that return a promise reject, rather than throw, when the function throws.
     It rejects a result that is not a database by `isDatabase`, such as `undefined` of a missing provider.
   - The function must return the same database within a transaction or session.
