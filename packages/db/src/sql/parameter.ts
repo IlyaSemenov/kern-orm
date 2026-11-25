@@ -44,14 +44,18 @@ export function rejectUntypedValue(value: unknown): never {
     // An omitted value must not turn into SQL silently.
     throw new TypeError("Query parameter is undefined; use null for NULL")
   }
-  const kind = Array.isArray(value)
+  throw new TypeError(
+    `A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not ${describeRejectedValue(value)}; pass JSON or an array with param()`,
+  )
+}
+
+/** Names the kind of `value` in the error of a value that a parameter does not take without a type, such as `an array`. */
+export function describeRejectedValue(value: unknown): string {
+  return Array.isArray(value)
     ? "an array"
     : typeof value === "object"
       ? "an object"
       : `a ${typeof value}`
-  throw new TypeError(
-    `A parameter without a type takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not ${kind}; pass JSON or an array with param()`,
-  )
 }
 
 // The values without a type are encoded by a function of their own, which keeps this one small for the parameters with a type, such as the values of an insert.

@@ -1,13 +1,20 @@
-// SQL fragments of the database layer: text with parameters, quoted names, and nested fragments, and the renderer that turns a fragment into the text of a statement.
+// SQL fragments of the database layer: text with parameters, quoted names, literals, and nested fragments, and the renderer that turns a fragment into the text of a statement.
 
 import type { SqlStatement, TextValue } from "../driver"
 import { createStatement } from "../driver"
 import { quoteIdentifier } from "../identifier"
+import { encodeBytea } from "../type/builtins/bytea"
 import type { AnyType, Type } from "../type/type"
 import { isType } from "../type/type"
 
 import type { UntypedValue } from "./parameter"
-import { assertUntypedValue, bindParameter, encodeParameter, rejectUntypedValue } from "./parameter"
+import {
+  assertUntypedValue,
+  bindParameter,
+  describeRejectedValue,
+  encodeParameter,
+  rejectUntypedValue,
+} from "./parameter"
 
 /**
  * Static member of a class of the layer that extends `SqlFragment` and freezes its instances itself, after it sets their members.
@@ -17,7 +24,7 @@ import { assertUntypedValue, bindParameter, encodeParameter, rejectUntypedValue 
 export const freezesItself: unique symbol = Symbol("kern-db.freezesItself")
 
 /**
- * SQL fragment: text with the parameters and the fragments interpolated into it, which `sql`, `identifier`, and `param` create.
+ * SQL fragment: text with the parameters and the fragments interpolated into it, which `sql`, `joinSql`, `identifier`, `literal`, `unsafeSql`, and `param` create.
  *
  * It is immutable, and its parameters are numbered only when a statement is compiled, so a fragment can be interpolated into several statements.
  */
@@ -137,6 +144,92 @@ export function identifier(...names: [string, ...string[]]): SqlFragment {
   }
   if (text === "") {
     throw new TypeError("identifier() takes at least one name")
+  }
+  return new SqlFragment([text], [])
+}
+
+/**
+ * Creates a SQL fragment of the literal of `value`, for the places of a statement where PostgreSQL takes no parameter, such as the values of `ALTER`, `COMMENT`, and `SET`, and the template of a script.
+ *
+ * It takes the values that a parameter takes without a type.
+ * A string, a `Date`, and a `Uint8Array` become a quoted literal, which PostgreSQL types by its place as it types a parameter; a number and a bigint become their digits, a Boolean `TRUE` or `FALSE`, and `null` `NULL`.
+ * In place of a value of the statement, PostgreSQL reads the literal of a string as the value of a parameter of that string, whatever its characters, so it is safe for a value of a user there.
+ * It is not safe inside a quoted string, a dollar-quoted string, or a comment of the template, which a value can end.
+ * It rejects a number that is not finite and an integer number beyond the safe integers, which takes a bigint, and a string with a NUL character.
+ * A negative number starts with its minus, so put a number in parentheses in an expression, such as `(${literal(delta)})::numeric`.
+ *
+ * Where PostgreSQL takes a parameter, interpolate the value itself instead.
+ */
+export function literal(value: UntypedValue): SqlFragment {
+  return new SqlFragment([formatLiteral(value)], [])
+}
+
+/** Returns the SQL literal of `value`, rejecting a value that has none. */
+function formatLiteral(value: UntypedValue): string {
+  switch (typeof value) {
+    case "string":
+      return quoteLiteral(value)
+    case "number":
+      if (!Number.isFinite(value)) {
+        throw new TypeError(`literal() takes a finite number, not ${value}`)
+      }
+      // Every number from 2^53 on is an integer whose digits may differ from those that the code wrote.
+      if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+        throw new TypeError(
+          `literal() takes an integer beyond the safe integers as a bigint, not as the number ${value}, which may have lost its digits`,
+        )
+      }
+      // A number is not quoted, since places such as `RESTART WITH` and `INCREMENT BY` take only a numeric constant, and not in parentheses, which they reject too.
+      return String(value)
+    case "bigint":
+      return String(value)
+    case "boolean":
+      return value ? "TRUE" : "FALSE"
+    case "object":
+      if (value === null) {
+        return "NULL"
+      }
+      if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) {
+          throw new TypeError("literal() takes no invalid Date")
+        }
+        return quoteLiteral(value.toISOString())
+      }
+      if (value instanceof Uint8Array) {
+        return quoteLiteral(encodeBytea(value))
+      }
+  }
+  if (value === undefined) {
+    throw new TypeError("literal() takes no undefined; use null for NULL")
+  }
+  throw new TypeError(
+    `literal() takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not ${describeRejectedValue(value)}; pass JSON as its text with a cast in the statement`,
+  )
+}
+
+/**
+ * Quotes `text` as a string literal, as `quote_literal` of PostgreSQL does.
+ *
+ * It doubles quotes, and writes a text with a backslash as an escape string with its backslashes doubled, so that the literal keeps its value whatever `standard_conforming_strings` is.
+ * It rejects a NUL character, which PostgreSQL takes neither in text nor in a statement.
+ */
+function quoteLiteral(text: string): string {
+  if (text.includes("\0")) {
+    throw new TypeError("literal() takes no string with a NUL character")
+  }
+  const quoted = `'${text.replaceAll("'", "''")}'`
+  return text.includes("\\") ? `E${quoted.replaceAll("\\", "\\\\")}` : quoted
+}
+
+/**
+ * Creates a SQL fragment of `text` as it is, without quoting or checking it, such as of a type with its modifiers or of a comment that code computes.
+ *
+ * Never pass it input of a user, or text that contains such input: it runs as SQL.
+ * Interpolate a value as a parameter or with `literal`, a name with `identifier`, and a keyword chosen among a few as a fragment of `sql`, such as `` descending ? sql`DESC` : sql`ASC` ``, whenever one fits.
+ */
+export function unsafeSql(text: string): SqlFragment {
+  if (typeof text !== "string") {
+    throw new TypeError("unsafeSql() takes SQL text as a string")
   }
   return new SqlFragment([text], [])
 }

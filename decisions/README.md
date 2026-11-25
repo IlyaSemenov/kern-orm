@@ -32,6 +32,7 @@ Filters, queries in expressions, and SQL fragments.
 - [The `valueType` part of the state](expressions/value-type-part.md).
 - [`identifier` as a function of its own](expressions/identifier-function.md).
 - [`joinSql` as a function of its own](expressions/join-sql-function.md): rather than `sql.join`, with an empty array rejected when it is called rather than joined into empty SQL.
+- [`literal` of a value and `unsafeSql` of text](expressions/literal-and-unsafe-sql.md): numbers as numeric constants and strings as `quote_literal` writes them, rather than quoted numbers, and text that the name marks as unchecked, rather than `rawSql` or a function of keywords.
 - [`matches` checks its object by its own keys](expressions/matches-checks-own-keys.md).
 - [Recognizing an operand by one lookup](expressions/operand-recognition.md).
 - [Operand of an object condition read from the column type](expressions/object-condition-operand.md).

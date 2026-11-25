@@ -1,23 +1,30 @@
 import { describe, expect, it } from "bun:test"
 
 import { getThrownError } from "@kern-orm/test-harness/errors"
+import { describePostgres } from "@kern-orm/test-harness/postgres"
 
 import type { TextValue } from "../driver"
 import { array } from "../type/builtins/array"
+import { boolean } from "../type/builtins/boolean"
+import { bytea } from "../type/builtins/bytea"
 import { timestamptz } from "../type/builtins/datetime"
 import { jsonb } from "../type/builtins/json"
-import { integer, numeric } from "../type/builtins/numeric"
+import { bigint, doublePrecision, integer, numeric } from "../type/builtins/numeric"
+import { text } from "../type/builtins/text"
 import { defineType } from "../type/type"
 
 import type { ParameterBinder } from "./fragment"
 import {
   compileFragment,
+  compileScript,
   identifier,
   joinSql,
+  literal,
   param,
   renderFragment,
   sql,
   SqlFragment,
+  unsafeSql,
 } from "./fragment"
 
 describe("sql", () => {
@@ -172,6 +179,220 @@ describe("identifier", () => {
     expect(() => identifier("app", "")).toThrow(message)
     // @ts-expect-error A name is a string.
     expect(() => identifier("app", undefined)).toThrow(message)
+  })
+})
+
+describe("literal", () => {
+  const render = (value: Parameters<typeof literal>[0]) => compileScript(literal(value))
+
+  it("quotes a string, doubling its quotes", () => {
+    expect([
+      render("Survey"),
+      render(`it's "quoted"`),
+      render(""),
+      render("'; DROP TABLE form; --"),
+    ]).toEqual(["'Survey'", `'it''s "quoted"'`, "''", "'''; DROP TABLE form; --'"])
+  })
+
+  it("writes a string with a backslash as an escape string, doubling its backslashes", () => {
+    expect([render("a\\b"), render("a\\'b\\"), render("\\")]).toEqual([
+      "E'a\\\\b'",
+      "E'a\\\\''b\\\\'",
+      "E'\\\\'",
+    ])
+  })
+
+  it("writes a number and a bigint as a numeric constant without quotes", () => {
+    expect([
+      render(0),
+      render(-0),
+      render(1.5),
+      render(1e-7),
+      render(Number.MAX_SAFE_INTEGER),
+      render(9007199254740993n),
+      render(2n ** 64n),
+      render(-5),
+      render(-0.5),
+      render(-9007199254740993n),
+    ]).toEqual([
+      "0",
+      "0",
+      "1.5",
+      "1e-7",
+      "9007199254740991",
+      "9007199254740993",
+      "18446744073709551616",
+      "-5",
+      "-0.5",
+      "-9007199254740993",
+    ])
+  })
+
+  it("writes a Boolean as TRUE or FALSE and null as NULL", () => {
+    expect([render(true), render(false), render(null)]).toEqual(["TRUE", "FALSE", "NULL"])
+  })
+
+  it("quotes a Date as its ISO text and a Uint8Array as its hex", () => {
+    expect([
+      render(new Date("2026-01-02T03:04:05.678Z")),
+      render(new Uint8Array([0, 255])),
+    ]).toEqual(["'2026-01-02T03:04:05.678Z'", "E'\\\\x00ff'"])
+  })
+
+  it("adds no parameter, so the templates of a statement and of a script take it, also in a list", () => {
+    const values = joinSql([literal("Survey"), literal(3), literal(null)])
+
+    expect(compileFragment(sql`INSERT INTO form VALUES (${1}, ${values})`)).toEqual({
+      text: "INSERT INTO form VALUES ($1, 'Survey', 3, NULL)",
+      parameters: ["1"],
+    })
+    expect(compileScript(sql`SET search_path = ${literal("app")}; ANALYZE`)).toBe(
+      "SET search_path = 'app'; ANALYZE",
+    )
+  })
+
+  it("has the value as it is when it is called", () => {
+    const at = new Date("2026-01-02T03:04:05.678Z")
+    const fragment = literal(at)
+
+    at.setUTCFullYear(2027)
+    expect(compileScript(fragment)).toBe("'2026-01-02T03:04:05.678Z'")
+  })
+
+  it("rejects a number that is not finite and an integer number beyond the safe integers", () => {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(getThrownError(() => literal(value))).toEqual(
+        new TypeError(`literal() takes a finite number, not ${value}`),
+      )
+    }
+    for (const value of [2 ** 53, -(2 ** 53), 1e21]) {
+      expect(getThrownError(() => literal(value))).toEqual(
+        new TypeError(
+          `literal() takes an integer beyond the safe integers as a bigint, not as the number ${value}, which may have lost its digits`,
+        ),
+      )
+    }
+  })
+
+  it("rejects a string with a NUL character and an invalid Date", () => {
+    expect(getThrownError(() => literal("a\0b"))).toEqual(
+      new TypeError("literal() takes no string with a NUL character"),
+    )
+    expect(getThrownError(() => literal(new Date(Number.NaN)))).toEqual(
+      new TypeError("literal() takes no invalid Date"),
+    )
+  })
+
+  it("rejects a value that a parameter does not take without a type", () => {
+    for (const [value, kind] of [
+      [{ name: "Survey" }, "an object"],
+      [[1, 2], "an array"],
+      [() => 1, "a function"],
+      [Symbol("value"), "a symbol"],
+      [sql`1`, "an object"],
+    ] as const) {
+      // @ts-expect-error A literal takes neither an object, an array, a function, a symbol, nor a fragment.
+      expect(getThrownError(() => literal(value))).toEqual(
+        new TypeError(
+          `literal() takes a string, a number, a bigint, a boolean, null, a Date, or a Uint8Array, not ${kind}; pass JSON as its text with a cast in the statement`,
+        ),
+      )
+    }
+    // @ts-expect-error A literal takes no undefined.
+    expect(getThrownError(() => literal(undefined))).toEqual(
+      new TypeError("literal() takes no undefined; use null for NULL"),
+    )
+  })
+})
+
+describePostgres("literal in PostgreSQL", ({ database, testTransaction }) => {
+  const strings = ["it's", "a\\b", "a\\'b\\", "\\n", "\\", "line\nbreak", "$1", "я"]
+
+  it("is read by PostgreSQL as the value of the type of its place, as a parameter is, whatever standard_conforming_strings is", async () => {
+    const result = await testTransaction(async () => {
+      await database.query`SET LOCAL TimeZone = 'Asia/Kathmandu'`
+      const read = () =>
+        database.query`
+          SELECT
+            ARRAY[${joinSql(strings.map(literal))}] AS strings,
+            ${literal(1.5)}::double precision AS number,
+            ${literal(9007199254740993n)}::bigint AS bigint,
+            1 - (${literal(-2)}) AS negative,
+            ${literal(false)}::boolean AS boolean,
+            ${literal(null)}::text AS nothing,
+            ${literal(new Date("2026-01-15T07:00:00.123Z"))}::timestamptz AS date,
+            ${literal(new Uint8Array([0, 255]))}::bytea AS bytes
+        `
+          .select({
+            strings: array(text),
+            number: doublePrecision,
+            bigint: bigint,
+            negative: integer,
+            boolean: boolean,
+            nothing: text.nullable(),
+            date: timestamptz,
+            bytes: bytea,
+          })
+          .take()
+      await database.script`SET LOCAL standard_conforming_strings = on`
+      const on = await read()
+      await database.script`SET LOCAL standard_conforming_strings = off`
+      return { on, off: await read() }
+    })
+
+    const values = {
+      strings,
+      number: 1.5,
+      bigint: 9007199254740993n,
+      negative: 3,
+      boolean: false,
+      nothing: null,
+      date: "2026-01-15T07:00:00.123000Z",
+      bytes: new Uint8Array([0, 255]),
+    }
+    expect(result).toEqual({ on: values, off: values })
+  })
+
+  it("writes a value where PostgreSQL takes no parameter, such as the next value of an identity column", () =>
+    testTransaction(async () => {
+      await database.script`CREATE TABLE job (id bigint GENERATED ALWAYS AS IDENTITY, task text DEFAULT ${literal("it's idle")})`
+      await database.query`ALTER TABLE ${identifier("job")} ALTER COLUMN id RESTART WITH ${literal(9007199254740993n)}`
+
+      const job = await database.query`INSERT INTO job DEFAULT VALUES RETURNING id, task`
+        .select({
+          id: bigint,
+          task: text,
+        })
+        .take()
+
+      expect(job).toEqual({ id: 9007199254740993n, task: "it's idle" })
+    }))
+})
+
+describe("unsafeSql", () => {
+  it("keeps its text as it is and adds no parameter", () => {
+    const marker = unsafeSql("/*hook:claim*/")
+
+    expect(
+      compileFragment(
+        sql`SELECT ${1}::${unsafeSql("numeric(10, 2)")} ${marker} ORDER BY 1 ${unsafeSql("")}`,
+      ),
+    ).toEqual({
+      text: "SELECT $1::numeric(10, 2) /*hook:claim*/ ORDER BY 1 ",
+      parameters: ["1"],
+    })
+    expect(compileScript(joinSql([marker, marker], unsafeSql("; ")))).toBe(
+      "/*hook:claim*/; /*hook:claim*/",
+    )
+  })
+
+  it("rejects a value that is not a string", () => {
+    for (const value of [undefined, null, 1, sql`DESC`]) {
+      // @ts-expect-error The text is a string.
+      expect(getThrownError(() => unsafeSql(value))).toEqual(
+        new TypeError("unsafeSql() takes SQL text as a string"),
+      )
+    }
   })
 })
 

@@ -85,7 +85,8 @@ export default defineMigration([
 ```
 
 To decode the rows of `query`, pass the types of `kern-orm/db/types`, or of `kern-db/types` without the ORM, to `select`, `get`, and `pluck`.
-To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](../database/sql) from `kern-orm/db`, or from `kern-db` without the ORM.
+To name a table or a column known only at runtime in `query`, such as in a loop over tables, interpolate its name with [`identifier`](../database/sql#names-known-at-runtime) from `kern-orm/db`, or from `kern-db` without the ORM.
+To write a value into a statement that takes no parameter, such as `ALTER TABLE`, interpolate it with [`literal`](../database/sql#values-in-statements-without-parameters) from the same package.
 
 ## List the migrations
 

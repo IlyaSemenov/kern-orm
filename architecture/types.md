@@ -251,7 +251,7 @@
 
 ## SQL fragments of the database layer
 
-- `sql`, `joinSql`, `identifier`, and `param` of the database layer (`sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, and nested fragments, without expressions, operators, or a type of its value.
+- `sql`, `joinSql`, `identifier`, `literal`, `unsafeSql`, and `param` of the database layer (`sql/fragment.ts`) create a `SqlFragment`: text with parameters, quoted names, literals, and nested fragments, without expressions, operators, or a type of its value.
   `kern-db` exports them, and `kern-orm/db` re-exports them; both and the root of `kern-orm` export the types `SqlFragment` and `SqlValue`, which the templates of `query` and `script` of a `Database` and of `queryOn` name.
 - The template of `sql` takes a fragment, which stays SQL, and the value of a parameter without a type: a string, a number, a bigint, a Boolean, `null`, a `Date`, or a `Uint8Array`.
   - Its types reject any other value, such as an object, an array, or an expression of the ORM, and it rejects them when it is created, with an error that names no ORM: only a type tells how PostgreSQL reads an object or an array.
@@ -260,11 +260,22 @@
   - An item is what the template of `sql` takes: a fragment stays SQL, and another value becomes a parameter, also with its check when it is called.
   - It copies the text and the values of the separator and of each fragment into one fragment, so that rendering does not recurse into a fragment per item; the values keep the parameter of a `param` as the same object, which a statement binds once.
   - It rejects an empty array when it is called, since PostgreSQL rejects an empty list in most places of a list, such as `VALUES` and `IN` ([decision](../decisions/expressions/join-sql-function.md)).
+- `literal` creates a fragment of the SQL literal of a value, without parameters, for the places where PostgreSQL takes no parameter, such as the values of `ALTER`, `COMMENT`, and `SET`, and the template of a script ([decision](../decisions/expressions/literal-and-unsafe-sql.md)).
+  - It takes the values that a parameter takes without a type, and writes the literal when it is called, so the fragment has the value as it is then, and an error points at the call.
+  - A string is a quoted literal with its quotes doubled, and one with a backslash an escape string with its backslashes doubled, `E'...'`, as `quote_literal` of PostgreSQL writes it, so that the literal keeps its value whatever `standard_conforming_strings` is.
+    It rejects a string with a NUL character, which PostgreSQL takes neither in text nor in a statement, and takes any other string as a parameter does, also one with a lone surrogate, which a driver replaces when it encodes the statement or the parameter.
+  - A `Date` is the quoted literal of its ISO text and a `Uint8Array` of its hex, the texts of their parameters, which PostgreSQL types by the place of the literal as it types a parameter; it rejects an invalid `Date`.
+  - A number and a bigint are their digits without quotes, since places such as `RESTART WITH` take only a numeric constant, a Boolean is `TRUE` or `FALSE`, and `null` is `NULL`.
+    It rejects a number that is not finite, which has no numeric constant, and an integer number beyond the safe integers, whose digits may differ from those that the code wrote and which takes a bigint.
+  - A negative number is its minus and its digits, without parentheses, which the places of a numeric constant reject, so a template must put a number in parentheses of its own in an expression: after a minus, the minus of the number would start a comment, and a cast binds tighter than it.
+  - A template must interpolate the fragment in place of a value: inside a quoted string, a dollar-quoted string, or a comment of the template, a value can end what surrounds it.
+    It must separate the fragment from a word before it, such as by a space after a keyword, since the `E` of an escape string would continue the word.
+- `unsafeSql` creates a fragment of its text as it is, without parameters, such as of a type with its modifiers or of a comment; it checks only that the text is a string, so the caller answers for the text, which must hold no input of a user.
 - `param` takes a type, also of the ORM, and the values that the type accepts, and casts its parameter to its cast type, as `param` of the ORM does.
   - The cast is in parentheses, since text after it could continue its type name, such as a subscript `[1]` after `integer[]`.
 - The [columns of a record](sql-queries.md#columns-of-records) are a fragment of a class of their own, `SqlColumns`, which extends `SqlFragment`, so that every template takes them as a fragment.
   The constructor of `SqlFragment` freezes a fragment of any other class, also of a class of another package that extends it.
-- A fragment is immutable and holds its values by reference: rendering encodes them with `encodeParameter` (`sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a type, so a fragment created without these functions cannot pass one.
+- A fragment is immutable and holds the values of its parameters by reference: rendering encodes them with `encodeParameter` (`sql/parameter.ts`), which also encodes the parameters of the ORM, and rejects `undefined` and a value that a parameter does not take without a type, so a fragment created without these functions cannot pass one.
 - `renderFragment` renders a fragment into SQL text with a `ParameterBinder`, which takes each parameter in the order of the text and returns its placeholder, so that the code that compiles the statement numbers the parameters.
   - A binder takes the parameter of `param` with a key, the same object wherever a statement repeats the fragment, so that it can bind the parameter once.
   - `compileFragment` compiles a fragment as a statement of its own, and `compileScript` as the text of a script, which rejects every parameter.

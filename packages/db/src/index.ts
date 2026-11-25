@@ -60,7 +60,7 @@ export type {
 } from "./sql/columns"
 export type { GuaranteedColumnKeys, IsIndexKey, PickSelectedColumns } from "./selected-columns"
 export type { SqlFragment, SqlValue } from "./sql/fragment"
-export { identifier, joinSql, param, sql } from "./sql/fragment"
+export { identifier, joinSql, literal, param, sql, unsafeSql } from "./sql/fragment"
 export type { UntypedValue } from "./sql/parameter"
 export type {
   AnySqlQuery,

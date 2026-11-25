@@ -7,7 +7,7 @@ import { integer } from "../type/builtins/numeric"
 import type { Type } from "../type/type"
 
 import type { SqlFragment } from "./fragment"
-import { identifier, joinSql, param, sql } from "./fragment"
+import { identifier, joinSql, literal, param, sql, unsafeSql } from "./fragment"
 
 describe("sql", () => {
   test("takes the values of parameters without a type and fragments", () => {
@@ -48,6 +48,35 @@ describe("joinSql", () => {
     void joinSql([undefined])
     // @ts-expect-error The separator is a fragment.
     void joinSql([1, 2], " AND ")
+  })
+})
+
+describe("literal", () => {
+  test("takes the values of parameters without a type", () => {
+    for (const value of ["text", 1, 1n, true, null, new Date(), new Uint8Array()]) {
+      literal(value) satisfies SqlFragment
+    }
+  })
+
+  test("rejects an object, an array, a fragment, and undefined", () => {
+    // @ts-expect-error A literal of JSON is that of its text.
+    literal({ name: "Survey" })
+    // @ts-expect-error An array has no literal.
+    literal([1, 2])
+    // @ts-expect-error A fragment is interpolated as it is.
+    literal(sql`now()`)
+    // @ts-expect-error NULL is null.
+    literal(undefined)
+  })
+})
+
+describe("unsafeSql", () => {
+  test("takes SQL text as a string", () => {
+    unsafeSql("DESC") satisfies SqlFragment
+    // @ts-expect-error The text is a string.
+    unsafeSql(1)
+    // @ts-expect-error A fragment is interpolated as it is.
+    unsafeSql(sql`DESC`)
   })
 })
 

@@ -140,6 +140,61 @@ To name an object in a schema, pass the schema before the name:
 await database.query`ANALYZE ${identifier(schemaName, tableName)}`
 ```
 
+## Values in statements without parameters
+
+PostgreSQL takes a parameter for a value of a query, such as `SELECT`, `INSERT`, or `UPDATE`, and rejects one in statements such as `ALTER`, `COMMENT`, and `SET`, also where they read a value, such as the default of a column, the bound of a partition, the next value of a sequence, or the value of a setting.
+To write a value into such a statement, interpolate `literal` with it:
+
+```ts
+import { identifier, literal } from "kern-db"
+
+await database.query`ALTER TABLE ${identifier(tableName)} ALTER COLUMN id RESTART WITH ${literal(nextId)}`
+// SQL: ALTER TABLE "job" ALTER COLUMN id RESTART WITH 1001
+```
+
+`literal` writes a string in quotes of its own, which no character of the string ends, so it is safe for any value, also one of a user:
+
+```ts
+await database.query`COMMENT ON TABLE form IS ${literal(description)}`
+// SQL: COMMENT ON TABLE form IS 'Forms of the team; it''s public'
+```
+
+Interpolate it in place of the value, without quotes around it: inside a quoted string, a dollar-quoted string, such as the body of a function, or a comment, a value can end what surrounds it.
+
+It takes the values that a statement takes as parameters: a string, a number, a bigint, a Boolean, `null`, a `Date`, and a `Uint8Array`.
+In an expression, put a number in parentheses, such as `(${literal(delta)})::numeric`: a negative one starts with its minus.
+PostgreSQL types the literal of a string, a `Date`, or a `Uint8Array` by its place, as it types a parameter.
+To write JSON, pass its text and cast it in the statement, such as `${literal(JSON.stringify(settings))}::jsonb`.
+
+Where PostgreSQL takes a parameter, interpolate the value itself, so that the SQL of the statement is the same for every value.
+
+## SQL text known at runtime
+
+To choose a part of the SQL at runtime among a few, such as the direction of a sort, write each as a fragment:
+
+```ts
+const direction = descending ? sql`DESC` : sql`ASC`
+
+const forms = await database.query`SELECT id, name FROM form ORDER BY name ${direction}`.select({
+  id: t.uuid,
+  name: t.text,
+})
+```
+
+To interpolate SQL that your code computes as a string, such as a type with its modifiers, pass it to `unsafeSql`:
+
+```ts
+import { identifier, unsafeSql } from "kern-db"
+
+await database.query`ALTER TABLE form ALTER COLUMN ${identifier(column)} TYPE ${unsafeSql(columnType)}`
+// SQL: ALTER TABLE form ALTER COLUMN "score" TYPE numeric(10, 2)
+```
+
+::: danger SQL injection
+`unsafeSql` neither quotes nor checks its text, which runs as SQL.
+Never pass it input of a user, or text built from such input: interpolate a value itself or with `literal`, and a name with `identifier`.
+:::
+
 ## JSON and arrays
 
 To pass JSON or an array, interpolate `param` with its type:
@@ -242,10 +297,13 @@ import { readFile } from "node:fs/promises"
 await database.script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so interpolate into its template only fragments without values, such as names from `identifier`:
+A script has no parameters, so interpolate into its template only fragments without them, such as names from `identifier` and values from [`literal`](#values-in-statements-without-parameters):
 
 ```ts
-await database.script`ANALYZE ${identifier(schemaName, tableName)}`
+await database.script`
+  CREATE SCHEMA ${identifier(schemaName)};
+  COMMENT ON SCHEMA ${identifier(schemaName)} IS ${literal(description)};
+`
 ```
 
 The script runs in the current transaction; outside one, PostgreSQL applies all its statements or none.

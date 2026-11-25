@@ -174,6 +174,22 @@ To name an object in a schema, pass the schema before the name:
 await db.$query`ANALYZE ${identifier(schemaName, tableName)}`
 ```
 
+## Values in statements without parameters
+
+PostgreSQL takes a parameter for a value of a query, such as `SELECT`, `INSERT`, or `UPDATE`, and rejects one in statements such as `ALTER`, `COMMENT`, and `SET`.
+To write a value into such a statement, such as the default of a column into `ALTER TABLE`, interpolate `literal` of `kern-orm/db` with it:
+
+```ts
+import { literal } from "kern-orm/db"
+
+await db.$query`ALTER TABLE ${db.form} ALTER COLUMN name SET DEFAULT ${literal(defaultName)}`
+// SQL: ALTER TABLE "form" ALTER COLUMN name SET DEFAULT 'Untitled'
+```
+
+`literal` writes the value into the SQL as a literal, so add no quotes around it.
+To interpolate SQL that your code computes as a string, such as a type with its modifiers, pass it to `unsafeSql` of `kern-orm/db`, and never pass it input of a user.
+See [SQL Queries and Scripts](../../database/sql#values-in-statements-without-parameters) for the values that `literal` takes and where it is safe.
+
 ## Scripts
 
 To run several statements at once, such as the SQL of a migration file, pass them to `db.$script`:
@@ -184,7 +200,7 @@ import { readFile } from "node:fs/promises"
 await db.$script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so its template interpolates only tables of `db`, queries without parameters, and fragments without parameters, such as names from `identifier`:
+A script has no parameters, so its template interpolates only tables of `db`, queries without parameters, and fragments without parameters, such as names from `identifier` and values from [`literal`](#values-in-statements-without-parameters):
 
 ```ts
 await db.$script`
@@ -223,7 +239,7 @@ const claimed = await claimJobs(connection, "worker-1")
 // claimed: { job: { id: number; task: string } }[]
 ```
 
-Its template interpolates values, the columns of `columnsOf`, and the `sql`, `joinSql`, `identifier`, and `param` fragments of `kern-orm/db`.
+Its template interpolates values, the columns of `columnsOf`, and the `sql`, `joinSql`, `identifier`, `literal`, `unsafeSql`, and `param` fragments of `kern-orm/db`.
 It takes no table or query of a `Db`, so name tables in the SQL, or by `identifier` with their PostgreSQL schema.
 To keep the template in a field or take it as a parameter, type it as `SqlQueryTemplate` of `kern-orm/db`.
 
