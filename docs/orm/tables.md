@@ -1,6 +1,4 @@
-# Tables and Views
-
-## Tables
+# Tables
 
 Define each table of the database with `defineTable`, giving its name and columns:
 
@@ -22,42 +20,22 @@ export const field = defineTable("form_field", {
 ```
 
 See [Types](./types) for the built-in types, column attributes, and custom types, and [Column names](#column-names) for `columnName`.
-To query the tables, put them in a [schema](./schemas).
-To keep a table to one row, such as the settings of an application, see [Singleton Tables](./singleton-tables).
 
 The definitions describe tables that already exist: create and change them with SQL or [migrations](../migrations/getting-started), and check in a test that they [match the database](./testing#tables-that-match-the-database).
 
-## Views
-
-Use `defineView` to read an ordinary or materialized PostgreSQL view through a schema:
-
-```ts
-import { defineView } from "kern-orm"
-import * as t from "kern-orm/types"
-
-export const publishedField = defineView("published_field", {
-  formId: t.uuid.columnName("form_id"),
-  label: t.text,
-})
-```
-
-Include the view in the [schema](./schemas) alongside your tables, then query it through your application's `db`:
+Put the tables in a [schema](./schemas), then query them through your application's `db`:
 
 ```ts
 import { db } from "#db"
 
-const formsWithEmail = db.form.where(form =>
-  db.publishedField.where({ formId: form.id, label: "Email" }).exists(),
-)
+const forms = await db.form.where({ published: true }).select("id", "name")
+// forms: { id: string; name: string }[]
 ```
 
-To apply the same [column naming convention](#naming-conventions) to your tables and views, import both definition functions from your table factory module.
-Declare `nullable()` for a column whose result can be null.
-Create and change the SQL definition in a [migration](../migrations/helpers).
+See [Queries](./queries/) for selecting, filtering, and changing records.
 
-A view declared with `defineView` is read-only and its columns cannot declare keys or defaults.
-Use `where` to look up its rows: `find`, `findBy`, and relations `one` targeting the view require a key.
-If you need to declare a key guaranteed by the view's query or write through an updatable view, describe it with `defineTable`.
+To keep a table to one row, such as the settings of an application, see [Singleton Tables](./singleton-tables).
+To read a PostgreSQL view, see [Views](./views).
 
 ## Keys
 
@@ -92,7 +70,7 @@ Declare the keys that the database guarantees, such as by a constraint, a unique
 ## Column names
 
 A column is named after its key.
-To name it differently, set the name with `columnName`, as `formId` of `field` [above](#tables) does.
+To name it differently, set the name with `columnName`, as `formId` of `field` above does.
 
 ### Naming conventions
 

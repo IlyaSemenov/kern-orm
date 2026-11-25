@@ -115,7 +115,8 @@ See [Database of the current context](./schemas#database-of-the-current-context)
 
 ## Next steps
 
-- [Tables and Views](./tables): define tables and views, declare the keys of tables, and map column names.
+- [Tables](./tables): define tables, declare their keys, and map column names.
+- [Views](./views): define views.
 - [Schemas and Relations](./schemas): bind a schema to a database, relate tables, and choose a PostgreSQL schema.
 - [Multiple Schemas](./multiple-schemas): reuse tables across tenant schemas and a shared schema.
 - [Types](./types): column types and nullable columns.

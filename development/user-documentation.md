@@ -8,7 +8,7 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
 - Group the pages of the site by the package they document, ORM, Database, and Migrations, each with a sidebar of its own, and keep the pages of each group in its directory: `docs/orm/`, `docs/database/`, and `docs/migrations/`, each starting with its Getting Started page.
 - Add every new page to the sidebar of its package in `docs/.vitepress/config.ts`.
   Choose the section that fits the task and audience of the page, such as Data Model or For Library Authors.
-  Within the section, nest a page that specializes another one under it, as Singleton Tables under Tables and Views.
+  Within the section, nest a page that specializes another one under it, as Singleton Tables under Tables.
   Do not add a section of leftovers, such as Advanced.
 - When a sidebar label is clear only under its section, such as Overview, set `docFooterText` to a name of the page that is clear on its own, for the previous and next links at the bottom of pages.
 - Keep the Next steps of each Getting Started page in the order of the sidebar.

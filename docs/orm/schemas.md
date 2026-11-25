@@ -2,7 +2,7 @@
 
 ## Schemas
 
-Pass your [table and view definitions](./tables) to `defineSchema`, then bind the schema to the [database](./getting-started#connect) with `bindSchema`:
+Pass your [table](./tables) and [view](./views) definitions to `defineSchema`, then bind the schema to the [database](./getting-started#connect) with `bindSchema`:
 
 ```ts
 import { bindSchema, defineSchema } from "kern-orm"

@@ -34,10 +34,11 @@ export default defineConfig({
           text: "Data Model",
           items: [
             {
-              text: "Tables and Views",
+              text: "Tables",
               link: "/orm/tables",
               items: [{ text: "Singleton Tables", link: "/orm/singleton-tables" }],
             },
+            { text: "Views", link: "/orm/views" },
             { text: "Sequences", link: "/orm/sequences" },
             {
               text: "Schemas and Relations",
