@@ -1,5 +1,11 @@
 # kern-orm
 
+## 0.31.0
+
+### Minor Changes
+
+- c8622c2: Add `db.$queryOn(executor)`, the template of `db.$query` that runs its statement on a driver, a connection, or another executor of statements.
+
 ## 0.30.0
 
 ### Minor Changes
