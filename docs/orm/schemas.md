@@ -123,3 +123,17 @@ Read the PostgreSQL schema of a `Db` with `$schemaName`, which calls the functio
 ```ts
 db.$schemaName // "tenant_1"
 ```
+
+## Inspecting schema definitions
+
+Read table and view definitions from `db.$schema.$tables` and sequence definitions from `db.$schema.$sequences`.
+Both maps use the keys passed to `defineSchema`.
+For example, a function that lists the declared sequence names can take an `AnyDb`:
+
+```ts
+import type { AnyDb } from "kern-orm"
+
+function listSequenceNames(db: AnyDb) {
+  return Object.values(db.$schema.$sequences).map(sequence => sequence.name)
+}
+```

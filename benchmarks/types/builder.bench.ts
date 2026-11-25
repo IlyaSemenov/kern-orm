@@ -61,7 +61,7 @@ bench("query of SQL text of the columns of a builder chosen at runtime", async (
   await tenantDb.$query`SELECT`.select({
     field: createSqlColumns([fieldId, ...fieldColumns], { alias: "d" }),
   })
-}).types([587, "instantiations"])
+}).types([596, "instantiations"])
 
 bench("fields of the columns of a builder chosen at runtime", async () => {
   const rows = await tenantDb.$query`SELECT`.select({
@@ -70,4 +70,4 @@ bench("fields of the columns of a builder chosen at runtime", async () => {
   // Reading the fields computes their types, which a query alone leaves to its consumer.
   const field = rows[0]!.field
   return [field.id, field.label, field.position, field.formId]
-}).types([742, "instantiations"])
+}).types([751, "instantiations"])

@@ -85,7 +85,7 @@ const minimumServerVersion = 170000
  */
 export async function findTableMismatches(db: AnyDb): Promise<TableMismatch[]> {
   const database = db.$database
-  const tables = db.$schema.$tables as Record<string, AnyRowSource>
+  const tables = db.$schema.$tables
   const catalog = await readCatalog(database, db.$schemaName, Object.values(tables))
   const mismatches: TableMismatch[] = []
   for (const key of Object.keys(tables)) {

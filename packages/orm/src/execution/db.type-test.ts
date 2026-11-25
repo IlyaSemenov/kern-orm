@@ -11,11 +11,13 @@ import type { InitialQueryState } from "../query/state"
 import { many, one } from "../schema/relation"
 import type { Schema } from "../schema/schema"
 import { defineSchema, schemaRelations } from "../schema/schema"
+import type { AnySequence } from "../schema/sequence"
 import { defineSequence } from "../schema/sequence"
+import type { AnyRowSource } from "../table/table"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import type { Db, DbOf } from "./db"
+import type { AnyDb, Db, DbOf } from "./db"
 import { bindSchema } from "./db"
 
 const post = defineTable("post", {
@@ -54,6 +56,29 @@ describe("bindSchema", () => {
     bindSchema(schema, async () => database)
     // @ts-expect-error The Db calls the function without arguments.
     bindSchema(schema, (tenant: string) => (tenant === "" ? database : database))
+  })
+})
+
+describe("AnyDb", () => {
+  test("accepts a Db with relations and exposes its table and sequence descriptors", () => {
+    const postSeq = defineSequence("post_seq")
+    const related = defineSchema({ post, other, postSeq }).$relations({
+      post: {
+        others: many(other, { from: "id", to: "id" }),
+      },
+    })
+    const anyDb: AnyDb = bindSchema(related, database)
+
+    for (const key of Object.keys(anyDb)) {
+      expectTypeOf(anyDb.$schema.$tables[key]).toEqualTypeOf<AnyRowSource | undefined>()
+      expectTypeOf(anyDb.$schema.$sequences[key]).toEqualTypeOf<AnySequence | undefined>()
+      if (!key.startsWith("$") && Object.hasOwn(anyDb, key)) {
+        // @ts-expect-error An own key can name a table query or a sequence reference.
+        void anyDb[key]
+        // @ts-expect-error The unbound schema has the same entry kinds.
+        void anyDb.$schema[key]
+      }
+    }
   })
 })
 

@@ -58,7 +58,7 @@ export type Db<
   T extends Tables,
   S extends Sequences = EmptyRecord,
   R extends SchemaRelations = EmptyRecord,
-> = DbEntries<T, R> & SequenceEntries<S> & DbMethods<T, S, R>
+> = DbEntries<T, R> & SequenceEntries<S> & DbMethods<T, R, Schema<T, S, R>>
 
 /** Bound query entry points; each access starts a query over a new table occurrence, of the one row of a singleton table. */
 type DbEntries<T extends Tables, R extends SchemaRelations> = {
@@ -89,8 +89,8 @@ export interface DbMutationState<
   readonly uses: U
 }
 
-interface DbMethods<T extends Tables, S extends Sequences, R extends SchemaRelations> {
-  readonly $schema: Schema<T, S, R>
+interface DbMethods<T extends Tables, R extends SchemaRelations, BoundSchema extends AnySchema> {
+  readonly $schema: BoundSchema
   /**
    * Database that the `Db` is bound to.
    *
@@ -216,9 +216,8 @@ export type DbSqlQueryTemplate = (
  */
 export type DbOf<S extends AnySchema> = Db<S["$tables"], S["$sequences"], S[typeof schemaRelations]>
 
-/** `Db` of any schema. */
-// oxlint-disable-next-line typescript/no-explicit-any -- any Db regardless of its tables
-export type AnyDb = Db<any, EmptyRecord, any>
+/** Members shared by every bound schema, with table and sequence descriptors available through `$schema.$tables` and `$schema.$sequences`. */
+export type AnyDb = DbMethods<Tables, SchemaRelations, AnySchema>
 
 /**
  * Binds a schema to a database, placing its tables and sequences in a PostgreSQL schema.
@@ -284,7 +283,7 @@ export function bindSchema<T extends Tables, S extends Sequences, R extends Sche
     return startSqlQuery(() => compileText(node), target)
   }
 
-  const methods: DbMethods<T, S, R> = {
+  const methods: DbMethods<T, R, Schema<T, S, R>> = {
     $schema: schema,
     get $database() {
       return resolveDatabase()

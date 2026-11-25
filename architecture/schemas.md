@@ -79,6 +79,8 @@
     The same check applies when the callback returns a query directly.
     `DbOf` types the `Db` of a schema, and a `Db` of every schema that includes it fits that type, since the types of entries and relations accept more tables and relations, so code shared by several schemas takes such a `Db` as a parameter.
     Comparing two `Db` types compares the states of the queries of their entries, since a query is covariant in its state; the methods of a `Db` and a schema are generic or typed by `this`, so that comparing them compares no queries.
+  - `AnyDb` exposes the shared `$` members of a bound schema and types `$schema` as `AnySchema`.
+    A lookup by an arbitrary string must use the table or sequence descriptor map, since a schema entry can be either kind ([decision](../decisions/schemas/entries-of-any-db.md)).
 
 Members of schemas and `Db` other than tables and sequences start with `$`, and table and sequence keys must not.
 Column keys must not start with `$` either, which keeps such names free for members of the column references passed to query callbacks.
