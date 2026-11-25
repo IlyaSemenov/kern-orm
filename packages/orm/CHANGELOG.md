@@ -1,5 +1,11 @@
 # kern-orm
 
+## 0.32.1
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.17.0
+
 ## 0.32.0
 
 ### Minor Changes

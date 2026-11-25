@@ -1,5 +1,11 @@
 # kern-db
 
+## 0.17.0
+
+### Minor Changes
+
+- 388adcf: Add `runInExternalTransaction()` of kern-db, which runs a callback with a database of a transaction that another library started, and let `runInOrchidTransaction()` pass such a database to its callback when called without one.
+
 ## 0.16.0
 
 ### Minor Changes
