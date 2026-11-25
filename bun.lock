@@ -99,7 +99,7 @@
         "postgres": "catalog:",
       },
       "peerDependencies": {
-        "kern-db": "^0.16.0",
+        "kern-db": "^0.17.0",
         "orchid-orm": "^1.78.61",
         "postgres": "^4.0.0",
       },

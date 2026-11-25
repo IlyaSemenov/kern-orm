@@ -271,3 +271,36 @@ export function createDatabase({ driver, ...options }: DatabaseOptions): Databas
   coordinators.set(database, coordinator)
   return database
 }
+
+/**
+ * Runs `callback` in an external transaction on `connection`, as `externalTransaction` of a `Database` does, with a database created for the call, such as to apply migrations in a transaction of another library in an application without a database of kern-db.
+ *
+ * The database has no connections of its own: the statements of the callback run in the external transaction, others reject, and the database closes when the call settles.
+ * Schemas bound to another database do not join the transaction; bind them to the database of the callback, or call `externalTransaction` of that other database instead.
+ */
+export async function runInExternalTransaction<T>(
+  connection: ExternalConnection,
+  callback: (database: Database) => PromiseLike<T>,
+): Promise<T> {
+  const database = createDatabase({ driver: externalTransactionDriver })
+  try {
+    return await database.externalTransaction(connection, () => callback(database))
+  } finally {
+    await database.close()
+  }
+}
+
+/** Driver of the databases of `runInExternalTransaction`, which have no pool: its statements and connections reject, and closing it does nothing. */
+const externalTransactionDriver: Driver = {
+  execute: () => Promise.reject(createNoPoolError("execute a query")),
+  executeScript: () => Promise.reject(createNoPoolError("execute a script")),
+  acquire: () => Promise.reject(createNoPoolError("acquire a connection")),
+  close: () => Promise.resolve(),
+}
+
+/** Creates the error of `operation` of a database of `runInExternalTransaction` outside its external transaction, such as of code that left the async context of the callback. */
+function createNoPoolError(operation: string): Error {
+  return new Error(
+    `Cannot ${operation} outside the external transaction: the database of runInExternalTransaction has no connections of its own`,
+  )
+}

@@ -44,13 +44,11 @@ describe.skipIf(!DATABASE_URL)("migrations in a test transaction of native Orchi
         .query<{ key: string }>(`SELECT key FROM ${schemaName}.kern_migration ORDER BY key`)
     ).rows.map(row => row.key)
 
-  test("apply in the outer level, survive a nested level, and roll back with the outer level", async () => {
+  test("apply with the database of the callback form, survive a nested level, survive a failed migration, and roll back with the outer level", async () => {
     await testTransaction.start(orchid)
     try {
       const searchPath = await readSearchPath()
-      await runInOrchidTransaction(orchid, database, () =>
-        migrate(database, history, { schemaName }),
-      )
+      await runInOrchidTransaction(orchid, external => migrate(external, history, { schemaName }))
       expect(await readItems()).toEqual([])
       expect(await readVersions()).toEqual(["0001_create_item"])
       expect(await readSearchPath()).toBe(searchPath)

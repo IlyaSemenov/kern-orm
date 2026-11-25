@@ -30,10 +30,12 @@ The migrator, the first consumer, could take the executor of the owner as a targ
 
 ## A database of the transaction alone
 
-A function that creates a `Database` of the external transaction, without a driver, would serve an application that has no database of `kern-db`, which otherwise creates one over a driver only to call `externalTransaction`.
+A function that creates a `Database` of the external transaction, without a pool, instead of `externalTransaction` of an existing database, would serve an application that has no database of `kern-db`, which otherwise creates one over a driver only to call `externalTransaction`.
 
 - Every member of such a database that needs a pool would reject: statements outside the transaction, `session`, and `openSession`.
 - The schemas that the application bound to its own database would not join the transaction: it would bind them again to the database of each transaction.
+
+So `kern-db` gives both: `externalTransaction` for an application with a database, and `runInExternalTransaction`, which runs a callback with such a database, for an application without one, such as an application of Orchid ORM that applies the migrations of a package in its test transactions.
 
 ## The query executor of the owner as the connection
 

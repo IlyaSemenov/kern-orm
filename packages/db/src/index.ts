@@ -27,7 +27,7 @@ export type {
   SessionOptions,
   TransactionOptions,
 } from "./database"
-export { createDatabase, isDatabase } from "./database"
+export { createDatabase, isDatabase, runInExternalTransaction } from "./database"
 export type {
   Connection,
   Driver,

@@ -54,6 +54,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Unions of queries of `find` and `findBy` by different keys](unions-of-queries-of-find-and-findby-by-different-keys.md): a type parameter of the key apart from the state.
 - [Schema views](schema-views.md): restricted views of schemas for shared business logic.
 - [Recurrent SQL of migrations](recurrent-sql-of-migrations.md): functions and views run again after every migration.
+- [Async context of the databases of external transactions](async-context-of-external-transaction-databases.md): why each call of `runInExternalTransaction` grows the async context of the caller on Node.js, and how to bound it.
 - [Migration helpers of enums](migration-helpers-of-enums.md): changing enum types.
 - [Changes outside a transaction in verification](changes-outside-a-transaction-in-verification.md): checking the changes that run outside a transaction block.
 - [Queries that may be `NULL` as values of columns that are not nullable](queries-that-may-be-null-as-values-of-columns-that-are-not-nullable.md): rejecting them unless marked as having their row.

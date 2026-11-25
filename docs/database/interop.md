@@ -36,6 +36,22 @@ For a transaction of another client, pass an object with `execute` and `executeS
 
 `database.externalTransaction` rejects inside a transaction or a session of the database, and on a database created with `test: true`.
 
+### Without a database
+
+When your application has no database of kern-db, such as when it only applies the [migrations of a package](../migrations/package-migrations) in a transaction of another library, call `runInExternalTransaction` with the connection, and use the database that it passes to the callback:
+
+```ts
+import { runInExternalTransaction } from "kern-db"
+import { postgresJsConnection } from "kern-db/postgres-js"
+import { migrate } from "kern-migrations"
+
+await sql.begin(tx =>
+  runInExternalTransaction(postgresJsConnection(tx), database => migrate(database, migrations)),
+)
+```
+
+The database runs its statements only in that transaction, as in the callback of `database.externalTransaction`, and has no connections of its own: its statements reject after the callback.
+
 ## ORMs and query builders
 
 To share a transaction of an ORM or a query builder that runs on postgres.js, pass `postgresJsConnection` the postgres.js client of that transaction, which the library must give you.
@@ -44,4 +60,4 @@ To share a transaction of an ORM or a query builder that runs on postgres.js, pa
 
 An application of Orchid ORM that moves to kern-orm shares its connection pool and transactions through `@kern-orm/orchid-interop`; see [Orchid ORM Interop](../orm/orchid-interop).
 
-To run code of kern-db, such as migrations, in a transaction of an Orchid instance that keeps its own pool and transactions, pass the database to `runInOrchidTransaction` of the same package, which does not require kern-orm; see [Run kern-orm code in transactions of Orchid](../orm/orchid-interop#run-kern-orm-code-in-transactions-of-orchid).
+To run code of kern-db, such as migrations, in a transaction of an Orchid instance that keeps its own pool and transactions, pass the database, or only a callback that receives a database for the call, to `runInOrchidTransaction` of the same package, which does not require kern-orm; see [Run kern-orm code in transactions of Orchid](../orm/orchid-interop#run-kern-orm-code-in-transactions-of-orchid).

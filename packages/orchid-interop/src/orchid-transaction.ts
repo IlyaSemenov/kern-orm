@@ -1,5 +1,6 @@
 // External transactions of kern-db over the current transaction of a native Orchid ORM instance on postgres.js, which Orchid keeps owning.
 import type { Database, ExternalConnection } from "kern-db"
+import { runInExternalTransaction } from "kern-db"
 import { postgresJsConnection } from "kern-db/postgres-js"
 import type { Adapter } from "orchid-orm"
 import type { TransactionSql } from "postgres"
@@ -14,6 +15,15 @@ export interface OrchidTransactionSource {
 const testedVersions = "Orchid ORM 1.78.61 (pqb 0.73.50) on postgres.js 4"
 
 /**
+ * Runs `callback` with a database that `runInExternalTransaction` of kern-db creates for the call, in the current transaction of the native Orchid ORM instance `orchid` on postgres.js, by the rules of the form that takes a database, such as to apply the migrations of a package in an application without a database of kern-db.
+ *
+ * The callback receives that database as its argument: it has no connections of its own, closes when the call settles, and schemas bound to another database do not join the transaction.
+ */
+export function runInOrchidTransaction<T>(
+  orchid: OrchidTransactionSource,
+  callback: (database: Database) => PromiseLike<T>,
+): Promise<T>
+/**
  * Runs `callback` in an external transaction of `database` over the current transaction of the native Orchid ORM instance `orchid` on postgres.js, so that the statements of kern-db in it commit or roll back with that transaction, which Orchid keeps owning.
  *
  * It joins the innermost transaction, savepoint, or test transaction of `orchid` that is running, such as of `$transaction` of an instance of `orchidORM`, `transaction` of an instance of `createDb`, or `testTransaction` of `orchid-orm`; `orchid` must be the instance that started it, such as the one passed to `testTransaction.start`.
@@ -24,11 +34,20 @@ const testedVersions = "Orchid ORM 1.78.61 (pqb 0.73.50) on postgres.js 4"
  * A failed statement in a nested `$transaction` of Orchid that started in the callback rolls back only that nested transaction, which rejects, provided that its callback awaited the statement: a statement that fails after that callback resolved fails the enclosing scope without a rejection.
  * It rejects outside a transaction of Orchid with `TypeError`, and for an instance of `createOrchidInterop`, another driver of Orchid, or a version of Orchid whose private transaction state it does not recognize, with an `Error` that names the tested versions.
  */
-export async function runInOrchidTransaction<T>(
+export function runInOrchidTransaction<T>(
   orchid: OrchidTransactionSource,
   database: Database,
   callback: () => PromiseLike<T>,
+): Promise<T>
+export async function runInOrchidTransaction<T>(
+  orchid: OrchidTransactionSource,
+  ...rest: [(database: Database) => PromiseLike<T>] | [Database, () => PromiseLike<T>]
 ): Promise<T> {
+  // The form tells by the number of its arguments rather than by the type of the second, which a callable object could fit either way.
+  const runExternal: (connection: ExternalConnection) => Promise<T> =
+    rest.length === 1
+      ? connection => runInExternalTransaction(connection, rest[0])
+      : connection => rest[0].externalTransaction(connection, rest[1])
   const scope = readTransactionClient(orchid)
   let failure: { error: unknown } | undefined
   let currentClient = scope
@@ -57,13 +76,10 @@ export async function runInOrchidTransaction<T>(
     }
   }
 
-  const result = await database.externalTransaction(
-    {
-      execute: statement => runStatement(connection => connection.execute(statement)),
-      executeScript: text => runStatement(connection => connection.executeScript(text)),
-    },
-    callback,
-  )
+  const result = await runExternal({
+    execute: statement => runStatement(connection => connection.execute(statement)),
+    executeScript: text => runStatement(connection => connection.executeScript(text)),
+  })
   // The external transaction stops accepting statements when its callback settles, so no statement joins `pending` after it, but it does not wait for those already sent, such as of a promise that the callback did not await.
   await Promise.allSettled(pending)
   if (failure) {

@@ -42,6 +42,16 @@ describe("runInOrchidTransaction without a transaction client", () => {
     expect(called).toBe(false)
   })
 
+  test("rejects outside a transaction of Orchid before the callback without a database", async () => {
+    let called = false
+    const run = runInOrchidTransaction(toSource({ isInTransaction: () => false }), async () => {
+      called = true
+    })
+
+    await expect(run).rejects.toBeInstanceOf(TypeError)
+    expect(called).toBe(false)
+  })
+
   const isInTransaction = () => true
   test.each([
     ["a transaction adapter without a client", { isInTransaction }],
@@ -100,6 +110,46 @@ describe.skipIf(!DATABASE_URL)("runInOrchidTransaction with a commit of Orchid",
 
     expect(result).toBe("result")
     expect(await readCommitted(1, 3)).toEqual([1, 2])
+  })
+
+  test("tells the form by the number of arguments, also for a database that is callable", async () => {
+    let called = false
+    const callable = Object.assign(async () => {
+      called = true
+    }, database)
+
+    const result = await orchid.$transaction(() =>
+      runInOrchidTransaction(orchid, callable, async () => "callback"),
+    )
+    const missing = orchid.$transaction(() =>
+      runInOrchidTransaction(orchid, callable, undefined as never),
+    )
+
+    expect(result).toBe("callback")
+    await expect(missing).rejects.toBeInstanceOf(TypeError)
+    expect(called).toBe(false)
+  })
+
+  test("commits the statements of the database of the callback form with the transaction of Orchid", async () => {
+    let external: Database | undefined
+    const result = await orchid.$transaction(() =>
+      runInOrchidTransaction(orchid, async database => {
+        external = database
+        await database.query`INSERT INTO ${table} VALUES (${11})`
+        const thrown = database.transaction(async () => {
+          await database.query`INSERT INTO ${table} VALUES (${12})`
+          throw new Error("rollback")
+        })
+        await expect(thrown).rejects.toEqual(new Error("rollback"))
+        return "result"
+      }),
+    )
+
+    expect(result).toBe("result")
+    expect(await readCommitted(11, 12)).toEqual([11])
+    await expect(external!.execute({ text: "SELECT 1", parameters: [] })).rejects.toEqual(
+      new Error("Cannot execute a query: the database is closed"),
+    )
   })
 
   test("rejects, and Orchid commits nothing, after a nested transaction rolled back a failed statement", async () => {

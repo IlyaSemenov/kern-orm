@@ -6,7 +6,7 @@ import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
 import postgres from "postgres"
 
 import type { Database, IsolationLevel } from "./database"
-import { createDatabase, isDatabase } from "./database"
+import { createDatabase, isDatabase, runInExternalTransaction } from "./database"
 import type { Connection, Driver, SqlStatement } from "./driver"
 import { createStatement } from "./driver"
 import { ConnectionError } from "./driver-error"
@@ -361,6 +361,62 @@ describe("advisory locks", () => {
   })
 })
 
+describe("runInExternalTransaction", () => {
+  it("runs the statements and scripts of the database of the callback on the connection, without starting, ending, or releasing it", async () => {
+    const { driver, statements, scripts, releases } = createRecordingDriver()
+    const connection = await driver.acquire()
+
+    const result = await runInExternalTransaction(connection, async database => {
+      await database.query`SELECT 1`
+      await database.script("script")
+      return { inTransaction: database.isInTransaction(), isDatabase: isDatabase(database) }
+    })
+
+    expect(result).toEqual({ inTransaction: true, isDatabase: true })
+    expect(statements).toEqual([{ connection: 1, text: "SELECT 1", parameters: [] }])
+    expect(scripts).toEqual([{ connection: 1, script: "script" }])
+    expect(releases).toEqual([])
+  })
+
+  it("rejects a statement of the database outside the async context of the callback while it runs, and as of a closed database after it", async () => {
+    const { driver, statements } = createRecordingDriver()
+    const connection = await driver.acquire()
+    const entered = Promise.withResolvers<Database>()
+    const finished = Promise.withResolvers<void>()
+
+    const running = runInExternalTransaction(connection, async database => {
+      entered.resolve(database)
+      await finished.promise
+    })
+    const database = await entered.promise
+    try {
+      await expect(database.execute(createStatement("SELECT 1"))).rejects.toEqual(
+        new Error(
+          "Cannot execute a query outside the external transaction: the database of runInExternalTransaction has no connections of its own",
+        ),
+      )
+    } finally {
+      finished.resolve()
+      await running
+    }
+    await expect(database.execute(createStatement("SELECT 2"))).rejects.toEqual(
+      new Error("Cannot execute a query: the database is closed"),
+    )
+
+    expect(statements).toEqual([])
+  })
+
+  it("rejects with the error of the callback", async () => {
+    const { driver } = createRecordingDriver()
+    const connection = await driver.acquire()
+    const failure = new Error("failure")
+
+    await expect(runInExternalTransaction(connection, () => Promise.reject(failure))).rejects.toBe(
+      failure,
+    )
+  })
+})
+
 describePostgres("search path in PostgreSQL", ({ database, testTransaction }) => {
   const getSearchPath = async () =>
     await database.query`SELECT current_setting('search_path')`.get(t.text)
@@ -695,6 +751,33 @@ describePooledPostgres("external transactions in PostgreSQL", ({ database }) => 
     })
 
     expect(seen).toEqual({ initial: seen.initial, path: seen.initial, rows: ["1"] })
+  })
+
+  it("runs the queries of the database of runInExternalTransaction in the transaction of the connection, with nested transactions and advisory locks", async () => {
+    const seen = await withOwnedTransaction(async connection => {
+      await connection.execute(createStatement("CREATE TEMP TABLE kern_external (id integer)"))
+      await runInExternalTransaction(connection, async external => {
+        await external.transaction(async () => {
+          await external.lock("kern_external")
+          await external.query`INSERT INTO kern_external VALUES (1)`
+        })
+        await expect(
+          external.transaction(async () => {
+            await external.query`INSERT INTO kern_external VALUES (2)`
+            await external.query`SELECT 1 / 0`
+          }),
+        ).rejects.toMatchObject({ code: "22012" })
+      })
+      return {
+        rows: await readOwned(connection, "SELECT id FROM kern_external"),
+        locks: await readOwned(
+          connection,
+          "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()",
+        ),
+      }
+    })
+
+    expect(seen).toEqual({ rows: ["1"], locks: ["1"] })
   })
 })
 

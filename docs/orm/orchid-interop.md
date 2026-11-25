@@ -152,6 +152,14 @@ In code without kern-orm, such as a package that takes a database, pass a `Datab
 await runInOrchidTransaction(qb, database, () => migrate(database, migrations))
 ```
 
+When your application has no database of kern-db, such as when it only applies the [migrations of a package](../migrations/package-migrations), pass only the callback, and use the database that it receives:
+
+```ts
+await runInOrchidTransaction(qb, database => migrate(database, migrations))
+```
+
+That database runs its queries only in the transaction of Orchid, and they reject after the callback.
+
 When you call `runInOrchidTransaction` in the callback of a transaction of Orchid, let its rejection reject that callback.
 
 Limitations:

@@ -78,6 +78,11 @@
   - for a connection without `execute` and `executeScript`, such as a client of PostgreSQL, and for a driver, which `isDriver` recognizes and whose statements run on its pool, with `TypeError`.
 - The coordinator does not wait for an external transaction when the database closes.
   A driver whose client also holds the transaction, such as `postgresJsDriver(sql)` beside `sql.begin` of the same `sql`, waits for the connection of the transaction as for a reserved one, so the owner must not await `close` of the database inside that transaction.
+- `runInExternalTransaction` of `kern-db` serves an application without a database of its own: it creates a database for the call over a driver of `database.ts` without a pool, runs the callback in `externalTransaction` of that database, passes the database to the callback, and closes it when the call settles ([decision](../decisions/transactions/external-transactions.md#a-database-of-the-transaction-alone)).
+  - The driver rejects every statement and connection, so a statement outside the external level, such as of code that left the async context of the callback, rejects rather than runs on a pool; after the call, statements reject as those of a closed database.
+  - Schemas bound to another database do not join the transaction.
+  - Code that takes the database out of the callback can start another external transaction of it while the call runs, which closing the database does not end.
+  - Each call creates an `AsyncLocalStorage` of its coordinator, and Node.js keeps a key of each in the async context of the caller, which grows with every call in one async chain ([backlog](../backlog/async-context-of-external-transaction-databases.md)).
 
 ## Sessions
 
