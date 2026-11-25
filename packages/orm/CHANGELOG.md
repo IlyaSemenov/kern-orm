@@ -1,5 +1,12 @@
 # kern-orm
 
+## 0.32.0
+
+### Minor Changes
+
+- 24b2b39: Use `db.$schema.$tables` and `db.$schema.$sequences` to look up descriptors by key on an `AnyDb`, or take `DbOf<typeof schema>` to access its bound entries.
+- 632cb1b: Add `defineSequence()` to declare PostgreSQL sequences in a schema: interpolate a sequence of a `Db`, such as `db.formNumberSeq`, into SQL as its name in the PostgreSQL schema of the `Db`, and use its `nextval()`, `currval()`, and `setval()` in SQL and queries.
+
 ## 0.31.0
 
 ### Minor Changes
