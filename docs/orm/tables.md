@@ -11,15 +11,7 @@ export const form = defineTable("form", {
   name: t.text,
   published: t.boolean,
 })
-
-export const field = defineTable("form_field", {
-  id: t.uuid.primaryKey(),
-  formId: t.uuid.columnName("form_id"),
-  label: t.text,
-})
 ```
-
-See [Types](./types) for the built-in types, column attributes, and custom types, and [Column names](#column-names) for `columnName`.
 
 The definitions describe tables that already exist: create and change them with SQL or [migrations](../migrations/getting-started), and check in a test that they [match the database](./testing#tables-that-match-the-database).
 
@@ -36,6 +28,51 @@ See [Queries](./queries/) for selecting, filtering, and changing records.
 
 To keep a table to one row, such as the settings of an application, see [Singleton Tables](./singleton-tables).
 To read a PostgreSQL view, see [Views](./views).
+
+## Columns
+
+Give each column a [type](./types), followed by its attributes:
+
+```ts
+export const field = defineTable("form_field", {
+  id: t.uuid.primaryKey().hasDefault(),
+  formId: t.uuid.columnName("form_id"),
+  label: t.text,
+  hint: t.text.nullable(),
+})
+```
+
+Column attributes set what belongs to the table:
+
+- `.columnName("form_id")` sets the name of the column in the database; see [Column names](#column-names).
+- `.primaryKey()` and `.unique()` mark a [key](#keys) of the table.
+- `.hasDefault()` marks a column that the database fills in when an [insert](./queries/mutations#inserting) omits it, such as by `DEFAULT` or an identity, so that inserts may omit it.
+- `.default(value)` lets inserts omit the column and inserts `value` instead; see [Defaults in code](#defaults-in-code).
+
+Changes of the type, such as [`nullable`](./types#nullable-values) and [`transform`](./types#deriving-types), come before column attributes: `t.text.nullable().columnName("note")`.
+Types and columns are immutable, so you can reuse them across tables, such as with [presets](./types#presets).
+
+Column keys cannot start with `$`, which kern-orm reserves for its own members.
+
+### Defaults in code
+
+To fill in a column in your application rather than in the database, pass its default to `.default()`: a value, a [`sql` fragment](./queries/filtering#sql-fragments), or a function that returns one.
+
+```ts
+import { randomUUID } from "node:crypto"
+
+import { defineTable, sql } from "kern-orm"
+import * as t from "kern-orm/types"
+
+export const task = defineTable("task", {
+  id: t.uuid.primaryKey().default(() => randomUUID()),
+  state: t.text.default("draft"),
+  dueAt: t.timestamptz.default(() => (isUrgent() ? sql`now()` : sql`now() + interval '1 day'`)),
+})
+```
+
+kern-orm calls the function for each record that omits the column, each time the insert runs, so running the same insert again inserts new values.
+The database needs no default of its own for such a column.
 
 ## Keys
 
@@ -64,6 +101,8 @@ export const membership = defineTable(
   },
 )
 ```
+
+A column of a nullable type cannot be part of the primary key.
 
 Declare the keys that the database guarantees, such as by a constraint, a unique index, or the query of a view: [relations](./schemas#relations) and [`find` and `findBy`](./queries/selecting#record-by-key) rely on them, and a query of a relation `one` fails when it finds several records.
 

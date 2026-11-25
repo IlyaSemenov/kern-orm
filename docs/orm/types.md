@@ -8,56 +8,7 @@ import * as t from "kern-orm/types"
 import { text, uuid } from "kern-orm/types"
 ```
 
-## Columns
-
-In a table definition, a type becomes a column:
-
-```ts
-import { defineTable } from "kern-orm"
-import * as t from "kern-orm/types"
-
-export const field = defineTable("form_field", {
-  id: t.uuid.primaryKey().hasDefault(),
-  formId: t.uuid.columnName("form_id"),
-  label: t.text,
-  hint: t.text.nullable(),
-})
-```
-
-Column attributes set what belongs to the table:
-
-- `.columnName("form_id")` sets the physical column name when it differs from the key; to derive the names of all columns, such as in snake case, see [Naming conventions](./tables#naming-conventions).
-- `.primaryKey()` marks the column as the primary key; a nullable type cannot be one.
-- `.unique()` marks the column as a unique key.
-- `.hasDefault()` marks a column that the database fills in when an [insert](./queries/mutations#inserting) omits it, such as by `DEFAULT` or an identity, so that inserts may omit it.
-- `.default(value)` lets inserts omit the column and inserts `value` instead; see [Defaults in code](#defaults-in-code).
-
-For keys of several columns, see [Keys](./tables#keys).
-
-Changes of the type, such as `nullable` and `transform`, come before column attributes: `t.text.nullable().columnName("note")`.
-Types and columns are immutable, so you can reuse them across tables.
-
-Column keys cannot start with `$`, which kern-orm reserves for its own members.
-
-### Defaults in code
-
-To fill in a column in your application rather than in the database, pass its default to `.default()`: a value, a [`sql` fragment](./queries/filtering#sql-fragments), or a function that returns one.
-
-```ts
-import { randomUUID } from "node:crypto"
-
-import { defineTable, sql } from "kern-orm"
-import * as t from "kern-orm/types"
-
-export const task = defineTable("task", {
-  id: t.uuid.primaryKey().default(() => randomUUID()),
-  state: t.text.default("draft"),
-  dueAt: t.timestamptz.default(() => (isUrgent() ? sql`now()` : sql`now() + interval '1 day'`)),
-})
-```
-
-kern-orm calls the function for each record that omits the column, each time the insert runs, so running the same insert again inserts new values.
-The database needs no default of its own for such a column.
+In a table definition, a type becomes a column; see [Columns](./tables#columns) for the attributes of columns, such as keys and defaults.
 
 ## Built-in types
 
