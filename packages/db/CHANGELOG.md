@@ -1,5 +1,12 @@
 # kern-db
 
+## 0.16.0
+
+### Minor Changes
+
+- 4f4be58: Add `literal()` to write a value into a statement as a SQL literal and `unsafeSql()` to write SQL text into it as it is, for the places that take no parameter.
+- 4c3a3ed: Export the type `SqlQueryTemplate` of `database.query` and of the template that `queryOn()` returns.
+
 ## 0.15.0
 
 ### Minor Changes
