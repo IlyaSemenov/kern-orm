@@ -1,7 +1,15 @@
-// Exports custom types, queries of SQL text, and the columns of a table from a module that imports only the root of `kern-orm` and `kern-orm/types`, as a module of presets does.
+// Exports custom types, queries of SQL text, the columns of a table, and a schema of a sequence from a module that imports only the root of `kern-orm` and `kern-orm/types`, as a module of presets does.
 // The package test emits its declarations in a program of its own of a consumer that cannot resolve kern-db, where they name the types of kern-db through the root of `kern-orm`.
 import type { AnyDb, Database, RecordOf } from "kern-orm"
-import { columnsOf, defineTable, defineType, orderingOperators, textOperators } from "kern-orm"
+import {
+  columnsOf,
+  defineSchema,
+  defineSequence,
+  defineTable,
+  defineType,
+  orderingOperators,
+  textOperators,
+} from "kern-orm"
 import * as t from "kern-orm/types"
 
 /** Custom type with the operators of text; see the file header. */
@@ -53,3 +61,9 @@ export function findLockedJobs(database: Database) {
     job: jobColumns,
   })
 }
+
+/** Schema of a table and a sequence, whose declaration names the sequences of kern-orm; see the file header. */
+export const jobSchema = defineSchema({ job, claimSeq: defineSequence("claim_seq") })
+
+/** Next value of the sequence of the schema, whose declaration names the expression of a sequence; see the file header. */
+export const nextClaim = jobSchema.claimSeq.nextval()

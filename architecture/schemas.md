@@ -40,10 +40,19 @@
 - **View** (`table/table.ts`): `defineView` describes an ordinary or materialized PostgreSQL view with named, typed columns and no keys, defaults, or singleton guarantee.
   A view participates in schemas and reads like a table, including correlated queries.
   Mutation entry points require a table in types and reject a view at runtime ([decision](../decisions/schemas/read-only-views.md)).
-- **Schema** (`schema/`): immutable collection of tables and their relations with query entry points.
-  `defineSchema` composes it of tables by their keys and of other schemas, whose table objects and relation definitions it includes as they are, so the same table belongs to several schemas and a query of an included schema runs on a `Db` of the composed one.
-  A key has one table and a table has one key in a schema: composition rejects a key of two different tables and a table under two keys, and includes a table that several parts include under the same key once.
+- **Schema** (`schema/`): immutable collection of tables, their relations, and sequences with query entry points.
+  `defineSchema` composes it of tables and sequences by their keys and of other schemas, whose table objects, relation definitions, and sequences it includes as they are, so the same table belongs to several schemas and a query of an included schema runs on a `Db` of the composed one.
+  A key has one table or one sequence, and a table has one key in a schema, whereas a sequence may have several, since it has no relations: composition rejects a key of two different objects and a table under two keys, and includes an object that several parts include under the same key once.
   Relations are declared per schema, not per table, so schemas sharing a table have different relations; the relations of a table in a schema are those declared under its key.
+  - The type of an object part without sequences gives its tables as the part itself, rather than splitting its keys by the kind of their objects ([decision](../decisions/schemas/sequences-in-object-parts.md)).
+- **Sequence** (`schema/sequence.ts`): immutable descriptor of the name of a PostgreSQL sequence, with no PostgreSQL schema, which `defineSequence` creates and a schema includes beside its tables, in `$sequences`.
+  A schema and a `Db` give a reference of each sequence under its key, created once, unbound for a schema and bound to the `Db` for a `Db`, as the queries of their tables are.
+  - Interpolated into SQL text, a reference is the name of the sequence, which the compiler qualifies with the PostgreSQL schema of the statement and checks against the sequences of a `Db`, as the name of an interpolated table.
+  - `nextval`, `currval`, and `setval` of a reference are expressions of the type `bigint`, which decodes a `bigint`, as of a column of that type.
+    They take the sequence as a constant of its qualified name cast to `regclass`, such as `nextval('"app"."form_number_seq"'::regclass)`, rather than as a parameter, as PostgreSQL writes the default of a `serial` column, so that the name adds no parameter and the template of a script takes `nextval` and `currval`.
+  - A reference bound to a `Db` compiles only in a statement of that `Db`, in its name and in its functions alike, and an unbound one in a statement of any `Db` whose schema includes the sequence.
+  - `setval` takes `isCalled` as a Boolean alone, which becomes `TRUE` or `FALSE` in the text.
+  - The value of `setval` is nullable when its operand is, since PostgreSQL gives `NULL` for a `NULL` value and leaves the sequence unchanged.
 - **Relation** (`schema/relation.ts`): relation of a table of a schema to the records of a target table, `many` or `one`, by columns of the two tables compared with SQL `=` in order.
   `many` and `one` declare it, and `$relations` of a schema defines it under the key of its table and its name, returning a new schema.
   A definition is an object that composition carries by identity: a relation that several parts include is one definition, and another definition of a relation of a table is rejected, whether it comes from another part or from `$relations` of a schema that has the relation, even with the same columns.
@@ -56,7 +65,7 @@
   - A relation `one` is required only when `one` sets `required: true`, since only a foreign key or another guarantee of the database, which kern-orm does not know, ensures the record: without its record, a query of a required relation without a filter rejects, and of a relation that is not required gives `null`; a relation `many` is not required.
   - `$relations` rejects a required relation with a column `from` that is nullable by `isNullable` of its type, since a record with a `NULL` key has no related record; types do not check it, since `one` does not always know its source table, such as outside `$relations`.
   - In types, `required` of type `boolean` gives query results with `null`, as when the relation is not required, and `required` typed as an optional property, which may be missing at runtime, gives the union of its value and `false`.
-- **Db** (`execution/db.ts`): a schema bound to a database and a PostgreSQL schema; it compiles and executes queries over the tables of its schema.
+- **Db** (`execution/db.ts`): a schema bound to a database and a PostgreSQL schema; it compiles and executes queries over the tables and sequences of its schema.
   `bindSchema` creates it from a `Database` of the database layer, which knows no schemas, so that code without schemas, such as the migrator, takes the same database.
   The PostgreSQL schema is resolved when a `Db` compiles a query, and a compiled statement never changes afterwards.
   `$schemaName` resolves it when read, calling the function of `schemaName` as compiling a query does, and is `undefined` for a `Db` bound without one.
@@ -71,7 +80,7 @@
     `DbOf` types the `Db` of a schema, and a `Db` of every schema that includes it fits that type, since the types of entries and relations accept more tables and relations, so code shared by several schemas takes such a `Db` as a parameter.
     Comparing two `Db` types compares the states of the queries of their entries, since a query is covariant in its state; the methods of a `Db` and a schema are generic or typed by `this`, so that comparing them compares no queries.
 
-Members of schemas and `Db` other than tables start with `$`, and table keys must not.
+Members of schemas and `Db` other than tables and sequences start with `$`, and table and sequence keys must not.
 Column keys must not start with `$` either, which keeps such names free for members of the column references passed to query callbacks.
 
 ## Table check

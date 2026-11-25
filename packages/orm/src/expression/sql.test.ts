@@ -52,9 +52,9 @@ it("interpolates a query of a table without clauses, also of a singleton table, 
     kind: "raw",
     fragments: ["SELECT FROM ", " JOIN ", " JOIN ", ""],
     values: [
-      { kind: "tableName", table: form, db: undefined },
-      { kind: "tableName", table: form, db },
-      { kind: "tableName", table: license, db: undefined },
+      { kind: "name", object: form, db: undefined, regclass: false },
+      { kind: "name", object: form, db, regclass: false },
+      { kind: "name", object: license, db: undefined, regclass: false },
     ],
   })
 })

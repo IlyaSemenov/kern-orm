@@ -1,5 +1,5 @@
 import type { SqlStatement } from "kern-db"
-import { createStatement } from "kern-db"
+import { createStatement, literal } from "kern-db"
 import { addComment, encodeParameter, quoteIdentifier, renderFragment } from "kern-db/builder"
 
 import { combineFilters } from "../../ast/boolean"
@@ -9,20 +9,20 @@ import type {
   ExpressionNode,
   InsertNode,
   MutationStatementNode,
+  NameNode,
   OrderNode,
   ProjectionNode,
   QueryFilters,
   RawSqlNode,
   SelectNode,
   StatementNode,
-  TableNameNode,
   TableSourceNode,
   UpdateNode,
 } from "../../ast/nodes"
 import { findValueProjection } from "../../ast/projections"
 import type { AnyDb } from "../../execution/db"
 import type { StatementPlan } from "../../result/result"
-import type { AnyRowSource } from "../../table/table"
+import type { SchemaObject } from "../../schema/schema"
 import { requireColumn } from "../../table/table"
 import { capitalize } from "../../utils/capitalize"
 
@@ -33,9 +33,9 @@ import { getBinaryPositions, needsParentheses } from "./parentheses"
 import type { Scope } from "./scope"
 import { declareSource, resolveSource } from "./scope"
 
-/** Physical placement of the tables of a query, fixed at compilation. */
+/** Physical placement of the tables and sequences of a query, fixed at compilation. */
 export interface CompileOptions {
-  /** PostgreSQL schema qualifying every table; tables stay unqualified when it is not set. */
+  /** PostgreSQL schema qualifying every table and sequence; they stay unqualified when it is not set. */
   schemaName?: string
 }
 
@@ -50,18 +50,18 @@ const noFields: readonly ProjectionNode[] = /* @__PURE__ */ Object.freeze([])
 /**
  * Compiles a statement for PostgreSQL with the result plan that decodes its result: a select statement or a mutation.
  *
- * With `tables`, such as the tables of the schema of a `Db`, an occurrence or an interpolated name of any other table at any depth of the statement is rejected.
- * `db` is the `Db` that runs the statement: a table interpolated from a query bound to another `Db`, or to any `Db` without it, is rejected.
+ * With `objects`, such as the tables and sequences of the schema of a `Db`, an occurrence or a name of any other table or sequence at any depth of the statement is rejected.
+ * `db` is the `Db` that runs the statement: a table interpolated from a query bound to a `Db`, or a sequence bound to one, compiles only when that `Db` is `db`.
  * `comment`, the label of `comment` of the query that runs the statement, starts its text as a block comment.
  */
 export function compileStatement(
   node: StatementNode,
   options: CompileOptions = {},
-  tables?: ReadonlySet<AnyRowSource>,
+  objects?: ReadonlySet<SchemaObject>,
   db?: AnyDb,
   comment?: string,
 ): CompiledQuery {
-  const context = new CompileContext(options.schemaName, tables, db)
+  const context = new CompileContext(options.schemaName, objects, db)
   switch (node.kind) {
     case "select":
       return {
@@ -98,17 +98,17 @@ export function compileStatement(
 }
 
 /**
- * Compiles the SQL text of a statement, such as of `$query`, with the checks of `compileStatement` of the tables that it names.
+ * Compiles the SQL text of a statement, such as of `$query`, with the checks of `compileStatement` of the tables and sequences that it names.
  *
  * It has no result plan: the query of SQL text that runs it holds its own.
  */
 export function compileTextStatement(
   node: RawSqlNode,
   options: CompileOptions = {},
-  tables?: ReadonlySet<AnyRowSource>,
+  objects?: ReadonlySet<SchemaObject>,
   db?: AnyDb,
 ): SqlStatement {
-  const context = new CompileContext(options.schemaName, tables, db)
+  const context = new CompileContext(options.schemaName, objects, db)
   const text = compileExpression(context, undefined, node)
   return createStatement(text, context.parameters)
 }
@@ -378,35 +378,39 @@ function compileSource(context: CompileContext, outer: Scope | undefined, declar
   const { source, alias } = declared
   if (source.kind === "table") {
     // Every occurrence of a table, including in nested queries and joins, is compiled here.
-    return `${compileTableName(context, source.table)} AS ${quoteIdentifier(alias)}`
+    return `${compileObjectName(context, source.table)} AS ${quoteIdentifier(alias)}`
   }
   // A plain derived source does not see the sources before it in the same FROM, only those of enclosing queries.
   const query = compileQuery(context, source.lateral ? declared.outer : outer, source.query)
   return `${source.lateral ? "LATERAL " : ""}(${query}) AS ${quoteIdentifier(alias)}`
 }
 
-/** Compiles the name of `table`, qualified by the PostgreSQL schema of the statement, rejecting a table outside the tables of the statement. */
-function compileTableName(context: CompileContext, table: AnyRowSource): string {
-  if (context.tables !== undefined && !context.tables.has(table)) {
-    throw new Error(`${capitalize(table.kind)} "${table.name}" is not part of the schema`)
+/** Compiles the name of `object`, a table, a view, or a sequence, qualified by the PostgreSQL schema of the statement, rejecting an object outside the objects of the statement. */
+function compileObjectName(context: CompileContext, object: SchemaObject): string {
+  if (context.objects !== undefined && !context.objects.has(object)) {
+    throw new Error(`${capitalize(object.kind)} "${object.name}" is not part of the schema`)
   }
   return context.schemaName === undefined
-    ? quoteIdentifier(table.name)
-    : `${quoteIdentifier(context.schemaName)}.${quoteIdentifier(table.name)}`
+    ? quoteIdentifier(object.name)
+    : `${quoteIdentifier(context.schemaName)}.${quoteIdentifier(object.name)}`
 }
 
-// The statement runs with the options of its Db, such as its PostgreSQL schema, so a table interpolated from a query bound to a Db is named only in a statement of that Db.
-/** Compiles the name of a table interpolated into a SQL fragment, rejecting a table of a query bound to a `Db` other than the one that runs the statement. */
-function compileInterpolatedTable(context: CompileContext, node: TableNameNode): string {
-  const { db, table } = node
+// The statement runs with the options of its Db, such as its PostgreSQL schema, so a table or a sequence bound to a Db is named only in a statement of that Db.
+/** Compiles the name of a table or a sequence in an expression, rejecting one bound to a `Db` other than the one that runs the statement. */
+function compileName(context: CompileContext, node: NameNode): string {
+  const { db, object } = node
   if (db !== undefined && db !== context.db) {
+    // A table is named only by its query interpolated into SQL text, whereas a sequence is also named by its functions.
+    const subject = `${capitalize(object.kind)} "${object.name}"${object.kind === "sequence" ? "" : " interpolated into SQL"}`
     throw new Error(
       context.db === undefined
-        ? `${capitalize(table.kind)} "${table.name}" interpolated into SQL is bound to a Db, so only that Db can compile the query`
-        : `${capitalize(table.kind)} "${table.name}" interpolated into SQL is bound to another Db`,
+        ? `${subject} is bound to a Db, so only that Db can compile the query`
+        : `${subject} is bound to another Db`,
     )
   }
-  return compileTableName(context, table)
+  const name = compileObjectName(context, object)
+  // A constant of the name, rather than a parameter, adds no parameter, so that a script takes the functions of a sequence.
+  return node.regclass ? `${renderFragment(literal(name), context)}::regclass` : name
 }
 
 function compileColumn(scope: Scope | undefined, node: ColumnRefNode): string {
@@ -494,8 +498,8 @@ function compileExpression(
     }
     case "fragment":
       return renderFragment(node.fragment, context)
-    case "tableName":
-      return compileInterpolatedTable(context, node)
+    case "name":
+      return compileName(context, node)
     case "subquery":
       return compileSubquery(context, scope, node.query, "A scalar subquery")
     case "exists":

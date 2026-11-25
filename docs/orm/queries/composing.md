@@ -133,7 +133,7 @@ const forms = await db.$execute(publishedForms)
 ```
 
 Queries that [change records](./mutations) work the same way, such as `db.$execute(schema.form.find(formId).delete())`.
-Any `Db` whose schema contains the tables of such a query and the relations it selects can execute it, such as the [tenant and SaaS](../multiple-schemas) databases.
+Any `Db` whose schema contains the tables and [sequences](../sequences) of such a query and the relations it selects can execute it, such as the [tenant and SaaS](../multiple-schemas) databases.
 Start [other nested queries](./relations#other-queries) from the schema too, such as `schema.field`, and [several queries at once](./selecting#several-queries-at-once) with `schema.$select`.
 
 Such a query is not bound to a database, so it can also be returned from async functions without executing.

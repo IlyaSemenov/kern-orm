@@ -38,6 +38,7 @@ export default defineConfig({
               link: "/orm/tables",
               items: [{ text: "Singleton Tables", link: "/orm/singleton-tables" }],
             },
+            { text: "Sequences", link: "/orm/sequences" },
             {
               text: "Schemas and Relations",
               link: "/orm/schemas",

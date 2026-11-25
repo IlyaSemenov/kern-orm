@@ -12,6 +12,7 @@ import type {
   ResultField,
   ScalarField,
 } from "../result/result"
+import type { SchemaObject } from "../schema/schema"
 import type { AnyRowSource } from "../table/table"
 import type { AnyType } from "../type/type"
 
@@ -168,12 +169,14 @@ export interface FragmentNode {
   readonly fragment: SqlFragment
 }
 
-/** Name of a table interpolated into a SQL fragment, qualified by the PostgreSQL schema of the statement. */
-export interface TableNameNode {
-  readonly kind: "tableName"
-  readonly table: AnyRowSource
-  /** `Db` that the interpolated query of the table is bound to, which must be the `Db` that runs the statement. */
+/** Name of a table, a view, or a sequence of a schema in an expression, qualified by the PostgreSQL schema of the statement. */
+export interface NameNode {
+  readonly kind: "name"
+  readonly object: SchemaObject
+  /** `Db` that the table or the sequence is bound to, such as by its query, which must be the `Db` that runs the statement. */
   readonly db: AnyDb | undefined
+  /** Whether the name is a `regclass` constant, such as `'"app"."form_number_seq"'::regclass`, which the functions of a sequence take, rather than an identifier. */
+  readonly regclass: boolean
 }
 
 /** Scalar subquery: the value of the only projection of its query, which must return at most one row. */
@@ -224,7 +227,7 @@ export type ExpressionNode =
   | IsNullNode
   | RawSqlNode
   | FragmentNode
-  | TableNameNode
+  | NameNode
   | SubqueryNode
   | ExistsNode
   | TextSubqueryNode

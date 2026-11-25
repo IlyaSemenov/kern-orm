@@ -67,6 +67,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [External connection of node-postgres](external-connection-of-node-postgres.md): `externalTransaction` over a client of node-postgres in a transaction.
 - [External transactions of Drizzle](drizzle-external-transactions.md): code of kern-db in a transaction that Drizzle owns.
 - [Literals and SQL text in other projects](literals-and-sql-text-in-other-projects.md): comparing `literal` and `unsafeSql` with the functions of other libraries.
+- [Sequences in the table check](sequences-in-the-table-check.md): `findTableMismatches` of the sequences of a schema.
 
 ## Without a use case
 

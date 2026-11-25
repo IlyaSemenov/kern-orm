@@ -9,11 +9,13 @@ import type { SelectQuery } from "../query/select"
 import { from } from "../query/select"
 import type { InitialQueryState } from "../query/state"
 import { many, one } from "../schema/relation"
-import { defineSchema } from "../schema/schema"
+import type { Schema } from "../schema/schema"
+import { defineSchema, schemaRelations } from "../schema/schema"
+import { defineSequence } from "../schema/sequence"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
-import type { DbOf } from "./db"
+import type { Db, DbOf } from "./db"
 import { bindSchema } from "./db"
 
 const post = defineTable("post", {
@@ -28,6 +30,21 @@ const database = createDatabase({ driver: createRecordingDriver().driver })
 const db = bindSchema(schema, database)
 
 describe("bindSchema", () => {
+  test("takes the tables, the sequences, and the relations of a schema in this order", () => {
+    const postSeq = defineSequence("post_seq")
+    const related = defineSchema({ post, other, postSeq }).$relations({
+      post: {
+        others: many(other, { from: "id", to: "id" }),
+      },
+    })
+    type T = (typeof related)["$tables"]
+    type S = (typeof related)["$sequences"]
+    type R = (typeof related)[typeof schemaRelations]
+    const schemaOfParts: Schema<T, S, R> = related
+
+    expectTypeOf(bindSchema<T, S, R>(schemaOfParts, database)).toEqualTypeOf<Db<T, S, R>>()
+  })
+
   test("takes a function that returns the database, giving the same type of Db as the database itself", () => {
     expectTypeOf(bindSchema(schema, () => database)).toEqualTypeOf(db)
   })

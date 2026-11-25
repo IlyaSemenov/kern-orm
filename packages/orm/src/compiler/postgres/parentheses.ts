@@ -70,7 +70,7 @@ export function needsParentheses(node: ExpressionNode, position: OperandPosition
     case "boolean":
     case "values":
     case "nestedQuery":
-    case "tableName":
+    case "name":
     case "subquery":
     case "exists":
     case "textSubquery":

@@ -230,6 +230,7 @@
 - Raw SQL fragments keep interpolations as nodes; parameters are numbered only when the complete statement is compiled, in the order of the text across nested queries.
 - `sql` interpolates a query of a table without clauses, such as `db.form`, as the name of its table, which the compiler qualifies with the PostgreSQL schema of the statement and checks against the tables of a `Db`, as an occurrence of the table.
   - The name of a table of a query bound to a `Db` compiles only in a statement of that `Db`, as a nested query does.
+  - A [sequence](schemas.md) of a schema or a `Db`, such as `db.formNumberSeq`, interpolates as its name in the same way.
 - `sql` interpolates another query of a table, of any rows and value, as a query in an expression, which keeps its `Db` ([queries](queries.md#queries-in-expressions)): a query of one value is its value, as an operand is, and another query its statement in parentheses, `(SELECT ...)`, which the text reads, such as with `EXISTS` or `IN` or in `FROM`.
   - The text must name the columns of a subquery in `FROM` after its alias, in the order of the fields of the query other than literals, such as `AS form (field_count)`, rather than by the SQL names of its projections, which differ from the keys of long fields.
   - PostgreSQL 18 parses a subquery in further parentheses as a subquery, such as in `EXISTS ((SELECT 1))`, `1 IN ((SELECT 1 UNION SELECT 2))`, `1 = ANY ((SELECT 1 UNION SELECT 2))`, and `FROM ((SELECT 1))`, so the text may put the query in parentheses of its own.

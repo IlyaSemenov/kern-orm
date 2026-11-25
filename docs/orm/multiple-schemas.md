@@ -88,14 +88,15 @@ export const tenantSchema = defineSchema(formsSchema, { user, submission, answer
 export const saasSchema = defineSchema(formsSchema, { tenant })
 ```
 
-`defineSchema` accepts any number of schemas and objects of tables, including schemas that share tables, and includes the relations of the schemas.
-Include each table under one key, and use each key for one table.
+`defineSchema` accepts any number of schemas and objects of tables and [sequences](./sequences), including schemas that share tables.
+It includes the tables, the sequences, and the relations of the schemas.
+Include each table under one key, and use each key for one table or sequence.
 
 The tenant schema adds the answers to the relations of the fields, while the SaaS schema has only those of `formsSchema`.
 Declare each relation once, in the schema that the others include, such as `formsSchema` for the relations between forms and fields.
 
 Build queries from `formsSchema` to reuse them for both tenant forms and templates, including their [related records](./queries/relations).
-Such a query is not bound to a database, and every `Db` whose schema includes its tables and relations executes it with `$execute`:
+Such a query is not bound to a database, and every `Db` whose schema includes its tables, sequences, and relations executes it with `$execute`:
 
 ```ts
 export const publishedForms = formsSchema.form

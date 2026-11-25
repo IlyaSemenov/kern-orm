@@ -157,7 +157,7 @@ function refersToSource(node: ExpressionNode, source: SourceNode): boolean {
     case "values":
     case "nestedQuery":
     case "fragment":
-    case "tableName":
+    case "name":
     case "subquery":
     case "exists":
     case "textSubquery":

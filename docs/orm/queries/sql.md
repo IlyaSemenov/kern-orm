@@ -13,7 +13,7 @@ const updatedCount = await db.$query`
 It resolves to the number of rows that PostgreSQL reports for the statement, such as the updated rows.
 To require exactly one such row, such as when updating a record by its key, add `take`: it rejects with `NotFoundError` without the row, unless you add `optional`.
 
-Interpolated values become query parameters, [`sql` fragments](./filtering#sql-fragments) stay SQL, a table of `db`, such as `db.form`, becomes its name in the PostgreSQL schema of `db`, and [another query](#queries-in-statements) becomes a subquery.
+Interpolated values become query parameters, [`sql` fragments](./filtering#sql-fragments) stay SQL, a table or a [sequence](../sequences) of `db`, such as `db.form`, becomes its name in the PostgreSQL schema of `db`, and [another query](#queries-in-statements) becomes a subquery.
 The statement runs in the current [transaction](../transactions), like any query.
 
 ## Rows
@@ -200,7 +200,7 @@ import { readFile } from "node:fs/promises"
 await db.$script(await readFile("migrations/001-forms.sql", "utf8"))
 ```
 
-A script has no parameters, so its template interpolates only tables of `db`, queries without parameters, and fragments without parameters, such as names from `identifier` and values from [`literal`](#values-in-statements-without-parameters):
+A script has no parameters, so its template interpolates what the template of `$query` does, as long as the statement gets no parameter from it, such as tables and sequences of `db`, names from `identifier`, and values from [`literal`](#values-in-statements-without-parameters):
 
 ```ts
 await db.$script`
@@ -238,7 +238,7 @@ const claimed = await claimJobs(connection, "worker-1")
 // claimed: { job: { id: number; task: string } }[]
 ```
 
-The template is that of `$query`: it names a table of `db` in the PostgreSQL schema of `db` and takes the same values, fragments, and queries, and its query has the same methods.
+The template is that of `$query`: it names a table or a sequence of `db` in the PostgreSQL schema of `db` and takes the same values, fragments, and queries, and its query has the same methods.
 The statement runs where the object that you pass runs it, not through `db`: a driver runs it on any connection of its pool, outside the current transaction of `db`, and a connection on itself.
 To keep the template in a field or take it as a parameter, type it as `DbSqlQueryTemplate` of `kern-orm`.
 

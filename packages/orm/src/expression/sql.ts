@@ -9,6 +9,7 @@ import { isTableQuery } from "../query/node"
 import type { ScalarQuery, ScalarQueryValue } from "../query/operand"
 import { RecordQuery } from "../query/record"
 import { SelectQuery } from "../query/select"
+import { SequenceReference } from "../schema/sequence"
 import type { AnyType, Type } from "../type/type"
 import { describeRejectedDbType, isType } from "../type/type"
 
@@ -33,7 +34,8 @@ export type SqlTemplate<T, O extends OperatorDefinitions, I = T> = (
 /**
  * Builds a SQL fragment.
  *
- * Interpolated expressions such as column references stay structured, a query of a table without clauses, such as `db.form`, becomes the name of the table, a SQL fragment of `kern-orm/db` stays SQL, and other values become query parameters.
+ * Interpolated expressions such as column references stay structured, a SQL fragment of `kern-orm/db` stays SQL, and other values become query parameters.
+ * A query of a table without clauses, such as `db.form`, becomes the name of the table, and a sequence of a schema, such as `db.formNumberSeq`, the name of the sequence.
  * Another query of a table becomes a subquery in parentheses, and a query of one value, such as of an aggregate or of `exists`, its value, as in a condition.
  * A parameter takes a string, a number, a bigint, a Boolean, `null` for `NULL`, a `Date`, or a `Uint8Array`: pass any other value, such as JSON or an array, with `param` and its type.
  * The type argument declares the TypeScript type of the fragment and does not convert values at runtime, so the fragment cannot be selected; the fragment has `isNull` and the operators of `equalityOperators` only.
@@ -190,7 +192,7 @@ function createFragment(
 /**
  * Creates the node of the SQL of a template, whose interpolations stay structured nodes.
  *
- * An interpolated expression keeps its node, and a query of a table without clauses becomes the name of the table, qualified by the PostgreSQL schema of the statement.
+ * An interpolated expression keeps its node, and a query of a table without clauses and a sequence of a schema become the name of the table or the sequence, qualified by the PostgreSQL schema of the statement.
  * Another query of a table becomes a query in an expression, which lowering replaces with its SQL.
  * A SQL fragment of the database layer becomes a node that the layer renders.
  * Other values become query parameters.
@@ -219,7 +221,7 @@ function toInterpolatedNode(value: unknown): ExpressionNode {
     }
     // SQL text also takes a query of records or of rows `many`, which `operandNode` rejects, so the node is created here.
     return isTableQuery(node)
-      ? createNode({ kind: "tableName", table: value.table, db: value.db })
+      ? createNode({ kind: "name", object: value.table, db: value.db, regclass: false })
       : createNode({ kind: "nestedQuery", query: node, db: value.db })
   }
   if (
@@ -231,6 +233,9 @@ function toInterpolatedNode(value: unknown): ExpressionNode {
     throw new TypeError(
       "sql takes a query of a table, such as db.form or a query of its records, not a query of $select, a mutation, a query of SQL text, or a query of map or transform",
     )
+  }
+  if (value instanceof SequenceReference) {
+    return createNode({ kind: "name", object: value.sequence, db: value.db, regclass: false })
   }
   if (value instanceof SqlFragment) {
     return createNode({ kind: "fragment", fragment: value })

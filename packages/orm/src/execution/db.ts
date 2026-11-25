@@ -38,23 +38,27 @@ import type {
   UsedRelation,
 } from "../schema/relation"
 import { collectDefinitions } from "../schema/relation"
-import type { AnySchema, Schema, Tables } from "../schema/schema"
+import type { AnySchema, Schema, SchemaObject, SequenceEntries, Tables } from "../schema/schema"
 import { defineEntries, schemaRelations } from "../schema/schema"
+import type { Sequences } from "../schema/sequence"
 import type { AnyRowSource, AnyTable } from "../table/table"
 
-/** Physical placement of the tables of a schema bound to a database. */
+/** Physical placement of the tables and sequences of a schema bound to a database. */
 export interface BindOptions {
-  /** PostgreSQL schema of the tables; a function is called on every query, such as to resolve the current tenant. */
+  /** PostgreSQL schema of the tables and sequences; a function is called on every query, such as to resolve the current tenant. */
   schemaName?: string | (() => string)
 }
 
 /**
  * Schema bound to a database with `bindSchema`.
  *
- * Its table entries start queries bound to it, which execute when awaited.
+ * Its table entries start queries bound to it, which execute when awaited, and its sequences are bound to it.
  */
-export type Db<T extends Tables, R extends SchemaRelations = EmptyRecord> = DbEntries<T, R> &
-  DbMethods<T, R>
+export type Db<
+  T extends Tables,
+  S extends Sequences = EmptyRecord,
+  R extends SchemaRelations = EmptyRecord,
+> = DbEntries<T, R> & SequenceEntries<S> & DbMethods<T, S, R>
 
 /** Bound query entry points; each access starts a query over a new table occurrence, of the one row of a singleton table. */
 type DbEntries<T extends Tables, R extends SchemaRelations> = {
@@ -85,8 +89,8 @@ export interface DbMutationState<
   readonly uses: U
 }
 
-interface DbMethods<T extends Tables, R extends SchemaRelations> {
-  readonly $schema: Schema<T, R>
+interface DbMethods<T extends Tables, S extends Sequences, R extends SchemaRelations> {
+  readonly $schema: Schema<T, S, R>
   /**
    * Database that the `Db` is bound to.
    *
@@ -94,7 +98,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
    */
   readonly $database: Database
   /**
-   * PostgreSQL schema of the tables, or `undefined` for a `Db` bound without `schemaName`.
+   * PostgreSQL schema of the tables and sequences, or `undefined` for a `Db` bound without `schemaName`.
    *
    * Reading it calls the function of `schemaName`, as compiling a query does, such as to resolve the schema of the current tenant.
    */
@@ -123,13 +127,13 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   /**
    * Starts a query of the SQL statement of the template, which resolves to the number of the rows of its command tag when awaited, such as the rows that an `UPDATE` changes; `select`, `get`, and `pluck` return the fields of its rows instead.
    *
-   * Interpolated values become query parameters, `sql` fragments and expressions stay SQL, a table of the `Db`, such as `db.form`, becomes its name, qualified by the PostgreSQL schema of the `Db`, and another query becomes a subquery, as in `sql`.
+   * Interpolated values become query parameters, `sql` fragments and expressions stay SQL, a table or a sequence of the `Db`, such as `db.form`, becomes its name, qualified by the PostgreSQL schema of the `Db`, and another query becomes a subquery, as in `sql`.
    */
   readonly $query: DbSqlQueryTemplate
   /**
    * Returns the template that starts a query of a SQL statement on `executor`, such as a driver, a connection, or an object with `execute` of its own: `` db.$queryOn(connection)`SELECT 1 FROM ${db.form}` ``.
    *
-   * The template interpolates what `$query` does and names the tables of the `Db` in its PostgreSQL schema, but the statement runs where `execute` of the executor runs it, rather than where the `Db` runs its queries: a `Database` runs it in its ambient transaction or session, a driver on any pooled connection, and a connection on itself.
+   * The template interpolates what `$query` does and names the tables and sequences of the `Db` in its PostgreSQL schema, but the statement runs where `execute` of the executor runs it, rather than where the `Db` runs its queries: a `Database` runs it in its ambient transaction or session, a driver on any pooled connection, and a connection on itself.
    */
   $queryOn(executor: StatementExecutor): DbSqlQueryTemplate
   /**
@@ -141,7 +145,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   /**
    * Executes the script of the template as `$script` of its text does.
    *
-   * It interpolates tables of the `Db`, such as `db.form`, and queries and `sql` fragments without parameters; it rejects values, since a script has no parameters.
+   * It interpolates what `$query` does, such as tables and sequences of the `Db`, and rejects whatever gives the statement a parameter, such as a value, since a script has no parameters.
    */
   $script(strings: TemplateStringsArray, ...values: unknown[]): Promise<void>
   /**
@@ -199,7 +203,7 @@ interface DbMethods<T extends Tables, R extends SchemaRelations> {
   $pollLock(key: string, options?: PollLockOptions): Promise<void>
 }
 
-/** Tagged template that starts a query of SQL text of a `Db`, which interpolates its tables: `$query` of a `Db`, and the template that its `$queryOn` returns. */
+/** Tagged template that starts a query of SQL text of a `Db`, which interpolates its tables and sequences: `$query` of a `Db`, and the template that its `$queryOn` returns. */
 export type DbSqlQueryTemplate = (
   strings: TemplateStringsArray,
   ...values: unknown[]
@@ -210,25 +214,29 @@ export type DbSqlQueryTemplate = (
  *
  * A `Db` of a schema that includes `S` is a `Db` of `S` too.
  */
-export type DbOf<S extends AnySchema> = Db<S["$tables"], S[typeof schemaRelations]>
+export type DbOf<S extends AnySchema> = Db<S["$tables"], S["$sequences"], S[typeof schemaRelations]>
 
 /** `Db` of any schema. */
 // oxlint-disable-next-line typescript/no-explicit-any -- any Db regardless of its tables
-export type AnyDb = Db<any, any>
+export type AnyDb = Db<any, EmptyRecord, any>
 
 /**
- * Binds a schema to a database, placing its tables in a PostgreSQL schema.
+ * Binds a schema to a database, placing its tables and sequences in a PostgreSQL schema.
  *
  * Schemas bound to the same database, such as tenant and SaaS schemas, share its connections and transactions.
  * Given a function instead of a database, such as one that reads it from dependency injection, the `Db` calls it for each statement that it runs on the database and at the start of each transaction, session, and lock, in the async context of the caller.
  * The function must return the same database within a transaction or session; in the callback of a transaction or session of the `Db`, a statement for which it returns another database rejects.
  */
-export function bindSchema<T extends Tables, R extends SchemaRelations>(
-  schema: Schema<T, R>,
+export function bindSchema<T extends Tables, S extends Sequences, R extends SchemaRelations>(
+  schema: Schema<T, S, R>,
   database: Database | (() => Database),
   options: BindOptions = {},
-): Db<T, R> {
-  const tables = new Set<AnyRowSource>(Object.values(schema.$tables))
+): Db<T, S, R> {
+  // The tables and sequences that the statements of the Db may name.
+  const objects = new Set<SchemaObject>(Object.values(schema.$tables))
+  for (const sequence of Object.values(schema.$sequences)) {
+    objects.add(sequence)
+  }
   const relations = schema[schemaRelations]
   const definitions = collectDefinitions(relations)
   // Changing the options object after binding does not change the Db.
@@ -249,18 +257,18 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     return compileStatement(
       lowerStatement(query.node, definitions, db),
       { schemaName: resolveSchemaName() },
-      tables,
+      objects,
       db,
       query.node.comment,
     )
   }
 
-  /** Compiles the statement of SQL text of `node` as this `Db` runs it: in the PostgreSQL schema that it resolves at this compilation, naming only its tables. */
+  /** Compiles the statement of SQL text of `node` as this `Db` runs it: in the PostgreSQL schema that it resolves at this compilation, naming only its tables and sequences. */
   function compileText(node: RawSqlNode): SqlStatement {
     return compileTextStatement(
       lowerTextStatement(node, definitions, db),
       { schemaName: resolveSchemaName() },
-      tables,
+      objects,
       db,
     )
   }
@@ -276,7 +284,7 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     return startSqlQuery(() => compileText(node), target)
   }
 
-  const methods: DbMethods<T, R> = {
+  const methods: DbMethods<T, S, R> = {
     $schema: schema,
     get $database() {
       return resolveDatabase()
@@ -345,8 +353,12 @@ export function bindSchema<T extends Tables, R extends SchemaRelations>(
     $pollLock: async (key, options) => resolveDatabase().pollLock(key, options),
   }
   const contexts = createQueryContexts(Object.keys(schema.$tables), relations)
-  const db: Db<T, R> = defineEntries(methods, schema.$tables, key =>
-    bindQuery(startQuery(schema.$tables[key]!, contexts[key]!), db),
+  const db: Db<T, S, R> = defineEntries(
+    methods,
+    schema.$tables,
+    key => bindQuery(startQuery(schema.$tables[key]!, contexts[key]!), db),
+    schema.$sequences,
+    true,
   )
   return db
 }

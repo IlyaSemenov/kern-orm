@@ -76,7 +76,7 @@ bench("schema with relations", () => {
       children: many(node, { from: "id", to: "parentId" }),
     },
   })
-}).types([1194, "instantiations"])
+}).types([1223, "instantiations"])
 
 bench("first expression of a table", () => {
   defineExpression(formsSchema.form, (form, name: string) => form.name.eq(name))

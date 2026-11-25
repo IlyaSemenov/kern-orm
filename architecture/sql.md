@@ -22,7 +22,7 @@
   A query of [`distinct`](queries.md#distinct-rows), [`distinctOn`](queries.md#first-row-of-each-group), or [`groupBy`](queries.md#groups) also sorts by positions as a subquery, of `IN`, of an expression, or in SQL text: PostgreSQL finds a sort expression of `SELECT DISTINCT` in the select list, one of `GROUP BY` among the keys, and a key of `DISTINCT ON` among the sort keys, only when it is equal, and a repeated expression has aliases of its own and, apart from the parameters of casts, parameters of its own.
   A mutation keeps its statement and packs the nested queries of the fields of its `RETURNING` as a select list does.
   The statement that a query executes reads the fields of its result by the [read expressions](#read-expressions) of their types.
-  For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db`.
+  For a `Db`, lowering rejects a query of a relation outside its definitions and a nested query or a query of an expression bound to another `Db` at any depth, and the compiler rejects a table interpolated from a query bound to another `Db` and a sequence bound to another `Db`.
   An expression holds a query, such as of `exists` in a condition, in a semantic node of the query and its `Db` in the shared union of expression nodes, as it holds an unresolved object of column values.
   Lowering replaces it in every expression of a statement: of the fields, the filters, the order, the arguments and fallbacks of aggregates, the parts of mutations, and SQL text.
   A query of `exists` becomes `EXISTS` of its rows, another query of one value a scalar subquery of its statement, the query of the values of `IN` its statement, and a query of records or of rows `many` in SQL text its statement in parentheses.
@@ -65,6 +65,7 @@
   - `LIMIT` and `OFFSET` see only the sources of enclosing queries.
 - A query without a source compiles without `FROM` and has no joins; its clauses see only the sources of enclosing queries.
 - A table interpolated into a SQL fragment compiles as its name, qualified as an occurrence of the table is; it is not a source, so it has no alias and no column reference sees it.
+  A sequence compiles as its name, qualified in the same way, by the same node of a name of an object of a schema.
 - A mutation statement declares the occurrence of its table with an alias, such as `UPDATE "form" AS "form"`, which `SET`, `WHERE`, and `RETURNING` see; the values of `VALUES` of an insert see no source, the values of `DO UPDATE SET` of its `ON CONFLICT` also see the row proposed for insertion as `excluded`, and `SET`, the columns of an insert, and the target of its `ON CONFLICT` name physical columns without the alias, or the target is the expression `(true)` of the unique index of a singleton table.
 - A statement takes at most 65535 parameters, which the protocol of PostgreSQL counts in 16 bits, so the compiler rejects a further parameter.
 - `compileStatement` starts the text of a statement with the [comment](queries.md#comments) of the query that runs it, which it writes with `addComment` of the builder API; its caller passes the comment apart from the node, so that no nested query writes one.

@@ -12,7 +12,7 @@ export const schema = defineSchema({ form, field, publishedField })
 export const db = bindSchema(schema, database)
 ```
 
-The schema only describes the tables and their relations, and `db` executes queries on the database.
+The schema only describes the tables, their relations, and [sequences](./sequences), and `db` executes queries on the database.
 A schema of kern-orm is not a PostgreSQL schema, which holds tables in the database: to query the tables of a PostgreSQL schema, pass it to `bindSchema` as `schemaName`; see [PostgreSQL schemas](#postgresql-schemas).
 
 Start queries from the tables of `db`, such as `db.form`; see [Queries](./queries/).

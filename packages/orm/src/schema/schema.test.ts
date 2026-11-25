@@ -1,18 +1,38 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+import { createRecordingDriver } from "@kern-orm/test-harness/recording-driver"
+import { createDatabase } from "kern-db"
+
+import { bindSchema } from "../execution/db"
 import { defineTable } from "../table/table"
 import * as t from "../types"
 
 import { many, one } from "./relation"
 import { defineSchema, schemaRelations } from "./schema"
+import { defineSequence } from "./sequence"
 
 const post = defineTable("post", {
   id: t.uuid.primaryKey(),
   title: t.text,
 })
 
-it("rejects table keys reserved for schema members", () => {
-  expect(() => defineSchema({ $post: post })).toThrow('Table key "$post" must not start with "$"')
+it("rejects table and sequence keys reserved for schema members", () => {
+  expect(getThrownError(() => defineSchema({ $post: post }))).toEqual(
+    new Error('Table key "$post" must not start with "$"'),
+  )
+  expect(getThrownError(() => defineSchema({ $seq: defineSequence("seq") }))).toEqual(
+    new Error('Sequence key "$seq" must not start with "$"'),
+  )
+})
+
+it("keeps the sequences of a part apart from its tables", () => {
+  const postSeq = defineSequence("post_seq")
+  const schema = defineSchema({ post, postSeq })
+
+  expect(schema.$tables).toEqual({ post })
+  expect(schema.$sequences).toEqual({ postSeq })
+  expect(schema.postSeq.sequence).toBe(postSeq)
 })
 
 it("keeps the tables it was defined with", () => {
@@ -29,6 +49,17 @@ it("keeps the tables it was defined with", () => {
 it("accepts table keys that name properties of the object prototype", () => {
   expect(defineSchema({ toString: post }).toString.table).toBe(post)
   expect(defineSchema({ ["__proto__"]: post }).$tables).toEqual({ ["__proto__"]: post })
+})
+
+it("accepts a sequence key that names a property of the object prototype", () => {
+  const postSeq = defineSequence("post_seq")
+  const schema = defineSchema({ ["__proto__"]: postSeq })
+  const db = bindSchema(schema, createDatabase({ driver: createRecordingDriver().driver }))
+
+  expect(schema.$sequences).toEqual({ ["__proto__"]: postSeq })
+  expect(db.$query`SELECT ${db["__proto__"].nextval()}`.toSQL().text).toBe(
+    `SELECT nextval('"post_seq"'::regclass)`,
+  )
 })
 
 describe("composition", () => {
@@ -83,6 +114,46 @@ describe("composition", () => {
 
     expect(() => defineSchema({ post, article: post })).toThrow(error)
     expect(() => defineSchema(posts, { article: post })).toThrow(error)
+  })
+
+  describe("sequences", () => {
+    const postSeq = defineSequence("post_seq")
+    const sequenced = defineSchema(posts, { postSeq })
+
+    it("includes the sequences of other schemas as they are", () => {
+      const schema = defineSchema(sequenced, { user }, defineSchema({ postSeq }))
+
+      expect(schema.$tables).toEqual({ post, comment, user })
+      expect(schema.$sequences).toEqual({ postSeq })
+    })
+
+    it("keeps its sequences in a schema of added relations", () => {
+      const related = sequenced.$relations({
+        comment: { post: one(post, { from: "postId", to: "id" }) },
+      })
+
+      expect(related.$sequences).toEqual({ postSeq })
+      expect(related.postSeq.sequence).toBe(postSeq)
+    })
+
+    it("accepts a sequence under several keys", () => {
+      const schema = defineSchema({ postSeq, articleSeq: postSeq })
+
+      expect(schema.$sequences).toEqual({ postSeq, articleSeq: postSeq })
+    })
+
+    it("rejects a key of two different sequences", () => {
+      expect(
+        getThrownError(() => defineSchema(sequenced, { postSeq: defineSequence("post_seq") })),
+      ).toEqual(new Error('Sequence key "postSeq" refers to two different sequences'))
+    })
+
+    it("rejects a key of a table and a sequence", () => {
+      const error = new Error('Key "post" refers to both a table and a sequence')
+
+      expect(getThrownError(() => defineSchema(posts, { post: postSeq }))).toEqual(error)
+      expect(getThrownError(() => defineSchema({ post: postSeq }, posts))).toEqual(error)
+    })
   })
 })
 

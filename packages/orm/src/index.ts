@@ -298,12 +298,24 @@ export { bindSchema } from "./execution/db"
 export type {
   AnySchema,
   Schema,
+  SchemaObject,
+  SchemaObjects,
   SchemaPart,
   SchemaPartRelations,
+  SchemaSequences,
   SchemaTables,
+  SequenceEntries,
   Tables,
 } from "./schema/schema"
 export { defineSchema } from "./schema/schema"
+export type {
+  AnySequence,
+  Sequence,
+  SequenceReference,
+  Sequences,
+  SequenceValue,
+} from "./schema/sequence"
+export { defineSequence } from "./schema/sequence"
 export type {
   DeclaredRelations,
   MergeRelations,

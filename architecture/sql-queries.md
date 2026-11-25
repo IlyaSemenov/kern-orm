@@ -13,7 +13,7 @@
     `query` of a `Database` is this template of the database, a property rather than a method ([decision](../decisions/sql-queries/query-of-a-database-as-a-property.md)).
     Its queries call `execute` of the database when they run, also one that the application has replaced.
   - The template compiles as a template of `sql` of the layer with `compileFragment`, so it takes its fragments and no table, expression, or query of the ORM.
-  - `$query` of a `Db` compiles the raw SQL node of its template, as `sql` builds it, with the lowering and compilation of the `Db` (`lowerTextStatement` and `compileTextStatement`), so that its interpolated tables are named in the PostgreSQL schema that the `Db` resolves at each compilation, and the queries interpolated into it, such as of `exists` in a condition, are lowered and checked against the `Db`.
+  - `$query` of a `Db` compiles the raw SQL node of its template, as `sql` builds it, with the lowering and compilation of the `Db` (`lowerTextStatement` and `compileTextStatement`), so that its interpolated tables and sequences are named in the PostgreSQL schema that the `Db` resolves at each compilation, and the queries interpolated into it, such as of `exists` in a condition, are lowered and checked against the `Db`.
     The source holds the `Db` in its closure: the query has no `Db` or node of the ORM.
   - `$queryOn` of a `Db` returns the template of `$query` on an executor, and rejects a value without `execute`, as `queryOn` does ([decision](../decisions/sql-queries/query-of-a-db-on-an-executor.md)).
     Its statement compiles as that of `$query`, so it rejects a table or query of another `Db` as `$query` does, and runs only by `execute` of the executor, which need not belong to the database of the `Db`.
@@ -90,7 +90,7 @@
 ## Scripts
 
 - `$script` of a `Db` and `script` of a `Database` execute a script of several statements at once, through the driver, without a query object or a result: PostgreSQL takes several statements only without parameters.
-- A template of `$script` compiles as the statement of `$query` and rejects a value that becomes a parameter, also in a query or a `sql` fragment that it interpolates, before it runs; it names the tables of the `Db` as `$query` does.
+- A template of `$script` compiles as the statement of `$query` and rejects a value that becomes a parameter, also in a query or a `sql` fragment that it interpolates, before it runs; it names the tables and sequences of the `Db` as `$query` does.
 - A template of `script` of a `Database` is a template of `sql` of the [database layer](types.md#sql-fragments-of-the-database-layer), which takes its fragments, such as a name of `identifier`, and no expression, query, or table of the ORM.
   It rejects a parameter at any depth of its fragments before the driver gets the script, and a value that it does not take by rejecting its promise.
 - PostgreSQL runs a script outside a transaction in one implicit transaction, and a script in a transaction in that transaction.
