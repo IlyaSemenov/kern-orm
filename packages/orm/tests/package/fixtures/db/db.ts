@@ -1,5 +1,5 @@
 // Uses the entry points of `kern-db` other than `kern-db/node-postgres`, without `kern-orm` and `pg`: queries of SQL text in a transaction on the recording driver of the fixtures and on the driver itself, and the driver of postgres.js and the test helpers, which it creates without connecting; prints the result and the recorded statements.
-import type { SqlFragment, StatementExecutor } from "kern-db"
+import type { SqlFragment, SqlQueryTemplate, StatementExecutor } from "kern-db"
 import { createDatabase, identifier, param, queryOn, sql } from "kern-db"
 import { postgresJsDriver } from "kern-db/postgres-js"
 import type { TestFixture } from "kern-db/testing"
@@ -37,7 +37,8 @@ export function selectForms(name: string, tag: string) {
 
 /** Starts the query of the number of the forms of `name` on `executor`, such as a driver, whose inferred declaration names the query of SQL text of kern-db. */
 export function countFormsOn(executor: StatementExecutor, name: string) {
-  return queryOn(executor)`SELECT count(*) FROM form WHERE ${isNamed(name)}`.get(t.integer)
+  const query: SqlQueryTemplate = queryOn(executor)
+  return query`SELECT count(*) FROM form WHERE ${isNamed(name)}`.get(t.integer)
 }
 
 const forms = await database.transaction(async () => await selectForms("Survey", "poll"))

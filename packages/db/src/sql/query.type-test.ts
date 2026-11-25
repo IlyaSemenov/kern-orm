@@ -9,7 +9,7 @@ import { bigint, integer } from "../type/builtins/numeric"
 import { text } from "../type/builtins/text"
 
 import { createSqlColumns } from "./columns"
-import type { InitialSqlQueryState, SqlQuery } from "./query"
+import type { InitialSqlQueryState, SqlQuery, SqlQueryTemplate } from "./query"
 import { queryOn } from "./query"
 
 const database = createDatabase({ driver: createRecordingDriver().driver })
@@ -25,7 +25,8 @@ describe("queryOn", () => {
     ) => queryOn(executor)`SELECT ${1}`
 
     expectTypeOf(template).returns.toEqualTypeOf<SqlQuery<InitialSqlQueryState>>()
-    expectTypeOf(queryOn(database)).toEqualTypeOf<Database["query"]>()
+    expectTypeOf(queryOn(database)).toEqualTypeOf<SqlQueryTemplate>()
+    expectTypeOf<Database["query"]>().toEqualTypeOf<SqlQueryTemplate>()
   })
 
   test("rejects an object that does not execute statements, and a value that its template does not take", () => {

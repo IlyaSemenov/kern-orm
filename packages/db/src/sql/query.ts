@@ -64,6 +64,12 @@ export interface InitialSqlQueryState extends SqlQueryState {
   readonly returning: false
 }
 
+/** Tagged template that starts a query of SQL text: `query` of a `Database`, and the template that `queryOn` returns. */
+export type SqlQueryTemplate = (
+  strings: TemplateStringsArray,
+  ...values: SqlValue[]
+) => SqlQuery<InitialSqlQueryState>
+
 /** Result of a query of SQL text of state `S`. */
 export type SqlQueryResult<S extends SqlQueryState> = ResultByRows<S["result"], S["rows"]>
 
@@ -381,9 +387,7 @@ export function startSqlQuery(
  * The statement runs where `execute` of the executor runs it: a `Database` runs it in its ambient transaction or session, a driver on any pooled connection, and a connection on itself, in the transaction that is open on it, if any.
  * A call of `execute` of a driver or a connection bypasses the routing of a database over them, and an object of the application runs the statement wherever its `execute` passes it, such as in the routing of a database for one that calls `execute` of the database.
  */
-export function queryOn(
-  executor: StatementExecutor,
-): (strings: TemplateStringsArray, ...values: SqlValue[]) => SqlQuery<InitialSqlQueryState> {
+export function queryOn(executor: StatementExecutor): SqlQueryTemplate {
   // A template called without an executor, such as queryOn`SELECT 1`, passes its strings here.
   if (typeof (executor as Partial<StatementExecutor> | null | undefined)?.execute !== "function") {
     throw new TypeError(

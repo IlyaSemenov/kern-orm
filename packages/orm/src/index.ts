@@ -231,6 +231,7 @@ export type {
   SqlQuery,
   SqlQueryResult,
   SqlQueryState,
+  SqlQueryTemplate,
 } from "kern-db"
 export type { AnyRecordQuery, RecordQuery, RecordQueryState, SelectionState } from "./query/record"
 export type { NotSynchronous, SynchronousResult } from "kern-db"

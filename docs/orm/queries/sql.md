@@ -225,5 +225,6 @@ const claimed = await claimJobs(connection, "worker-1")
 
 Its template interpolates values, the columns of `columnsOf`, and the `sql`, `joinSql`, `identifier`, and `param` fragments of `kern-orm/db`.
 It takes no table or query of a `Db`, so name tables in the SQL, or by `identifier` with their PostgreSQL schema.
+To keep the template in a field or take it as a parameter, type it as `SqlQueryTemplate` of `kern-orm/db`.
 
 For how such a statement relates to transactions and to the rollback of tests, see [SQL Queries and Scripts](../../database/sql#statements-on-a-connection-or-a-driver).

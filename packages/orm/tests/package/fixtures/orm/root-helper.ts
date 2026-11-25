@@ -23,6 +23,11 @@ export function countForms(database: Database) {
   return database.query`SELECT count(*) FROM form`.get(t.integer)
 }
 
+/** Template of the queries of SQL text of `database`, whose declaration names the template of kern-db; see the file header. */
+export function getQueryTemplate(database: Database) {
+  return database.query
+}
+
 const job = defineTable("job", {
   id: t.integer.primaryKey(),
   lockedBy: t.text.nullable().columnName("locked_by"),

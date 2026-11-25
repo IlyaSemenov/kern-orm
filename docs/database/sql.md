@@ -207,6 +207,7 @@ try {
 ```
 
 The template is that of `database.query`, with the same values, fragments, and results.
+To keep the template in a field or take it as a parameter, type it as `SqlQueryTemplate` of `kern-db`.
 `queryOn` takes any object with the `execute` method of a connection, a `StatementExecutor`, and the statement runs when you await the query:
 
 ```ts

@@ -70,5 +70,6 @@ export type {
   SqlQuery,
   SqlQueryResult,
   SqlQueryState,
+  SqlQueryTemplate,
 } from "./sql/query"
 export { queryOn } from "./sql/query"

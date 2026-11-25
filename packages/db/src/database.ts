@@ -1,7 +1,7 @@
 import type { Connection, Driver, DriverResult, SqlStatement } from "./driver"
 import type { SqlValue } from "./sql/fragment"
 import { compileScript, sql } from "./sql/fragment"
-import type { InitialSqlQueryState, SqlQuery } from "./sql/query"
+import type { SqlQueryTemplate } from "./sql/query"
 import { queryOn } from "./sql/query"
 import { TransactionCoordinator } from "./transaction/coordinator"
 
@@ -28,7 +28,7 @@ export interface Database extends AsyncDisposable {
    *
    * It interpolates SQL fragments, such as a name of `identifier`, as SQL, and other values as parameters, as `sql` does.
    */
-  query(strings: TemplateStringsArray, ...values: SqlValue[]): SqlQuery<InitialSqlQueryState>
+  query: SqlQueryTemplate
   /**
    * Executes a compiled statement, such as of `$compile` of a `Db`, in the ambient transaction or session, or on the pool outside of one unless the database was created with `test: true`.
    *
