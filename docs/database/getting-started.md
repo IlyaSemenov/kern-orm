@@ -4,8 +4,8 @@
 kern-db is in early development, and its API changes between minor versions.
 :::
 
-To run SQL statements with typed rows in transactions without the ORM, such as in a runner of jobs, use `kern-db`, the database layer of kern-orm.
-An application of kern-orm has it already: see [Getting Started with the ORM](../orm/getting-started) instead.
+To run SQL statements with typed rows in transactions, such as in a runner of jobs, use `kern-db`.
+kern-orm runs on it, so an application of kern-orm has it already: see [Getting Started with the ORM](../orm/getting-started) instead.
 
 ## Install
 

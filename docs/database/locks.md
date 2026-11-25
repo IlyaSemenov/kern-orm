@@ -1,9 +1,5 @@
 # Locks
 
-::: info Using the ORM?
-See [Locks of the ORM](../orm/locks): this page describes kern-db without the ORM.
-:::
-
 ## Locking rows
 
 To keep transactions from working on one record at once, such as from adding fields to a form at the same position, lock its row with `FOR UPDATE`: another transaction waits to change or lock the row until the transaction ends.

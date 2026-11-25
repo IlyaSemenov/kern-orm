@@ -1,7 +1,7 @@
 # kern-db
 
 SQL queries for PostgreSQL with typed results and ambient transactions: run SQL statements, decode their rows, share transactions across function calls without passing them around, and run tests in transactions that roll back.
-[kern-orm](https://github.com/IlyaSemenov/kern-orm) runs on it, and it works without the ORM.
+[kern-orm](https://github.com/IlyaSemenov/kern-orm) runs on it.
 
 kern-db is in early development, and the API changes between minor versions.
 

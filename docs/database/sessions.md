@@ -1,9 +1,5 @@
 # Sessions
 
-::: info Using the ORM?
-See [Sessions of the ORM](../orm/sessions): this page describes kern-db without the ORM.
-:::
-
 ## Statements outside a transaction
 
 To run several statements on one connection outside a transaction, pass a callback to `database.session`:

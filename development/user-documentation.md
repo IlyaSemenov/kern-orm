@@ -14,7 +14,8 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
 - Keep the Next steps of each Getting Started page in the order of the sidebar.
 - Write the pages of the ORM group for an application of kern-orm, with a `Db` and imports from `kern-orm` and its subpaths, and the pages of the Database group for code without the ORM, with a `database` and imports from `kern-db` and its subpaths.
 - Document types, transactions, interop with other libraries, test helpers, and errors, which both packages give, on a page of each group with examples of its own API, and update both pages with a change of what they share; document drivers and custom drivers in the Database group alone.
-- Open a page of the Database group that has a counterpart in the ORM group, such as Transactions, with an `info` box titled `Using the ORM?` that links the counterpart; give every `info` box a title of its own, since VitePress titles it `INFO` otherwise.
+- Write each page of the Database group for users of kern-db alone, without a box or a note that links its counterpart in the ORM group.
+- Give every `info` box a title of its own, since VitePress titles it `INFO` otherwise.
 - Keep material for authors of extensions, such as custom types and operators, custom drivers, and custom migration helpers, on pages of their own in the group of their package, separate from the guides for using the API.
 - Keep the overview of the Kern libraries, including kern-jobs, which has its own repository, in `docs/ecosystem.md`, outside the groups.
   Link the overview from the Kern menu of the nav.

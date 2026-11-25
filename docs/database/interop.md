@@ -1,9 +1,5 @@
 # Interop with Other Libraries
 
-::: info Using the ORM?
-See [Interop of the ORM](../orm/interop): this page describes kern-db without the ORM.
-:::
-
 An application that already runs its statements through another library, such as postgres.js or an ORM, can use kern-db beside it, on the same data and in the same transactions.
 Move such an application to kern-db one function at a time, or call code built on kern-db from a transaction of the other library, such as to apply [migrations](../migrations/getting-started) in it.
 

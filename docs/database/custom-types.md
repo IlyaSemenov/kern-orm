@@ -1,9 +1,5 @@
 # Custom Types
 
-::: info Using the ORM?
-See [Custom Types of the ORM](../orm/custom-types): this page describes kern-db without the ORM.
-:::
-
 To use a PostgreSQL type that kern-db does not provide, such as `ltree` from an extension, define it by its SQL name with `defineType`:
 
 ```ts
