@@ -12,7 +12,14 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Computed columns](computed-columns.md): columns defined as expressions, and fields computed at runtime.
 - [Unions and common table expressions](unions-and-common-table-expressions.md): `UNION ALL`, `WITH`, and derived sources.
 - [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
-- [Moving from rake-db](moving-from-rake-db.md): the applied versions of rake-db and a baseline of the schema.
+- [Moving from rake-db](moving-from-rake-db.md): recording the first migration as applied on a schema that rake-db built, after a check of its applied versions.
+
+### Squashing migrations
+
+Items of one piece of work, in its order.
+
+- [Squashing a history](squashing-a-history.md): a baseline without a key that takes an empty target to the state of the migrations that it replaces.
+- [Writing and checking a baseline](writing-and-checking-a-baseline.md): a command that creates it, and `verifyMigrations` comparing it with the migrations that it replaces.
 
 ## Later
 
@@ -86,4 +93,5 @@ Ideas that wait for an application that needs them, or that are not planned.
 - Give each item a file of its own with its preliminary decisions and open questions, and list it in this index under the bucket of its importance with a short summary.
 - In Next and Later, add a new item where its importance roughly fits, without reordering other items to place it exactly.
   In Without a use case, add it at the end.
+- Group the items of one piece of work that build on each other in a subsection of the bucket of its first item, in the order of the work.
 - Delete an item, its file and its line in this index, once it is done, moving its lasting contracts to [architecture/](../architecture/README.md), or once it is decided against, moving the decision to [decisions/](../decisions/README.md).
