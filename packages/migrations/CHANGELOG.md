@@ -1,5 +1,11 @@
 # kern-migrations
 
+## 0.10.0
+
+### Minor Changes
+
+- 536d8bf: Add the `baseline` option of `defineMigrations`, which replaces the first migrations of a long history with one migration.
+
 ## 0.9.0
 
 ### Minor Changes
