@@ -63,7 +63,7 @@ describe("addColumns", () => {
 
   it("rejects an empty record", () => {
     expect(getThrownError(() => addColumns("form", {}))).toEqual(
-      new Error("Cannot alter table form: give at least one column"),
+      new Error("Cannot alter table form: the changes are empty"),
     )
   })
 })

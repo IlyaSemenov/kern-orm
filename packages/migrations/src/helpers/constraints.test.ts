@@ -46,7 +46,7 @@ describe("addConstraints", () => {
 
   it("rejects an empty record", () => {
     expect(getThrownError(() => addConstraints("form", {}))).toEqual(
-      new Error("Cannot alter table form: give at least one constraint"),
+      new Error("Cannot alter table form: the changes are empty"),
     )
   })
 })

@@ -80,6 +80,7 @@ Ideas that wait for an application that needs them, or that are not planned.
 - [Keys of view results](keys-of-view-results.md): declared keys for `findBy` and relations `one` targeting a view.
 - [Write expression of a type](write-expression-of-a-type.md): a custom type whose parameters are written by a SQL expression of its own, such as `ST_GeomFromGeoJSON($1)`.
 - [Types of result columns](types-of-result-columns.md): checking the OID of each result column against the type of its field once per result, which catches a column whose type changed apart from its table definition.
+- [Column changes of `alterTable`](column-changes-of-alter-table.md): `changeColumns` together with the drops and adds of a table in one `ALTER TABLE`.
 
 ## Keeping the backlog
 

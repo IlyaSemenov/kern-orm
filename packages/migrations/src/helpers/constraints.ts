@@ -1,8 +1,7 @@
 import type { MigrationStep } from "../migration"
-import { quoteIdentifier } from "../sql"
 
 import { combineSteps, invertStep } from "./step"
-import { buildAlterTable } from "./tables"
+import { alterTable } from "./tables"
 
 /** Builds a step that adds a constraint of a SQL definition, such as `"CHECK (price > 0)"`, to a table, and drops it on rollback. */
 export function addConstraint(table: string, name: string, definition: string): MigrationStep {
@@ -25,19 +24,7 @@ export function addConstraints(
   table: string,
   constraints: Readonly<Record<string, string>>,
 ): MigrationStep {
-  const adds: string[] = []
-  const drops: string[] = []
-  for (const [name, definition] of Object.entries(constraints)) {
-    const quotedName = quoteIdentifier(name)
-    adds.push(`ADD CONSTRAINT ${quotedName} ${definition}`)
-    drops.push(`DROP CONSTRAINT ${quotedName}`)
-  }
-  if (adds.length === 0) {
-    throw new Error(`Cannot alter table ${table}: give at least one constraint`)
-  }
-  // Rollback drops in reverse order, so that an entry is dropped before the entries it depends on, such as a foreign key before the unique constraint that it references.
-  drops.reverse()
-  return { up: buildAlterTable(table, adds), down: buildAlterTable(table, drops) }
+  return alterTable(table, { addConstraints: constraints })
 }
 
 /** Builds a step that drops constraints of a table in one `ALTER TABLE`, and adds them again on rollback as `addConstraints` of the same arguments does. */

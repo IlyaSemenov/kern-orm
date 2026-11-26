@@ -17,41 +17,82 @@ The old query of `replaceView` and the query of `dropView` must give the columns
 When the view was created of `SELECT *` and the table has gained columns since, list the columns of the view in them.
 When you build SQL text from values of your code, quote names with `quoteIdentifier` and strings with `quoteLiteral`, both from `kern-migrations`.
 
-- Tables: `createTable(table, columns, options)` and `dropTable` with the same arguments, and `renameTable(from, to)`; the options are `constraints` and `singleton`, which creates the singleton index of the table too.
-- Columns: `addColumn(table, column, definition)` and `dropColumn` with the same arguments, [`addColumns(table, columns)`](#add-several-columns-or-constraints) and `dropColumns` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
-- Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](./outside-transaction).
-- Singleton indexes: `createSingletonIndex(table, { name })` and `dropSingletonIndex` with the same arguments, a unique index of `(true)` that keeps a table to at most one row, such as a [singleton table](../orm/singleton-tables) of the ORM.
-- Constraints: `addConstraint(table, name, definition)` and `dropConstraint` with the same arguments, [`addConstraints(table, constraints)`](#add-several-columns-or-constraints) and `dropConstraints` with the same arguments, and `changeConstraint(table, name, from, to)`.
-- Sequences: `createSequence(name, options)` and `dropSequence` with the same arguments, `renameSequence(from, to)`, and `changeSequence(name, from, to)`; the options are `type`, `increment`, `minValue`, `maxValue`, `start`, `cache`, and `cycle`.
-- Views: `createView(name, query, options)` and `dropView` with the same arguments, and [`replaceView(name, from, to, options)`](#replace-the-query-of-a-view); the options of all three are `checkOption`, `securityBarrier`, and `securityInvoker`, and `replaceView` also takes [`rollback`](#replace-the-query-of-a-view).
-- Functions: [`createFunction(name, parameters, definition)`](#create-a-function) and `dropFunction` with the same arguments, and [`replaceFunction(name, parameters, from, to)`](#replace-the-definition-of-a-function).
-- Enum types: `createEnum(name, values)` and `dropEnum` with the same arguments; pass the values without quotes, such as `createEnum("user_role", ["admin", "member"])`.
-- Extensions: `createExtension(name, { schema })`.
+- Tables:
+  - `createTable(table, columns, options)` and `dropTable` with the same arguments; the options are `constraints` and `singleton`, which creates the singleton index of the table too.
+  - `renameTable(from, to)`.
+  - [`alterTable(table, changes)`](#change-several-columns-and-constraints), which drops and adds columns and constraints in one `ALTER TABLE`.
+- Columns:
+  - `addColumn(table, column, definition)` and `dropColumn` with the same arguments.
+  - [`addColumns(table, columns)`](#change-several-columns-and-constraints) and `dropColumns` with the same arguments.
+  - `renameColumn(table, from, to)`.
+  - [`changeColumn(table, column, from, to)`](#change-a-column).
+- Indexes:
+  - `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](./outside-transaction).
+  - `createSingletonIndex(table, { name })` and `dropSingletonIndex` with the same arguments, which create and drop a unique index of `(true)` that keeps a table to at most one row, such as a [singleton table](../orm/singleton-tables) of the ORM.
+- Constraints:
+  - `addConstraint(table, name, definition)` and `dropConstraint` with the same arguments.
+  - [`addConstraints(table, constraints)`](#change-several-columns-and-constraints) and `dropConstraints` with the same arguments.
+  - `changeConstraint(table, name, from, to)`.
+- Sequences:
+  - `createSequence(name, options)` and `dropSequence` with the same arguments; the options are `type`, `increment`, `minValue`, `maxValue`, `start`, `cache`, and `cycle`.
+  - `renameSequence(from, to)`.
+  - `changeSequence(name, from, to)`.
+- Views:
+  - `createView(name, query, options)` and `dropView` with the same arguments; the options are `checkOption`, `securityBarrier`, and `securityInvoker`.
+  - [`replaceView(name, from, to, options)`](#replace-the-query-of-a-view), whose options are those of `createView` and [`rollback`](#replace-the-query-of-a-view).
+- Functions:
+  - [`createFunction(name, parameters, definition)`](#create-a-function) and `dropFunction` with the same arguments.
+  - [`replaceFunction(name, parameters, from, to)`](#replace-the-definition-of-a-function).
+- Enum types:
+  - `createEnum(name, values)` and `dropEnum` with the same arguments; pass the values without quotes, such as `createEnum("user_role", ["admin", "member"])`.
+- Extensions:
+  - [`createExtension(name, { schema })`](#extensions).
 
 For a change that no helper covers, write a [step of SQL](./writing#sql-steps), or [a helper of your own](./custom-helpers) to reuse it in several migrations.
 
-## Add several columns or constraints
+## Change several columns and constraints
 
-Pass `addColumns` the definitions of the columns by name, and `addConstraints` those of the constraints:
+Pass `alterTable` the columns and constraints to add by name, such as columns with `CHECK` constraints on them:
 
 ```ts
-export default defineMigration([
-  addColumns("job", {
+alterTable("job", {
+  addColumns: {
     max_items: "integer",
     sealed: "boolean NOT NULL DEFAULT false",
-  }),
-  addConstraints("job", {
+  },
+  addConstraints: {
     job_max_items_check: "CHECK (max_items >= 1)",
     job_sealed_check: "CHECK (NOT sealed OR max_items IS NOT NULL)",
-  }),
-])
+  },
+})
 ```
 
-Each builds one `ALTER TABLE`, in which PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
-`dropColumns` and `dropConstraints` drop them in one `ALTER TABLE` too.
+It builds one `ALTER TABLE`, in which PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
 
-Rolling back `addColumns` and `addConstraints` drops the entries in reverse order, and rolling back `dropColumns` and `dropConstraints` adds them in order.
+To drop columns and constraints, pass them in `dropColumns` and `dropConstraints` with their definitions.
+`alterTable` drops before it adds, so dropping and adding a constraint of the same name replaces its definition:
+
+```ts
+alterTable("form", {
+  dropColumns: {
+    legacy: "text",
+  },
+  dropConstraints: {
+    form_price_check: "CHECK (price > 0)",
+  },
+  addConstraints: {
+    form_price_check: "CHECK (price >= 0)",
+  },
+})
+```
+
+Rolling back drops what it added and adds again what it dropped.
+
+For changes of one kind, pass the record alone to `addColumns`, `dropColumns`, `addConstraints`, or `dropConstraints`, such as `addColumns("job", { max_items: "integer" })`, which builds one `ALTER TABLE` too.
+
+The helpers drop the entries of a record in reverse order and add them in order, both when applying and when rolling back.
 List an entry after the entries it depends on, such as a generated column after the columns of its expression, or a foreign key after the unique constraint that it references.
+When a step adds or drops both a foreign key and the unique constraint that it references, list both in `addConstraints` or `dropConstraints`, the unique constraint first, rather than the foreign key as `REFERENCES` in the definition of a column: `alterTable` drops constraints before columns, both when applying and when rolling back.
 
 ## Change a column
 
@@ -153,7 +194,7 @@ To change what `CREATE OR REPLACE FUNCTION` cannot change, such as the types of 
 Pass a drop helper the definition of what it drops: rolling back creates it again from the definition.
 
 Dropping a table or a column also drops its indexes and constraints.
-To restore those that the definition does not describe, drop them with their own steps before it:
+To restore those that the definition does not describe, drop them with their own steps before it, or drop a constraint in `dropConstraints` of the same [`alterTable`](#change-several-columns-and-constraints):
 
 ```ts
 export default defineMigration([
@@ -172,7 +213,7 @@ export default defineMigration([
 ])
 ```
 
-Describe each constraint once: in the definition, or by a step of its own.
+Describe each constraint once: in the definition, or apart from it, by a step of its own or in `dropConstraints`.
 An index of a `PRIMARY KEY` or `UNIQUE` constraint goes with its constraint.
 
 Rolling back a dropped sequence creates it again from its `start` rather than from its current value.

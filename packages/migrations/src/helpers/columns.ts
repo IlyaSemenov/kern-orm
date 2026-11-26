@@ -2,7 +2,7 @@ import type { MigrationStep } from "../migration"
 import { quoteIdentifier } from "../sql"
 
 import { invertStep } from "./step"
-import { buildAlterTable } from "./tables"
+import { alterTable } from "./tables"
 
 /** Builds a step that adds a column of a SQL definition, such as `"text NOT NULL DEFAULT ''"`, to a table, and drops it on rollback. */
 export function addColumn(table: string, column: string, definition: string): MigrationStep {
@@ -29,19 +29,7 @@ export function addColumns(
   table: string,
   columns: Readonly<Record<string, string>>,
 ): MigrationStep {
-  const adds: string[] = []
-  const drops: string[] = []
-  for (const [column, definition] of Object.entries(columns)) {
-    const name = quoteIdentifier(column)
-    adds.push(`ADD COLUMN ${name} ${definition}`)
-    drops.push(`DROP COLUMN ${name}`)
-  }
-  if (adds.length === 0) {
-    throw new Error(`Cannot alter table ${table}: give at least one column`)
-  }
-  // Rollback drops in reverse order, so that an entry is dropped before the entries it depends on, such as a generated column before the columns of its expression.
-  drops.reverse()
-  return { up: buildAlterTable(table, adds), down: buildAlterTable(table, drops) }
+  return alterTable(table, { addColumns: columns })
 }
 
 /**

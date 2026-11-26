@@ -1,8 +1,10 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
+
 import { describePostgres } from "../../testing/postgres"
 
-import { createTable, dropTable, renameTable } from "./tables"
+import { alterTable, createTable, dropTable, renameTable } from "./tables"
 import { applyStep } from "./testing"
 
 const formColumns = {
@@ -47,6 +49,42 @@ describe("renameTable", () => {
       up: 'ALTER TABLE "form" RENAME TO "survey"',
       down: 'ALTER TABLE "survey" RENAME TO "form"',
     })
+  })
+})
+
+describe("alterTable", () => {
+  it("drops constraints and columns before it adds columns and constraints, and undoes each on rollback", () => {
+    expect(
+      alterTable("form", {
+        dropColumns: {
+          legacy: "text",
+        },
+        dropConstraints: {
+          form_legacy_check: "CHECK (legacy <> '')",
+          form_price_check: "CHECK (price > 0)",
+        },
+        addColumns: {
+          slug: "text",
+        },
+        addConstraints: {
+          form_price_check: "CHECK (price >= 0)",
+          form_slug_key: "UNIQUE (slug)",
+        },
+      }),
+    ).toEqual({
+      up: 'ALTER TABLE "form" DROP CONSTRAINT "form_price_check", DROP CONSTRAINT "form_legacy_check", DROP COLUMN "legacy", ADD COLUMN "slug" text, ADD CONSTRAINT "form_price_check" CHECK (price >= 0), ADD CONSTRAINT "form_slug_key" UNIQUE (slug)',
+      down: 'ALTER TABLE "form" DROP CONSTRAINT "form_slug_key", DROP CONSTRAINT "form_price_check", DROP COLUMN "slug", ADD COLUMN "legacy" text, ADD CONSTRAINT "form_legacy_check" CHECK (legacy <> \'\'), ADD CONSTRAINT "form_price_check" CHECK (price > 0)',
+    })
+  })
+
+  it("rejects an unknown change and empty changes", () => {
+    expect([
+      getThrownError(() => alterTable("form", { addColumn: { slug: "text" } } as object)),
+      getThrownError(() => alterTable("form", { addColumns: {} })),
+    ]).toEqual([
+      new Error("Cannot alter table form: unknown change addColumn"),
+      new Error("Cannot alter table form: the changes are empty"),
+    ])
   })
 })
 
@@ -111,5 +149,62 @@ describePostgres("table helpers in PostgreSQL", ({ database, testTransaction }) 
       up: ["column survey.id integer", "table survey"],
       down: ["column form.id integer", "table form"],
     })
+  })
+
+  it("alterTable adds columns with constraints on them, and its rollback drops them", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        alterTable("job", {
+          addColumns: {
+            max_items: "integer",
+            sealed: "boolean NOT NULL DEFAULT false",
+          },
+          addConstraints: {
+            job_max_items_check: "CHECK (max_items >= 1)",
+            job_sealed_check: "CHECK (NOT sealed OR max_items IS NOT NULL)",
+          },
+        }),
+        "CREATE TABLE job (id integer); INSERT INTO job (id) VALUES (1)",
+      ),
+    )
+
+    expect(result.up).toEqual([
+      "column job.id integer",
+      "column job.max_items integer",
+      "column job.sealed boolean NOT NULL DEFAULT false",
+      "constraint job.job_max_items_check CHECK ((max_items >= 1))",
+      "constraint job.job_sealed_check CHECK (((NOT sealed) OR (max_items IS NOT NULL)))",
+      "table job",
+    ])
+    expect(result.down).toEqual(result.before)
+  })
+
+  it("alterTable drops a column with its constraint and replaces another constraint, and its rollback restores them", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        alterTable("form", {
+          dropColumns: {
+            legacy: "text",
+          },
+          dropConstraints: {
+            form_legacy_check: "CHECK (legacy <> '')",
+            form_price_check: "CHECK (price > 0)",
+          },
+          addConstraints: {
+            form_price_check: "CHECK (price >= 0)",
+          },
+        }),
+        "CREATE TABLE form (price integer CONSTRAINT form_price_check CHECK (price > 0), legacy text CONSTRAINT form_legacy_check CHECK (legacy <> ''))",
+      ),
+    )
+
+    expect(result.up).toEqual([
+      "column form.price integer",
+      "constraint form.form_price_check CHECK ((price >= 0))",
+      "table form",
+    ])
+    expect(result.down).toEqual(result.before)
   })
 })

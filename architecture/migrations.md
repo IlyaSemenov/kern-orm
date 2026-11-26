@@ -147,12 +147,16 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - A helper checks its arguments when it is called, such as when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.
   `quoteIdentifier` rejects an empty name, so that a name left blank fails before the migration runs.
 - A helper that drops an object is `invertStep` of the helper that creates it, with the same arguments, which give the definition that its `down` creates again.
-  Dropping a table or a column also drops its indexes and constraints, and the definition restores only what it describes, so a migration must drop standalone indexes and constraints with their own steps before, and describe each constraint once.
-- `addColumns` and `addConstraints` add the entries of a record in one `ALTER TABLE`, so that PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
-  - Their rollback drops the entries in reverse order, since PostgreSQL drops them one by one and rejects dropping an entry that another depends on; an entry must follow the entries it depends on.
-  - They end a definition that contains `--` with a line break before the comma of the next entry, as the function helpers end their SQL, so that a line comment at its end does not comment out the entries after it.
-  - They reject an empty record.
-  - `addColumn` and `addConstraint` call them with a record of one entry.
+  Dropping a table or a column also drops its indexes and constraints, and the definition restores only what it describes, so a migration must drop standalone indexes and constraints with their own steps before, or a constraint in `dropConstraints` of the same `alterTable`, and describe each constraint once.
+- `alterTable` drops and adds the columns and constraints of records in one `ALTER TABLE`, so that PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
+  - It writes the dropped constraints, the dropped columns, the added columns, and the added constraints in this order: a dropped constraint goes before a dropped column, since dropping a column drops its constraints, and dropping before adding replaces a constraint dropped and added under the same name.
+  - Its rollback drops what it adds and adds what it drops.
+  - Both directions drop the entries of a record in reverse order and add them in order, since PostgreSQL drops them one by one and rejects dropping an entry that another depends on; an entry must follow the entries of its record it depends on.
+    When a step adds or drops both a foreign key and the unique constraint that it references, both must be in `addConstraints` or `dropConstraints`, the unique constraint first, rather than the foreign key as `REFERENCES` in the definition of a column, since both directions drop constraints before columns.
+  - It ends a definition that contains `--` with a line break before the comma of the next entry, as the function helpers end their SQL, so that a line comment at its end does not comment out the entries after it.
+  - It rejects an unknown change and empty changes.
+  - `addColumns` and `addConstraints` call it with the changes of one kind, and `addColumn` and `addConstraint` call them with a record of one entry.
+  - It takes no renames, since PostgreSQL does not combine `RENAME` with other actions in one `ALTER TABLE`, and no changes of columns yet ([backlog](../backlog/column-changes-of-alter-table.md)).
 - `changeColumn` takes the states of a column before and after the change, which list the same of `type`, `notNull`, and `default`, so that a missing property never means a value; `using` of a state converts the values to its type.
   It builds one `ALTER TABLE` of the actions of the properties that differ.
   When the type changes, it drops a default that the states list before the type and sets it after, since PostgreSQL otherwise casts the old default to the new type and fails, such as `''` of `text` to `integer`.
