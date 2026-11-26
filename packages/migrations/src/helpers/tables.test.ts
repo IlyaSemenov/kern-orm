@@ -26,6 +26,18 @@ describe("createTable", () => {
     })
   })
 
+  it("ends a definition before another with a line break when it contains a line comment", () => {
+    expect(
+      createTable(
+        "form",
+        { width: "integer -- in pixels", height: "integer -- in pixels" },
+        { constraints: { form_width_check: "CHECK (width > 0) -- positive" } },
+      ).up,
+    ).toBe(
+      'CREATE TABLE "form" (\n  "width" integer -- in pixels\n,\n  "height" integer -- in pixels\n,\n  CONSTRAINT "form_width_check" CHECK (width > 0) -- positive\n)',
+    )
+  })
+
   it("creates a singleton table with its singleton index, and drops them", () => {
     expect(createTable("license", { token: "text" }, { singleton: true })).toEqual({
       up: 'CREATE TABLE "license" (\n  "token" text\n)\n;\nCREATE UNIQUE INDEX "license_singleton_idx" ON "license" ((true))',
@@ -106,6 +118,32 @@ describePostgres("table helpers in PostgreSQL", ({ database, testTransaction }) 
       ],
       down: [],
     })
+  })
+
+  it("createTable creates the columns and constraints after a definition that ends with a line comment", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        createTable(
+          "form",
+          { width: "integer -- in pixels", height: "integer" },
+          {
+            constraints: {
+              form_width_check: "CHECK (width > 0) -- positive",
+              form_height_check: "CHECK (height > 0)",
+            },
+          },
+        ),
+      ),
+    )
+
+    expect(result.up).toEqual([
+      "column form.height integer",
+      "column form.width integer",
+      "constraint form.form_height_check CHECK ((height > 0))",
+      "constraint form.form_width_check CHECK ((width > 0))",
+      "table form",
+    ])
   })
 
   it("dropTable drops a table, and its rollback creates it again", async () => {

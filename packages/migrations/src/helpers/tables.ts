@@ -1,5 +1,5 @@
 import type { MigrationStep } from "../migration"
-import { endLineComment, quoteIdentifier } from "../sql"
+import { joinSql, quoteIdentifier } from "../sql"
 
 import { createSingletonIndex } from "./indexes"
 import { combineSteps, invertStep } from "./step"
@@ -30,7 +30,7 @@ export function createTable(
     lines.push(`CONSTRAINT ${quoteIdentifier(name)} ${definition}`)
   }
   const step: MigrationStep = {
-    up: `CREATE TABLE ${quoteIdentifier(table)} (\n  ${lines.join(",\n  ")}\n)`,
+    up: `CREATE TABLE ${quoteIdentifier(table)} (\n  ${joinSql(lines, ",\n  ")}\n)`,
     down: `DROP TABLE ${quoteIdentifier(table)}`,
   }
   return options.singleton ? combineSteps(step, createSingletonIndex(table)) : step
@@ -140,15 +140,7 @@ function pushDrops(
   }
 }
 
-/**
- * Builds one `ALTER TABLE` of a table with its actions in their order, such as `ADD COLUMN "slug" text`.
- *
- * It ends an action before another with a line break when the action contains `--`, so that a line comment at its end does not comment out the actions after it.
- */
-function buildAlterTable(table: string, actions: readonly string[]): string {
-  let sql = `ALTER TABLE ${quoteIdentifier(table)} `
-  for (let index = 0; index < actions.length; index++) {
-    sql += index < actions.length - 1 ? `${endLineComment(actions[index]!)}, ` : actions[index]!
-  }
-  return sql
+/** Builds one `ALTER TABLE` of a table with its actions in their order, such as `ADD COLUMN "slug" text`. */
+export function buildAlterTable(table: string, actions: readonly string[]): string {
+  return `ALTER TABLE ${quoteIdentifier(table)} ${joinSql(actions, ", ")}`
 }

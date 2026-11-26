@@ -27,6 +27,7 @@ export default defineMigration(addTableComment("form", "Forms that tenants publi
 
 Do not change the SQL that a helper builds once a migration uses it: a new database, such as one for a new tenant, runs the migration with the helper again and must get the same result.
 To change what a helper does, add a new helper or option.
+Change its SQL only to fix arguments for which it fails or does other than they describe.
 
 ## Undo a step
 

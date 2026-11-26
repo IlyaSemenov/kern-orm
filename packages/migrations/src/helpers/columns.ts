@@ -1,8 +1,8 @@
 import type { MigrationStep } from "../migration"
-import { quoteIdentifier } from "../sql"
+import { endLineComment, quoteIdentifier } from "../sql"
 
 import { invertStep } from "./step"
-import { alterTable } from "./tables"
+import { alterTable, buildAlterTable } from "./tables"
 
 /** Builds a step that adds a column of a SQL definition, such as `"text NOT NULL DEFAULT ''"`, to a table, and drops it on rollback. */
 export function addColumn(table: string, column: string, definition: string): MigrationStep {
@@ -92,14 +92,15 @@ export function changeColumn(
   if (!typeChanges && from.notNull === to.notNull && from.default === to.default) {
     throw describe("the states change nothing")
   }
+  // In one ALTER TABLE, PostgreSQL drops the default before it changes the type, and sets the default after it.
   return {
-    up: alterColumn(table, column, from, to),
-    down: alterColumn(table, column, to, from),
+    up: buildAlterTable(table, listColumnActions(column, from, to)),
+    down: buildAlterTable(table, listColumnActions(column, to, from)),
   }
 }
 
-/** Builds `ALTER TABLE` of the actions that change a column from state `from` to state `to`. */
-function alterColumn(table: string, column: string, from: ColumnState, to: ColumnState): string {
+/** Lists the `ALTER COLUMN` actions of `ALTER TABLE` that change a column from state `from` to state `to`. */
+function listColumnActions(column: string, from: ColumnState, to: ColumnState): string[] {
   const typeChanges = from.type !== to.type
   const actions: string[] = []
   // PostgreSQL casts the default to the new type unless it is dropped first, which fails for a default such as `''` of a text column that becomes integer.
@@ -107,7 +108,12 @@ function alterColumn(table: string, column: string, from: ColumnState, to: Colum
     actions.push("DROP DEFAULT")
   }
   if (typeChanges) {
-    actions.push(`TYPE ${to.type}${to.using === undefined ? "" : ` USING ${to.using}`}`)
+    // `USING` follows the type on its line, so a line comment at the end of the type would comment it out.
+    actions.push(
+      to.using === undefined
+        ? `TYPE ${to.type}`
+        : `TYPE ${endLineComment(to.type!)} USING ${to.using}`,
+    )
   }
   if (from.notNull !== to.notNull) {
     actions.push(to.notNull ? "SET NOT NULL" : "DROP NOT NULL")
@@ -119,7 +125,9 @@ function alterColumn(table: string, column: string, from: ColumnState, to: Colum
   ) {
     actions.push(`SET DEFAULT ${to.default}`)
   }
-  // In one ALTER TABLE, PostgreSQL drops the default before it changes the type, and sets the default after it.
   const name = quoteIdentifier(column)
-  return `ALTER TABLE ${quoteIdentifier(table)} ${actions.map(action => `ALTER COLUMN ${name} ${action}`).join(", ")}`
+  for (let index = 0; index < actions.length; index++) {
+    actions[index] = `ALTER COLUMN ${name} ${actions[index]}`
+  }
+  return actions
 }

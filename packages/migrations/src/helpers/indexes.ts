@@ -1,5 +1,5 @@
 import type { MigrationChange, MigrationDatabase, MigrationStep } from "../migration"
-import { quoteIdentifier } from "../sql"
+import { endLineComment, quoteIdentifier } from "../sql"
 
 import { invertStep } from "./step"
 
@@ -48,11 +48,11 @@ export function createIndex(
   const quotedName = quoteIdentifier(name)
   let definition = `${quotedName} ON ${quoteIdentifier(table)}`
   if (options.using !== undefined) {
-    definition += ` USING ${options.using}`
+    definition += ` USING ${endLineComment(options.using)}`
   }
-  definition += ` (${columns.join(", ")})`
+  definition += ` (${joinElements(columns)})`
   if (include.length > 0) {
-    definition += ` INCLUDE (${include.join(", ")})`
+    definition += ` INCLUDE (${joinElements(include)})`
   }
   if (options.nullsNotDistinct) {
     definition += " NULLS NOT DISTINCT"
@@ -74,6 +74,11 @@ export function createIndex(
       down: dropIndexConcurrently(table, name),
     },
   }
+}
+
+/** Joins the SQL elements of an index with commas, ending each with `endLineComment`, so that a line comment at its end does not comment out the comma or the `)` after it. */
+function joinElements(elements: readonly string[]): string {
+  return elements.map(endLineComment).join(", ")
 }
 
 /**

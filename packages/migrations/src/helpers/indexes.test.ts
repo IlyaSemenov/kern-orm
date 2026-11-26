@@ -32,6 +32,18 @@ describe("createIndex", () => {
     )
   })
 
+  it("ends the method and each element with a line break when they contain a line comment", () => {
+    expect(
+      createIndex("form_field", ["form_id -- form", "position"], {
+        name: "form_field_idx",
+        using: "btree -- default",
+        include: ["label -- shown"],
+      }).up,
+    ).toBe(
+      'CREATE INDEX "form_field_idx" ON "form_field" USING btree -- default\n (form_id -- form\n, position) INCLUDE (label -- shown\n)',
+    )
+  })
+
   it("names an index by its columns without their orderings, as PostgreSQL does", () => {
     expect(createIndex("form", ["created_at desc nulls last", "id DESC"]).up).toBe(
       'CREATE INDEX "form_created_at_id_idx" ON "form" (created_at desc nulls last, id DESC)',
@@ -179,6 +191,25 @@ describePostgres("index helpers in PostgreSQL", ({ database, testTransaction }) 
       'index CREATE UNIQUE INDEX form_field_form_id_position_label_idx ON migrations_helpers.form_field USING btree (form_id, "position" DESC) INCLUDE (label) WHERE (deleted_at IS NULL)',
     )
     expect(result.down).toEqual(result.before)
+  })
+
+  it("createIndex creates an index after a method and elements that end with a line comment", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        createIndex("form_field", ["form_id -- form", "position -- order"], {
+          name: "form_field_idx",
+          using: "btree -- default",
+          include: ["label -- shown"],
+          where: "deleted_at IS NULL",
+        }),
+        createFormField,
+      ),
+    )
+
+    expect(result.up).toContain(
+      'index CREATE INDEX form_field_idx ON migrations_helpers.form_field USING btree (form_id, "position") INCLUDE (label) WHERE (deleted_at IS NULL)',
+    )
   })
 
   it("dropIndex drops an index, and its rollback creates it again", async () => {

@@ -136,12 +136,13 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
     Changes of a direction that are all SQL text join into one script with each semicolon on a line of its own, so that a script that ends with a line comment does not comment it out; other changes run in order from a function.
     It rejects a step with changes outside a transaction, which must be the only step of its migration.
   - `invertStep` and `combineSteps` reject a value that is not a step, as loading a migration does, since the step they return would hide a problem such as a misspelled `down`.
-- The SQL that a helper builds never changes: applied migrations call the same helper on new targets, and a change of its SQL would change what they do there.
+- The SQL that a helper builds never changes, except to fix SQL that fails or does other than its arguments describe: applied migrations call the same helper on new targets, and a change of its SQL would change what they do there.
   A new behavior requires a new helper or option; the helpers of a project must follow the same rule.
 - Helpers quote the names they take as arguments or keys and never qualify them with a schema, which the search path of the migration gives.
   They quote with `quoteIdentifier`, since a step is SQL text, which a fragment of `identifier` from `kern-db` is not.
   They quote the values of an enum type with `quoteLiteral`.
   They insert SQL text, such as definitions, conditions, defaults, and the elements of an index, as it is.
+  They end SQL text that contains `--` with a line break when they write SQL after it on its line, such as a comma, `USING`, `DEFAULT`, or `)`, so that a line comment at its end does not comment that out; they leave other SQL on its line, which keeps the usual statements as they read.
 - They add no `IF EXISTS`, `IF NOT EXISTS`, or `CASCADE`, except `createExtension`, so that a `down` that does not match its `up` fails instead of passing or dropping dependent objects.
   The changes outside a transaction of `concurrently` check the catalog instead, since they must be safe to run again, so the `up` and `down` that a transaction runs catch such a mismatch.
 - A helper checks its arguments when it is called, such as when the module of its migration loads, so that a mistake it finds fails the migration before anything runs; PostgreSQL checks the SQL text that it takes when the step runs.
@@ -153,7 +154,6 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - Its rollback drops what it adds and adds what it drops.
   - Both directions drop the entries of a record in reverse order and add them in order, since PostgreSQL drops them one by one and rejects dropping an entry that another depends on; an entry must follow the entries of its record it depends on.
     When a step adds or drops both a foreign key and the unique constraint that it references, both must be in `addConstraints` or `dropConstraints`, the unique constraint first, rather than the foreign key as `REFERENCES` in the definition of a column, since both directions drop constraints before columns.
-  - It ends a definition that contains `--` with a line break before the comma of the next entry, as the function helpers end their SQL, so that a line comment at its end does not comment out the entries after it.
   - It rejects an unknown change and empty changes.
   - `addColumns` and `addConstraints` call it with the changes of one kind, and `addColumn` and `addConstraint` call them with a record of one entry.
   - It takes no renames, since PostgreSQL does not combine `RENAME` with other actions in one `ALTER TABLE`, and no changes of columns yet ([backlog](../backlog/column-changes-of-alter-table.md)).
@@ -195,7 +195,6 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   The helpers read no SQL of a parameter, so the default and the mode are properties of their own.
 - `replaceFunction` replaces the definition of a function with `CREATE OR REPLACE FUNCTION`, which keeps its owner, grants, and dependent objects, and restores the previous definition on rollback the same way; it takes the parameters once, which must give those of the function, since PostgreSQL rejects a change of the return type, including of the `OUT` parameters, and creates another overload for other types ([decision](../decisions/migrations/replace-function-helper.md)).
   - Before each `CREATE OR REPLACE FUNCTION`, it casts the name qualified with the current schema and the types of the parameters other than `OUT` to `regprocedure`, which fails for a function missing from the target schema, as `replaceView` checks a view.
-- The function helpers end a type or a default that contains `--` with a line break, so that a line comment at its end does not comment out the comma, `DEFAULT`, or `)` after it; they leave other SQL on its line, which keeps the usual statements as they read.
 - The function helpers check the parameters when they are called, including that an `OUT` parameter has no default, which PostgreSQL rejects only when the step runs, such as on rollback of `dropFunction`.
 - `createExtension` has no `down`, since an extension belongs to the whole database, such as to every tenant.
   - It checks `pg_extension` in a `DO` block rather than running `CREATE EXTENSION IF NOT EXISTS`, which sends a notice of an existing extension that postgres.js logs, at every new tenant of a history that creates one.

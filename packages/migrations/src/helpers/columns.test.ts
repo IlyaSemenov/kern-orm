@@ -150,6 +150,20 @@ describe("changeColumn", () => {
     ])
   })
 
+  it("ends a type and its using before the SQL after them with a line break when they contain a line comment", () => {
+    expect(
+      changeColumn(
+        "form",
+        "position",
+        { type: "text -- digits", using: "position::text", notNull: false },
+        { type: "integer -- count", using: "position::integer -- digits", notNull: true },
+      ),
+    ).toEqual({
+      up: 'ALTER TABLE "form" ALTER COLUMN "position" TYPE integer -- count\n USING position::integer -- digits\n, ALTER COLUMN "position" SET NOT NULL',
+      down: 'ALTER TABLE "form" ALTER COLUMN "position" TYPE text -- digits\n USING position::text\n, ALTER COLUMN "position" DROP NOT NULL',
+    })
+  })
+
   it("rejects a property of one state, using without a change of type, and states that change nothing", () => {
     const reject = (from: object, to: object) => {
       try {
@@ -351,6 +365,37 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
     expect(result).toEqual({
       up: ["1000", "25", "0"],
       down: ["1,000", "25", "0", ""],
+    })
+  })
+
+  it("changeColumn makes the changes after a type and a using that end with a line comment", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        changeColumn(
+          "form",
+          "position",
+          {
+            type: "text -- digits",
+            using: "position::text -- digits",
+            notNull: false,
+            default: null,
+          },
+          {
+            type: "integer -- count",
+            using: "position::integer -- count",
+            notNull: true,
+            default: "0",
+          },
+        ),
+        "CREATE TABLE form (position text)",
+      ),
+    )
+
+    expect(result).toEqual({
+      before: ["column form.position text", "table form"],
+      up: ["column form.position integer NOT NULL DEFAULT 0", "table form"],
+      down: ["column form.position text", "table form"],
     })
   })
 

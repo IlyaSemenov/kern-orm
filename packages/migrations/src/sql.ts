@@ -41,3 +41,12 @@ export function quoteDollar(body: string): string {
 export function endLineComment(sql: string): string {
   return sql.includes("--") ? `${sql}\n` : sql
 }
+
+/** Joins SQL parts with `separator`, ending each part before another with `endLineComment`, so that a line comment at its end does not comment out the parts after it. */
+export function joinSql(parts: readonly string[], separator: string): string {
+  let sql = ""
+  for (let index = 0; index < parts.length; index++) {
+    sql += index < parts.length - 1 ? `${endLineComment(parts[index]!)}${separator}` : parts[index]!
+  }
+  return sql
+}
