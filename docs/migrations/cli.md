@@ -49,7 +49,7 @@ import { addColumn, defineMigration } from "kern-migrations"
 export default defineMigration([addColumn(/* table */ "", /* column */ "", "text")])
 ```
 
-For the first migration of the directory, the step is `createTable`.
+For the first migration, the step is `createTable`.
 Fill in the names, or replace the step with the steps of your migration; until then, the migration fails to apply.
 
 To create migrations from a template of your own, such as one that imports your helpers, pass `template`, which takes the name of the module, such as `0003_add_form_slug`, and returns its text.

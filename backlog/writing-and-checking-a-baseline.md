@@ -1,11 +1,12 @@
 # Writing and checking a baseline
 
-Writing the [baseline](squashing-a-history.md) of a history, and checking that it builds what the migrations it replaces build: a target that the baseline built is never compared with one that the replaced migrations built, so a difference between them stays unnoticed until a later migration fails on one of them.
+Writing the [baseline](../architecture/migrations.md#histories) of a history, and checking that it builds what the migrations it replaces build: a target that the baseline built is never compared with one that the replaced migrations built, so a difference between them stays unnoticed until a later migration fails on one of them.
 
 ## Writing
 
 - Preliminary decision: a command of the command line, such as `squash`, creates the module of the baseline with blank steps that fail to load until they are filled in, as `new` creates a migration, and gives the keys of `replaces`, the keys of the history.
   It changes no target and removes no module.
+  `squashmigrations` of Django writes the squashed migration from the operations of the migrations that it replaces ([source](https://github.com/django/django/blob/6.0.10/django/core/management/commands/squashmigrations.py#L134-L200)), and `migration:rollup` of MikroORM from the bodies of their `up` and `down` ([source](https://github.com/mikro-orm/mikro-orm/blob/v7.2.11/packages/core/src/utils/AbstractMigrator.ts#L148-L248)).
 - Decide whether the command writes the keys into a module that the project passes as `replaces`, as `new` writes the list module, or prints them for the options of `defineMigrations`.
 - Decide what the command does for a history that has a baseline, whose module it must not overwrite.
 - Decide whether anything writes the SQL of the baseline from a schema that the replaced migrations built.

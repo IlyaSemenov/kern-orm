@@ -112,7 +112,7 @@ export function createMigrationSearchPath(
 export interface TargetVersions {
   readonly schemaExists: boolean
   readonly tableExists: boolean
-  /** Keys of the applied migrations in the order of their numbers, followed by keys of another form; none without the table. */
+  /** Keys that the table of versions has, in the order of their numbers, followed by keys of another form; none without the table. */
   readonly applied: readonly string[]
 }
 
@@ -195,14 +195,28 @@ function buildCreateSchema(schemaName: string): string {
   )}`
 }
 
-/** Records migration `key` as applied. */
-export async function insertVersion(target: ResolvedTarget, key: string): Promise<void> {
-  await execute(target.database, `INSERT INTO ${target.table} (key) VALUES ($1)`, [key])
+/** Records `keys` as applied in one statement, such as the key of a migration, or the keys that a baseline replaces. */
+export async function insertVersions(
+  target: ResolvedTarget,
+  keys: readonly string[],
+): Promise<void> {
+  let values = "($1)"
+  for (let index = 2; index <= keys.length; index++) {
+    values += `, ($${index})`
+  }
+  await execute(target.database, `INSERT INTO ${target.table} (key) VALUES ${values}`, keys)
 }
 
-/** Records migration `key` as not applied. */
-export async function deleteVersion(target: ResolvedTarget, key: string): Promise<void> {
-  await execute(target.database, `DELETE FROM ${target.table} WHERE key = $1`, [key])
+/** Records `keys` as not applied in one statement. */
+export async function deleteVersions(
+  target: ResolvedTarget,
+  keys: readonly string[],
+): Promise<void> {
+  let list = "$1"
+  for (let index = 2; index <= keys.length; index++) {
+    list += `, $${index}`
+  }
+  await execute(target.database, `DELETE FROM ${target.table} WHERE key IN (${list})`, keys)
 }
 
 /** Existence of the target schema and its table of versions, and the isolation level of the transaction that read it. */

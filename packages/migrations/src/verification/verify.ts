@@ -1,8 +1,9 @@
 // Verification of a history: each migration applies, rolls back to the structure before it, and applies again in a temporary schema, and its migration tests check how it changes data.
 import type { Database, TransactionOptions } from "kern-db"
 
-import { getErrorMessage, MigrationError } from "../error"
+import { getErrorMessage, MigrationError, nameMigration } from "../error"
 import type { MigrationHistory } from "../history"
+import { listKeysAfterBaseline } from "../history"
 import type { MigrationDatabase, MigrationStep } from "../migration"
 import { runMigrationSteps, toMigrationDatabase } from "../migration"
 import { quoteIdentifier } from "../sql"
@@ -35,9 +36,10 @@ interface VerifiedSchema {
   readonly ownerName: string
 }
 
-/** Migration of a history with its steps and the files of its migration tests. */
+/** Migration of a history, or its baseline, with its steps and the files of its migration tests. */
 interface VerifiedMigration {
-  readonly key: string
+  /** Key of the migration, or `undefined` for the baseline. */
+  readonly key: string | undefined
   readonly steps: readonly MigrationStep[]
   readonly testFiles: readonly MigrationTestFile[]
 }
@@ -48,6 +50,8 @@ interface VerifiedMigration {
  * In the order of the history, it applies each migration, and then rolls it back, checks that the structure of the schema is the same as before the migration, runs the migration tests of the migration, and applies it again.
  * It rejects at the first failure with an error that names the migration, and the migration test and its stage for an error of a test.
  * It loads the migrations and the migration tests before it runs any, rejecting a file of migration tests that matches no migration.
+ *
+ * It verifies the baseline of a history as its first migration, on the empty schema, and then the migrations after those that the baseline replaces, skipping the replaced ones that the history keeps, with their migration tests.
  */
 export async function verifyMigrations(
   target: MigrationTarget,
@@ -55,14 +59,19 @@ export async function verifyMigrations(
   options: VerifyMigrationsOptions = {},
 ): Promise<void> {
   checkMigrationTarget(target)
+  const { baseline } = history
   // A history without migrations comes from a pattern or a directory that matches no file, more likely than from a project without migrations.
-  if (history.keys.length === 0) {
+  if (history.keys.length === 0 && baseline === undefined) {
     throw new Error("Cannot verify a history without migrations")
   }
   const testFiles =
     options.tests === undefined ? undefined : await loadMigrationTests(options.tests, history.keys)
   const migrations: VerifiedMigration[] = []
-  for (const key of history.keys) {
+  if (baseline !== undefined) {
+    migrations.push({ key: undefined, steps: await baseline.load(), testFiles: [] })
+  }
+  // The replaced migrations that the history keeps start from a schema that the history cannot build, unless they are all of them, which it cannot tell.
+  for (const key of listKeysAfterBaseline(history)) {
     migrations.push({ key, steps: await history.load(key), testFiles: testFiles?.get(key) ?? [] })
   }
   const database = getTargetDatabase(target)
@@ -109,7 +118,7 @@ async function verifyMigration(
       await runMigrationSteps(migrationDatabase, key, steps, "up")
     } catch (error) {
       throw new Error(
-        `Migration ${key} fails to apply again after its rollback: ${getErrorMessage(error)}`,
+        `${nameMigration(key, true)} fails to apply again after its rollback: ${getErrorMessage(error)}`,
         { cause: error },
       )
     }
@@ -117,8 +126,12 @@ async function verifyMigration(
   return after
 }
 
-/** Rejects a structure after the rollback of migration `key` that differs from the structure before the migration, listing the lines that differ. */
-function checkStructure(key: string, before: readonly string[], after: readonly string[]): void {
+/** Rejects a structure after the rollback of migration `key`, or of the baseline without `key`, that differs from the structure before the migration, listing the lines that differ. */
+function checkStructure(
+  key: string | undefined,
+  before: readonly string[],
+  after: readonly string[],
+): void {
   const beforeLines = new Set(before)
   const afterLines = new Set(after)
   const missing = before.filter(line => !afterLines.has(line))
@@ -127,7 +140,7 @@ function checkStructure(key: string, before: readonly string[], after: readonly 
     return
   }
   const lines = [
-    `Rolling back migration ${key} does not restore the structure of the schema (- before the migration, + after its rollback):`,
+    `Rolling back ${nameMigration(key)} does not restore the structure of the schema (- before the migration, + after its rollback):`,
   ]
   for (const line of missing) {
     lines.push(formatDiffLine("-", line))

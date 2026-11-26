@@ -31,7 +31,13 @@ export type { TableChanges, TableOptions } from "./helpers/tables"
 export { alterTable, createTable, dropTable, renameTable } from "./helpers/tables"
 export type { ReplaceViewOptions, ViewOptions } from "./helpers/views"
 export { createView, dropView, replaceView } from "./helpers/views"
-export type { MigrationHistory, MigrationHistoryOptions, MigrationLoader } from "./history"
+export type {
+  MigrationBaseline,
+  MigrationBaselineOptions,
+  MigrationHistory,
+  MigrationHistoryOptions,
+  MigrationLoader,
+} from "./history"
 export { defineMigrations } from "./history"
 export type { MigrateOptions, MigrationStatus, RedoOptions, RollbackOptions } from "./migrate"
 export { getMigrationStatus, migrate, redo, rollback } from "./migrate"

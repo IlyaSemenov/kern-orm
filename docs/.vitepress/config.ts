@@ -144,6 +144,7 @@ export default defineConfig({
             { text: "Writing Migrations", link: "/migrations/writing" },
             { text: "Schema Helpers", link: "/migrations/helpers" },
             { text: "Migrations Outside a Transaction", link: "/migrations/outside-transaction" },
+            { text: "Squashing Migrations", link: "/migrations/squashing" },
           ],
         },
         {

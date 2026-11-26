@@ -5,7 +5,7 @@ The migrations of rake-db are neither converted nor run, and the rows of its tab
 
 Preliminary decisions:
 
-- A call, such as `recordMigrations(target, history, { through, verify })`, records the keys of a history up to `through` as applied without running their migrations, since the [table of versions is the state of a target](squashing-a-history.md#table-of-versions), and no row of it tells `migrate` that another migrator built the schema.
+- A call, such as `recordMigrations(target, history, { through, verify })`, records the keys of a history up to `through` as applied without running their migrations, since the [table of versions is the state of a target](../architecture/migrations.md#applying-and-rolling-back), and no row of it tells `migrate` that another migrator built the schema.
   - Under the lock of the target and in one transaction, it calls `verify` with the database of the migration, creates the table of versions, and records the keys, so that a `verify` that rejects changes nothing.
   - On a target that has `through`, also one with later migrations, it does nothing and does not call `verify`, so that an application may call it before every `migrate`.
   - It rejects a target that has rows and lacks `through`, which `migrate` takes there.

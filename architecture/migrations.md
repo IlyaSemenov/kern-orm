@@ -49,7 +49,18 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   A name that contains `/` is a path; another name is the key itself.
   `defineMigrations` rejects a key of another form and two keys of one number, such as `0002_create_user` and `2_create_tag`, or migrations of two branches that took one number.
 - `defineMigrations` rejects a path of a file of [migration tests](#verification) with a hint to exclude migration tests from the patterns of `import.meta.glob`, rather than skipping it: a bundler builds a chunk of every module that the patterns match, with its imports, such as the test runner.
-- A call loads only the modules of the migrations it applies or rolls back, so that migrating a target that is up to date loads none.
+- `baseline` of the options gives a baseline: a migration without a key that takes an empty target to the state of a key in one go, which the migrations up to that key otherwise build one by one, so that it replaces them, and `replaces`, the keys of those migrations, so that a call reads the keys without loading a module ([decision](../decisions/migrations/baseline-without-a-key.md)).
+  It shortens a long history for a new schema and for the [verification](#verification), and lets a project remove the modules of the replaced migrations.
+  - `migration` of a baseline is the loader of its module or the baseline itself, as of a migration of the history.
+  - `replaces` lists the last replaced keys in order without a gap, down to the last one, whose state the baseline builds: all of them at first, and fewer once the project removes keys from its start.
+  - The history may keep the modules of the last replaced migrations, of all of them or of none, without a gap, such as `0098` and `0099` of 99, since calls apply and roll back migrations in order; every other key of the history must follow the last replaced key.
+  - A project must remove a key from the start of `replaces`, and the module of a replaced migration, only once every target has applied it and no version of the application that lists it runs.
+  - Squashing again replaces the module of the baseline and adds the keys up to the new state to `replaces`; the previous baseline has no key to keep.
+  - `keys` of a history are the keys of the migrations that it loads, and `listHistoryKeys` (`src/history.ts`) gives them with the keys of `replaces` without modules, the keys of the history that calls compare with those of a target.
+  - `defineMigrations` rejects `replaces` that is empty, has a key of another form, or is out of order, a key of the history up to the last replaced key that `replaces` lacks, a history that keeps replaced migrations other than the last ones, and a baseline that is neither a loader nor a migration.
+  - The module of a baseline must not be named as a key, so that `new` does not take it for a migration, and the patterns of `import.meta.glob` must exclude it, unless it is outside the directory of the migrations.
+  - A baseline must not have [changes outside a transaction](#changes-outside-a-transaction), and one that has them rejects when it loads, or when `defineMigrations` takes it as a value: it records the replaced keys in its transaction, so that a target never has a part of them.
+- A call loads only the modules of the migrations it applies or rolls back, and that of the baseline only when it runs it, so that migrating a target that is up to date loads none.
   It loads them all before running any, so that a module that fails to load changes nothing.
 - The cache of loaded modules is that of the runtime, so histories with the same keys never share migrations.
 - Migrations of a history rely on the search path and do not name the target schema, so that one history applies to any schema, such as the schema of each tenant.
@@ -71,13 +82,15 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 
 ## Applying and rolling back
 
-- Each target keeps the keys of its applied migrations, with the time of applying, in its table of versions in the target schema, `kern_migration` by default, with columns `key` and `applied_at`.
+- Each target keeps its state in its table of versions in the target schema, `kern_migration` by default, with columns `key` and `applied_at`: the keys whose changes its schema has, each with the time when it was recorded, rather than a log of the migrations that ran on it.
+  - It keeps every key of the state rather than the last one: the keys tell a state of this history from a state of another one with the same last number, such as after a migration merged with a number before an applied one, or on the database of a developer who applied the migrations of another branch ([decision](../decisions/migrations/every-key-of-the-state.md)).
+  - A [baseline](#histories) has no row of its own: a target is in the state of the last replaced key, whichever built it.
 - Histories with different tables of versions apply to one target independently, such as the history of a package beside that of the application: a call reads and records only the table of its history, so the keys of another history, including those of the same numbers, are neither applied nor unknown to it.
   `verifyMigrations` checks a history in a schema of its own, without the objects of another history.
 - Every call first resolves the target schema and checks that it and its table of versions exist, then reads the table only when it exists, since a statement on a missing table would fail and abort an enclosing transaction.
   It checks them with a query of `pg_catalog` rather than with `to_regclass` and `to_regnamespace`, whose lookups in the catalog cache of the connection miss a schema that another transaction committed while this one waited for the lock of the target.
   It rejects a target schema or a table of versions whose name is longer than `max_identifier_length` bytes before changing anything, since PostgreSQL truncates such a name, and the check would miss what the migrator created under it.
-- `migrate` applies the pending migrations of a target, or the first `count` of them, and resolves to their keys.
+- `migrate` applies the pending migrations of a target, or the first `count` of them, records their keys, and resolves to the keys that it recorded.
 - `migrate` returns after the first read when nothing is pending, so that migrating a tenant that is up to date at the first access of each process costs two statements outside a transaction.
   Otherwise, it locks the target with the [advisory lock](transactions.md#locks) of the qualified name of its table of versions, reads the versions again, and applies those still pending, so that processes that migrate a target at once apply each migration once.
 - The lock belongs to the table of versions, so that different targets, such as tenants, and histories of one target migrate at once.
@@ -121,9 +134,36 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
 - `rollback` undoes the last applied migrations of a target, one by default, a given number of them, or all, and `redo` undoes and applies them again, each locking the target and running the migrations as `migrate` does; `count` counts migrations with and without changes outside a transaction alike.
   They resolve to the keys in the order they undo and apply them, and to none without a transaction when the target has no table of versions.
   They reject when the target has applied keys that the history lacks, since they cannot run the `down` of a migration they do not have.
-- `getMigrationStatus` gives the PostgreSQL schema that it resolved, the applied and the pending keys of the target, and its applied keys that the history lacks, as `unknown`.
+- `getMigrationStatus` gives the PostgreSQL schema that it resolved and the state of the target against the history: `applied`, the keys of the history that the target has, `pending`, the keys of the history that it lacks, and `unknown`, its keys that the history lacks.
 - An error of a migration is a `MigrationError` that names its key, and its step and direction for an error of a step, and keeps the original error in `cause`.
   Its message includes the message of the original error, since not every log shows `cause`.
+
+### Baseline
+
+A call on a history with a [baseline](#histories) checks that the history has what takes the target from its state to the one that the call asks for, and rejects before changing anything otherwise: from the versions of the first read, before it locks the target, and again under the lock from the versions read there.
+
+- A target without keys runs the baseline, and records the keys of `replaces` in the transaction that runs it, in one statement; then it applies the migrations after them.
+  The baseline counts as one migration of `count`, and the call resolves to the keys that it recorded.
+- A target that has the last replaced key needs nothing of the baseline: a release that squashes a history changes nothing on it, and a call that has nothing else to apply returns after the first read and loads no module, including that of the baseline.
+- A target that has keys but lacks replaced ones applies their migrations when the history keeps the modules of all that it lacks.
+  Otherwise `migrate` rejects with an error that names the replaced keys without modules that the target lacks and tells to migrate it with a version of the history that has them.
+- Applied keys before the first key of `replaces` are not checked, since a target that the baseline built lacks them; from that key on, the rules of an applied key that the history lacks and of a pending key before an applied one hold, with the keys of `replaces` as keys of the history.
+- A version of the application from before the squash finds its history applied on a target that the baseline built while `replaces` lists every key of that version, so it keeps migrating during a rolling deploy, also a target that the new version created.
+- A schema that already has the tables of the baseline and no keys, such as one that another migrator built, runs the baseline as it would run the first migration of any history: the first `CREATE TABLE` fails and the transaction rolls back, unless the baseline has `IF NOT EXISTS`.
+- `rollback` and `redo` undo a replaced migration whose module the history keeps by its own `down`, as any migration, except the first key of `replaces` ([decision](../decisions/migrations/rollback-of-a-baseline.md)).
+  - No call undoes the first key of `replaces` by its own `down`, also when the history keeps its module: a target that the baseline built has no key before it, so undoing it would leave a target without keys, which a call takes as empty, on a schema that is empty only when no migration preceded the key, which a history cannot tell.
+    So a call that undoes replaced migrations by their own `down` always leaves the first key of `replaces`, and the state of the target is known whatever the list.
+  - A call that undoes every migration of the target, by `"all"` or by a `count` of at least the number of its applied keys from the first key of `replaces` on, undoes the migrations after the replaced ones, and then the replaced ones together by the `down` of the baseline rather than by their own, whatever modules the history keeps; `redo` then applies the baseline and the migrations after it again.
+    - It requires every key of `replaces` on the target, the state that the `down` of the baseline starts from; a target that lacks some, such as after a call undid the last of them, rejects until `migrate` applies them again.
+    - With the keys of `replaces`, it removes the keys before them, which a target that the replaced migrations built has, since the `down` of the baseline undoes what their migrations built too; so `rollback` with `"all"` leaves a target without keys whatever modules the history keeps, and resolves to the keys that it removed.
+    - When the history keeps no module of a replaced migration, the replaced migrations count as one migration of `count`, the baseline.
+  - Another call that reaches a replaced key without a module rejects before changing anything, with an error that names the key, rather than after undoing the migrations before it.
+    So, while the history keeps modules of replaced migrations and `replaces` has more than one key, calls that undo one migration each end in a rejection at the last replaced key without a module, or, when the history keeps them all, at the first key of `replaces`, since a call that reaches it undoes every migration, which requires the replaced keys that the calls before it undid.
+    When the history keeps no module, or `replaces` has one key, the call that reaches the replaced keys undoes them all by the `down` of the baseline.
+  - An applied replaced key without a module is not an applied key that the history lacks, which `rollback` and `redo` reject whatever their `count`.
+- `applied` of `getMigrationStatus` has the applied keys of `replaces`, also those without modules, and the keys of the target before the first of them, which no call checks; neither are `unknown`.
+  `pending` has, on a target without keys, the keys of `replaces` and those after them.
+- An error of a baseline is a `MigrationError` whose `key` is `undefined`, since a baseline has no key, and whose message names the baseline ([decision](../decisions/migrations/error-of-a-baseline.md)).
 
 ## Helpers
 
@@ -218,12 +258,14 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   It never rejects: it prints an error to stderr and sets `process.exitCode` to 1, so that the script closes them after it.
   - A usage error prints its message with a hint to `--help`; arguments without a command print the usage to stderr.
   - An error of a command prints whole with `console.error`, with its stack, `cause`, and the fields of a PostgreSQL error, such as `detail`.
+- `migrate`, `rollback`, and `redo` print a line for each key that the call resolves to, also for each key of a baseline, and `status` a line for each key of the status: the keys of `applied` and `pending` of `getMigrationStatus` in the order of their numbers, and then those of `unknown` ([decision](../decisions/migrations/replaced-keys-on-the-command-line.md)).
+  `status` lists the applied keys of the target rather than the keys that the history loads, so that it shows the replaced keys without modules.
 - `--schema` sets the PostgreSQL schema of the target.
   Otherwise, the command line reads `$schemaName` of a `Db` once, before the command, and passes the call the `Database` of the target with that `schemaName`, so that the call does not read it again.
   When the function of the schema throws, such as of the current tenant, which a command line has no context for, the error names `--schema`.
 - `new <name>` creates the module of the next migration in `directory`, and never overwrites a file.
   - `<name>` has only letters, digits, `_`, and `-`, so that it makes a key, a file name on every file system, and an import specifier.
-  - Its number follows the greatest number of the keys of the history and of the migration modules of the directory, with as many digits as the key of that number.
+  - Its number follows the greatest number of the keys of the history, including the keys that a baseline replaces, and of the migration modules of the directory, with as many digits as the key of that number.
   - The migration modules of a directory are its files of `.ts`, `.mts`, `.js`, or `.mjs` whose name without the extension is a key, so that `index.ts` and migration tests `<key>.migration-test.ts` are not; two modules of one number are an error.
   - The default template is `createTable` for the first migration of the history and the directory, and `addColumn` for a later one, the most common changes; their names are blank, which fail to load until they are filled in, so that a migration left as created never applies.
 - With `listModule`, `new` also writes a module whose default export is the loaders of the migration modules of the directory by key, for `defineMigrations` on runtimes without `import.meta.glob`, such as Node.js and Bun.
@@ -244,7 +286,10 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   - In the transaction, every step runs its `up` and `down`, so the [changes outside a transaction](#changes-outside-a-transaction) go unchecked.
   - It runs at the isolation level of the enclosing transaction, or at the default of the database in a transaction of its own, since no other process changes its temporary schema.
     At `REPEATABLE READ` or `SERIALIZABLE`, `createExtension` of a migration fails when another transaction creates the extension and commits while the verification waits for the lock of extensions.
-- Before any statement, it rejects a history without migrations, which more likely comes from a pattern that matches no file than from a project without migrations, loads the migration tests, rejecting a file of tests that matches no migration, and loads every migration.
+- Before any statement, it rejects a history without migrations and without a baseline, which more likely comes from a pattern that matches no file than from a project without migrations, loads the migration tests, rejecting a file of tests that matches no migration, and loads every migration that it verifies.
+- It verifies a [baseline](#histories) as any migration, on the empty schema: it applies it, rolls it back to the empty structure, and applies it again; then it verifies the migrations after the last replaced key.
+  - It skips the replaced migrations that the history keeps without loading them, and does not run their migration tests, whose files it loads and checks as those of the other migrations: they were verified before the baseline replaced them and do not change, and a history cannot tell whether the first of them starts from an empty schema.
+  - A baseline has no migration tests, whose files are named by the key of their migration.
 - It verifies the migrations in the order of the history, each on the schema that the migrations before it leave:
   1. It applies the migration and describes the structure of the schema.
   2. In a nested level that rolls back, it rolls the migration back and requires the structure that the migration found; runs each migration test of the migration in a nested level of its own that rolls back; and applies the migration again.

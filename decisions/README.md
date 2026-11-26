@@ -158,6 +158,11 @@ The SQL that loads nested queries and relations.
 - [`replaceFunction` as a helper of its own](migrations/replace-function-helper.md): rather than an option of `createFunction`, such as `replace: true`, whose rollback would drop the function.
 - [The temporary schema last in the search path of migrations](migrations/temporary-schema-last.md): a temporary table of the session does not take the place of a table of the target schema, at the cost of `pg_temp` as the schema that a statement with no other schema creates in.
 - [A partitioned table indexed by a step of its own](migrations/concurrent-index-of-partitioned-table.md): `concurrently` leaves PostgreSQL to reject a partitioned table, rather than indexing each partition or building without `CONCURRENTLY`.
+- [Every key of the state in the table of versions](migrations/every-key-of-the-state.md): rather than one row of the last applied key, which would hide a migration merged before it and a state of another history.
+- [A baseline without a key or a row](migrations/baseline-without-a-key.md): the options of the history give it with the keys that it replaces, rather than a migration with a key and a row, one recorded key, a table of baselines, `replaces` in its module, or a check that the schema is empty.
+- [Rolling back a baseline](migrations/rollback-of-a-baseline.md): a call that undoes every migration runs its `down`, rather than a baseline that is never undone or the own `down` of the first replaced migration.
+- [An error of a baseline without a key](migrations/error-of-a-baseline.md): `key` of its `MigrationError` is `undefined`, rather than the last replaced key.
+- [Each replaced key on a line of the command line](migrations/replaced-keys-on-the-command-line.md): rather than one line for the baseline.
 
 ## Packages
 

@@ -13,13 +13,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Unions and common table expressions](unions-and-common-table-expressions.md): `UNION ALL`, `WITH`, and derived sources.
 - [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
 - [Moving from rake-db](moving-from-rake-db.md): recording the first migration as applied on a schema that rake-db built, after a check of its applied versions.
-
-### Squashing migrations
-
-Items of one piece of work, in its order.
-
-- [Squashing a history](squashing-a-history.md): a baseline without a key that takes an empty target to the state of the migrations that it replaces.
-- [Writing and checking a baseline](writing-and-checking-a-baseline.md): a command that creates it, and `verifyMigrations` comparing it with the migrations that it replaces.
+- [Writing and checking a baseline](writing-and-checking-a-baseline.md): a command that creates the baseline of a history, and `verifyMigrations` comparing it with the migrations that it replaces.
 
 ## Later
 

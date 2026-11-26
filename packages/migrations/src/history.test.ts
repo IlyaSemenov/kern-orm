@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { getThrownError } from "@kern-orm/test-harness/errors"
 
 import { MigrationError } from "./error"
-import { defineMigrations } from "./history"
+import { defineMigrations, listHistoryKeys, listKeysAfterBaseline } from "./history"
 import type { MigrationStep } from "./migration"
 
 const load = async () => ({ default: { up: "SELECT 1" } })
@@ -103,6 +103,248 @@ describe("defineMigrations", () => {
         key: "0001_create_form",
         step: 1,
       }),
+    )
+  })
+})
+
+describe("baseline", () => {
+  const baseline = { up: "CREATE TABLE form (id integer, slug text)", down: "DROP TABLE form" }
+
+  it("keeps the keys that the baseline replaces apart from the keys of the migrations that the history can load", () => {
+    const history = defineMigrations(
+      { "0003_create_user": load },
+      { baseline: { migration: baseline, replaces: ["0001_create_form", "0002_add_form_slug"] } },
+    )
+
+    expect(history.keys).toEqual(["0003_create_user"])
+    expect(history.baseline?.replaces).toEqual(["0001_create_form", "0002_add_form_slug"])
+    expect(listHistoryKeys(history)).toEqual([
+      "0001_create_form",
+      "0002_add_form_slug",
+      "0003_create_user",
+    ])
+    expect(listKeysAfterBaseline(history)).toEqual(["0003_create_user"])
+  })
+
+  it.each([
+    ["all of them", ["0001_create_form", "0002_add_form_slug", "0003_drop_form_name"]],
+    ["the last ones", ["0002_add_form_slug", "0003_drop_form_name"]],
+    ["none", []],
+  ])("lets the history keep the modules of the replaced migrations: %s", (_, kept) => {
+    const history = defineMigrations(
+      { ...Object.fromEntries(kept.map(key => [key, load])), "0004_create_user": load },
+      {
+        baseline: {
+          migration: baseline,
+          replaces: ["0001_create_form", "0002_add_form_slug", "0003_drop_form_name"],
+        },
+      },
+    )
+
+    expect(history.keys).toEqual([...kept, "0004_create_user"])
+    expect(listHistoryKeys(history)).toEqual([
+      "0001_create_form",
+      "0002_add_form_slug",
+      "0003_drop_form_name",
+      "0004_create_user",
+    ])
+    expect(listKeysAfterBaseline(history)).toEqual(["0004_create_user"])
+  })
+
+  it("takes replaces shortened to its last keys, such as after every target has applied the first ones", () => {
+    const history = defineMigrations(
+      { "0100_create_user": load },
+      { baseline: { migration: baseline, replaces: ["0099_add_form_slug"] } },
+    )
+
+    expect(listHistoryKeys(history)).toEqual(["0099_add_form_slug", "0100_create_user"])
+  })
+
+  it("lists the keys of a history without a baseline as they are", () => {
+    const history = defineMigrations({ "0001_create_form": load })
+
+    expect(listHistoryKeys(history)).toBe(history.keys)
+    expect(listKeysAfterBaseline(history)).toBe(history.keys)
+  })
+
+  it.each([
+    ["no replaces", undefined],
+    ["empty replaces", []],
+    ["replaces that is not an array", "0001_create_form"],
+  ])("rejects %s", (_, replaces) => {
+    expect(() =>
+      defineMigrations({}, { baseline: { migration: baseline, replaces: replaces as never } }),
+    ).toThrow(
+      "The baseline of a history requires replaces: the keys of the migrations that it replaces, in order",
+    )
+  })
+
+  it.each(["create_form", "0001", "0001_create.form", "0001_form/detail", 1])(
+    "rejects replaced key %p of another form",
+    key => {
+      expect(() =>
+        defineMigrations({}, { baseline: { migration: baseline, replaces: [key as never] } }),
+      ).toThrow(
+        `Replaced migration ${key} must be named <number>_<name>, such as 0001_create_form, without dots or slashes`,
+      )
+    },
+  )
+
+  it.each([
+    ["out of order", ["0002_add_form_slug", "0001_create_form"], "0001_create_form"],
+    ["of one number", ["0001_create_form", "1_create_tag"], "1_create_tag"],
+    ["listed twice", ["0001_create_form", "0001_create_form"], "0001_create_form"],
+  ])("rejects replaced keys %s", (_, replaces, key) => {
+    expect(() => defineMigrations({}, { baseline: { migration: baseline, replaces } })).toThrow(
+      `Replaced migration ${key} must follow ${replaces[0]!}: list the migrations that the baseline replaces in the order of their numbers, each once`,
+    )
+  })
+
+  it.each([
+    ["before the replaced keys", "0001_create_tag"],
+    ["between the replaced keys", "0003_create_tag"],
+    ["of the number of a replaced key", "4_create_tag"],
+  ])(
+    "rejects a migration %s that replaces lacks, which a target that the baseline built would never apply",
+    (_, key) => {
+      expect(() =>
+        defineMigrations(
+          { [key]: load, "0005_create_user": load },
+          {
+            baseline: { migration: baseline, replaces: ["0002_create_form", "0004_add_form_slug"] },
+          },
+        ),
+      ).toThrow(
+        `Migration ${key} does not follow 0004_add_form_slug, the last migration that the baseline replaces, and replaces lacks it: give a new migration a number after that migration; if the baseline already includes the changes of this migration, add it to replaces`,
+      )
+    },
+  )
+
+  it.each([
+    ["the first one alone", ["0001_create_form"], "0001_create_form without 0003_drop_form_name"],
+    [
+      "the first ones without the last",
+      ["0001_create_form", "0002_add_form_slug"],
+      "0002_add_form_slug without 0003_drop_form_name",
+    ],
+    [
+      "the last one after a gap",
+      ["0001_create_form", "0003_drop_form_name"],
+      "0001_create_form without 0002_add_form_slug",
+    ],
+  ])(
+    "rejects a history that keeps replaced migrations other than the last ones: %s",
+    (_, kept, gap) => {
+      expect(() =>
+        defineMigrations(Object.fromEntries(kept.map(key => [key, load])), {
+          baseline: {
+            migration: baseline,
+            replaces: ["0001_create_form", "0002_add_form_slug", "0003_drop_form_name"],
+          },
+        }),
+      ).toThrow(
+        `The history has replaced migration ${gap}, which follows it: keep the modules of the last migrations that the baseline replaces without a gap, or of none`,
+      )
+    },
+  )
+
+  it.each([
+    ["undefined", undefined],
+    ["a string", "CREATE TABLE form (id integer)"],
+    ["an empty array", []],
+  ])(
+    "rejects %s as a baseline when it is called, with a MigrationError without a key",
+    (_, value) => {
+      expect(
+        getThrownError(() =>
+          defineMigrations(
+            {},
+            {
+              baseline: {
+                migration: value as unknown as MigrationStep,
+                replaces: ["0001_create_form"],
+              },
+            },
+          ),
+        ),
+      ).toEqual(
+        new MigrationError(
+          "The baseline must be the loader of its module, a step, or a non-empty array of steps",
+          { key: undefined },
+        ),
+      )
+    },
+  )
+
+  it("rejects a baseline with changes outside a transaction when it is called, since it records the replaced keys in its transaction", () => {
+    expect(
+      getThrownError(() =>
+        defineMigrations(
+          {},
+          {
+            baseline: {
+              migration: { ...baseline, outsideTransaction: { up: baseline.up } },
+              replaces: ["0001_create_form"],
+            },
+          },
+        ),
+      ),
+    ).toEqual(
+      new MigrationError(
+        "Step 1 of the baseline has outsideTransaction, which a baseline cannot have, since it records the migrations that it replaces in its transaction",
+        { key: undefined, step: 1 },
+      ),
+    )
+  })
+
+  it("loads the module of the baseline only when called and returns its steps", async () => {
+    let loads = 0
+    const history = defineMigrations(
+      {},
+      {
+        baseline: {
+          migration: async () => {
+            loads++
+            return { default: baseline }
+          },
+          replaces: ["0001_create_form"],
+        },
+      },
+    )
+
+    expect(loads).toBe(0)
+    expect(await history.baseline!.load()).toEqual([baseline])
+    expect(loads).toBe(1)
+  })
+
+  it("rejects a module of the baseline that fails to load, exports no migration, or has changes outside a transaction, with a MigrationError without a key", async () => {
+    const failure = new Error("Cannot find module")
+    const loadBaseline = (migration: () => Promise<unknown>) =>
+      defineMigrations({}, { baseline: { migration, replaces: ["0001_create_form"] } })
+        .baseline!.load()
+        .catch((error: unknown) => error)
+
+    expect(await loadBaseline(() => Promise.reject(failure))).toEqual(
+      new MigrationError("Cannot load the baseline: Cannot find module", {
+        key: undefined,
+        cause: failure,
+      }),
+    )
+    expect(await loadBaseline(async () => baseline)).toEqual(
+      new MigrationError(
+        "The baseline must export a step or a non-empty array of steps as its default export",
+        { key: undefined },
+      ),
+    )
+    expect(
+      await loadBaseline(async () => ({
+        default: [{ ...baseline, outsideTransaction: { up: baseline.up } }, baseline],
+      })),
+    ).toEqual(
+      new MigrationError(
+        "Step 1 of the baseline has outsideTransaction, which a baseline cannot have, since it records the migrations that it replaces in its transaction",
+        { key: undefined, step: 1 },
+      ),
     )
   })
 })

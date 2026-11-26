@@ -79,6 +79,7 @@ Without the ORM, pass your database instead: `await migrate(database, migrations
 - [Writing Migrations](./writing): steps of SQL and code, and listing the migrations.
 - [Schema Helpers](./helpers): steps of typical changes, such as creating tables, columns, and indexes.
 - [Migrations Outside a Transaction](./outside-transaction): changes that PostgreSQL rejects in a transaction, such as building an index concurrently.
+- [Squashing Migrations](./squashing): replacing the first migrations of a long history with a baseline.
 - [Applying Migrations](./applying): applying, tenants, rolling back, and status.
 - [Command Line](./cli): applying, rolling back, and creating migrations from your terminal.
 - [Testing Migrations](./testing): checking that migrations apply and roll back, and how they change data.

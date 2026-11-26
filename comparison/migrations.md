@@ -12,6 +12,40 @@ Histories with the same keys never share migrations, since the cache of loaded m
 
 - rake-db, fails: it shared the changes of migrations of two histories under one key ([orchid-orm#764](https://github.com/romeerez/orchid-orm/issues/764)).
 
+## State of a target
+
+The table of versions of a target has a row for every key whose changes its schema has, and a call compares these keys with the keys of the history.
+
+- Django, same: `django_migrations` has a row for every applied migration, removed when the migration is unapplied ([source](https://github.com/django/django/blob/6.0.10/django/db/migrations/recorder.py#L18-L19)).
+- Rails, same: `schema_migrations` has a row for the version of every applied migration ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/schema_migration.rb#L19-L34)).
+- Alembic, differs: `alembic_version` keeps only the heads of the revisions, and a step replaces the revision of its row ([source](https://github.com/sqlalchemy/alembic/blob/rel_1_20_1/alembic/runtime/migration.py#L766-L809)).
+- Drizzle ORM, differs: its table has a row for every applied migration, but the migrator reads the last row alone and applies the migrations of the journal created after it, comparing neither their hashes nor their names ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/dialect.ts#L88-L111)).
+- Prisma ORM, differs: `_prisma_migrations` has a row for every attempt to apply a migration, with the checksum of its script and the times when it started, finished, and was rolled back ([source](https://github.com/prisma/prisma-engines/blob/7.10.1/schema-engine/connectors/sql-schema-connector/src/flavour/postgres.rs#L522-L537)).
+
+## Replacing a history
+
+A baseline, a migration without a key in the options of the history, takes a target without keys to the state of the migrations that it replaces and records their keys; a target that has the last of them needs nothing of it, and a target that has a part of them applies the rest while the history keeps their modules.
+
+- Django, differs: `squashmigrations` writes a migration with a name of its own and `replaces` ([source](https://github.com/django/django/blob/6.0.10/django/core/management/commands/squashmigrations.py#L134-L200)).
+  Applying it records the migrations that it replaces and then itself ([source](https://github.com/django/django/blob/6.0.10/django/db/migrations/executor.py#L268-L277)), every `migrate` records it on a database that has applied all of them ([source](https://github.com/django/django/blob/6.0.10/django/db/migrations/executor.py#L294-L308)), and a database that has applied a part of them keeps running the replaced migrations ([source](https://github.com/django/django/blob/6.0.10/django/db/migrations/loader.py#L250-L270)).
+- MikroORM, differs: `migration:rollup` writes one migration of the `up` and `down` bodies of the executed migrations, replaces their rows with its own in the database that it is connected to, and deletes their files ([source](https://github.com/mikro-orm/mikro-orm/blob/v7.2.11/packages/core/src/utils/AbstractMigrator.ts#L148-L248)).
+- Rails, differs: a new database loads the dump of the schema instead of running the migrations, and `Schema.define` records the version of the dump and the versions of the migration files before it ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/connection_adapters/abstract/schema_statements.rb#L1397-L1416)); the files of old migrations can then be deleted ([docs](https://github.com/rails/rails/blob/v8.1.4.1/guides/source/active_record_migrations.md#L1662-L1667)).
+- Alembic, differs: its cookbook creates the tables of a new database from the models and records the head with `stamp`, and then deletes the files of old revisions and sets `down_revision` of the earliest remaining one to `None` ([docs](https://github.com/sqlalchemy/alembic/blob/rel_1_20_1/docs/build/cookbook.rst#L17-L58)); a database whose recorded revision has no file fails ([source](https://github.com/sqlalchemy/alembic/blob/rel_1_20_1/alembic/script/base.py#L234-L239)).
+- Prisma ORM, differs: its documentation deletes the directory of migrations, writes one migration with `migrate diff`, and marks it as applied on each existing database with `migrate resolve --applied` ([docs](https://github.com/prisma/docs/blob/7503f8376a127831ad15a4a46905b23a15369167/apps/docs/content/docs/orm/v7/prisma-migrate/workflows/squashing-migrations.mdx#L72-L116)); `migrate deploy` applies the directories that have no row of an applied migration, and accepts the rows of applied migrations that have no directory ([source](https://github.com/prisma/prisma-engines/blob/7.10.1/schema-engine/commands/src/commands/apply_migrations.rs#L26-L45)).
+- node-pg-migrate, lacks: `fake` records migrations without running them ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/runner.ts#L116-L119)), and its check of the order rejects applied migrations whose names differ from those of the files at their positions ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/runner.ts#L368-L381)).
+- TypeORM, lacks: `migration:run --fake` records migrations without running them ([docs](https://github.com/typeorm/typeorm/blob/1.1.3/docs/docs/migrations/08-faking.md#L1-L16)).
+- Kysely, lacks: its `Migrator` rejects an executed migration that its provider lacks ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/migration/migrator.ts#L653-L665)).
+- knex, lacks: it rejects applied migrations whose files are missing, unless `disableMigrationsListValidation` is set ([source](https://github.com/knex/knex/blob/3.3.0/lib/migrations/migrate/Migrator.js#L727-L745)).
+- rake-db, lacks: `pull` writes a migration of an existing database and records it as applied ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/rake-db/src/generate/pull.ts#L27-L34)), and nothing replaces the migrations of a history.
+
+## Rolling back a replaced history
+
+A call that undoes every migration of a target undoes the replaced migrations together by the `down` of the baseline, and another call undoes a replaced migration by its own `down` while the history keeps its module.
+
+- Django, differs: unapplying a squashed migration reverses its operations and removes its row and the rows of the migrations that it replaces ([source](https://github.com/django/django/blob/6.0.10/django/db/migrations/executor.py#L268-L292)), and migrating back to a replaced migration loads the graph without replacements while the files exist ([source](https://github.com/django/django/blob/6.0.10/django/db/migrations/executor.py#L42-L50)).
+- MikroORM, differs: the migration of `migration:rollup` has the `down` bodies of the migrations in reverse order ([source](https://github.com/mikro-orm/mikro-orm/blob/v7.2.11/packages/core/src/utils/AbstractMigrator.ts#L148-L248)).
+- Rails, differs: the dump of the schema has no `down`, and rolling back runs the `down` of a migration whose file is kept and whose version the load of the dump recorded ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/migration.rb#L1469-L1478)).
+
 ## Migrating inside a transaction
 
 `migrate` creates the schema and the table of versions that it found missing with `IF NOT EXISTS` under its lock, so that creating them does not fail when something else has created them meanwhile, which would abort an enclosing transaction.

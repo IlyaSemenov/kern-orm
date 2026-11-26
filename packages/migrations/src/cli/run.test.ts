@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
-import { mkdtemp, readdir, rm } from "node:fs/promises"
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, relative } from "node:path"
 import { pathToFileURL } from "node:url"
@@ -11,6 +11,7 @@ import postgres from "postgres"
 
 import { describePostgres } from "../../testing/postgres"
 import { MigrationError } from "../error"
+import type { MigrationHistory } from "../history"
 import { defineMigrations } from "../history"
 import type { MigrationTarget } from "../target"
 
@@ -35,6 +36,12 @@ const history = defineMigrations({
   },
 })
 
+/** Options of `run`: those of the command line and the history that it runs with. */
+interface RunOptions extends Omit<MigrationCliOptions, "args"> {
+  /** History of the command line; `history` by default. */
+  readonly history?: MigrationHistory
+}
+
 /** Output of a run of the command line, with its exit code. */
 interface CliRun {
   readonly exitCode: number
@@ -42,17 +49,36 @@ interface CliRun {
   readonly errors: unknown[]
 }
 
-/** Runs the command line of `args` on `target` with `history` and records its output. */
+/** History squashed after `0002_create_user`, which keeps no module of the replaced migrations. */
+const squashedHistory = defineMigrations(
+  {
+    "0003_create_tag": {
+      up: "CREATE TABLE tag (id integer PRIMARY KEY)",
+      down: "DROP TABLE tag",
+    },
+  },
+  {
+    baseline: {
+      migration: {
+        up: "CREATE TABLE form (id integer PRIMARY KEY); CREATE TABLE app_user (id integer PRIMARY KEY)",
+        down: "DROP TABLE app_user; DROP TABLE form",
+      },
+      replaces: ["0001_create_form", "0002_create_user"],
+    },
+  },
+)
+
+/** Runs the command line of `args` on `target` with the history of the options and records its output. */
 async function run(
   target: MigrationTarget,
   args: string[],
-  options: Omit<MigrationCliOptions, "args"> = {},
+  { history: runHistory = history, ...options }: RunOptions = {},
 ): Promise<CliRun> {
   const log: string[] = []
   const errors: unknown[] = []
   const exitCode = await runCli(
     target,
-    history,
+    runHistory,
     { ...options, args },
     {
       log: text => log.push(text),
@@ -112,6 +138,65 @@ describePostgres("runCli", ({ database, driver, testTransaction, recordStatement
       ],
       errors: [],
     })
+  })
+
+  it("prints each key that a baseline records and removes, and the status of the keys of the schema, also of replaced migrations without modules", async () => {
+    const options = { history: squashedHistory }
+
+    const runs = await testTransaction(async () => [
+      await run(db, ["status"], options),
+      await run(db, ["migrate", "1"], options),
+      await run(db, ["status"], options),
+      await run(db, ["migrate"], options),
+      await run(db, ["rollback", "all"], options),
+    ])
+
+    expect(runs.map(({ exitCode, log }) => ({ exitCode, log }))).toEqual([
+      {
+        exitCode: 0,
+        log: [
+          'Migrations of schema "migrations_cli":',
+          "  pending  0001_create_form",
+          "  pending  0002_create_user",
+          "  pending  0003_create_tag",
+        ],
+      },
+      { exitCode: 0, log: ["Applied 0001_create_form", "Applied 0002_create_user"] },
+      {
+        exitCode: 0,
+        log: [
+          'Migrations of schema "migrations_cli":',
+          "  applied  0001_create_form",
+          "  applied  0002_create_user",
+          "  pending  0003_create_tag",
+        ],
+      },
+      { exitCode: 0, log: ["Applied 0003_create_tag"] },
+      {
+        exitCode: 0,
+        log: [
+          "Rolled back 0003_create_tag",
+          "Rolled back 0002_create_user",
+          "Rolled back 0001_create_form",
+        ],
+      },
+    ])
+  })
+
+  it("prints a pending migration before an applied one at its place in the status", async () => {
+    const result = await testTransaction(async () => {
+      await run(db, ["migrate", "1"])
+      await database.script(
+        "UPDATE migrations_cli.kern_migration SET key = '0002_create_user' WHERE key = '0001_create_form'",
+      )
+      return await run(db, ["status"])
+    })
+
+    expect(result.log).toEqual([
+      'Migrations of schema "migrations_cli":',
+      "  pending  0001_create_form",
+      "  applied  0002_create_user",
+    ])
   })
 
   it("targets the schema of --schema instead of that of the Db", async () => {
@@ -303,6 +388,28 @@ describe("runCli without a database", () => {
         "0003_create_tag.ts",
         "index.ts",
       ])
+    })
+
+    it("numbers the next migration after the keys that a baseline replaces, also those without modules", async () => {
+      const result = await run(db, ["new", "create_job"], {
+        directory: join(root, "migrations"),
+        history: defineMigrations(
+          {},
+          {
+            baseline: {
+              migration: { up: "CREATE TABLE form (id integer PRIMARY KEY)" },
+              replaces: ["0001_create_form", "0002_create_user"],
+            },
+          },
+        ),
+      })
+
+      expect(result.log).toEqual([
+        `Created ${relative(process.cwd(), join(root, "migrations/0003_create_job.ts"))}`,
+      ])
+      expect(await readFile(join(root, "migrations/0003_create_job.ts"), "utf8")).toContain(
+        "addColumn(",
+      )
     })
 
     it("takes a list module of a path", async () => {

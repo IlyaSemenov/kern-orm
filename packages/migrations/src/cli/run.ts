@@ -6,6 +6,8 @@ import type { Database } from "kern-db"
 
 import { getErrorMessage } from "../error"
 import type { MigrationHistory } from "../history"
+import { compareMigrationNumbers, getMigrationNumber, listHistoryKeys } from "../history"
+import type { MigrationStatus } from "../migrate"
 import { getMigrationStatus, migrate, redo, rollback } from "../migrate"
 import type { MigrationTarget } from "../target"
 import { getTargetDatabase, isMigrationTargetDb } from "../target"
@@ -91,13 +93,9 @@ export async function runCli(
       case "status": {
         const { database, schemaName } = resolveTarget(target, command.schemaName)
         const status = await getMigrationStatus(database, history, { schemaName })
-        const applied = new Set(status.applied)
         output.log(`Migrations of schema "${status.schemaName}":`)
-        for (const key of history.keys) {
-          output.log(`  ${applied.has(key) ? "applied" : "pending"}  ${key}`)
-        }
-        for (const key of status.unknown) {
-          output.log(`  unknown  ${key}`)
+        for (const line of listStatusLines(status)) {
+          output.log(line)
         }
         return 0
       }
@@ -109,7 +107,8 @@ export async function runCli(
           typeof options.listModule === "string" || options.listModule instanceof URL
             ? { path: options.listModule }
             : options.listModule
-        const paths = await createMigration(history.keys, command.migrationName, {
+        // The keys that a baseline replaces count too, also those without modules, so that the next migration follows them.
+        const paths = await createMigration(listHistoryKeys(history), command.migrationName, {
           directory: resolvePath(options.directory),
           listModule:
             listModule === undefined
@@ -159,6 +158,31 @@ function resolveTarget(
       { cause: error },
     )
   }
+}
+
+/**
+ * Lists the lines of the command `status`: the keys of `applied` and `pending` in the order of their numbers, followed by the keys of `unknown`.
+ */
+function listStatusLines(status: MigrationStatus): string[] {
+  const entries: { readonly key: string; readonly state: string }[] = []
+  for (const key of status.applied) {
+    entries.push({ key, state: "applied" })
+  }
+  for (const key of status.pending) {
+    entries.push({ key, state: "pending" })
+  }
+  // A pending key before an applied one, such as of a merged branch, shows at its place.
+  entries.sort((left, right) =>
+    compareMigrationNumbers(getMigrationNumber(left.key)!, getMigrationNumber(right.key)!),
+  )
+  const lines: string[] = []
+  for (const { key, state } of entries) {
+    lines.push(`  ${state}  ${key}`)
+  }
+  for (const key of status.unknown) {
+    lines.push(`  unknown  ${key}`)
+  }
+  return lines
 }
 
 /** Prints a line of `verb` for each key, or `empty` without keys. */

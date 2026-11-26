@@ -99,4 +99,4 @@ import { getMigrationStatus } from "kern-migrations"
 const { applied, pending, unknown } = await getMigrationStatus(db, migrations)
 ```
 
-`unknown` lists the applied migrations that `migrations` lack, such as those of a newer version of the application.
+Applied migrations of a newer version of the application or of another branch, which `migrations` lack, can appear in `unknown`.

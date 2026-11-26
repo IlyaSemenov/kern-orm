@@ -10,6 +10,7 @@ import { describePooledPostgres, describePostgres } from "../testing/postgres"
 
 import { MigrationError } from "./error"
 import { createExtension } from "./helpers/extensions"
+import type { MigrationHistory } from "./history"
 import { defineMigrations } from "./history"
 import { getMigrationStatus, migrate, redo, rollback } from "./migrate"
 import type { MigrationDatabase } from "./migration"
@@ -792,6 +793,800 @@ describePostgres("migrate", ({ database, testTransaction, recordStatements, noti
       })
     })
   })
+
+  describe("baseline", () => {
+    const replaces = ["0001_create_form", "0002_add_form_slug", "0003_add_form_name"]
+
+    /**
+     * Histories of one project around a squash, whose steps record the changes that run in `changes`, such as `0002:up`, and `baseline:up` of the baseline.
+     *
+     * `keys` are the migrations whose modules the history keeps, and `replaces` the keys that its baseline replaces.
+     */
+    function defineHistories(changes: string[]) {
+      const defineStep = (name: string) => ({
+        up: async () => {
+          changes.push(`${name}:up`)
+        },
+        down: async () => {
+          changes.push(`${name}:down`)
+        },
+      })
+      const steps = {
+        "0001_create_form": defineStep("0001"),
+        "0002_add_form_slug": defineStep("0002"),
+        "0003_add_form_name": defineStep("0003"),
+        "0004_create_user": defineStep("0004"),
+      }
+      const defineHistory = (keys: (keyof typeof steps)[], replaced?: string[]) =>
+        defineMigrations(
+          Object.fromEntries(keys.map(key => [key, steps[key]])),
+          replaced && { baseline: { migration: defineStep("baseline"), replaces: replaced } },
+        )
+      return {
+        /** History before the squash. */
+        original: defineHistory(["0001_create_form", "0002_add_form_slug", "0003_add_form_name"]),
+        /** History that keeps the module of every replaced migration. */
+        full: defineHistory(
+          ["0001_create_form", "0002_add_form_slug", "0003_add_form_name", "0004_create_user"],
+          replaces,
+        ),
+        /** History that keeps the module of the last replaced migration. */
+        last: defineHistory(["0003_add_form_name", "0004_create_user"], replaces),
+        /** History that keeps no module of a replaced migration. */
+        bare: defineHistory(["0004_create_user"], replaces),
+        /** History whose `replaces` lacks its first key, and that keeps the modules of the others. */
+        shortened: defineHistory(
+          ["0002_add_form_slug", "0003_add_form_name", "0004_create_user"],
+          replaces.slice(1),
+        ),
+        /** History whose `replaces` has only its last key, and that keeps its module. */
+        shortenedLast: defineHistory(["0003_add_form_name", "0004_create_user"], replaces.slice(2)),
+        /** History whose `replaces` has only its last key, without its module. */
+        shortenedBare: defineHistory(["0004_create_user"], replaces.slice(2)),
+      }
+    }
+
+    /** Reads the status of `history` on the target without the name of its schema. */
+    async function getStatus(history: MigrationHistory) {
+      const { applied, pending, unknown } = await getMigrationStatus(db, history)
+      return { applied, pending, unknown }
+    }
+
+    /** Resolves to the message of the error that `call` rejects with. */
+    const getRejection = (call: Promise<unknown>) =>
+      call.then(
+        () => undefined,
+        (error: unknown) => (error as Error).message,
+      )
+
+    describe("migrate", () => {
+      it("builds a target without keys by the baseline, records the keys that it replaces, and applies the migrations after them", async () => {
+        const changes: string[] = []
+        const { bare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => ({
+          pending: (await getStatus(bare)).pending,
+          keys: await migrate(db, bare),
+          versions: await listVersions(database),
+          status: await getStatus(bare),
+        }))
+
+        expect(result).toEqual({
+          pending: [...replaces, "0004_create_user"],
+          keys: [...replaces, "0004_create_user"],
+          versions: [...replaces, "0004_create_user"],
+          status: { applied: [...replaces, "0004_create_user"], pending: [], unknown: [] },
+        })
+        expect(changes).toEqual(["baseline:up", "0004:up"])
+      })
+
+      it("records only the keys of replaces shortened to its last key", async () => {
+        const changes: string[] = []
+        const { shortenedBare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => ({
+          keys: await migrate(db, shortenedBare),
+          versions: await listVersions(database),
+          status: await getStatus(shortenedBare),
+        }))
+
+        expect(result).toEqual({
+          keys: ["0003_add_form_name", "0004_create_user"],
+          versions: ["0003_add_form_name", "0004_create_user"],
+          status: {
+            applied: ["0003_add_form_name", "0004_create_user"],
+            pending: [],
+            unknown: [],
+          },
+        })
+        expect(changes).toEqual(["baseline:up", "0004:up"])
+      })
+
+      it("runs the baseline rather than the replaced migrations whose modules the history keeps, and counts it as one migration of count", async () => {
+        const changes: string[] = []
+        const { full } = defineHistories(changes)
+
+        const keys = await testTransaction(async () => [
+          await migrate(db, full, { count: 1 }),
+          await migrate(db, full, { count: 1 }),
+        ])
+
+        expect(keys).toEqual([replaces, ["0004_create_user"]])
+        expect(changes).toEqual(["baseline:up", "0004:up"])
+      })
+
+      it("records the keys that the baseline replaces in one statement of the transaction that runs it", async () => {
+        const { bare } = defineHistories([])
+
+        const statements = await testTransaction(() =>
+          recordStatements(() => migrate(db, bare, { count: 1 })),
+        )
+
+        expect(statements.filter(text => text.startsWith("INSERT INTO"))).toEqual([
+          'INSERT INTO "migrations_tenant"."kern_migration" (key) VALUES ($1), ($2), ($3)',
+        ])
+      })
+
+      it("leaves a target that has applied every replaced migration as it is, after the first read and without loading the baseline", async () => {
+        const { original } = defineHistories([])
+        let loads = 0
+        const squashed = defineMigrations(
+          {},
+          {
+            baseline: {
+              migration: async () => {
+                loads++
+                return { default: createForm }
+              },
+              replaces,
+            },
+          },
+        )
+
+        const result = await testTransaction(async () => {
+          await migrate(db, original)
+          let keys: string[] = []
+          const statements = await recordStatements(async () => {
+            keys = await migrate(db, squashed)
+          })
+          return {
+            keys,
+            commands: statements.map(text => text.split(" ", 1)[0]),
+            status: await getStatus(squashed),
+          }
+        })
+
+        expect(result).toEqual({
+          keys: [],
+          commands: ["SAVEPOINT", "SELECT", "RELEASE", "SAVEPOINT", "SELECT", "RELEASE"],
+          status: { applied: replaces, pending: [], unknown: [] },
+        })
+        expect(loads).toBe(0)
+      })
+
+      it("applies only the migrations after the replaced ones to a target that has applied them", async () => {
+        const changes: string[] = []
+        const { original, bare } = defineHistories(changes)
+
+        const keys = await testTransaction(async () => {
+          await migrate(db, original)
+          changes.length = 0
+          return await migrate(db, bare)
+        })
+
+        expect(keys).toEqual(["0004_create_user"])
+        expect(changes).toEqual(["0004:up"])
+      })
+
+      it("applies the replaced migrations that a target with keys lacks when the history keeps their modules", async () => {
+        const changes: string[] = []
+        const { original, full, last } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, original, { count: 1 })
+          const pending = (await getStatus(full)).pending
+          const first = await migrate(db, full, { count: 1 })
+          return { pending, keys: [first, await migrate(db, last)], status: await getStatus(last) }
+        })
+
+        expect(result).toEqual({
+          pending: ["0002_add_form_slug", "0003_add_form_name", "0004_create_user"],
+          keys: [["0002_add_form_slug"], ["0003_add_form_name", "0004_create_user"]],
+          status: { applied: [...replaces, "0004_create_user"], pending: [], unknown: [] },
+        })
+        expect(changes).toEqual(["0001:up", "0002:up", "0003:up", "0004:up"])
+      })
+
+      it("rejects a target with keys that lacks replaced migrations without modules, before changing anything", async () => {
+        const changes: string[] = []
+        const { original, last, bare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, original, { count: 1 })
+          changes.length = 0
+          let errors: unknown[] = []
+          const statements = await recordStatements(async () => {
+            errors = [await getRejection(migrate(db, last)), await getRejection(migrate(db, bare))]
+          })
+          return {
+            errors,
+            changes: listChanges(statements).filter(text => !/^(SAVEPOINT|RELEASE)/.test(text)),
+            status: await getStatus(bare),
+          }
+        })
+
+        expect(result).toEqual({
+          errors: [
+            'Cannot migrate schema "migrations_tenant": it has applied migrations but not 0002_add_form_slug, which the baseline replaces, and the history lacks their modules; migrate it with a version of the history that has them',
+            'Cannot migrate schema "migrations_tenant": it has applied migrations but not 0002_add_form_slug, 0003_add_form_name, which the baseline replaces, and the history lacks their modules; migrate it with a version of the history that has them',
+          ],
+          changes: [],
+          status: {
+            applied: ["0001_create_form"],
+            pending: ["0002_add_form_slug", "0003_add_form_name", "0004_create_user"],
+            unknown: [],
+          },
+        })
+        expect(changes).toEqual([])
+      })
+
+      it("finds the history of a version from before the squash applied on a target that the baseline built", async () => {
+        const changes: string[] = []
+        const { original, bare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, bare)
+          changes.length = 0
+          return { keys: await migrate(db, original), status: await getStatus(original) }
+        })
+
+        expect(result).toEqual({
+          keys: [],
+          status: { applied: replaces, pending: [], unknown: ["0004_create_user"] },
+        })
+        expect(changes).toEqual([])
+      })
+
+      it("does not check the applied keys before the first key of replaces, and counts them as applied", async () => {
+        const changes: string[] = []
+        const { original, shortenedBare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, original)
+          changes.length = 0
+          return { keys: await migrate(db, shortenedBare), status: await getStatus(shortenedBare) }
+        })
+
+        expect(result).toEqual({
+          keys: ["0004_create_user"],
+          status: { applied: [...replaces, "0004_create_user"], pending: [], unknown: [] },
+        })
+        expect(changes).toEqual(["0004:up"])
+      })
+
+      it("rejects an applied key that the history lacks from the first key of replaces on, and a pending replaced key before an applied one", async () => {
+        const { shortened } = defineHistories([])
+        const other = defineMigrations({
+          "0001_create_form": createForm,
+          "0002_create_tag": createTag,
+        })
+
+        const errors = await testTransaction(async () => {
+          await migrate(db, other)
+          const unknown = await getRejection(migrate(db, shortened))
+          await rollback(db, other)
+          await migrate(
+            db,
+            defineMigrations({ "0001_create_form": createForm, "0003_add_form_name": createUser }),
+          )
+          return [unknown, await getRejection(migrate(db, shortened))]
+        })
+
+        expect(errors).toEqual([
+          'Cannot migrate schema "migrations_tenant": migration 0002_create_tag is applied, but the history lacks it',
+          'Cannot migrate schema "migrations_tenant": migration 0002_add_form_slug is pending, but the later migration 0003_add_form_name is applied',
+        ])
+      })
+
+      it("applies the next baseline of a history squashed again only to a target without keys", async () => {
+        const changes: string[] = []
+        const { bare } = defineHistories(changes)
+        const record = (change: string) => async () => {
+          changes.push(change)
+        }
+        const squashedAgain = defineMigrations(
+          { "0005_create_tag": { up: record("0005:up") } },
+          {
+            baseline: {
+              migration: { up: record("baseline 2:up") },
+              replaces: [...replaces, "0004_create_user"],
+            },
+          },
+        )
+
+        const result = await testTransaction(async () => {
+          const built = await migrate(db, bare)
+          const existing = await migrate(db, squashedAgain)
+          return {
+            built,
+            existing,
+            created: await migrate(db, squashedAgain, { schemaName: "migrations_tenant_2" }),
+          }
+        })
+
+        expect(result).toEqual({
+          built: [...replaces, "0004_create_user"],
+          existing: ["0005_create_tag"],
+          created: [...replaces, "0004_create_user", "0005_create_tag"],
+        })
+        expect(changes).toEqual(["baseline:up", "0004:up", "0005:up", "baseline 2:up", "0005:up"])
+      })
+
+      it("builds the targets of two schemas and of a custom table of versions independently", async () => {
+        const jobHistory = defineMigrations(
+          { "0002_index_job": { up: "CREATE INDEX job_id_idx ON job (id)" } },
+          {
+            tableName: "job_migration",
+            baseline: { migration: createJob, replaces: ["0001_create_job"] },
+          },
+        )
+        const appHistory = defineMigrations(
+          {},
+          { baseline: { migration: createForm, replaces: ["0001_create_form"] } },
+        )
+
+        const result = await testTransaction(async () => ({
+          keys: [
+            await migrate(db, jobHistory),
+            await migrate(db, appHistory),
+            await migrate(db, jobHistory, { schemaName: "migrations_tenant_2" }),
+          ],
+          tables: [
+            await listTables(database, "migrations_tenant"),
+            await listTables(database, "migrations_tenant_2"),
+          ],
+          status: [
+            (await getMigrationStatus(db, jobHistory)).applied,
+            (await getMigrationStatus(db, appHistory)).applied,
+            (await getMigrationStatus(db, appHistory, { schemaName: "migrations_tenant_2" }))
+              .pending,
+          ],
+        }))
+
+        expect(result).toEqual({
+          keys: [
+            ["0001_create_job", "0002_index_job"],
+            ["0001_create_form"],
+            ["0001_create_job", "0002_index_job"],
+          ],
+          tables: [
+            ["form", "job", "job_migration", "kern_migration"],
+            ["job", "job_migration"],
+          ],
+          status: [
+            ["0001_create_job", "0002_index_job"],
+            ["0001_create_form"],
+            ["0001_create_form"],
+          ],
+        })
+      })
+
+      it("records no key when the baseline fails, such as on a schema that has its tables and no keys, and rejects with a MigrationError without a key", async () => {
+        const history = defineMigrations(
+          {},
+          { baseline: { migration: createForm, replaces: ["0001_create_form"] } },
+        )
+
+        const result = await testTransaction(async () => {
+          await database.script(`
+            CREATE SCHEMA migrations_tenant;
+            CREATE TABLE migrations_tenant.form (id integer);
+          `)
+          return {
+            error: await migrate(db, history).catch((error: unknown) => error),
+            tables: await listTables(database, "migrations_tenant"),
+          }
+        })
+
+        expect(result.error).toBeInstanceOf(MigrationError)
+        expect(result.error).toMatchObject({
+          message: 'The baseline failed in up of step 1: relation "form" already exists',
+          key: undefined,
+          step: 1,
+          direction: "up",
+        })
+        expect(result.tables).toEqual(["form"])
+      })
+
+      it("loads the baseline before it changes anything, and rejects one that fails to load", async () => {
+        const history = defineMigrations(
+          {},
+          {
+            baseline: {
+              migration: async () => ({
+                default: { ...createForm, outsideTransaction: createForm },
+              }),
+              replaces: ["0001_create_form"],
+            },
+          },
+        )
+
+        const result = await testTransaction(async () => ({
+          error: await getRejection(migrate(db, history)),
+          tables: await listTables(database, "migrations_tenant"),
+        }))
+
+        expect(result).toEqual({
+          error:
+            "Step 1 of the baseline has outsideTransaction, which a baseline cannot have, since it records the migrations that it replaces in its transaction",
+          tables: [],
+        })
+      })
+    })
+
+    describe("rollback and redo", () => {
+      it("undoes the replaced migrations whose modules the history keeps by their own down, on a target that the baseline built", async () => {
+        const changes: string[] = []
+        const { full } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, full)
+          changes.length = 0
+          return {
+            keys: [await rollback(db, full), await rollback(db, full, { count: 2 })],
+            status: await getStatus(full),
+          }
+        })
+
+        expect(result).toEqual({
+          keys: [["0004_create_user"], ["0003_add_form_name", "0002_add_form_slug"]],
+          status: {
+            applied: ["0001_create_form"],
+            pending: ["0002_add_form_slug", "0003_add_form_name", "0004_create_user"],
+            unknown: [],
+          },
+        })
+        expect(changes).toEqual(["0004:down", "0003:down", "0002:down"])
+      })
+
+      it("rejects a call that reaches a replaced key without a module before undoing anything, and counts an applied replaced key without a module as known", async () => {
+        const changes: string[] = []
+        const { last } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, last)
+          changes.length = 0
+          let errors: unknown[] = []
+          const statements = await recordStatements(async () => {
+            errors = [
+              await getRejection(rollback(db, last, { count: 3 })),
+              await getRejection(redo(db, last, { count: 3 })),
+            ]
+          })
+          return {
+            errors,
+            changes: listChanges(statements).filter(text => !/^(SAVEPOINT|RELEASE)/.test(text)),
+            status: await getStatus(last),
+            keys: await rollback(db, last, { count: 2 }),
+          }
+        })
+
+        expect(result).toEqual({
+          errors: [
+            'Cannot roll back the migrations of schema "migrations_tenant": the baseline replaces migration 0002_add_form_slug, and the history lacks its module; undo fewer migrations, or every migration of the schema, which undoes the replaced ones by down of the baseline',
+            'Cannot redo the migrations of schema "migrations_tenant": the baseline replaces migration 0002_add_form_slug, and the history lacks its module; undo fewer migrations, or every migration of the schema, which undoes the replaced ones by down of the baseline',
+          ],
+          changes: [],
+          status: { applied: [...replaces, "0004_create_user"], pending: [], unknown: [] },
+          keys: ["0004_create_user", "0003_add_form_name"],
+        })
+        expect(changes).toEqual(["0004:down", "0003:down"])
+      })
+
+      it("counts the replaced migrations as one migration, the baseline, when the history keeps no module of them", async () => {
+        const changes: string[] = []
+        const { bare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, bare)
+          changes.length = 0
+          const keys = [await rollback(db, bare), await rollback(db, bare)]
+          const status = await getStatus(bare)
+          await migrate(db, bare)
+          return { keys, status, both: await rollback(db, bare, { count: 2 }) }
+        })
+
+        expect(result).toEqual({
+          keys: [["0004_create_user"], replaces.toReversed()],
+          status: { applied: [], pending: [...replaces, "0004_create_user"], unknown: [] },
+          both: ["0004_create_user", ...replaces.toReversed()],
+        })
+        expect(changes).toEqual([
+          "0004:down",
+          "baseline:down",
+          "baseline:up",
+          "0004:up",
+          "0004:down",
+          "baseline:down",
+        ])
+      })
+
+      it.each([
+        ["the baseline", false],
+        ["the replaced migrations", true],
+      ])(
+        "undoes every migration of a target that %s built by down of the baseline, whatever modules the history keeps",
+        async (_, appliesOriginal) => {
+          const changes: string[] = []
+          const { original, full } = defineHistories(changes)
+
+          const result = await testTransaction(async () => {
+            if (appliesOriginal) {
+              await migrate(db, original)
+            }
+            await migrate(db, full)
+            changes.length = 0
+            const statements = await recordStatements(() => rollback(db, full, { count: "all" }))
+            const all = await getStatus(full)
+            await migrate(db, full)
+            return {
+              deletes: statements.filter(text => text.startsWith("DELETE FROM")),
+              all,
+              // A count of the applied keys undoes every migration, as "all" does.
+              counted: await rollback(db, full, { count: 4 }),
+              versions: await listVersions(database),
+            }
+          })
+
+          expect(result).toEqual({
+            deletes: [
+              'DELETE FROM "migrations_tenant"."kern_migration" WHERE key IN ($1)',
+              'DELETE FROM "migrations_tenant"."kern_migration" WHERE key IN ($1, $2, $3)',
+            ],
+            all: { applied: [], pending: [...replaces, "0004_create_user"], unknown: [] },
+            counted: ["0004_create_user", ...replaces.toReversed()],
+            versions: [],
+          })
+          expect(changes).toEqual([
+            "0004:down",
+            "baseline:down",
+            "baseline:up",
+            "0004:up",
+            "0004:down",
+            "baseline:down",
+          ])
+        },
+      )
+
+      it("rejects undoing every migration of a target that lacks replaced keys, until migrate applies them again", async () => {
+        const changes: string[] = []
+        const { full } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, full)
+          await rollback(db, full, { count: 2 })
+          changes.length = 0
+          const errors = [
+            await getRejection(rollback(db, full, { count: "all" })),
+            await getRejection(rollback(db, full, { count: 2 })),
+            await getRejection(redo(db, full, { count: 5 })),
+          ]
+          const status = await getStatus(full)
+          return {
+            errors,
+            status,
+            migrated: await migrate(db, full),
+            keys: await rollback(db, full, { count: "all" }),
+          }
+        })
+
+        const error = (action: string) =>
+          `Cannot ${action} schema "migrations_tenant": 0001_create_form, the first migration that the baseline replaces, is undone only by down of the baseline, which requires every migration that it replaces, and the schema has not applied 0003_add_form_name; apply them with migrate first`
+        expect(result).toEqual({
+          errors: [
+            error("roll back the migrations of"),
+            error("roll back the migrations of"),
+            error("redo the migrations of"),
+          ],
+          status: {
+            applied: ["0001_create_form", "0002_add_form_slug"],
+            pending: ["0003_add_form_name", "0004_create_user"],
+            unknown: [],
+          },
+          migrated: ["0003_add_form_name", "0004_create_user"],
+          keys: ["0004_create_user", ...replaces.toReversed()],
+        })
+        expect(changes).toEqual(["0003:up", "0004:up", "0004:down", "baseline:down"])
+      })
+
+      it("undoes one migration by each call until it rejects at the first key of replaces, whose own down never runs", async () => {
+        const changes: string[] = []
+        const { full } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, full)
+          changes.length = 0
+          return {
+            keys: [await rollback(db, full), await rollback(db, full), await rollback(db, full)],
+            error: await getRejection(rollback(db, full)),
+            status: await getStatus(full),
+          }
+        })
+
+        expect(result).toEqual({
+          keys: [["0004_create_user"], ["0003_add_form_name"], ["0002_add_form_slug"]],
+          error:
+            'Cannot roll back the migrations of schema "migrations_tenant": 0001_create_form, the first migration that the baseline replaces, is undone only by down of the baseline, which requires every migration that it replaces, and the schema has not applied 0002_add_form_slug, 0003_add_form_name; apply them with migrate first',
+          status: {
+            applied: ["0001_create_form"],
+            pending: ["0002_add_form_slug", "0003_add_form_name", "0004_create_user"],
+            unknown: [],
+          },
+        })
+        expect(changes).toEqual(["0004:down", "0003:down", "0002:down"])
+      })
+
+      it.each([
+        ["the baseline", false, ["0002_add_form_slug"]],
+        ["the replaced migrations", true, ["0001_create_form", "0002_add_form_slug"]],
+      ])(
+        "rejects at the first key of a shortened replaces on a target that %s built, and leaves the keys before it",
+        async (_, appliesOriginal, applied) => {
+          const changes: string[] = []
+          const { original, shortened } = defineHistories(changes)
+
+          const result = await testTransaction(async () => {
+            if (appliesOriginal) {
+              await migrate(db, original)
+            }
+            await migrate(db, shortened)
+            changes.length = 0
+            return {
+              keys: [await rollback(db, shortened), await rollback(db, shortened)],
+              error: await getRejection(rollback(db, shortened)),
+              status: await getStatus(shortened),
+            }
+          })
+
+          expect(result).toEqual({
+            keys: [["0004_create_user"], ["0003_add_form_name"]],
+            error:
+              'Cannot roll back the migrations of schema "migrations_tenant": 0002_add_form_slug, the first migration that the baseline replaces, is undone only by down of the baseline, which requires every migration that it replaces, and the schema has not applied 0003_add_form_name; apply them with migrate first',
+            status: {
+              applied,
+              pending: ["0003_add_form_name", "0004_create_user"],
+              unknown: [],
+            },
+          })
+          expect(changes).toEqual(["0004:down", "0003:down"])
+        },
+      )
+
+      it("runs down of the baseline when a rollback reaches the only replaced key, also when the history keeps its module", async () => {
+        const changes: string[] = []
+        const { original, shortenedLast } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, original)
+          await migrate(db, shortenedLast)
+          changes.length = 0
+          return {
+            keys: [await rollback(db, shortenedLast), await rollback(db, shortenedLast)],
+            versions: await listVersions(database),
+          }
+        })
+
+        expect(result).toEqual({
+          keys: [["0004_create_user"], replaces.toReversed()],
+          versions: [],
+        })
+        expect(changes).toEqual(["0004:down", "baseline:down"])
+      })
+
+      it("removes the keys before the first key of replaces with those of the baseline, whose down undoes what their migrations built too", async () => {
+        const changes: string[] = []
+        const { original, shortenedBare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, original)
+          await migrate(db, shortenedBare)
+          changes.length = 0
+          return {
+            keys: await rollback(db, shortenedBare, { count: "all" }),
+            versions: await listVersions(database),
+            migrated: await migrate(db, shortenedBare),
+          }
+        })
+
+        expect(result).toEqual({
+          keys: ["0004_create_user", ...replaces.toReversed()],
+          versions: [],
+          migrated: ["0003_add_form_name", "0004_create_user"],
+        })
+        expect(changes).toEqual(["0004:down", "baseline:down", "baseline:up", "0004:up"])
+      })
+
+      it("redo of every migration removes the keys before a shortened replaces and applies the baseline and the migrations after it again", async () => {
+        const changes: string[] = []
+        const { original, shortenedBare } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, original)
+          await migrate(db, shortenedBare)
+          changes.length = 0
+          return {
+            keys: await redo(db, shortenedBare, { count: 2 }),
+            versions: await listVersions(database),
+          }
+        })
+
+        expect(result).toEqual({
+          keys: ["0003_add_form_name", "0004_create_user"],
+          versions: ["0003_add_form_name", "0004_create_user"],
+        })
+        expect(changes).toEqual(["0004:down", "baseline:down", "baseline:up", "0004:up"])
+      })
+
+      it("redo of every migration undoes the replaced ones by down of the baseline and applies the baseline again", async () => {
+        const changes: string[] = []
+        const { full } = defineHistories(changes)
+
+        const result = await testTransaction(async () => {
+          await migrate(db, full)
+          changes.length = 0
+          return {
+            partial: await redo(db, full, { count: 3 }),
+            all: await redo(db, full, { count: 4 }),
+            versions: await listVersions(database),
+          }
+        })
+
+        expect(result).toEqual({
+          partial: ["0002_add_form_slug", "0003_add_form_name", "0004_create_user"],
+          all: [...replaces, "0004_create_user"],
+          versions: [...replaces, "0004_create_user"],
+        })
+        expect(changes).toEqual([
+          "0004:down",
+          "0003:down",
+          "0002:down",
+          "0002:up",
+          "0003:up",
+          "0004:up",
+          "0004:down",
+          "baseline:down",
+          "baseline:up",
+          "0004:up",
+        ])
+      })
+
+      it("rejects an applied key that the history lacks from the first key of replaces on, whatever the count", async () => {
+        const { original, shortenedBare } = defineHistories([])
+
+        const errors = await testTransaction(async () => {
+          await migrate(db, original)
+          return [
+            await getRejection(
+              rollback(
+                db,
+                defineMigrations(
+                  {},
+                  { baseline: { migration: createForm, replaces: ["0002_add_form_slug"] } },
+                ),
+              ),
+            ),
+            // The keys before the first key of replaces are not checked.
+            await getRejection(rollback(db, shortenedBare, { count: "all" })),
+          ]
+        })
+
+        expect(errors).toEqual([
+          'Cannot roll back the migrations of schema "migrations_tenant": migration 0003_add_form_name is applied, but the history lacks it',
+          undefined,
+        ])
+      })
+    })
+  })
 })
 
 describePooledPostgres(
@@ -1095,6 +1890,123 @@ describePooledPostgres(
       })
     })
 
+    describe("baseline", () => {
+      const replaces = ["0001_create_form", "0002_create_tag"]
+      const baseline = {
+        up: `${createForm.up}; ${createTag.up}`,
+        down: `${createTag.down}; ${createForm.down}`,
+      }
+      /** History that keeps no module of the replaced migrations, and has a migration outside a transaction after them. */
+      const squashed = defineMigrations(
+        { "0003_index_form": indexForm, "0004_create_user": createUser },
+        { baseline: { migration: baseline, replaces } },
+      )
+
+      it("runs the baseline and records the keys that it replaces in the first transaction of the session", async () => {
+        let statements: string[] = []
+        let keys: string[] = []
+        await runScenario(async () => {
+          statements = await recordStatements(async () => {
+            keys = await migrate(db, squashed, target)
+          })
+        })
+
+        expect(keys).toEqual([...replaces, "0003_index_form", "0004_create_user"])
+        expect(listChanges(statements)).toEqual([
+          "BEGIN ISOLATION LEVEL READ COMMITTED",
+          "create schema",
+          "create table of versions",
+          baseline.up,
+          "insert version",
+          "COMMIT",
+          indexForm.outsideTransaction.up,
+          "insert version",
+          "BEGIN ISOLATION LEVEL READ COMMITTED",
+          createUser.up,
+          "insert version",
+          "COMMIT",
+        ])
+      })
+
+      it("rolls back the later migrations before the baseline, and applies the baseline first on redo", async () => {
+        await runScenario(async () => {
+          await migrate(db, squashed, target)
+          let keys: string[][] = []
+          const statements = await recordStatements(async () => {
+            keys = [
+              await redo(db, squashed, { ...target, count: 3 }),
+              await rollback(db, squashed, { ...target, count: "all" }),
+            ]
+          })
+
+          expect(keys).toEqual([
+            [...replaces, "0003_index_form", "0004_create_user"],
+            ["0004_create_user", "0003_index_form", ...replaces.toReversed()],
+          ])
+          expect(listChanges(statements)).toEqual([
+            "BEGIN ISOLATION LEVEL READ COMMITTED",
+            createUser.down,
+            "delete version",
+            "COMMIT",
+            indexForm.outsideTransaction.down,
+            "delete version",
+            "BEGIN ISOLATION LEVEL READ COMMITTED",
+            baseline.down,
+            "delete version",
+            baseline.up,
+            "insert version",
+            "COMMIT",
+            indexForm.outsideTransaction.up,
+            "insert version",
+            "BEGIN ISOLATION LEVEL READ COMMITTED",
+            createUser.up,
+            "insert version",
+            "COMMIT",
+            "BEGIN ISOLATION LEVEL READ COMMITTED",
+            createUser.down,
+            "delete version",
+            "COMMIT",
+            indexForm.outsideTransaction.down,
+            "delete version",
+            "BEGIN ISOLATION LEVEL READ COMMITTED",
+            baseline.down,
+            "delete version",
+            "COMMIT",
+          ])
+          expect(await listTables(database, "migrations_pool_1")).toEqual(["kern_migration"])
+        })
+      })
+
+      it("leaves a target that has the last replaced key with two statements and no session, and rejects one that lacks replaced keys without modules after them", async () => {
+        const original = defineMigrations({
+          "0001_create_form": createForm,
+          "0002_create_tag": createTag,
+        })
+
+        await runScenario(async () => {
+          await migrate(db, original, { ...target, count: 1 })
+          let error: unknown
+          const rejected = await recordStatements(async () => {
+            error = await migrate(db, squashed, target).catch(
+              (error: unknown) => (error as Error).message,
+            )
+          })
+          await migrate(db, original, target)
+          const squashedAlone = defineMigrations(
+            {},
+            { baseline: { migration: baseline, replaces } },
+          )
+          const upToDate = await recordStatements(() => migrate(db, squashedAlone, target))
+
+          expect(error).toBe(
+            'Cannot migrate schema "migrations_pool_1": it has applied migrations but not 0002_create_tag, which the baseline replaces, and the history lacks their modules; migrate it with a version of the history that has them',
+          )
+          expect(nameStatements(rejected)).toEqual(["read target", "read versions"])
+          expect(nameStatements(upToDate)).toEqual(["read target", "read versions"])
+        })
+      })
+    })
+
     describe("a failure between a change outside a transaction and its record", () => {
       const indexHistory = defineMigrations({
         "0001_create_form": createForm,
@@ -1361,6 +2273,80 @@ describePooledPostgres(
             "COMMIT",
           ])
         })
+      })
+
+      it("runs the baseline once when several databases migrate a target without keys at once", async () => {
+        const runs = { count: 0 }
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          const waiting = defineMigrations(
+            { "0002_create_user": createUser },
+            {
+              baseline: {
+                migration: { up: waitBefore(createForm.up, gate, runs) },
+                replaces: ["0001_create_form"],
+              },
+            },
+          )
+          const first = start(migrate(db, waiting, target))
+          await waitFor(async () => runs.count === 1)
+          const refused = waitForRefusedLocks(...others)
+          // Their first read finds a target without keys, which the baseline builds.
+          const rest = others.map(other => start(migrate(other.database, waiting, target)))
+          await refused
+          openGate()
+
+          expect([await first, ...(await Promise.all(rest))]).toEqual([
+            ["0001_create_form", "0002_create_user"],
+            [],
+            [],
+          ])
+        })
+
+        expect(runs.count).toBe(1)
+      })
+
+      it("rejects under the lock a call that reaches a replaced key without a module once another process has rolled back the migrations after it", async () => {
+        const runs = { count: 0 }
+        const [other] = others
+
+        await runScenario(async ({ gate, openGate, start }) => {
+          // It keeps the module of the last replaced migration alone.
+          const waiting = defineMigrations(
+            {
+              "0003_create_job": createJob,
+              "0004_create_user": {
+                up: createUser.up,
+                down: waitBefore(createUser.down, gate, runs),
+              },
+            },
+            {
+              baseline: {
+                migration: { up: `${createForm.up}; ${createTag.up}; ${createJob.up}` },
+                replaces: ["0001_create_form", "0002_create_tag", "0003_create_job"],
+              },
+            },
+          )
+          await migrate(db, waiting, target)
+          const first = start(rollback(db, waiting, { ...target, count: 2 }))
+          await waitFor(async () => runs.count === 1)
+          const refused = waitForRefusedLocks(other!)
+          // Its first read finds 0004_create_user applied, whose module the history has.
+          const second = start(rollback(other!.database, waiting, target))
+          await refused
+          openGate()
+
+          expect(await first).toEqual(["0004_create_user", "0003_create_job"])
+          await expect(second).rejects.toThrow(
+            'Cannot roll back the migrations of schema "migrations_pool_1": the baseline replaces migration 0002_create_tag, and the history lacks its module; undo fewer migrations, or every migration of the schema, which undoes the replaced ones by down of the baseline',
+          )
+          expect((await getMigrationStatus(db, waiting, target)).applied).toEqual([
+            "0001_create_form",
+            "0002_create_tag",
+          ])
+        })
+
+        expect(runs.count).toBe(1)
       })
 
       describe("on databases whose transactions default to serializable", () => {

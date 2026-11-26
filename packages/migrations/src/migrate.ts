@@ -2,7 +2,7 @@ import type { TransactionOptions } from "kern-db"
 
 import type { MigrationDirection } from "./error"
 import type { MigrationHistory } from "./history"
-import { getMigrationNumber } from "./history"
+import { countReplacedModules, getMigrationNumber, listHistoryKeys } from "./history"
 import type { MigrationStep } from "./migration"
 import {
   getOutsideTransactionChange,
@@ -20,15 +20,15 @@ import type {
 import {
   checkTargetArguments,
   createVersionsTable,
-  deleteVersion,
-  insertVersion,
+  deleteVersions,
+  insertVersions,
   openTarget,
   readVersions,
 } from "./target"
 
 /** Options of `migrate`. */
 export interface MigrateOptions extends MigrationTargetOptions {
-  /** Number of the first pending migrations to apply; all by default. */
+  /** Number of the first pending migrations to apply, of which a baseline is one; all by default. */
   count?: number
 }
 
@@ -44,26 +44,30 @@ export interface RedoOptions extends MigrationTargetOptions {
   count?: number
 }
 
-/** Migrations of a history as a target has applied them. */
+/** State of a target against a history: the keys that its table of versions has, and those that it lacks. */
 export interface MigrationStatus {
   /** PostgreSQL schema of the target that the call resolved, such as `current_schema()` of a `Database`. */
   readonly schemaName: string
-  /** Keys of the applied migrations of the history, in order. */
+  /** Keys of the history that the target has, in order, with the keys that a baseline replaces, also those without modules, and the keys of the target before the first of them. */
   readonly applied: readonly string[]
-  /** Keys of the migrations of the history that the target has not applied, in order. */
+  /** Keys of the history that the target lacks, in order: on a target without keys, also the keys that a baseline replaces. */
   readonly pending: readonly string[]
-  /** Applied keys that the history lacks, such as of migrations that a newer version of the application has applied. */
+  /** Other keys of the target, which the history lacks, such as of migrations that a newer version of the application has applied. */
   readonly unknown: readonly string[]
 }
 
 /**
- * Applies the pending migrations of `history` to `target`, or the first `count` of them, and resolves to their keys.
+ * Applies the pending migrations of `history` to `target`, or the first `count` of them, and resolves to the keys that it recorded.
  *
  * It applies them in one transaction, unless a migration runs outside a transaction: that migration runs alone, after the migrations before it commit, and the migrations after it run in a transaction of their own.
  * Inside a transaction, it runs in a nested transaction, so that the migrations commit or roll back with the enclosing one, and every migration runs in it.
  * A target that is up to date costs two statements outside a transaction; otherwise, it locks the target, so that processes that migrate it at once apply each migration once.
  * It rejects when the target has applied a migration that the history lacks before its last migration, or a migration after a pending one; applied migrations after the last one, such as of a newer version of the application, are allowed.
  * In a transaction at `repeatable read` or `serializable`, it rejects when it has migrations to apply, before it locks the target, since the snapshot of the transaction misses the migrations that another process applies meanwhile.
+ *
+ * With a baseline, a target without applied migrations runs it and records the keys that it replaces, and a target that has the last of them needs nothing of it.
+ * A target that has applied migrations but lacks replaced ones applies them when the history keeps their modules, and rejects otherwise.
+ * Applied migrations before the first replaced one are not checked.
  */
 export async function migrate(
   target: MigrationTarget,
@@ -74,13 +78,9 @@ export async function migrate(
   const count =
     options.count === undefined ? Number.POSITIVE_INFINITY : getCount(options.count, false)
   const opened = await openTarget(target, history, options)
-  if (getPendingKeys(history, opened.target, opened.versions).length === 0) {
-    return []
-  }
-  return await runLocked(opened, history, "migrate", versions => {
-    const keys = getPendingKeys(history, opened.target, versions).slice(0, count)
-    return { keys, runs: keys.map(key => ({ key, direction: "up" })) }
-  })
+  return await runLocked(opened, history, "migrate", versions =>
+    planMigrate(history, opened.target, versions, count),
+  )
 }
 
 /**
@@ -89,6 +89,9 @@ export async function migrate(
  * It rolls them back in one transaction, unless a migration runs outside a transaction, as `migrate` applies them.
  * It rejects when the target has applied a migration that the history lacks, since it cannot roll it back.
  * In a transaction at `repeatable read` or `serializable`, it rejects when the target has applied migrations, before it locks the target.
+ *
+ * With a baseline, a call that rolls back every migration rolls back the replaced ones together with `down` of the baseline, which requires all of them applied.
+ * Another call rolls back a replaced migration with its own `down`, and rejects before it changes anything when it reaches one whose module the history lacks.
  */
 export async function rollback(
   target: MigrationTarget,
@@ -98,15 +101,10 @@ export async function rollback(
   checkTargetArguments(target, options)
   const count = getCount(options.count, true)
   const opened = await openTarget(target, history, options)
-  checkAppliedKeys(history, opened.target, opened.versions, "roll back the migrations of")
-  if (opened.versions.applied.length === 0) {
-    return []
-  }
-  return await runLocked(opened, history, "roll back the migrations of", versions => {
-    checkAppliedKeys(history, opened.target, versions, "roll back the migrations of")
-    const keys = getLastKeys(versions, count).reverse()
-    return { keys, runs: keys.map(key => ({ key, direction: "down" })) }
-  })
+  const action = "roll back the migrations of"
+  return await runLocked(opened, history, action, versions =>
+    toCallPlan(planUndo(history, opened.target, versions, count, action)),
+  )
 }
 
 /**
@@ -115,6 +113,8 @@ export async function rollback(
  * It runs them in one transaction, unless a migration runs outside a transaction, as `migrate` applies them.
  * It rejects when the target has applied a migration that the history lacks, since it cannot roll it back.
  * In a transaction at `repeatable read` or `serializable`, it rejects when the target has applied migrations, before it locks the target.
+ *
+ * With a baseline, it rolls back the migrations as `rollback` does, and a call that rolls back every migration applies the baseline again.
  */
 export async function redo(
   target: MigrationTarget,
@@ -124,25 +124,28 @@ export async function redo(
   checkTargetArguments(target, options)
   const count = getCount(options.count, false)
   const opened = await openTarget(target, history, options)
-  checkAppliedKeys(history, opened.target, opened.versions, "redo the migrations of")
-  if (opened.versions.applied.length === 0) {
-    return []
-  }
-  return await runLocked(opened, history, "redo the migrations of", versions => {
-    checkAppliedKeys(history, opened.target, versions, "redo the migrations of")
-    const keys = getLastKeys(versions, count)
-    const runs: PlannedRun[] = []
-    for (let index = keys.length - 1; index >= 0; index--) {
-      runs.push({ key: keys[index]!, direction: "down" })
+  const action = "redo the migrations of"
+  return await runLocked(opened, history, action, versions => {
+    const undone = planUndo(history, opened.target, versions, count, action)
+    const applied: PlannedRun[] = []
+    for (let index = undone.length - 1; index >= 0; index--) {
+      const { key, keys } = undone[index]!
+      // The baseline records the keys that it replaces, while its `down` also removed the keys before them.
+      applied.push({
+        key,
+        direction: "up",
+        keys: key === undefined ? history.baseline!.replaces : keys,
+      })
     }
-    for (const key of keys) {
-      runs.push({ key, direction: "up" })
-    }
-    return { keys, runs }
+    return { keys: toCallPlan(applied).keys, runs: [...undone, ...applied] }
   })
 }
 
-/** Lists the applied and the pending migrations of `history` on `target`, and the applied migrations that the history lacks. */
+/**
+ * Gives the state of `target` against `history`: the keys of the history that its table of versions has and lacks, and its keys that the history lacks.
+ *
+ * With a baseline, the keys that it replaces are keys of the history, also those without modules, and the keys of the target before the first of them count as applied.
+ */
 export async function getMigrationStatus(
   target: MigrationTarget,
   history: MigrationHistory,
@@ -151,35 +154,71 @@ export async function getMigrationStatus(
   checkTargetArguments(target, options)
   const opened = await openTarget(target, history, options)
   const { versions } = opened
-  const known = new Set(history.keys)
+  const keys = listHistoryKeys(history)
+  const isUnknown = createUnknownKeyCheck(history, keys)
   const applied = new Set(versions.applied)
   return {
     schemaName: opened.target.schemaName,
-    applied: versions.applied.filter(key => known.has(key)),
-    pending: history.keys.filter(key => !applied.has(key)),
-    unknown: versions.applied.filter(key => !known.has(key)),
+    applied: versions.applied.filter(key => !isUnknown(key)),
+    pending: keys.filter(key => !applied.has(key)),
+    unknown: versions.applied.filter(isUnknown),
   }
 }
 
-/** Migration that a call runs in one direction. */
+/** Migration that a call runs in one direction, or the baseline of the history. */
 interface PlannedRun {
-  readonly key: string
+  /** Key of the migration, or `undefined` for the baseline. */
+  readonly key: string | undefined
   readonly direction: MigrationDirection
+  /** Keys that the run records as applied after `up`, and as not applied after `down`: the key of the migration, or the keys that the baseline stands for. */
+  readonly keys: readonly string[]
 }
 
-/** Migration that a call runs in one direction, with its loaded steps. */
+/** Run of a call with its loaded steps. */
 interface MigrationRun extends PlannedRun {
   readonly steps: readonly MigrationStep[]
 }
 
-/** Migrations that a call runs in order under the lock of its target, and the keys that it resolves to. */
+/** Runs of a call in order under the lock of its target, and the keys that it resolves to. */
 interface CallPlan {
   readonly keys: string[]
   readonly runs: readonly PlannedRun[]
 }
 
+/** Returns the plan of `runs` that resolves to the keys that they record, in their order. */
+function toCallPlan(runs: readonly PlannedRun[]): CallPlan {
+  const keys: string[] = []
+  for (const run of runs) {
+    for (const key of run.keys) {
+      keys.push(key)
+    }
+  }
+  return { keys, runs }
+}
+
 /**
- * Returns the keys of `history` that `target` has not applied, in order.
+ * Returns the function that checks whether `history`, whose keys with those of its baseline are `keys`, lacks a key of a target.
+ *
+ * It lacks a key of another form, and a key that is not among `keys`, except one before the first key that the baseline replaces: a target that the baseline built lacks such keys, so no call checks them.
+ */
+function createUnknownKeyCheck(
+  history: MigrationHistory,
+  keys: readonly string[],
+): (key: string) => boolean {
+  const known = new Set(keys)
+  const firstReplaced = history.baseline?.replaces[0]
+  const firstNumber = firstReplaced === undefined ? undefined : getMigrationNumber(firstReplaced)!
+  return key => {
+    if (known.has(key)) {
+      return false
+    }
+    const number = getMigrationNumber(key)
+    return number === undefined || firstNumber === undefined || number >= firstNumber
+  }
+}
+
+/**
+ * Returns the keys of `history`, with those that its baseline replaces, that `target` has not applied, in order.
  *
  * It rejects an applied key that the history lacks unless it follows the last key of the history, and a pending key before an applied one.
  */
@@ -188,15 +227,16 @@ function getPendingKeys(
   target: ResolvedTarget,
   versions: TargetVersions,
 ): string[] {
-  const known = new Set(history.keys)
-  const lastKey = history.keys.at(-1)
+  const keys = listHistoryKeys(history)
+  const isUnknown = createUnknownKeyCheck(history, keys)
+  const lastKey = keys.at(-1)
   const lastNumber = lastKey === undefined ? undefined : getMigrationNumber(lastKey)!
   let lastApplied: { key: string; number: bigint } | undefined
   for (const key of versions.applied) {
     const number = getMigrationNumber(key)
     if (
       number === undefined ||
-      (!known.has(key) && lastNumber !== undefined && number <= lastNumber)
+      (lastNumber !== undefined && number <= lastNumber && isUnknown(key))
     ) {
       throw new Error(
         `Cannot migrate schema "${target.schemaName}": migration ${key} is applied, but the history lacks it`,
@@ -205,7 +245,7 @@ function getPendingKeys(
     lastApplied = { key, number }
   }
   const applied = new Set(versions.applied)
-  const pending = history.keys.filter(key => !applied.has(key))
+  const pending = keys.filter(key => !applied.has(key))
   const firstPending = pending[0]
   if (
     firstPending !== undefined &&
@@ -219,25 +259,134 @@ function getPendingKeys(
   return pending
 }
 
-/** Rejects applied keys that the history lacks, since `action` cannot run their `down`. */
-function checkAppliedKeys(
+/**
+ * Plans `migrate` of the first `count` pending migrations of `history` on `target`, of which the baseline is one.
+ *
+ * A target without keys runs the baseline, which records the keys that it replaces, and then the migrations after them.
+ * A target with keys needs nothing of the baseline: it applies the migrations of the keys that it lacks, and the call rejects when the history lacks the module of a replaced one.
+ */
+function planMigrate(
   history: MigrationHistory,
   target: ResolvedTarget,
   versions: TargetVersions,
+  count: number,
+): CallPlan {
+  const pending = getPendingKeys(history, target, versions)
+  const { baseline } = history
+  const runs: PlannedRun[] = []
+  let start = 0
+  if (baseline !== undefined && pending.length > 0) {
+    if (versions.applied.length === 0) {
+      // The pending keys of a target without keys start with all that the baseline replaces.
+      runs.push({ key: undefined, direction: "up", keys: baseline.replaces })
+      start = baseline.replaces.length
+    } else {
+      const modules = new Set(history.keys)
+      const withoutModules = pending.filter(key => !modules.has(key))
+      if (withoutModules.length > 0) {
+        throw new Error(
+          `Cannot migrate schema "${target.schemaName}": it has applied migrations but not ${withoutModules.join(", ")}, which the baseline replaces, and the history lacks their modules; migrate it with a version of the history that has them`,
+        )
+      }
+    }
+  }
+  for (let index = start; index < pending.length && runs.length < count; index++) {
+    runs.push(planMigration(pending[index]!, "up"))
+  }
+  return toCallPlan(runs)
+}
+
+/**
+ * Plans the rollback of the last `count` applied migrations of `target`, in the order of rolling back; `action` names the call in its errors.
+ *
+ * It rejects applied keys that the history lacks, since it cannot run the `down` of a migration it does not have.
+ *
+ * With a baseline, `count` counts the applied keys from the first key that the baseline replaces on, or the replaced keys as one migration when the history keeps no module of them.
+ * A call that undoes them all undoes the migrations after the replaced ones, and then the replaced ones together by `down` of the baseline, which requires every replaced key on the target and removes its keys up to the last of them.
+ * Another call undoes each migration by its own `down`, and rejects when it reaches a replaced key without a module; it never reaches the first replaced key, whose own `down` would leave a target without keys on a schema that the migrations before that key built.
+ */
+function planUndo(
+  history: MigrationHistory,
+  target: ResolvedTarget,
+  versions: TargetVersions,
+  count: number,
   action: string,
-): void {
-  const known = new Set(history.keys)
-  const unknown = versions.applied.find(key => !known.has(key))
+): PlannedRun[] {
+  const { applied } = versions
+  const unknown = applied.find(createUnknownKeyCheck(history, listHistoryKeys(history)))
   if (unknown !== undefined) {
     throw new Error(
       `Cannot ${action} schema "${target.schemaName}": migration ${unknown} is applied, but the history lacks it`,
     )
   }
+  const runs: PlannedRun[] = []
+  if (applied.length === 0) {
+    return runs
+  }
+  const { baseline } = history
+  // Index of the first applied key that the call undoes by its own `down`.
+  let start = Math.max(applied.length - count, 0)
+  // Keys that `down` of the baseline removes, when the call runs it.
+  let baselineKeys: string[] | undefined
+  if (baseline !== undefined) {
+    const { replaces } = baseline
+    const moduleCount = countReplacedModules(history, baseline)
+    const firstIndex = findFirstIndexFromNumber(applied, getMigrationNumber(replaces[0]!)!)
+    const afterIndex = findFirstIndexFromNumber(applied, getMigrationNumber(replaces.at(-1)!)! + 1n)
+    const total =
+      moduleCount === 0
+        ? applied.length - afterIndex + (afterIndex > firstIndex ? 1 : 0)
+        : applied.length - firstIndex
+    if (count >= total) {
+      const present = new Set(applied)
+      const missing = replaces.filter(key => !present.has(key))
+      if (missing.length > 0) {
+        throw new Error(
+          `Cannot ${action} schema "${target.schemaName}": ${replaces[0]!}, the first migration that the baseline replaces, is undone only by down of the baseline, which requires every migration that it replaces, and the schema has not applied ${missing.join(", ")}; apply them with migrate first`,
+        )
+      }
+      start = afterIndex
+      // The keys before the first replaced one go too, since `down` of the baseline undoes what their migrations built too.
+      baselineKeys = applied.slice(0, afterIndex).reverse()
+    } else {
+      const moduleIndex =
+        moduleCount === 0
+          ? afterIndex
+          : findFirstIndexFromNumber(
+              applied,
+              getMigrationNumber(replaces[replaces.length - moduleCount]!)!,
+            )
+      if (start < moduleIndex) {
+        throw new Error(
+          `Cannot ${action} schema "${target.schemaName}": the baseline replaces migration ${applied[moduleIndex - 1]!}, and the history lacks its module; undo fewer migrations, or every migration of the schema, which undoes the replaced ones by down of the baseline`,
+        )
+      }
+    }
+  }
+  for (let index = applied.length - 1; index >= start; index--) {
+    runs.push(planMigration(applied[index]!, "down"))
+  }
+  if (baselineKeys !== undefined) {
+    runs.push({ key: undefined, direction: "down", keys: baselineKeys })
+  }
+  return runs
+}
+
+/** Returns the run of the migration of `key` in `direction`, which records its key. */
+function planMigration(key: string, direction: MigrationDirection): PlannedRun {
+  return { key, direction, keys: [key] }
+}
+
+/** Returns the index of the first of `keys`, which are in the order of their numbers, whose number is at least `number`, or their length when no key has such a number. */
+function findFirstIndexFromNumber(keys: readonly string[], number: bigint): number {
+  const index = keys.findIndex(key => getMigrationNumber(key)! >= number)
+  return index === -1 ? keys.length : index
 }
 
 /**
- * Locks the target of `opened`, reads its versions again, loads the migrations that `plan` chooses from them, runs them, and resolves to the keys of the plan.
+ * Plans the call from the versions of `opened`, and, when the plan has runs, locks the target, reads its versions again, loads the migrations that `plan` chooses from them, runs them, and resolves to the keys of that plan.
  *
+ * `plan` rejects what the call rejects, so that a call rejects before it locks the target or changes anything, and a call without runs resolves to none without a lock and without loading a module.
  * The lock belongs to the qualified name of the table of versions, so that different targets and histories of one target migrate at once.
  * In a transaction block, such as of an enclosing transaction or a test, it runs every migration in a nested transaction that locks the target, with the search path of the migrations.
  * Outside one, it runs them in a session with that search path, which polls for the lock, since a transaction that waits for it would keep a snapshot, which `CREATE INDEX CONCURRENTLY` of the session that holds the lock waits for.
@@ -250,6 +399,9 @@ async function runLocked(
   action: string,
   plan: (versions: TargetVersions) => CallPlan,
 ): Promise<string[]> {
+  if (plan(opened.versions).runs.length === 0) {
+    return []
+  }
   const { target } = opened
   const { database } = target
   const inTransaction = database.isInTransactionBlock()
@@ -354,7 +506,7 @@ async function runInSession(
   }
 }
 
-/** Runs `runs` in order in a transaction with the changes of `up` and `down` of their steps, recording each migration after it runs. */
+/** Runs `runs` in order in a transaction with the changes of `up` and `down` of their steps, recording the keys of each run after it runs, so that a baseline records the keys that it replaces in the transaction that runs it. */
 async function runMigrations(target: ResolvedTarget, runs: readonly MigrationRun[]): Promise<void> {
   const database = toMigrationDatabase(target.database)
   for (const run of runs) {
@@ -363,32 +515,30 @@ async function runMigrations(target: ResolvedTarget, runs: readonly MigrationRun
   }
 }
 
-/** Records migration `run` as applied after `up`, and as not applied after `down`. */
+/** Records the keys of `run` as applied after `up`, and as not applied after `down`. */
 async function recordRun(target: ResolvedTarget, run: MigrationRun): Promise<void> {
-  await (run.direction === "up" ? insertVersion(target, run.key) : deleteVersion(target, run.key))
+  await (run.direction === "up"
+    ? insertVersions(target, run.keys)
+    : deleteVersions(target, run.keys))
 }
 
-/** Loads the migrations of `runs` in order, each once, before any of them runs, so that a module that fails to load changes nothing. */
+/** Loads the migrations of `runs` and the baseline in order, each once, before any of them runs, so that a module that fails to load changes nothing. */
 async function loadMigrations(
   history: MigrationHistory,
   runs: readonly PlannedRun[],
 ): Promise<MigrationRun[]> {
-  const steps = new Map<string, readonly MigrationStep[]>()
+  const steps = new Map<string | undefined, readonly MigrationStep[]>()
   const loaded: MigrationRun[] = []
-  for (const { key, direction } of runs) {
+  for (const run of runs) {
+    const { key } = run
     let migration = steps.get(key)
     if (migration === undefined) {
-      migration = await history.load(key)
+      migration = await (key === undefined ? history.baseline!.load() : history.load(key))
       steps.set(key, migration)
     }
-    loaded.push({ key, direction, steps: migration })
+    loaded.push({ key, direction: run.direction, keys: run.keys, steps: migration })
   }
   return loaded
-}
-
-/** Returns the last `count` applied keys in order. */
-function getLastKeys(versions: TargetVersions, count: number): string[] {
-  return versions.applied.slice(Math.max(versions.applied.length - count, 0))
 }
 
 /** Returns the number of migrations of a `count` option, 1 without it, accepting a positive integer, or `"all"` when `allowsAll` is set; throws `TypeError` for another value. */

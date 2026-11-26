@@ -1,7 +1,7 @@
 import type { Database } from "kern-db"
 
 import type { MigrationDirection } from "./error"
-import { getErrorMessage, MigrationError } from "./error"
+import { getErrorMessage, MigrationError, nameMigration } from "./error"
 
 /**
  * Database of a migration: its queries, scripts, and statements run in the transaction of the migration, or each in a transaction of its own for a change outside a transaction, and their unqualified names resolve in the target schema.
@@ -62,13 +62,13 @@ export async function runChange(
 }
 
 /**
- * Runs the changes of `direction` of the steps of migration `key` in a transaction: `up` in the order of the steps, and `down` in reverse order.
+ * Runs the changes of `direction` of the steps of migration `key`, or of the baseline of a history without `key`, in a transaction: `up` in the order of the steps, and `down` in reverse order.
  *
  * It rejects with a `MigrationError` that names the step and the direction of a change that fails.
  */
 export async function runMigrationSteps(
   database: MigrationDatabase,
-  key: string,
+  key: string | undefined,
   steps: readonly MigrationStep[],
   direction: MigrationDirection,
 ): Promise<void> {
@@ -82,7 +82,7 @@ export async function runMigrationSteps(
       await runChange(database, change)
     } catch (error) {
       throw new MigrationError(
-        `Migration ${key} failed in ${direction} of step ${index + 1}: ${getErrorMessage(error)}`,
+        `${nameMigration(key, true)} failed in ${direction} of step ${index + 1}: ${getErrorMessage(error)}`,
         { key, step: index + 1, direction, cause: error },
       )
     }
@@ -101,7 +101,7 @@ export function getOutsideTransactionChange(
 /** Runs `change` of `direction` of the only step of migration `key` outside a transaction, rejecting with a `MigrationError` that names the step and the direction. */
 export async function runOutsideTransaction(
   database: MigrationDatabase,
-  key: string,
+  key: string | undefined,
   direction: MigrationDirection,
   change: MigrationChange,
 ): Promise<void> {
@@ -109,34 +109,35 @@ export async function runOutsideTransaction(
     await runChange(database, change)
   } catch (error) {
     throw new MigrationError(
-      `Migration ${key} failed in ${direction} of step 1 outside a transaction: ${getErrorMessage(error)}`,
+      `${nameMigration(key, true)} failed in ${direction} of step 1 outside a transaction: ${getErrorMessage(error)}`,
       { key, step: 1, direction, cause: error },
     )
   }
 }
 
 /**
- * Returns the steps of migration `key`, rejecting a value that is not a migration.
+ * Returns the steps of migration `key`, or of the baseline of a history without `key`, rejecting a value that is not a migration, and a baseline with changes outside a transaction.
  *
  * `requirement` completes the message that rejects a value that is neither a step nor a non-empty array of steps, such as `be a step or a non-empty array of steps`.
  */
 export function toMigrationSteps(
-  key: string,
+  key: string | undefined,
   value: unknown,
   requirement: string,
 ): readonly MigrationStep[] {
   const steps: readonly unknown[] = Array.isArray(value) ? value : [value]
   // An array without steps is rejected too, so that a migration that forgot its steps is never recorded as applied.
   if (typeof value !== "object" || value === null || steps.length === 0) {
-    throw new MigrationError(`Migration ${key} must ${requirement}`, { key })
+    throw new MigrationError(`${nameMigration(key, true)} must ${requirement}`, { key })
   }
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index]
     const problem =
       findStepProblem(step) ??
+      (key === undefined ? findBaselineStepProblem(step as MigrationStep) : undefined) ??
       (steps.length > 1 ? findSharedStepProblem(step as MigrationStep) : undefined)
     if (problem !== undefined) {
-      throw new MigrationError(`Step ${index + 1} of migration ${key} ${problem}`, {
+      throw new MigrationError(`Step ${index + 1} of ${nameMigration(key)} ${problem}`, {
         key,
         step: index + 1,
       })
@@ -179,6 +180,17 @@ export function findSharedStepProblem(step: MigrationStep): string | undefined {
   return step.outsideTransaction === undefined
     ? undefined
     : "has outsideTransaction, so it must be the only step of its migration"
+}
+
+/**
+ * Returns what keeps `step` out of the baseline of a history, or `undefined` for a step that it can have.
+ *
+ * A baseline records the keys that it replaces in the transaction that runs it, so that a target never has a part of them, which a change outside a transaction would not join.
+ */
+function findBaselineStepProblem(step: MigrationStep): string | undefined {
+  return step.outsideTransaction === undefined
+    ? undefined
+    : "has outsideTransaction, which a baseline cannot have, since it records the migrations that it replaces in its transaction"
 }
 
 /** Returns what makes `value` not the `outsideTransaction` of a step, or `undefined` when it is one; `hasDown` tells whether the step has `down`. */

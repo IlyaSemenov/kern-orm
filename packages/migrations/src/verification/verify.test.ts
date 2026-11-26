@@ -283,6 +283,124 @@ describePostgres("verifyMigrations", ({ database, driver, testTransaction, recor
     expect(error).toMatchObject({ key: "0002_fail", step: 1, direction })
   })
 
+  describe("baseline", () => {
+    const addFormSlug = {
+      up: "ALTER TABLE form ADD COLUMN slug text",
+      down: "ALTER TABLE form DROP COLUMN slug",
+    }
+    const replaces = ["0001_create_form", "0002_add_form_slug"]
+
+    it("verifies the baseline on the empty schema and then the migrations after the replaced ones, skipping the replaced ones that the history keeps and their migration tests", async () => {
+      const calls: string[] = []
+      const record = (call: string) => async () => {
+        calls.push(call)
+      }
+      const history = defineMigrations(
+        {
+          // It starts from the schema that the migrations before it built, which the history lacks.
+          "0002_add_form_slug": [addFormSlug, { up: record("up 2"), down: record("down 2") }],
+          "0003_add_form_title": [
+            {
+              up: "ALTER TABLE form ADD COLUMN title text",
+              down: "ALTER TABLE form DROP COLUMN title",
+            },
+            { up: record("up 3"), down: record("down 3") },
+          ],
+        },
+        {
+          baseline: {
+            migration: [
+              createForm,
+              addFormSlug,
+              { up: record("up baseline"), down: record("down baseline") },
+            ],
+            replaces,
+          },
+        },
+      )
+      const tests = {
+        // The verification loads and checks the file of a skipped migration as any other, and does not run its tests.
+        "./0002_add_form_slug.migration-test.ts": async () => {
+          calls.push("load test 2")
+          return { default: defineMigrationTest("is skipped", { setup: record("test 2") }) }
+        },
+        "./0003_add_form_title.migration-test.ts": {
+          default: defineMigrationTest("runs", { setup: record("test 3") }),
+        },
+      }
+
+      await testTransaction(() => verifyMigrations(database, history, { tests }))
+
+      expect(calls).toEqual([
+        "load test 2",
+        "up baseline",
+        "down baseline",
+        "up baseline",
+        "up 3",
+        "down 3",
+        "test 3",
+        "up 3",
+        "down 3",
+        "up 3",
+        "up 3",
+      ])
+    })
+
+    it("verifies a history of a baseline alone", async () => {
+      const history = defineMigrations({}, { baseline: { migration: createForm, replaces } })
+
+      await testTransaction(() => verifyMigrations(database, history))
+    })
+
+    it("rejects a baseline whose rollback leaves the structure different from the empty schema, naming the baseline", async () => {
+      const history = defineMigrations(
+        {},
+        {
+          baseline: {
+            migration: [createForm, { up: "CREATE TABLE tag (id integer PRIMARY KEY)" }],
+            replaces,
+          },
+        },
+      )
+
+      const error = await testTransaction(() => verifyMigrations(database, history)).catch(
+        (error: unknown) => error,
+      )
+
+      expect((error as Error).message.split("\n")).toEqual([
+        "Rolling back the baseline does not restore the structure of the schema (- before the migration, + after its rollback):",
+        "  + column tag.id integer NOT NULL",
+        "  + constraint tag.tag_pkey PRIMARY KEY (id)",
+        expect.stringMatching(
+          /^ {2}\+ index CREATE UNIQUE INDEX tag_pkey ON kern_verify_\w+\.tag USING btree \(id\)$/,
+        ),
+        "  + table tag",
+      ])
+    })
+
+    it("rejects a baseline that fails with a MigrationError without a key, and one that fails to apply again after its rollback", async () => {
+      const failing = defineMigrations(
+        {},
+        { baseline: { migration: { up: "SELECT missing_function()" }, replaces } },
+      )
+      const kept = defineMigrations(
+        {},
+        { baseline: { migration: { up: createForm.up }, replaces } },
+      )
+
+      const errors = await testTransaction(async () => [
+        await verifyMigrations(database, failing).catch((error: unknown) => error),
+        await verifyMigrations(database, kept).catch((error: unknown) => (error as Error).message),
+      ])
+
+      expect(errors[0]).toBeInstanceOf(MigrationError)
+      expect(errors[0]).toMatchObject({ key: undefined, step: 1, direction: "up" })
+      expect(errors[1]).toStartWith(
+        "Rolling back the baseline does not restore the structure of the schema",
+      )
+    })
+  })
+
   it("rejects a history without migrations", async () => {
     await expect(
       testTransaction(() => verifyMigrations(database, defineMigrations({}))),
