@@ -1,5 +1,18 @@
 # kern-migrations
 
+## 0.9.0
+
+### Minor Changes
+
+- 80be802: Add the migration helpers `addColumns()`, `dropColumns()`, `addConstraints()`, and `dropConstraints()`, which add or drop several columns or constraints of a table in one `ALTER TABLE`.
+- 3515eb7: Add `changeColumns` to `alterTable`, which changes columns together with dropping and adding columns and constraints in one `ALTER TABLE`.
+- 4c89b7f: Add the migration helper `alterTable()`, which drops and adds columns and constraints of a table in one `ALTER TABLE`.
+- b702738: Add `changeColumns`, which changes several columns of a table in one `ALTER TABLE`.
+
+### Patch Changes
+
+- a12c6cc: Fix `createTable` and `createIndex` failing, and `changeColumn` skipping the changes after a `type` or `using`, when SQL given to them ends with a line comment before more SQL.
+
 ## 0.8.8
 
 ### Patch Changes
