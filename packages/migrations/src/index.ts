@@ -1,6 +1,6 @@
 export type { MigrationDirection } from "./error"
 export { MigrationError } from "./error"
-export type { ColumnChange, ColumnState } from "./helpers/columns"
+export type { ColumnChange, ColumnState } from "./helpers/column-changes"
 export {
   addColumn,
   addColumns,

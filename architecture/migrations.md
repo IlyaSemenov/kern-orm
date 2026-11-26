@@ -149,20 +149,20 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   `quoteIdentifier` rejects an empty name, so that a name left blank fails before the migration runs.
 - A helper that drops an object is `invertStep` of the helper that creates it, with the same arguments, which give the definition that its `down` creates again.
   Dropping a table or a column also drops its indexes and constraints, and the definition restores only what it describes, so a migration must drop standalone indexes and constraints with their own steps before, or a constraint in `dropConstraints` of the same `alterTable`, and describe each constraint once.
-- `alterTable` drops and adds the columns and constraints of records in one `ALTER TABLE`, so that PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
-  - It writes the dropped constraints, the dropped columns, the added columns, and the added constraints in this order: a dropped constraint goes before a dropped column, since dropping a column drops its constraints, and dropping before adding replaces a constraint dropped and added under the same name.
-  - Its rollback drops what it adds and adds what it drops.
+- `alterTable` drops, changes, and adds the columns and constraints of records in one `ALTER TABLE`, so that PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
+  - It writes the dropped constraints, the dropped columns, the changed columns, the added columns, and the added constraints in this order: a dropped constraint goes before a dropped column, since dropping a column drops its constraints, and dropping before adding replaces a constraint dropped and added under the same name.
+  - PostgreSQL changes the types of columns after all drops and before it checks the added constraints, so an added constraint checks the new type, and `using` reads the values before its direction, also of a column that the direction drops but not of one that it adds.
+  - Its rollback drops what it adds, changes back what it changes, and adds what it drops.
   - Both directions drop the entries of a record in reverse order and add them in order, since PostgreSQL drops them one by one and rejects dropping an entry that another depends on; an entry must follow the entries of its record it depends on.
     When a step adds or drops both a foreign key and the unique constraint that it references, both must be in `addConstraints` or `dropConstraints`, the unique constraint first, rather than the foreign key as `REFERENCES` in the definition of a column, since both directions drop constraints before columns.
-  - It rejects an unknown change and empty changes.
-  - `addColumns` and `addConstraints` call it with the changes of one kind, and `addColumn` and `addConstraint` call them with a record of one entry.
-  - It takes no renames, since PostgreSQL does not combine `RENAME` with other actions in one `ALTER TABLE`, and no changes of columns yet ([backlog](../backlog/column-changes-of-alter-table.md)).
+  - It rejects an unknown change, empty changes, and a changed column that the step also drops or adds, which PostgreSQL rejects only when the step runs.
+  - `addColumns`, `addConstraints`, and `changeColumns` call it with the changes of one kind, and `addColumn`, `addConstraint`, and `changeColumn` call them with a record of one entry.
+  - It takes no renames, since PostgreSQL does not combine `RENAME` with other actions in one `ALTER TABLE`.
 - `changeColumn` takes the states of a column before and after the change, which list the same of `type`, `notNull`, and `default`, so that a missing property never means a value; `using` of a state converts the values to its type.
   It builds one `ALTER TABLE` of the actions of the properties that differ.
   When the type changes, it drops a default that the states list before the type and sets it after, since PostgreSQL otherwise casts the old default to the new type and fails, such as `''` of `text` to `integer`.
   In one `ALTER TABLE`, PostgreSQL drops a default before it changes the type and sets one after, whatever the order of the actions.
   - `changeColumns` takes such a change of each column as a tuple of its states by its name, and writes the actions of the columns in turn into one `ALTER TABLE`, in the same order in both directions: PostgreSQL runs the actions of all columns by kind, rewrites the table at most once for all changes of type, and evaluates `using` on the values before the change, so it may read the other columns.
-  - `changeColumn` calls it with a record of one entry.
 - `createIndex` without `name` names the index as PostgreSQL names an index without a name, `<table>_<columns>_idx` of its key and `include` columns, so that `dropIndex` also finds an index that SQL created without a name.
   - It requires `name` when PostgreSQL would name the index otherwise: for an element that is not a lowercase column with an optional ordering, such as an expression, which PostgreSQL names `expr`; for a repeated column, which PostgreSQL numbers; and for a name longer than 63 bytes, which PostgreSQL truncates.
   - It reads an element as PostgreSQL does: words separated by the whitespace of SQL only, since PostgreSQL reads another space, such as U+00A0, as a character of a name, and the keywords of an ordering in ASCII letters of any case.

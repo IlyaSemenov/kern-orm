@@ -1,6 +1,7 @@
 import type { MigrationStep } from "../migration"
 import { joinSql, quoteIdentifier } from "../sql"
 
+import { checkColumnChange, type ColumnChange, pushColumnActions } from "./column-changes"
 import { createSingletonIndex } from "./indexes"
 import { combineSteps, invertStep } from "./step"
 
@@ -57,12 +58,14 @@ export function renameTable(from: string, to: string): MigrationStep {
   }
 }
 
-/** Changes of a table that `alterTable` makes, each a record of the SQL definitions of columns or constraints by name. */
+/** Changes of a table that `alterTable` makes, each a record of columns or constraints by name. */
 export interface TableChanges {
   /** Columns to drop, with their definitions for rollback. */
   dropColumns?: Readonly<Record<string, string>>
   /** Constraints to drop, with their definitions for rollback. */
   dropConstraints?: Readonly<Record<string, string>>
+  /** Columns to change, each with its states before and after the change as `changeColumns` takes them. */
+  changeColumns?: Readonly<Record<string, ColumnChange>>
   /** Columns to add, such as `{ slug: "text" }`. */
   addColumns?: Readonly<Record<string, string>>
   /** Constraints to add, such as `{ form_price_check: "CHECK (price > 0)" }`. */
@@ -72,18 +75,21 @@ export interface TableChanges {
 const tableChangeKeys = /* @__PURE__ */ new Set([
   "dropColumns",
   "dropConstraints",
+  "changeColumns",
   "addColumns",
   "addConstraints",
 ])
 
 /**
- * Builds a step that drops and adds columns and constraints of a table in one `ALTER TABLE`, and undoes them on rollback: it drops what the step adds, and adds again what the step drops.
+ * Builds a step that drops, changes, and adds columns and constraints of a table in one `ALTER TABLE`, and undoes them on rollback: it drops what the step adds, changes back what the step changes, and adds again what the step drops.
  *
  * It drops before it adds, so dropping and adding a constraint of the same name replaces its definition.
+ * It writes the changes of `changeColumns`, as `changeColumns` builds them, after the drops and before the adds; PostgreSQL changes the types of columns before it checks the added constraints, so an added constraint checks the new type.
+ * The `using` of a state reads the values before its direction: that of `to` reads the columns that the step drops but not those that it adds, and that of `from` reads the columns that the step adds but not those that rollback adds back.
  * List a column or a constraint after those of its record it depends on, such as a generated column after the columns of its expression, since the step and its rollback drop them in reverse order.
  * When the step adds or drops both a foreign key and the unique constraint that it references, list both in `addConstraints` or `dropConstraints`, the unique constraint first, rather than the foreign key as `REFERENCES` in the definition of a column, since both directions drop constraints before columns.
  * Rollback recreates the columns and constraints of `dropColumns` and `dropConstraints` from their definitions; it does not restore the values of the columns.
- * It throws for an unknown change and when the changes are empty.
+ * It throws for an unknown change, when the changes are empty, for a change that `changeColumn` rejects, and for a changed column that the step also drops or adds.
  */
 export function alterTable(table: string, changes: TableChanges): MigrationStep {
   const unknownKey = Object.keys(changes).find(key => !tableChangeKeys.has(key))
@@ -93,12 +99,29 @@ export function alterTable(table: string, changes: TableChanges): MigrationStep 
   const up: string[] = []
   const down: string[] = []
   // A dropped constraint goes before a dropped column, since dropping a column drops its constraints, which would then be missing.
+  // The changes of columns go after the drops, so that dropping NOT NULL follows dropping a primary key, which PostgreSQL runs in the order of the text; it changes types after all drops and before it checks the added constraints.
   pushDrops(up, "CONSTRAINT", changes.dropConstraints)
   pushDrops(up, "COLUMN", changes.dropColumns)
-  pushAdds(up, "COLUMN", changes.addColumns)
-  pushAdds(up, "CONSTRAINT", changes.addConstraints)
   pushDrops(down, "CONSTRAINT", changes.addConstraints)
   pushDrops(down, "COLUMN", changes.addColumns)
+  if (changes.changeColumns !== undefined) {
+    for (const [column, change] of Object.entries(changes.changeColumns)) {
+      // PostgreSQL rejects a change of a column that the statement drops or adds only when the step runs.
+      if (changes.dropColumns !== undefined && Object.hasOwn(changes.dropColumns, column)) {
+        throw new Error(`Cannot alter table ${table}: column ${column} is both changed and dropped`)
+      }
+      if (changes.addColumns !== undefined && Object.hasOwn(changes.addColumns, column)) {
+        throw new Error(`Cannot alter table ${table}: column ${column} is both changed and added`)
+      }
+      const from = change[0]
+      const to = change[1]
+      checkColumnChange(table, column, from, to)
+      pushColumnActions(up, column, from, to)
+      pushColumnActions(down, column, to, from)
+    }
+  }
+  pushAdds(up, "COLUMN", changes.addColumns)
+  pushAdds(up, "CONSTRAINT", changes.addConstraints)
   pushAdds(down, "COLUMN", changes.dropColumns)
   pushAdds(down, "CONSTRAINT", changes.dropConstraints)
   if (up.length === 0) {
@@ -141,6 +164,6 @@ function pushDrops(
 }
 
 /** Builds one `ALTER TABLE` of a table with its actions in their order, such as `ADD COLUMN "slug" text`. */
-export function buildAlterTable(table: string, actions: readonly string[]): string {
+function buildAlterTable(table: string, actions: readonly string[]): string {
   return `ALTER TABLE ${quoteIdentifier(table)} ${joinSql(actions, ", ")}`
 }

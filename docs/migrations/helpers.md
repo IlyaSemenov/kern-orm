@@ -20,7 +20,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Tables:
   - `createTable(table, columns, options)` and `dropTable` with the same arguments; the options are `constraints` and `singleton`, which creates the singleton index of the table too.
   - `renameTable(from, to)`.
-  - [`alterTable(table, changes)`](#change-several-columns-and-constraints), which drops and adds columns and constraints in one `ALTER TABLE`.
+  - [`alterTable(table, changes)`](#change-several-columns-and-constraints), which drops, changes, and adds columns, and drops and adds constraints, in one `ALTER TABLE`.
 - Columns:
   - `addColumn(table, column, definition)` and `dropColumn` with the same arguments.
   - [`addColumns(table, columns)`](#change-several-columns-and-constraints) and `dropColumns` with the same arguments.
@@ -86,9 +86,32 @@ alterTable("form", {
 })
 ```
 
-Rolling back drops what it added and adds again what it dropped.
+To change columns in the same `ALTER TABLE`, pass them in `changeColumns` as [`changeColumns`](#change-a-column) takes them.
+PostgreSQL drops before it changes the types of columns, and changes them before it adds, so a step can replace a constraint that does not fit the new type of its column:
 
-For changes of one kind, pass the record alone to `addColumns`, `dropColumns`, `addConstraints`, or `dropConstraints`, such as `addColumns("job", { max_items: "integer" })`, which builds one `ALTER TABLE` too.
+```ts
+alterTable("form", {
+  dropConstraints: {
+    form_price_check: "CHECK (price <> '')",
+  },
+  changeColumns: {
+    price: [
+      { type: "text", using: "price::text" },
+      { type: "integer", using: "price::integer" },
+    ],
+  },
+  addConstraints: {
+    form_price_check: "CHECK (price > 0)",
+  },
+})
+```
+
+The `using` of a changed column reads the values before the step, also of the columns that the step drops, but not of those that it adds.
+On rollback, the `using` of the first state reads the columns that the step added, but not those that rollback adds again.
+
+Rolling back drops what it added, changes back what it changed, and adds again what it dropped.
+
+For changes of one kind, pass the record alone to `addColumns`, `dropColumns`, `changeColumns`, `addConstraints`, or `dropConstraints`, such as `addColumns("job", { max_items: "integer" })`, which builds one `ALTER TABLE` too.
 
 The helpers drop the entries of a record in reverse order and add them in order, both when applying and when rolling back.
 List an entry after the entries it depends on, such as a generated column after the columns of its expression, or a foreign key after the unique constraint that it references.

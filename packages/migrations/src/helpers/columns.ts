@@ -1,8 +1,9 @@
 import type { MigrationStep } from "../migration"
-import { endLineComment, quoteIdentifier } from "../sql"
+import { quoteIdentifier } from "../sql"
 
+import type { ColumnChange, ColumnState } from "./column-changes"
 import { invertStep } from "./step"
-import { alterTable, buildAlterTable } from "./tables"
+import { alterTable } from "./tables"
 
 /** Builds a step that adds a column of a SQL definition, such as `"text NOT NULL DEFAULT ''"`, to a table, and drops it on rollback. */
 export function addColumn(table: string, column: string, definition: string): MigrationStep {
@@ -52,23 +53,6 @@ export function renameColumn(table: string, from: string, to: string): Migration
   }
 }
 
-/** State of a column that `changeColumn` and `changeColumns` change from or to: the properties that change, each of `type`, `notNull`, and `default` that one state gives also given in the other. */
-export interface ColumnState {
-  /** SQL type, such as `"integer"`. */
-  type?: string
-  /** SQL expression that converts the values of the column to `type`, such as `"position::integer"`, for a change to this state. */
-  using?: string
-  notNull?: boolean
-  /** SQL expression of the default, such as `"0"`, or `null` for no default. */
-  default?: string | null
-}
-
-/** Change of a column that `changeColumns` makes: its state before and after the change. */
-export type ColumnChange = readonly [from: ColumnState, to: ColumnState]
-
-// Properties of a state that the states of a change list together, so that a missing one never means a value.
-const listedProperties = ["type", "notNull", "default"] as const
-
 /**
  * Builds a step that changes the type, the nullability, or the default of a column from state `from` to state `to`, and changes it back on rollback.
  *
@@ -95,74 +79,5 @@ export function changeColumns(
   table: string,
   columns: Readonly<Record<string, ColumnChange>>,
 ): MigrationStep {
-  const up: string[] = []
-  const down: string[] = []
-  for (const [column, change] of Object.entries(columns)) {
-    const from = change[0]
-    const to = change[1]
-    checkColumnChange(table, column, from, to)
-    pushColumnActions(up, column, from, to)
-    pushColumnActions(down, column, to, from)
-  }
-  if (up.length === 0) {
-    throw new Error(`Cannot alter table ${table}: the changes are empty`)
-  }
-  // In one ALTER TABLE, PostgreSQL runs the actions of all columns by kind rather than in their order: it drops the defaults, changes the types, and sets the defaults after them.
-  return { up: buildAlterTable(table, up), down: buildAlterTable(table, down) }
-}
-
-/** Throws when only one state of a change of a column gives `type`, `notNull`, or `default`, when a state gives `using` without a change of type, or when the states change nothing. */
-function checkColumnChange(
-  table: string,
-  column: string,
-  from: ColumnState,
-  to: ColumnState,
-): void {
-  const describe = (problem: string) =>
-    new Error(`Cannot change column ${column} of table ${table}: ${problem}`)
-  for (const property of listedProperties) {
-    if ((from[property] === undefined) !== (to[property] === undefined)) {
-      throw describe(`give ${property} in both states or in neither`)
-    }
-  }
-  const typeChanges = from.type !== to.type
-  if (!typeChanges && (from.using !== undefined || to.using !== undefined)) {
-    throw describe("using requires a change of type")
-  }
-  if (!typeChanges && from.notNull === to.notNull && from.default === to.default) {
-    throw describe("the states change nothing")
-  }
-}
-
-/** Appends to `actions` the `ALTER COLUMN` actions of `ALTER TABLE` that change a column from state `from` to state `to`. */
-function pushColumnActions(
-  actions: string[],
-  column: string,
-  from: ColumnState,
-  to: ColumnState,
-): void {
-  const typeChanges = from.type !== to.type
-  const name = quoteIdentifier(column)
-  // PostgreSQL casts the default to the new type unless it is dropped first, which fails for a default such as `''` of a text column that becomes integer.
-  if (from.default !== undefined && from.default !== null && (to.default === null || typeChanges)) {
-    actions.push(`ALTER COLUMN ${name} DROP DEFAULT`)
-  }
-  if (typeChanges) {
-    // `USING` follows the type on its line, so a line comment at the end of the type would comment it out.
-    actions.push(
-      to.using === undefined
-        ? `ALTER COLUMN ${name} TYPE ${to.type}`
-        : `ALTER COLUMN ${name} TYPE ${endLineComment(to.type!)} USING ${to.using}`,
-    )
-  }
-  if (from.notNull !== to.notNull) {
-    actions.push(`ALTER COLUMN ${name} ${to.notNull ? "SET NOT NULL" : "DROP NOT NULL"}`)
-  }
-  if (
-    to.default !== undefined &&
-    to.default !== null &&
-    (to.default !== from.default || typeChanges)
-  ) {
-    actions.push(`ALTER COLUMN ${name} SET DEFAULT ${to.default}`)
-  }
+  return alterTable(table, { changeColumns: columns })
 }

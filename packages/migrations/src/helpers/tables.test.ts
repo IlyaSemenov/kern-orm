@@ -1,11 +1,13 @@
 import { describe, expect, it } from "bun:test"
 
 import { getThrownError } from "@kern-orm/test-harness/errors"
+import * as t from "kern-db/types"
 
 import { describePostgres } from "../../testing/postgres"
+import { runChange } from "../migration"
 
 import { alterTable, createTable, dropTable, renameTable } from "./tables"
-import { applyStep } from "./testing"
+import { applyStep, inHelperSchema } from "./testing"
 
 const formColumns = {
   id: "integer PRIMARY KEY",
@@ -89,13 +91,48 @@ describe("alterTable", () => {
     })
   })
 
-  it("rejects an unknown change and empty changes", () => {
+  it("changes columns after the drops and before the adds, and changes them back on rollback", () => {
+    expect(
+      alterTable("form", {
+        dropConstraints: {
+          form_price_check: "CHECK (price <> '')",
+        },
+        changeColumns: {
+          price: [
+            { type: "text", using: "price::text" },
+            { type: "integer", using: "price::integer" },
+          ],
+        },
+        addConstraints: {
+          form_price_check: "CHECK (price > 0)",
+        },
+      }),
+    ).toEqual({
+      up: 'ALTER TABLE "form" DROP CONSTRAINT "form_price_check", ALTER COLUMN "price" TYPE integer USING price::integer, ADD CONSTRAINT "form_price_check" CHECK (price > 0)',
+      down: 'ALTER TABLE "form" DROP CONSTRAINT "form_price_check", ALTER COLUMN "price" TYPE text USING price::text, ADD CONSTRAINT "form_price_check" CHECK (price <> \'\')',
+    })
+  })
+
+  it("rejects an unknown change, empty changes, a change that changeColumn rejects, and a changed column that it drops or adds", () => {
+    const toInteger = [{ type: "text" }, { type: "integer" }] as const
     expect([
       getThrownError(() => alterTable("form", { addColumn: { slug: "text" } } as object)),
       getThrownError(() => alterTable("form", { addColumns: {} })),
+      getThrownError(() =>
+        alterTable("form", { changeColumns: { slug: [{ notNull: true }, { notNull: true }] } }),
+      ),
+      getThrownError(() =>
+        alterTable("form", { dropColumns: { price: "text" }, changeColumns: { price: toInteger } }),
+      ),
+      getThrownError(() =>
+        alterTable("form", { changeColumns: { price: toInteger }, addColumns: { price: "text" } }),
+      ),
     ]).toEqual([
       new Error("Cannot alter table form: unknown change addColumn"),
       new Error("Cannot alter table form: the changes are empty"),
+      new Error("Cannot change column slug of table form: the states change nothing"),
+      new Error("Cannot alter table form: column price is both changed and dropped"),
+      new Error("Cannot alter table form: column price is both changed and added"),
     ])
   })
 })
@@ -244,5 +281,68 @@ describePostgres("table helpers in PostgreSQL", ({ database, testTransaction }) 
       "table form",
     ])
     expect(result.down).toEqual(result.before)
+  })
+
+  it("alterTable changes the type of a column while it replaces the constraint that checks it, and its rollback restores them", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        alterTable("form", {
+          dropConstraints: {
+            form_price_check: "CHECK (price <> '')",
+          },
+          changeColumns: {
+            price: [
+              { type: "text", using: "price::text" },
+              { type: "integer", using: "price::integer" },
+            ],
+          },
+          addConstraints: {
+            form_price_check: "CHECK (price > 0)",
+          },
+        }),
+        "CREATE TABLE form (price text CONSTRAINT form_price_check CHECK (price <> ''))",
+      ),
+    )
+
+    expect(result.up).toEqual([
+      "column form.price integer",
+      "constraint form.form_price_check CHECK ((price > 0))",
+      "table form",
+    ])
+    expect(result.down).toEqual(result.before)
+  })
+
+  it("alterTable converts a column with a using that reads a column that it drops, and its rollback converts it back", async () => {
+    const step = alterTable("form", {
+      dropColumns: {
+        legacy_amount: "integer",
+      },
+      changeColumns: {
+        amount: [
+          { type: "text", using: "amount::text" },
+          { type: "integer", using: "coalesce(amount::integer, legacy_amount)" },
+        ],
+      },
+    })
+
+    const result = await testTransaction(() =>
+      inHelperSchema(database, async () => {
+        await database.script(`
+          CREATE TABLE form (id integer PRIMARY KEY, amount text, legacy_amount integer);
+          INSERT INTO form (id, amount, legacy_amount) VALUES (1, '3', NULL), (2, NULL, 7);
+        `)
+        await runChange(database, step.up)
+        const up = await database.query`SELECT amount::text FROM form ORDER BY id`.pluck(t.text)
+        await runChange(database, step.down!)
+        const down =
+          await database.query`SELECT pg_typeof(amount)::text || ' ' || amount || ' ' || coalesce(legacy_amount::text, 'NULL') FROM form ORDER BY id`.pluck(
+            t.text,
+          )
+        return { up, down }
+      }),
+    )
+
+    expect(result).toEqual({ up: ["3", "7"], down: ["text 3 NULL", "text 7 NULL"] })
   })
 })
