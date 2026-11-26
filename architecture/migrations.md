@@ -161,6 +161,8 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   It builds one `ALTER TABLE` of the actions of the properties that differ.
   When the type changes, it drops a default that the states list before the type and sets it after, since PostgreSQL otherwise casts the old default to the new type and fails, such as `''` of `text` to `integer`.
   In one `ALTER TABLE`, PostgreSQL drops a default before it changes the type and sets one after, whatever the order of the actions.
+  - `changeColumns` takes such a change of each column as a tuple of its states by its name, and writes the actions of the columns in turn into one `ALTER TABLE`, in the same order in both directions: PostgreSQL runs the actions of all columns by kind, rewrites the table at most once for all changes of type, and evaluates `using` on the values before the change, so it may read the other columns.
+  - `changeColumn` calls it with a record of one entry.
 - `createIndex` without `name` names the index as PostgreSQL names an index without a name, `<table>_<columns>_idx` of its key and `include` columns, so that `dropIndex` also finds an index that SQL created without a name.
   - It requires `name` when PostgreSQL would name the index otherwise: for an element that is not a lowercase column with an optional ordering, such as an expression, which PostgreSQL names `expr`; for a repeated column, which PostgreSQL numbers; and for a name longer than 63 bytes, which PostgreSQL truncates.
   - It reads an element as PostgreSQL does: words separated by the whitespace of SQL only, since PostgreSQL reads another space, such as U+00A0, as a character of a name, and the keywords of an ordering in ASCII letters of any case.

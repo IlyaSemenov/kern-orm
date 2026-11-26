@@ -10,6 +10,7 @@ import {
   addColumn,
   addColumns,
   changeColumn,
+  changeColumns,
   dropColumn,
   dropColumns,
   renameColumn,
@@ -182,6 +183,38 @@ describe("changeColumn", () => {
       "Cannot change column slug of table form: give notNull in both states or in neither",
       "Cannot change column slug of table form: using requires a change of type",
       "Cannot change column slug of table form: the states change nothing",
+    ])
+  })
+})
+
+describe("changeColumns", () => {
+  it("changes columns in one statement, writing the actions of each column in turn, and changes them back", () => {
+    expect(
+      changeColumns("form", {
+        position: [
+          { type: "text", using: "position::text", default: "''" },
+          { type: "integer", using: "position::integer", default: "0" },
+        ],
+        slug: [{ notNull: false }, { notNull: true }],
+      }),
+    ).toEqual({
+      up: 'ALTER TABLE "form" ALTER COLUMN "position" DROP DEFAULT, ALTER COLUMN "position" TYPE integer USING position::integer, ALTER COLUMN "position" SET DEFAULT 0, ALTER COLUMN "slug" SET NOT NULL',
+      down: 'ALTER TABLE "form" ALTER COLUMN "position" DROP DEFAULT, ALTER COLUMN "position" TYPE text USING position::text, ALTER COLUMN "position" SET DEFAULT \'\', ALTER COLUMN "slug" DROP NOT NULL',
+    })
+  })
+
+  it("rejects an empty record and a change that changeColumn rejects", () => {
+    expect([
+      getThrownError(() => changeColumns("form", {})),
+      getThrownError(() =>
+        changeColumns("form", {
+          slug: [{ notNull: false }, { notNull: true }],
+          position: [{ type: "integer" }, { type: "integer" }],
+        }),
+      ),
+    ]).toEqual([
+      new Error("Cannot alter table form: the changes are empty"),
+      new Error("Cannot change column position of table form: the states change nothing"),
     ])
   })
 })
@@ -412,6 +445,42 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
       before: ["column form.slug text", "table form"],
       up: ["column form.slug text NOT NULL", "table form"],
       down: ["column form.slug text", "table form"],
+    })
+  })
+
+  it("changeColumns converts columns with a using that reads another column before the change, and its rollback converts them back", async () => {
+    const step = changeColumns("size", {
+      height: [
+        { type: "text", using: "height::text", notNull: false },
+        { type: "integer", using: "height::integer", notNull: true },
+      ],
+      width: [
+        { type: "text", using: "(width - length(height::text))::text", default: "''" },
+        { type: "integer", using: "length(height) + width::integer", default: "0" },
+      ],
+    })
+
+    const result = await testTransaction(() =>
+      inHelperSchema(database, async () => {
+        await database.script(`
+          CREATE TABLE size (id integer PRIMARY KEY, width text DEFAULT '', height text);
+          INSERT INTO size (id, width, height) VALUES (1, '10', '20');
+        `)
+        const listSizes = () =>
+          database.query`SELECT width::text || 'x' || height::text FROM size ORDER BY id`.pluck(
+            t.text,
+          )
+        await runChange(database, step.up)
+        await database.script("INSERT INTO size (id, height) VALUES (2, 5)")
+        const up = await listSizes()
+        await runChange(database, step.down!)
+        return { up, down: await listSizes() }
+      }),
+    )
+
+    expect(result).toEqual({
+      up: ["12x20", "0x5"],
+      down: ["10x20", "-1x5"],
     })
   })
 })

@@ -25,7 +25,7 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
   - `addColumn(table, column, definition)` and `dropColumn` with the same arguments.
   - [`addColumns(table, columns)`](#change-several-columns-and-constraints) and `dropColumns` with the same arguments.
   - `renameColumn(table, from, to)`.
-  - [`changeColumn(table, column, from, to)`](#change-a-column).
+  - [`changeColumn(table, column, from, to)`](#change-a-column) and [`changeColumns(table, columns)`](#change-a-column).
 - Indexes:
   - `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](./outside-transaction).
   - `createSingletonIndex(table, { name })` and `dropSingletonIndex` with the same arguments, which create and drop a unique index of `(true)` that keeps a table to at most one row, such as a [singleton table](../orm/singleton-tables) of the ORM.
@@ -110,6 +110,20 @@ changeColumn(
 ```
 
 Applying converts the values with `using` of the second state, and rolling back with that of the first.
+
+To change several columns of a table in one `ALTER TABLE`, pass `changeColumns` the states of each column before and after the change, so that PostgreSQL rewrites the table at most once for all changes of type:
+
+```ts
+changeColumns("form", {
+  position: [
+    { type: "text", using: "position::text", default: "''" },
+    { type: "integer", using: "position::integer", default: "0" },
+  ],
+  slug: [{ notNull: false }, { notNull: true }],
+})
+```
+
+The `using` of a column reads the values of the other columns before the change.
 
 ## Replace the query of a view
 

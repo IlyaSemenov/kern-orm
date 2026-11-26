@@ -1,10 +1,11 @@
 export type { MigrationDirection } from "./error"
 export { MigrationError } from "./error"
-export type { ColumnState } from "./helpers/columns"
+export type { ColumnChange, ColumnState } from "./helpers/columns"
 export {
   addColumn,
   addColumns,
   changeColumn,
+  changeColumns,
   dropColumn,
   dropColumns,
   renameColumn,
