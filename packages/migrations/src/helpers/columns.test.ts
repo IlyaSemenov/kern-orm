@@ -1,11 +1,19 @@
 import { describe, expect, it } from "bun:test"
 
+import { getThrownError } from "@kern-orm/test-harness/errors"
 import * as t from "kern-db/types"
 
 import { describePostgres } from "../../testing/postgres"
 import { runChange } from "../migration"
 
-import { addColumn, changeColumn, dropColumn, renameColumn } from "./columns"
+import {
+  addColumn,
+  addColumns,
+  changeColumn,
+  dropColumn,
+  dropColumns,
+  renameColumn,
+} from "./columns"
 import { dropConstraint } from "./constraints"
 import { dropIndex } from "./indexes"
 import { combineSteps } from "./step"
@@ -25,6 +33,51 @@ describe("dropColumn", () => {
     expect(dropColumn("form", "slug", "text")).toEqual({
       up: 'ALTER TABLE "form" DROP COLUMN "slug"',
       down: 'ALTER TABLE "form" ADD COLUMN "slug" text',
+    })
+  })
+})
+
+describe("addColumns", () => {
+  it("adds quoted columns of definitions in one statement, and drops them", () => {
+    expect(
+      addColumns("form", {
+        slug: "text",
+        order: "integer NOT NULL DEFAULT 0",
+      }),
+    ).toEqual({
+      up: 'ALTER TABLE "form" ADD COLUMN "slug" text, ADD COLUMN "order" integer NOT NULL DEFAULT 0',
+      down: 'ALTER TABLE "form" DROP COLUMN "order", DROP COLUMN "slug"',
+    })
+  })
+
+  it("ends a definition before another with a line break when it contains a line comment", () => {
+    expect(
+      addColumns("form", {
+        width: "integer -- in pixels",
+        height: "integer -- in pixels",
+      }).up,
+    ).toBe(
+      'ALTER TABLE "form" ADD COLUMN "width" integer -- in pixels\n, ADD COLUMN "height" integer -- in pixels',
+    )
+  })
+
+  it("rejects an empty record", () => {
+    expect(getThrownError(() => addColumns("form", {}))).toEqual(
+      new Error("Cannot alter table form: give at least one column"),
+    )
+  })
+})
+
+describe("dropColumns", () => {
+  it("drops columns in one statement, and adds them again as addColumns does", () => {
+    expect(
+      dropColumns("form", {
+        slug: "text",
+        order: "integer",
+      }),
+    ).toEqual({
+      up: 'ALTER TABLE "form" DROP COLUMN "order", DROP COLUMN "slug"',
+      down: 'ALTER TABLE "form" ADD COLUMN "slug" text, ADD COLUMN "order" integer',
     })
   })
 })
@@ -195,6 +248,67 @@ describePostgres("column helpers in PostgreSQL", ({ database, testTransaction })
 
     expect(result.down).toEqual(result.before)
     expect(result.slugs).toEqual([""])
+  })
+
+  it("addColumns adds columns, and its rollback drops a generated column before the column of its expression", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        addColumns("form", {
+          position: "integer NOT NULL DEFAULT 0",
+          next_position: "integer GENERATED ALWAYS AS (position + 1) STORED",
+        }),
+        "CREATE TABLE form (id integer)",
+      ),
+    )
+
+    expect(result).toEqual({
+      before: ["column form.id integer", "table form"],
+      up: [
+        "column form.id integer",
+        'column form.next_position integer GENERATED ALWAYS AS (("position" + 1)) STORED',
+        "column form.position integer NOT NULL DEFAULT 0",
+        "table form",
+      ],
+      down: ["column form.id integer", "table form"],
+    })
+  })
+
+  it("addColumns adds the columns after a definition that ends with a line comment", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        addColumns("form", {
+          width: "integer -- in pixels",
+          height: "integer",
+        }),
+        "CREATE TABLE form (id integer)",
+      ),
+    )
+
+    expect(result.up).toEqual([
+      "column form.height integer",
+      "column form.id integer",
+      "column form.width integer",
+      "table form",
+    ])
+    expect(result.down).toEqual(result.before)
+  })
+
+  it("dropColumns drops columns, and its rollback adds them again", async () => {
+    const result = await testTransaction(() =>
+      applyStep(
+        database,
+        dropColumns("form", {
+          slug: "text",
+          order: "integer NOT NULL DEFAULT 0",
+        }),
+        'CREATE TABLE form (id integer, slug text, "order" integer NOT NULL DEFAULT 0)',
+      ),
+    )
+
+    expect(result.up).toEqual(["column form.id integer", "table form"])
+    expect(result.down).toEqual(result.before)
   })
 
   it("renameColumn renames a column, and its rollback renames it back", async () => {

@@ -2,13 +2,11 @@ import type { MigrationStep } from "../migration"
 import { quoteIdentifier } from "../sql"
 
 import { invertStep } from "./step"
+import { buildAlterTable } from "./tables"
 
 /** Builds a step that adds a column of a SQL definition, such as `"text NOT NULL DEFAULT ''"`, to a table, and drops it on rollback. */
 export function addColumn(table: string, column: string, definition: string): MigrationStep {
-  return {
-    up: `ALTER TABLE ${quoteIdentifier(table)} ADD COLUMN ${quoteIdentifier(column)} ${definition}`,
-    down: `ALTER TABLE ${quoteIdentifier(table)} DROP COLUMN ${quoteIdentifier(column)}`,
-  }
+  return addColumns(table, { [column]: definition })
 }
 
 /**
@@ -18,6 +16,44 @@ export function addColumn(table: string, column: string, definition: string): Mi
  */
 export function dropColumn(table: string, column: string, definition: string): MigrationStep {
   return invertStep(addColumn(table, column, definition))
+}
+
+/**
+ * Builds a step that adds columns to a table in one `ALTER TABLE`, and drops them on rollback.
+ *
+ * `columns` gives the SQL definition of each column by its name, such as `{ slug: "text", position: "integer NOT NULL DEFAULT 0" }`.
+ * List a column after the columns it depends on, such as a generated column after the columns of its expression, since rollback drops them in reverse order.
+ * It throws when `columns` is empty.
+ */
+export function addColumns(
+  table: string,
+  columns: Readonly<Record<string, string>>,
+): MigrationStep {
+  const adds: string[] = []
+  const drops: string[] = []
+  for (const [column, definition] of Object.entries(columns)) {
+    const name = quoteIdentifier(column)
+    adds.push(`ADD COLUMN ${name} ${definition}`)
+    drops.push(`DROP COLUMN ${name}`)
+  }
+  if (adds.length === 0) {
+    throw new Error(`Cannot alter table ${table}: give at least one column`)
+  }
+  // Rollback drops in reverse order, so that an entry is dropped before the entries it depends on, such as a generated column before the columns of its expression.
+  drops.reverse()
+  return { up: buildAlterTable(table, adds), down: buildAlterTable(table, drops) }
+}
+
+/**
+ * Builds a step that drops columns of a table in one `ALTER TABLE`, and adds them again on rollback as `addColumns` of the same arguments does.
+ *
+ * Rollback restores neither the values of the columns nor the indexes and constraints on them that their definitions do not describe.
+ */
+export function dropColumns(
+  table: string,
+  columns: Readonly<Record<string, string>>,
+): MigrationStep {
+  return invertStep(addColumns(table, columns))
 }
 
 /** Builds a step that renames a column of a table, and renames it back on rollback. */

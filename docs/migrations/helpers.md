@@ -18,10 +18,10 @@ When the view was created of `SELECT *` and the table has gained columns since, 
 When you build SQL text from values of your code, quote names with `quoteIdentifier` and strings with `quoteLiteral`, both from `kern-migrations`.
 
 - Tables: `createTable(table, columns, options)` and `dropTable` with the same arguments, and `renameTable(from, to)`; the options are `constraints` and `singleton`, which creates the singleton index of the table too.
-- Columns: `addColumn(table, column, definition)`, `dropColumn` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
+- Columns: `addColumn(table, column, definition)` and `dropColumn` with the same arguments, [`addColumns(table, columns)`](#add-several-columns-or-constraints) and `dropColumns` with the same arguments, `renameColumn(table, from, to)`, and `changeColumn(table, column, from, to)`.
 - Indexes: `createIndex(table, columns, options)` and `dropIndex` with the same arguments; the options are `name`, `unique`, `nullsNotDistinct`, `using`, `include`, `where`, and [`concurrently`](./outside-transaction).
 - Singleton indexes: `createSingletonIndex(table, { name })` and `dropSingletonIndex` with the same arguments, a unique index of `(true)` that keeps a table to at most one row, such as a [singleton table](../orm/singleton-tables) of the ORM.
-- Constraints: `addConstraint(table, name, definition)`, `dropConstraint` with the same arguments, and `changeConstraint(table, name, from, to)`.
+- Constraints: `addConstraint(table, name, definition)` and `dropConstraint` with the same arguments, [`addConstraints(table, constraints)`](#add-several-columns-or-constraints) and `dropConstraints` with the same arguments, and `changeConstraint(table, name, from, to)`.
 - Sequences: `createSequence(name, options)` and `dropSequence` with the same arguments, `renameSequence(from, to)`, and `changeSequence(name, from, to)`; the options are `type`, `increment`, `minValue`, `maxValue`, `start`, `cache`, and `cycle`.
 - Views: `createView(name, query, options)` and `dropView` with the same arguments, and [`replaceView(name, from, to, options)`](#replace-the-query-of-a-view); the options of all three are `checkOption`, `securityBarrier`, and `securityInvoker`, and `replaceView` also takes [`rollback`](#replace-the-query-of-a-view).
 - Functions: [`createFunction(name, parameters, definition)`](#create-a-function) and `dropFunction` with the same arguments, and [`replaceFunction(name, parameters, from, to)`](#replace-the-definition-of-a-function).
@@ -29,6 +29,29 @@ When you build SQL text from values of your code, quote names with `quoteIdentif
 - Extensions: `createExtension(name, { schema })`.
 
 For a change that no helper covers, write a [step of SQL](./writing#sql-steps), or [a helper of your own](./custom-helpers) to reuse it in several migrations.
+
+## Add several columns or constraints
+
+Pass `addColumns` the definitions of the columns by name, and `addConstraints` those of the constraints:
+
+```ts
+export default defineMigration([
+  addColumns("job", {
+    max_items: "integer",
+    sealed: "boolean NOT NULL DEFAULT false",
+  }),
+  addConstraints("job", {
+    job_max_items_check: "CHECK (max_items >= 1)",
+    job_sealed_check: "CHECK (NOT sealed OR max_items IS NOT NULL)",
+  }),
+])
+```
+
+Each builds one `ALTER TABLE`, in which PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
+`dropColumns` and `dropConstraints` drop them in one `ALTER TABLE` too.
+
+Rolling back `addColumns` and `addConstraints` drops the entries in reverse order, and rolling back `dropColumns` and `dropConstraints` adds them in order.
+List an entry after the entries it depends on, such as a generated column after the columns of its expression, or a foreign key after the unique constraint that it references.
 
 ## Change a column
 

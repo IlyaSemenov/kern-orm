@@ -42,15 +42,12 @@ export function dropTableComment(table: string, comment: string): MigrationStep 
 
 ## Combine steps
 
-To combine several steps into one, such as adding columns shared by many tables, pass them to `combineSteps`: its `up` runs theirs in order, and its `down` runs theirs in reverse order.
+To combine several steps into one, such as adding a column with an index on it, pass them to `combineSteps`: its `up` runs theirs in order, and its `down` runs theirs in reverse order.
 
 ```ts
-import { addColumn, combineSteps } from "kern-migrations"
+import { addColumn, combineSteps, createIndex } from "kern-migrations"
 
-export function addTimestamps(table: string): MigrationStep {
-  return combineSteps(
-    addColumn(table, "created_at", "timestamptz NOT NULL DEFAULT now()"),
-    addColumn(table, "updated_at", "timestamptz NOT NULL DEFAULT now()"),
-  )
+export function addIndexedColumn(table: string, column: string, definition: string): MigrationStep {
+  return combineSteps(addColumn(table, column, definition), createIndex(table, [column]))
 }
 ```

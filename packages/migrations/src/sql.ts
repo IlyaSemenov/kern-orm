@@ -32,3 +32,12 @@ export function quoteDollar(body: string): string {
   }
   return `${tag}${body}${tag}`
 }
+
+/**
+ * Ends `sql` of a user with a line break when it contains `--`, so that a line comment at its end does not comment out what the helper writes after it, such as a comma, `DEFAULT`, or `)`.
+ *
+ * Other SQL stays on its line, since `--` rarely appears in a type, a default, or a definition.
+ */
+export function endLineComment(sql: string): string {
+  return sql.includes("--") ? `${sql}\n` : sql
+}

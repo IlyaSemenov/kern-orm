@@ -148,6 +148,11 @@ The migrator follows the [contract of package compatibility](compatibility.md), 
   `quoteIdentifier` rejects an empty name, so that a name left blank fails before the migration runs.
 - A helper that drops an object is `invertStep` of the helper that creates it, with the same arguments, which give the definition that its `down` creates again.
   Dropping a table or a column also drops its indexes and constraints, and the definition restores only what it describes, so a migration must drop standalone indexes and constraints with their own steps before, and describe each constraint once.
+- `addColumns` and `addConstraints` add the entries of a record in one `ALTER TABLE`, so that PostgreSQL can validate several `CHECK` constraints in a single scan of the table.
+  - Their rollback drops the entries in reverse order, since PostgreSQL drops them one by one and rejects dropping an entry that another depends on; an entry must follow the entries it depends on.
+  - They end a definition that contains `--` with a line break before the comma of the next entry, as the function helpers end their SQL, so that a line comment at its end does not comment out the entries after it.
+  - They reject an empty record.
+  - `addColumn` and `addConstraint` call them with a record of one entry.
 - `changeColumn` takes the states of a column before and after the change, which list the same of `type`, `notNull`, and `default`, so that a missing property never means a value; `using` of a state converts the values to its type.
   It builds one `ALTER TABLE` of the actions of the properties that differ.
   When the type changes, it drops a default that the states list before the type and sets it after, since PostgreSQL otherwise casts the old default to the new type and fails, such as `''` of `text` to `integer`.

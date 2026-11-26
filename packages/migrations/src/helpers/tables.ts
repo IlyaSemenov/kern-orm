@@ -1,5 +1,5 @@
 import type { MigrationStep } from "../migration"
-import { quoteIdentifier } from "../sql"
+import { endLineComment, quoteIdentifier } from "../sql"
 
 import { createSingletonIndex } from "./indexes"
 import { combineSteps, invertStep } from "./step"
@@ -55,4 +55,17 @@ export function renameTable(from: string, to: string): MigrationStep {
     up: `ALTER TABLE ${quoteIdentifier(from)} RENAME TO ${quoteIdentifier(to)}`,
     down: `ALTER TABLE ${quoteIdentifier(to)} RENAME TO ${quoteIdentifier(from)}`,
   }
+}
+
+/**
+ * Builds one `ALTER TABLE` of a table with its actions in their order, such as `ADD COLUMN "slug" text`.
+ *
+ * It ends an action before another with a line break when the action contains `--`, so that a line comment at its end does not comment out the actions after it.
+ */
+export function buildAlterTable(table: string, actions: readonly string[]): string {
+  let sql = `ALTER TABLE ${quoteIdentifier(table)} `
+  for (let index = 0; index < actions.length; index++) {
+    sql += index < actions.length - 1 ? `${endLineComment(actions[index]!)}, ` : actions[index]!
+  }
+  return sql
 }

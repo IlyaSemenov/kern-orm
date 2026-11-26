@@ -1,5 +1,5 @@
 import type { MigrationStep } from "../migration"
-import { quoteIdentifier, quoteLiteral } from "../sql"
+import { endLineComment, quoteIdentifier, quoteLiteral } from "../sql"
 
 import { invertStep } from "./step"
 
@@ -152,13 +152,4 @@ function checkParameters(
     })
   }
   return result
-}
-
-/**
- * Ends `sql` of a user with a line break when it contains `--`, so that a line comment at its end does not comment out what the helper writes after it, such as a comma, `DEFAULT`, or `)`.
- *
- * Other SQL stays on its line, since `--` rarely appears in a type or a default.
- */
-function endLineComment(sql: string): string {
-  return sql.includes("--") ? `${sql}\n` : sql
 }

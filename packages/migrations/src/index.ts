@@ -1,8 +1,21 @@
 export type { MigrationDirection } from "./error"
 export { MigrationError } from "./error"
 export type { ColumnState } from "./helpers/columns"
-export { addColumn, changeColumn, dropColumn, renameColumn } from "./helpers/columns"
-export { addConstraint, changeConstraint, dropConstraint } from "./helpers/constraints"
+export {
+  addColumn,
+  addColumns,
+  changeColumn,
+  dropColumn,
+  dropColumns,
+  renameColumn,
+} from "./helpers/columns"
+export {
+  addConstraint,
+  addConstraints,
+  changeConstraint,
+  dropConstraint,
+  dropConstraints,
+} from "./helpers/constraints"
 export { createEnum, dropEnum } from "./helpers/enums"
 export type { ExtensionOptions } from "./helpers/extensions"
 export { createExtension } from "./helpers/extensions"
