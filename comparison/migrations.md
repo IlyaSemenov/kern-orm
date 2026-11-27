@@ -141,6 +141,7 @@ The migrator applies migrations of SQL text, and generates neither migrations fr
 - Drizzle ORM, has: `drizzle-kit generate` generates migrations from tables, by their difference from the snapshot of the last migration ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-kit/src/cli/commands/migrate.ts#L302-L316)), and `drizzle-kit pull` tables from the database ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-kit/src/cli/commands/introspect.ts)).
 - Prisma ORM, has: `prisma migrate dev` generates SQL migrations from the models ([docs](https://www.prisma.io/docs/cli/v7/migrate/dev)).
 - Kysely, same: its `Migrator` applies migrations written by hand ([docs](https://github.com/kysely-org/kysely/blob/v0.29.8/site/docs/migrations.mdx)).
+- kysely-codegen, has: it generates TypeScript types for Kysely from the database ([docs](https://github.com/RobinBlomberg/kysely-codegen/blob/0.20.0/README.md)).
 - Orchid ORM, has: `db g` generates migrations from tables ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/generate-migrations.md)), and `db pull` tables from the database ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/migration-commands.md#pull)).
 
 ## Column types of migrations

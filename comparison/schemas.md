@@ -28,6 +28,12 @@ A custom type declares `read`, the SQL expression that reads its values, such as
 - Drizzle ORM, lacks: `customType` has `fromDriver` and `toDriver`, and a select list selects the column as it is ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/columns/custom.ts#L185-L197), [drizzle-orm#554](https://github.com/drizzle-team/drizzle-orm/issues/554)).
   Drizzle ORM 1.0.0-rc.6 has `forJsonSelect`, which changes the SQL of a column inside JSON functions, such as of relational queries, and not in a select list ([source](https://github.com/drizzle-team/drizzle-orm/blob/v1.0.0-rc.6/drizzle-orm/src/pg-core/columns/custom.ts#L272-L325)).
 
+## Column types defined apart from tables
+
+A column type is a value of its own, such as of `defineType`, or of a built-in type with `transform`, which tables of any table factory import, also from a package.
+
+- Orchid ORM, lacks: column types come from the table factory of a project, and a request for column types defined apart from it, to reuse them across projects, was closed as not planned, since they would not account for validation libraries, with a helper over `makeColumnTypes` suggested instead ([orchid-orm#405](https://github.com/romeerez/orchid-orm/issues/405)).
+
 ## `NULL` read as another value
 
 A type of `nullableAs` returns the value of its function for `NULL` instead of `null`, such as `undefined`, in every result that the type decodes, and takes `null` as `NULL`.
