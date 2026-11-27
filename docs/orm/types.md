@@ -44,33 +44,44 @@ Pass PostgreSQL type parameters with `with`, such as `varchar.with(255)` for `va
 - `enum(name, values)`: one of `values`, for an existing PostgreSQL enum `name`.
 
 Date and time strings have a fixed format, so comparing them as strings orders them chronologically.
-kern-orm expects the default `DateStyle` (`ISO`) and `bytea_output` (`hex`) settings.
+kern-orm expects the default `DateStyle` (`ISO`), `IntervalStyle` (`postgres`), `extra_float_digits` (`1`), and `bytea_output` (`hex`) settings.
 
 `timestamptz` decodes fastest in a session whose `TimeZone` is `UTC`, where its values have no offset to convert.
 If the SQL of the application does not depend on the time zone of the session, such as through `now()::date` or `date_trunc('day', created_at)`, set `TimeZone` to `UTC` in the connection options of the client, as the settings below show for `DateStyle`.
 
 :::: details Databases with other settings
-If the database or the role sets another `DateStyle` or `bytea_output`, set the defaults in the connection options of the client, which take precedence:
+Another `DateStyle` or `bytea_output` makes dates and binary values fail to decode, while another `IntervalStyle` changes the format of `interval` strings, and an `extra_float_digits` of 0 or less rounds `real` and `doublePrecision` values, without an error.
+If the database or the role sets other values, set the defaults in the connection options of the client, which take precedence:
 
 ::: code-group
 
 ```ts [postgres.js]
 postgres(process.env.DATABASE_URL!, {
-  connection: { DateStyle: "ISO", bytea_output: "hex" },
+  connection: {
+    DateStyle: "ISO",
+    IntervalStyle: "postgres",
+    extra_float_digits: 1,
+    bytea_output: "hex",
+  },
 })
 ```
 
 ```ts [node-postgres]
 new Pool({
   connectionString: process.env.DATABASE_URL,
-  options: "-c DateStyle=ISO -c bytea_output=hex",
+  options: "-c DateStyle=ISO -c IntervalStyle=postgres -c extra_float_digits=1 -c bytea_output=hex",
 })
 ```
 
 ```ts [Bun SQL]
 new SQL(process.env.DATABASE_URL!, {
   prepare: false,
-  connection: { DateStyle: "ISO", bytea_output: "hex" },
+  connection: {
+    DateStyle: "ISO",
+    IntervalStyle: "postgres",
+    extra_float_digits: 1,
+    bytea_output: "hex",
+  },
 })
 ```
 
