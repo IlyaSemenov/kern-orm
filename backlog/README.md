@@ -31,6 +31,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [After-commit hooks](after-commit-hooks.md): callbacks that run after the outermost commit.
 - [Columns of a violated unique constraint](columns-of-a-violated-unique-constraint.md): the keys of its columns on `QueryError`.
 - [Integer keys of advisory locks](integer-keys-of-advisory-locks.md): beside the string keys of `$lock` and `$tryLock`.
+- [Lock timeout of one statement](lock-timeout-of-one-statement.md): limit each lock wait of a parameterized statement from its first table lock, with one round trip on the pool where the driver supports it.
 - [Migrating every tenant](migrating-every-tenant.md): a migration command for every schema of a target.
 - [Generated columns](generated-columns.md): columns that inserts and updates must not set.
 - [Bulk inserts beyond the parameter limit](bulk-inserts-beyond-the-parameter-limit.md): `unnest` of arrays, or statements in a transaction.
@@ -61,6 +62,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Queries that may be `NULL` as values of columns that are not nullable](queries-that-may-be-null-as-values-of-columns-that-are-not-nullable.md): rejecting them unless marked as having their row.
 - [Narrowing returned and accepted values apart](narrowing-returned-and-accepted-values-apart.md): `of<T>()` for the values that a type returns and those it accepts.
 - [Branded types of columns](branded-types-of-columns.md): an opt-in `brand()` that rejects a mixed-up identifier.
+- [Instants independent of DateStyle](instants-independent-of-datestyle.md): read a `timestamptz` under any session date style and bind the same instant in another statement with microsecond precision.
 - [Singleton tables whose row always exists](singleton-tables-whose-row-always-exists.md): an option of the table whose queries start in rows `one`.
 - [Other vector types of pgvector](other-vector-types-of-pgvector.md): `halfvec`, `sparsevec`, and the distances of `bit`.
 - [Orchid transaction interoperability](orchid-transaction-interop.md): shared transaction ownership, legacy codecs, and test isolation for gradual migration.
