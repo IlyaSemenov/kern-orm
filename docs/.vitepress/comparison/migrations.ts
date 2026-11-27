@@ -80,9 +80,9 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "column-types",
-          title: "Column types in migrations",
+          title: "Column type builders",
           description:
-            "Declare the columns of a table in a migration with functions of their types rather than SQL text.",
+            "Declare the columns of a table in a migration with functions of their types, as in table definitions, rather than SQL text.",
           research: research("migrations.md#column-types-of-migrations"),
           cells: {
             kern: {
@@ -117,7 +117,7 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "enum-changes",
-          title: "Changes of enum types",
+          title: "Reversible helpers that change enum values",
           description:
             "Add and remove the values of an enum type with a helper that rolls back the change, although PostgreSQL cannot drop a value of an enum.",
           cells: {
@@ -296,7 +296,7 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "rolling-deploys",
-          title: "Older instances during a rolling deploy",
+          title: "Older versions migrating during a rolling deploy",
           description:
             "Let instances of the previous version of the application start and migrate after a newer version has applied migrations that they lack.",
           research: research("migrations.md#state-of-a-target"),
@@ -321,7 +321,7 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "schemas-at-once",
-          title: "Schemas migrated at once",
+          title: "Different schemas migrated concurrently",
           description:
             "Migrate different schemas of a database at once, such as those of tenants, each under a lock of its own.",
           research: research("migrations.md#locks-of-targets"),
@@ -391,13 +391,13 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "every-tenant",
-          title: "A command for every tenant",
+          title: "A built-in command that migrates every tenant",
           description:
-            "Migrate every schema of a database, such as of each tenant, by one command.",
+            "Migrate the schema of each tenant, from a list that the application gives, by one command.",
           cells: {
             kern: {
               status: "unsupported",
-              note: "Migrate the `Db` of each tenant, such as at its first request.",
+              note: "Call `migrate` with the `Db` of each tenant, in a loop of your own over the tenants or at the first request of each tenant in each process.",
               href: "/migrations/applying#tenants",
               plan: backlog("migrating-every-tenant.md"),
             },
@@ -465,7 +465,7 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "baseline-check",
-          title: "Checking a baseline",
+          title: "Baselines checked against their migrations",
           description:
             "Check that a baseline builds the same schema as the migrations that it replaces.",
           cells: {
@@ -479,9 +479,9 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "adopting-a-database",
-          title: "Adopting an existing database",
+          title: "Migrations marked as applied on an existing schema",
           description:
-            "Record a first migration as applied, without running it, on a database that another tool has built.",
+            "Record migrations as applied without running them on a schema that already has their changes, such as one that another tool has built.",
           research: research("migrations.md#replacing-a-history"),
           cells: {
             kern: { status: "unsupported", plan: backlog("moving-from-rake-db.md") },
@@ -575,7 +575,7 @@ export const migrationsMatrix = defineMatrix({
         },
         {
           id: "verifying-changes-outside-a-transaction",
-          title: "Verifying changes outside a transaction",
+          title: "Verification that runs the changes outside a transaction",
           description:
             "Verify the changes that a migration makes outside a transaction as they run in production.",
           cells: {

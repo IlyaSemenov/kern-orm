@@ -180,7 +180,12 @@ export const ormMatrix = defineMatrix({
           description:
             "Join other tables to the rows of a query, and select and filter by their columns.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("joins.md") },
+            kern: {
+              status: "unsupported",
+              note: "Select related records and their values through relations, or join tables in a SQL statement of `db.$query`.",
+              href: "/orm/queries/relations",
+              plan: backlog("joins.md"),
+            },
           },
         },
         {
@@ -189,7 +194,12 @@ export const ormMatrix = defineMatrix({
           description:
             "Query the related records of related records, such as the answers of a form through its fields, as a relation.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("through-and-many-to-many-relations.md") },
+            kern: {
+              status: "unsupported",
+              note: "Nest the relations in `select`, which gives the related records of each related record.",
+              href: "/orm/queries/relations",
+              plan: backlog("through-and-many-to-many-relations.md"),
+            },
             orchid: {
               status: "supported",
               note: "`chain` queries the related records of related records.",
@@ -202,7 +212,12 @@ export const ormMatrix = defineMatrix({
           title: "Many-to-many relations",
           description: "Relate the records of two tables through a join table.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("through-and-many-to-many-relations.md") },
+            kern: {
+              status: "unsupported",
+              note: "Relate the table to the join table with `many` and the join table to the other table with `one`, and nest both in `select`. Each related record comes inside its row of the join table.",
+              href: "/orm/queries/relations",
+              plan: backlog("through-and-many-to-many-relations.md"),
+            },
           },
         },
         {
@@ -212,6 +227,8 @@ export const ormMatrix = defineMatrix({
           cells: {
             kern: {
               status: "unsupported",
+              note: "Write the statement as SQL with `db.$query`, whose `select` decodes its rows.",
+              href: "/orm/queries/sql#rows",
               plan: backlog("unions-and-common-table-expressions.md"),
             },
           },
@@ -224,6 +241,8 @@ export const ormMatrix = defineMatrix({
           cells: {
             kern: {
               status: "unsupported",
+              note: "Write the statement as SQL with `db.$query`, whose `select` decodes its rows.",
+              href: "/orm/queries/sql#rows",
               plan: backlog("unions-and-common-table-expressions.md"),
             },
           },
@@ -234,7 +253,12 @@ export const ormMatrix = defineMatrix({
           description:
             "Select the records of a relation of a table to itself at any depth, such as the ancestors of a category, with `WITH RECURSIVE`.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("records-of-a-relation-at-any-depth.md") },
+            kern: {
+              status: "unsupported",
+              note: "Write the statement as SQL with `db.$query`, whose `select` decodes its rows.",
+              href: "/orm/queries/sql#rows",
+              plan: backlog("records-of-a-relation-at-any-depth.md"),
+            },
           },
         },
         {
@@ -242,7 +266,12 @@ export const ormMatrix = defineMatrix({
           title: "Keyset pagination",
           description: "Read the page after the sort keys of the last row of the previous page.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("keyset-pagination.md") },
+            kern: {
+              status: "unsupported",
+              note: "Filter by the sort keys of the last row with `where`.",
+              href: "/orm/queries/filtering",
+              plan: backlog("keyset-pagination.md"),
+            },
           },
         },
         {
@@ -342,7 +371,12 @@ export const ormMatrix = defineMatrix({
           description:
             "Filter and select by the properties of JSON values, such as `config->>'type'`, typed by their shape.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("json-operators.md") },
+            kern: {
+              status: "unsupported",
+              note: "Write the expression in a fragment of `sql(type)`, which decodes its result by the type.",
+              href: "/orm/queries/selecting",
+              plan: backlog("json-operators.md"),
+            },
             orchid: {
               status: "supported",
               note: "Operators of `jsonb` columns and functions of JSON paths.",
@@ -356,7 +390,12 @@ export const ormMatrix = defineMatrix({
           description:
             "Add an interval to a timestamp, or subtract timestamps, with a typed result.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("arithmetic-of-dates-and-intervals.md") },
+            kern: {
+              status: "unsupported",
+              note: "Write the expression in a fragment of `sql(type)`, which decodes its result by the type.",
+              href: "/orm/queries/selecting",
+              plan: backlog("arithmetic-of-dates-and-intervals.md"),
+            },
           },
         },
         {
@@ -364,7 +403,12 @@ export const ormMatrix = defineMatrix({
           title: "Text concatenation",
           description: "Concatenate text, such as of a full name, without a SQL fragment.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("concatenation-of-text.md") },
+            kern: {
+              status: "unsupported",
+              note: "Write the expression in a fragment of `sql(type)`, which decodes its result by the type.",
+              href: "/orm/queries/selecting",
+              plan: backlog("concatenation-of-text.md"),
+            },
           },
         },
         {
@@ -375,6 +419,8 @@ export const ormMatrix = defineMatrix({
           cells: {
             kern: {
               status: "unsupported",
+              note: "Write the expression in a fragment of `sql(type)`, which decodes its result by the type.",
+              href: "/orm/queries/selecting",
               plan: backlog("other-options-of-aggregate-functions.md"),
             },
             orchid: {
@@ -388,10 +434,12 @@ export const ormMatrix = defineMatrix({
           id: "distinct-aggregates",
           title: "Aggregates of distinct values",
           description:
-            "Aggregate the distinct values of an expression, such as `count(DISTINCT author_id)`.",
+            "Aggregate the distinct values of an expression beyond counting them, such as `sum(DISTINCT amount)`.",
           cells: {
             kern: {
               status: "unsupported",
+              note: "`countDistinct` counts distinct values; write another aggregate in a fragment of `sql(type)`, which decodes its result by the type.",
+              href: "/orm/queries/aggregates",
               plan: backlog("other-options-of-aggregate-functions.md"),
             },
             orchid: {
@@ -407,7 +455,12 @@ export const ormMatrix = defineMatrix({
           description:
             "Store `halfvec`, `sparsevec`, and `bit` vectors, and sort by their distances.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("other-vector-types-of-pgvector.md") },
+            kern: {
+              status: "unsupported",
+              note: "Define `halfvec` as a custom type with `withOperators(vectorOperators)`, which adds its distances.",
+              href: "/orm/custom-types",
+              plan: backlog("other-vector-types-of-pgvector.md"),
+            },
             drizzle: {
               status: "supported",
               note: "`halfvec`, `sparsevec`, and `bit` of `pg-core`, with `hammingDistance` and `jaccardDistance`.",
@@ -509,6 +562,8 @@ export const ormMatrix = defineMatrix({
           cells: {
             kern: {
               status: "unsupported",
+              note: "Write the statement as SQL with `db.$query`.",
+              href: "/orm/queries/sql",
               plan: backlog("updating-records-with-values-of-each.md"),
             },
             orchid: {
@@ -523,7 +578,12 @@ export const ormMatrix = defineMatrix({
           title: "Inserts from a query",
           description: "Insert the records that a query selects with `INSERT ... SELECT`.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("inserting-the-records-of-a-query.md") },
+            kern: {
+              status: "unsupported",
+              note: "Write the statement as SQL with `db.$query`.",
+              href: "/orm/queries/sql",
+              plan: backlog("inserting-the-records-of-a-query.md"),
+            },
             orchid: {
               status: "supported",
               note: "`createOneFrom` and `createForEachFrom`.",
@@ -533,13 +593,15 @@ export const ormMatrix = defineMatrix({
         },
         {
           id: "inserts-beyond-the-parameter-limit",
-          title: "Inserts beyond the parameter limit",
+          title: "Inserts beyond the parameter limit in one call",
           description:
-            "Insert more values than the 65535 parameters of one statement, such as tens of thousands of records.",
+            "Insert more values than the 65535 parameters of one statement by one call, such as tens of thousands of records.",
           research: research("mutations.md#inserts-beyond-the-parameter-limit"),
           cells: {
             kern: {
               status: "unsupported",
+              note: "Call `insertMany` with batches of the records in a transaction.",
+              href: "/orm/queries/mutations#many-records",
               plan: backlog("bulk-inserts-beyond-the-parameter-limit.md"),
             },
             orchid: {
@@ -555,7 +617,12 @@ export const ormMatrix = defineMatrix({
           description:
             "Return the values of a changed row before the update, with `old` of `RETURNING` of PostgreSQL 18.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("values-before-an-update.md") },
+            kern: {
+              status: "unsupported",
+              note: "Write the statement as SQL with `db.$query`, whose `select` decodes its rows.",
+              href: "/orm/queries/sql#rows",
+              plan: backlog("values-before-an-update.md"),
+            },
           },
         },
         {
@@ -789,11 +856,16 @@ export const ormMatrix = defineMatrix({
         },
         {
           id: "branded-types",
-          title: "Branded column types",
+          title: "Branding a column by a method",
           description:
-            "Give the values of a column, such as an identifier, a type that rejects a mixed-up value of another column.",
+            "Brand the values of a column, such as an identifier, by a method of the column, so that types reject a mixed-up value of another column.",
           cells: {
-            kern: { status: "unsupported", plan: backlog("branded-types-of-columns.md") },
+            kern: {
+              status: "unsupported",
+              note: "Narrow the column with `of<T>()` to a branded type of your own.",
+              href: "/orm/types#narrowing-values",
+              plan: backlog("branded-types-of-columns.md"),
+            },
             orchid: {
               status: "supported",
               note: "`brand()`.",

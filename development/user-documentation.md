@@ -29,6 +29,8 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
     Give a cell with a note but without such a record the status `unknown`.
   - Keep the rows an inventory of what users can build and operate with the Kern library: the features that its site documents, and the features of other projects that it lacks, rather than the items of backlog/ alone.
     Give a feature of the inventory a row before its review, also with every other cell `unknown`.
+  - Name a row by the capability that its cells judge.
+    When the Kern library lacks only a convenience for what it does another way, name the convenience rather than the broader capability, such as Reversible helpers that change enum values rather than Changes of enum types, or tell the other way in the note of its cell, such as a fragment of `sql(type)` for a missing operator.
   - From the cell of the Kern library of a feature that it lacks, link the item of backlog/ that would add it, or explain a feature that it leaves out by design, such as databases other than PostgreSQL, linking what to do instead when the site documents it.
 
 ## Publishing
