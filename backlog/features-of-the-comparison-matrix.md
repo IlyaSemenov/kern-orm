@@ -39,14 +39,9 @@ Also add rows of the guarantees of kern-orm that comparison/ records only as pas
 
 ## Inventory of migrations
 
-Capabilities of kern-migrations to add as rows, beside the existing rows, from the pages of [Migrations](../docs/migrations/getting-started.md): SQL steps, steps of code, schema helpers and helpers of your own, `combineSteps` and `invertStep`, `alterTable`, `replaceView`, `migrate` and the command line, templates of `new`, `count` of `migrate`, `getMigrationStatus`, `rollback` and `redo`, the schema created by `migrate`, the same migrations applied to any schema, migrating without an ORM, migrations of a package in a table of their own, modules loaded when their migration runs, rolling back a squashed history, and migration tests of a failing migration.
+The inventory of [Migrations](../docs/migrations/getting-started.md) is complete; continue with steps 2 to 4.
 
-Review first, for every migrator, the existing rows `schemas-at-once` and `verifying-rollbacks`, and these capabilities, where kern-migrations may differ from rake-db:
-
-- Histories of several packages in one schema that do not interfere.
-- Compiled migrations of a library that the application applies by code.
-- A step with one form for a transaction and another outside one, so that one history runs in a deploy, in a test, and when creating a tenant.
-- Steps combined, inverted, and extended without a global registration of migrations.
+Review first, for every migrator, the rows where kern-migrations may differ from rake-db: `schemas-at-once`, `separate-histories`, `package-migrations`, `outside-transaction-inside-one`, `custom-helpers`, and `verifying-rollbacks`.
 
 Check in the listed versions the past issues of rake-db, Drizzle ORM, and Kysely that [comparison/migrations.md](../comparison/migrations.md) records, such as of locks and of migrating inside a transaction, for the cells of their rows.
 

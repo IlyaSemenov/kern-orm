@@ -46,6 +46,41 @@ export const migrationsMatrix = defineMatrix({
       title: "Writing migrations",
       features: [
         {
+          id: "sql-steps",
+          title: "SQL migrations",
+          description:
+            "Write a migration, or a step of it, as SQL that applies the change and SQL that undoes it.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/writing#sql-steps" },
+          },
+        },
+        {
+          id: "code-steps",
+          title: "Code in migrations",
+          description: "Run code in a migration, such as to compute new values from existing rows.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/writing#code-in-a-migration" },
+          },
+        },
+        {
+          id: "reversible-helpers",
+          title: "Schema helpers that roll back",
+          description:
+            "Build typical changes, such as of tables, columns, indexes, constraints, sequences, views, functions, and enum types, with helpers that also build their rollback.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/helpers" },
+          },
+        },
+        {
+          id: "custom-helpers",
+          title: "Custom migration helpers",
+          description:
+            "Write helpers that build a step with its rollback, and combine or invert steps, to reuse a change in several migrations.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/custom-helpers" },
+          },
+        },
+        {
           id: "generated-migrations",
           title: "Migrations generated from tables",
           description: "Generate a migration from the changes of the table definitions.",
@@ -98,6 +133,73 @@ export const migrationsMatrix = defineMatrix({
           },
         },
         {
+          id: "recurrent-sql",
+          title: "SQL run after every migration",
+          description:
+            "Run SQL again after migrating, such as the definitions of functions and views kept in files of their own.",
+          cells: {
+            kern: {
+              status: "unsupported",
+              note: "Change functions and views in migrations, with `replaceFunction` and `replaceView`.",
+              href: "/migrations/helpers",
+              plan: backlog("recurrent-sql-of-migrations.md"),
+            },
+            rakeDb: {
+              status: "supported",
+              note: "Recurrent migrations.",
+              href: `${orchid}/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations`,
+            },
+          },
+        },
+      ],
+    },
+    {
+      id: "schema-changes",
+      title: "Schema changes",
+      features: [
+        {
+          id: "combined-alter-table",
+          title: "Several changes in one `ALTER TABLE`",
+          description:
+            "Combine changes of the columns and constraints of a table in one `ALTER TABLE`. PostgreSQL can validate several `CHECK` constraints in one scan, and rewrites the table at most once for several changes of type.",
+          cells: {
+            kern: {
+              status: "supported",
+              href: "/migrations/helpers#change-several-columns-and-constraints",
+            },
+          },
+        },
+        {
+          id: "column-type-changes",
+          title: "Column type changes that roll back",
+          description:
+            "Change the type of a column, converting its values, with a rollback that converts them back.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/helpers#change-a-column" },
+          },
+        },
+        {
+          id: "reversible-drops",
+          title: "Drops that roll back",
+          description:
+            "Drop a table, a column, an index, or another object with a rollback that creates it again.",
+          cells: {
+            kern: {
+              status: "supported",
+              href: "/migrations/helpers#drop-a-table-column-index-constraint-sequence-view-function-or-enum-type",
+            },
+          },
+        },
+        {
+          id: "replaced-view-rollback",
+          title: "Rollback of a replaced view",
+          description:
+            "Replace the query of a view with a helper whose rollback restores the previous query.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/helpers#replace-the-query-of-a-view" },
+          },
+        },
+        {
           id: "replaced-function-rollback",
           title: "Rollback of a replaced function",
           description:
@@ -129,31 +231,88 @@ export const migrationsMatrix = defineMatrix({
             },
           },
         },
-        {
-          id: "recurrent-sql",
-          title: "SQL run after every migration",
-          description:
-            "Run SQL again after migrating, such as the definitions of functions and views kept in files of their own.",
-          cells: {
-            kern: {
-              status: "unsupported",
-              note: "Change functions and views in migrations, with `replaceFunction` and `replaceView`.",
-              href: "/migrations/helpers",
-              plan: backlog("recurrent-sql-of-migrations.md"),
-            },
-            rakeDb: {
-              status: "supported",
-              note: "Recurrent migrations.",
-              href: `${orchid}/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations`,
-            },
-          },
-        },
       ],
     },
     {
       id: "applying",
       title: "Applying migrations",
       features: [
+        {
+          id: "programmatic-api",
+          title: "Migrating from code",
+          description:
+            "Apply migrations by a call from the application, such as when it starts or in a deploy script.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying" },
+          },
+        },
+        {
+          id: "cli",
+          title: "Command line",
+          description: "Apply, roll back, and create migrations from a terminal.",
+          cells: {
+            kern: {
+              status: "supported",
+              note: "`new` can create a migration from a template of your own.",
+              href: "/migrations/cli",
+            },
+          },
+        },
+        {
+          id: "migration-status",
+          title: "Migration status",
+          description: "List the applied and the pending migrations of a history in a schema.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying#status" },
+          },
+        },
+        {
+          id: "applying-a-count",
+          title: "Applying a limited number of migrations",
+          description: "Apply only the first pending migrations, such as one at a time.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying" },
+          },
+        },
+        {
+          id: "rollbacks",
+          title: "Rolling back migrations",
+          description: "Undo the last applied migration, several of them, or all of them.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying#roll-back" },
+          },
+        },
+        {
+          id: "redo",
+          title: "Redoing a migration",
+          description:
+            "Undo the last applied migration and apply it again, such as while you write it.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying#roll-back" },
+          },
+        },
+        {
+          id: "migrating-without-an-orm",
+          title: "Migrating without an ORM",
+          description:
+            "Apply migrations with a database client alone, such as when the application queries the database with another library.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying#without-a-db" },
+          },
+        },
+        {
+          id: "failed-runs",
+          title: "Atomic migration runs",
+          description:
+            "Apply the migrations of a run in one transaction, so that a failure rolls back all of them.",
+          cells: {
+            kern: {
+              status: "supported",
+              note: "A migration outside a transaction commits the migrations before it, which stay applied when a later one fails.",
+              href: "/migrations/applying",
+            },
+          },
+        },
         {
           id: "outside-transaction",
           title: "Migrations outside a transaction",
@@ -221,6 +380,21 @@ export const migrationsMatrix = defineMatrix({
               status: "supported",
               note: "`noTransaction()` commits the transaction of the migrations before its migration and starts one for those after it.",
               href: `${nodePgMigrate}/src/migration.ts#L355-L363`,
+            },
+          },
+        },
+        {
+          id: "outside-transaction-inside-one",
+          title: "Steps with another form for a transaction",
+          description:
+            "Apply a history inside a transaction of the application through another form of each step that PostgreSQL rejects in a transaction, such as an ordinary index build in place of a concurrent one.",
+          research: research("migrations.md#migrations-outside-a-transaction-inside-a-transaction"),
+          cells: {
+            kern: { status: "supported", href: "/migrations/outside-transaction" },
+            kysely: {
+              status: "unsupported",
+              note: "A `Migrator` given a transaction rejects `disableTransactions`.",
+              href: `${kysely}/src/migration/migrator.ts#L555-L569`,
             },
           },
         },
@@ -294,69 +468,19 @@ export const migrationsMatrix = defineMatrix({
             },
           },
         },
+      ],
+    },
+    {
+      id: "production",
+      title: "Production deploys",
+      features: [
         {
-          id: "rolling-deploys",
-          title: "Older versions migrating during a rolling deploy",
+          id: "concurrent-indexes",
+          title: "Indexes built and dropped concurrently",
           description:
-            "Let instances of the previous version of the application start and migrate after a newer version has applied migrations that they lack.",
-          research: research("migrations.md#state-of-a-target"),
+            "Build and drop an index with `CONCURRENTLY`, which does not block writes, through an option of a helper.",
           cells: {
-            kern: { status: "supported", href: "/migrations/applying" },
-            drizzle: {
-              status: "supported",
-              note: "The migrator applies only the migrations of its journal created after the last applied one.",
-              href: `${drizzle}/drizzle-orm/src/pg-core/dialect.ts#L88-L111`,
-            },
-            kysely: {
-              status: "unsupported",
-              note: "Its `Migrator` rejects an executed migration that its provider lacks.",
-              href: `${kysely}/src/migration/migrator.ts#L653-L665`,
-            },
-            prisma: {
-              status: "supported",
-              note: "`migrate deploy` accepts applied migrations that have no directory.",
-              href: `${prismaEngines}/schema-engine/commands/src/commands/apply_migrations.rs#L26-L45`,
-            },
-          },
-        },
-        {
-          id: "schemas-at-once",
-          title: "Different schemas migrated concurrently",
-          description:
-            "Migrate different schemas of a database at once, such as those of tenants, each under a lock of its own.",
-          research: research("migrations.md#locks-of-targets"),
-          cells: {
-            kern: { status: "supported", href: "/migrations/applying#tenants" },
-            kysely: {
-              status: "unsupported",
-              note: "It locks every migration of a database with one key.",
-              href: `${kysely}/src/dialect/postgres/postgres-adapter.ts#L6`,
-            },
-            nodePgMigrate: {
-              status: "limited",
-              note: "It locks every migration of a database with one key, unless `lockValue` gives another one.",
-              href: `${nodePgMigrate}/src/runner.ts#L223-L227`,
-            },
-          },
-        },
-        {
-          id: "lock-waiting",
-          title: "Waiting for a migration that builds an index concurrently",
-          description:
-            "Wait for another process that migrates the same schema without a deadlock with its `CREATE INDEX CONCURRENTLY`, which waits for the snapshots of other sessions.",
-          research: research("migrations.md#waiting-for-the-lock-of-a-target"),
-          cells: {
-            kern: { status: "supported", href: "/migrations/applying" },
-            kysely: {
-              status: "unsupported",
-              note: "It waits in `pg_advisory_lock`, whose snapshot a concurrent index build of the process that holds the lock waits for, until a `lock_timeout` of an hour.",
-              href: `${kysely}/src/dialect/postgres/postgres-adapter.ts#L18-L32`,
-            },
-            nodePgMigrate: {
-              status: "unsupported",
-              note: "It rejects when another process holds the lock, or, with `advisoryLockMode: 'wait'`, waits in `pg_advisory_lock`, whose snapshot a concurrent index build waits for.",
-              href: `${nodePgMigrate}/src/runner.ts#L223-L242`,
-            },
+            kern: { status: "supported", href: "/migrations/outside-transaction" },
           },
         },
         {
@@ -390,6 +514,105 @@ export const migrationsMatrix = defineMatrix({
           },
         },
         {
+          id: "concurrent-runs",
+          title: "Concurrent migration runs on the same schema",
+          description:
+            "Let several instances of the application migrate the same schema at once, such as when they start together, and apply each pending migration once.",
+          research: research("migrations.md#waiting-for-the-lock-of-a-target"),
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying" },
+          },
+        },
+        {
+          id: "lock-waiting",
+          title: "Waiting for a migration that builds an index concurrently",
+          description:
+            "Wait for another process that migrates the same schema without a deadlock with its `CREATE INDEX CONCURRENTLY`, which waits for the snapshots of other sessions.",
+          research: research("migrations.md#waiting-for-the-lock-of-a-target"),
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying" },
+            kysely: {
+              status: "unsupported",
+              note: "It waits in `pg_advisory_lock`, whose snapshot a concurrent index build of the process that holds the lock waits for, until a `lock_timeout` of an hour.",
+              href: `${kysely}/src/dialect/postgres/postgres-adapter.ts#L18-L32`,
+            },
+            nodePgMigrate: {
+              status: "unsupported",
+              note: "It rejects when another process holds the lock, or, with `advisoryLockMode: 'wait'`, waits in `pg_advisory_lock`, whose snapshot a concurrent index build waits for.",
+              href: `${nodePgMigrate}/src/runner.ts#L223-L242`,
+            },
+          },
+        },
+        {
+          id: "rolling-deploys",
+          title: "Older versions migrating during a rolling deploy",
+          description:
+            "Let instances of the previous version of the application start and migrate after a newer version has applied migrations that they lack.",
+          research: research("migrations.md#state-of-a-target"),
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying" },
+            drizzle: {
+              status: "supported",
+              note: "The migrator applies only the migrations of its journal created after the last applied one.",
+              href: `${drizzle}/drizzle-orm/src/pg-core/dialect.ts#L88-L111`,
+            },
+            kysely: {
+              status: "unsupported",
+              note: "Its `Migrator` rejects an executed migration that its provider lacks.",
+              href: `${kysely}/src/migration/migrator.ts#L653-L665`,
+            },
+            prisma: {
+              status: "supported",
+              note: "`migrate deploy` accepts applied migrations that have no directory.",
+              href: `${prismaEngines}/schema-engine/commands/src/commands/apply_migrations.rs#L26-L45`,
+            },
+          },
+        },
+        {
+          id: "out-of-order-migrations",
+          title: "Detection of out-of-order migrations",
+          description:
+            "Reject a pending migration numbered before an applied one, such as one merged from another branch.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying" },
+          },
+        },
+      ],
+    },
+    {
+      id: "schemas",
+      title: "Schemas and packages",
+      features: [
+        {
+          id: "any-schema",
+          title: "The same migrations for any schema",
+          description:
+            "Apply one history to any schema of a database, such as the schema of each tenant, and create the schema when it is missing.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying#tenants" },
+          },
+        },
+        {
+          id: "schemas-at-once",
+          title: "Different schemas migrated concurrently",
+          description:
+            "Migrate different schemas of a database at once, such as those of tenants, each under a lock of its own.",
+          research: research("migrations.md#locks-of-targets"),
+          cells: {
+            kern: { status: "supported", href: "/migrations/applying#tenants" },
+            kysely: {
+              status: "unsupported",
+              note: "It locks every migration of a database with one key.",
+              href: `${kysely}/src/dialect/postgres/postgres-adapter.ts#L6`,
+            },
+            nodePgMigrate: {
+              status: "limited",
+              note: "It locks every migration of a database with one key, unless `lockValue` gives another one.",
+              href: `${nodePgMigrate}/src/runner.ts#L223-L227`,
+            },
+          },
+        },
+        {
           id: "every-tenant",
           title: "A built-in command that migrates every tenant",
           description:
@@ -401,6 +624,28 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/applying#tenants",
               plan: backlog("migrating-every-tenant.md"),
             },
+          },
+        },
+        {
+          id: "package-migrations",
+          title: "Migrations shipped in a package",
+          description:
+            "Ship the migrations of a library in its package so that applications apply them from code.",
+          cells: {
+            kern: {
+              status: "supported",
+              note: "Each module loads only when its migration applies or rolls back.",
+              href: "/migrations/package-migrations",
+            },
+          },
+        },
+        {
+          id: "separate-histories",
+          title: "Separate histories in one schema",
+          description:
+            "Keep several histories in one schema, such as of the application and of a package, each in a table of its own.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/package-migrations" },
           },
         },
       ],
@@ -437,6 +682,16 @@ export const migrationsMatrix = defineMatrix({
               note: "`fake` records migrations without running them, but its check of the order rejects applied migrations whose names differ from those of the files at their positions.",
               href: `${nodePgMigrate}/src/runner.ts#L368-L381`,
             },
+          },
+        },
+        {
+          id: "squashed-history-rollback",
+          title: "Rolling back a squashed history",
+          description:
+            "Roll back every migration of a squashed history, or fewer of them one by one while their modules remain.",
+          research: research("migrations.md#rolling-back-a-replaced-history"),
+          cells: {
+            kern: { status: "supported", href: "/migrations/squashing#roll-back" },
           },
         },
         {
@@ -543,6 +798,15 @@ export const migrationsMatrix = defineMatrix({
           },
         },
         {
+          id: "isolated-verification",
+          title: "Verification without lasting changes",
+          description:
+            "Verify migrations in a schema of their own and roll back every change, such as in a test transaction.",
+          cells: {
+            kern: { status: "supported", href: "/migrations/testing" },
+          },
+        },
+        {
           id: "data-tests",
           title: "Tests of data changes",
           description: "Test how a migration changes the rows that the schema has before it.",
@@ -556,6 +820,18 @@ export const migrationsMatrix = defineMatrix({
               status: "external",
               note: "Scenarios of rake-db-testing.",
               href: `${rakeDbTesting}/src/migration-scenario.ts#L17`,
+            },
+          },
+        },
+        {
+          id: "failing-migration-tests",
+          title: "Tests of migrations that fail",
+          description:
+            "Check that a migration rejects invalid data, such as duplicate values when it adds a unique index.",
+          cells: {
+            kern: {
+              status: "supported",
+              href: "/migrations/testing#check-how-a-migration-changes-data",
             },
           },
         },
