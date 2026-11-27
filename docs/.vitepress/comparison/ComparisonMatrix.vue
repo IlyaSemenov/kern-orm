@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { withBase } from "vitepress"
 // The comparison matrix of a page: features in rows, projects in columns, the first of which is the Kern library of the page.
-import { computed, provide, ref } from "vue"
+import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue"
 
 import ComparisonIcon from "./ComparisonIcon.vue"
 import ComparisonTip from "./ComparisonTip.vue"
@@ -24,6 +24,31 @@ const groups = computed(() =>
 )
 
 provide("comparison-tip", ref<string | null>(null))
+
+/** The id of the highlighted row, whose link the address bar holds. */
+const selected = ref<string | null>(null)
+
+/** Highlights the row of the hash of the address, which a link or the history can change. */
+function onHashChange() {
+  selected.value = decodeURIComponent(location.hash.slice(1)) || null
+}
+
+/**
+ * Highlights the clicked row and puts its link in the address bar, without scrolling to it.
+ * A click on a link of the row is skipped, so that the link navigates from the address it was clicked at.
+ */
+function selectRow(id: string, event: MouseEvent) {
+  if ((event.target as Element).closest("a")) return
+  selected.value = id
+  history.replaceState(history.state, "", `#${id}`)
+}
+
+onMounted(() => {
+  onHashChange()
+  window.addEventListener("hashchange", onHashChange)
+})
+
+onBeforeUnmount(() => window.removeEventListener("hashchange", onHashChange))
 
 const statusLabels: Record<Status, string> = {
   supported: "Supported",
@@ -84,20 +109,20 @@ function toHref(href: string): string {
               >
             </th>
           </tr>
-          <tr v-for="feature in group.features" :id="feature.id" :key="feature.id" class="row">
+          <tr
+            v-for="feature in group.features"
+            :id="feature.id"
+            :key="feature.id"
+            class="row"
+            :class="{ selected: feature.id === selected }"
+            @click="selectRow(feature.id, $event)"
+          >
             <th class="feature" scope="row">
               <ComparisonTip :id="feature.id" :label="feature.title">
                 <template #trigger><span class="title" v-html="toHtml(feature.title)" /></template>
                 <span v-html="toHtml(feature.description)" />
-                <span class="links">
-                  <a :href="`#${feature.id}`">Link to this row</a>
-                  <a
-                    v-if="feature.research"
-                    :href="feature.research"
-                    target="_blank"
-                    rel="noreferrer"
-                    >Research</a
-                  >
+                <span v-if="feature.research" class="links">
+                  <a :href="feature.research" target="_blank" rel="noreferrer">Research</a>
                 </span>
               </ComparisonTip>
             </th>
@@ -253,7 +278,7 @@ function toHref(href: string): string {
   opacity: 1;
 }
 
-.comparison-matrix table .row:target > * {
+.comparison-matrix table .row.selected > * {
   background: linear-gradient(var(--vp-c-default-soft), var(--vp-c-default-soft)), var(--vp-c-bg);
 }
 
