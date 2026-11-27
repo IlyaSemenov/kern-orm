@@ -35,11 +35,12 @@ When the SQL type name alone constrains values, as `char` has length 1, `castTyp
 
 PostgreSQL returns the values of some types as text that depends on the session or is hard to decode: the text of `timestamptz` follows the `DateStyle` setting, and a `geometry` of PostGIS comes as hex-encoded binary.
 To declare the SQL expression that reads the values of a type instead, pass `read` a function that returns the SQL of the expression for the SQL of a value.
-The type then decodes the result of the expression, so a statement must select the value by it:
+The type then decodes the result of the expression, so a statement must select the value by it.
+The built-in [`timestamptzPortable`](./types#points-in-time-on-any-connection) reads `timestamptz` values this way as strings, and the type below reads them as `Date` values with millisecond precision:
 
 ```ts
 // Seconds since the epoch read the same with any DateStyle
-export const instant = defineType({
+export const epochDate = defineType({
   sqlType: "timestamptz",
   read: value => `extract(epoch from ${value})`,
 }).transform({
@@ -49,7 +50,7 @@ export const instant = defineType({
 
 const runAt = await database.query`
   SELECT extract(epoch from run_at) FROM job WHERE id = ${jobId}
-`.get(instant)
+`.get(epochDate)
 // runAt: Date
 ```
 

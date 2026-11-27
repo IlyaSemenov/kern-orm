@@ -62,7 +62,6 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Queries that may be `NULL` as values of columns that are not nullable](queries-that-may-be-null-as-values-of-columns-that-are-not-nullable.md): rejecting them unless marked as having their row.
 - [Narrowing returned and accepted values apart](narrowing-returned-and-accepted-values-apart.md): `of<T>()` for the values that a type returns and those it accepts.
 - [Branded types of columns](branded-types-of-columns.md): an opt-in `brand()` that rejects a mixed-up identifier.
-- [Instants independent of DateStyle](instants-independent-of-datestyle.md): read a `timestamptz` under any session date style and bind the same instant in another statement with microsecond precision.
 - [Singleton tables whose row always exists](singleton-tables-whose-row-always-exists.md): an option of the table whose queries start in rows `one`.
 - [Other vector types of pgvector](other-vector-types-of-pgvector.md): `halfvec`, `sparsevec`, and the distances of `bit`.
 - [Orchid transaction interoperability](orchid-transaction-interop.md): shared transaction ownership, legacy codecs, and test isolation for gradual migration.

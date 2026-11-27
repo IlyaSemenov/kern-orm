@@ -27,6 +27,7 @@ Pass PostgreSQL type parameters with `with`, such as `varchar.with(255)` for `va
 - `uuid`: `string`.
 - `bytea`: `Uint8Array`.
 - `timestamptz`, `timestamptz.with(precision)`: point in time as a UTC ISO 8601 `string` with microseconds, such as `"2026-01-15T07:00:00.123456Z"`; accepts `Date` too.
+- `timestamptzPortable`, `timestamptzPortable.with(precision)`: the values of `timestamptz`, read with any session settings; see [Points in time on any connection](#points-in-time-on-any-connection).
 - `timestamp`, `timestamp.with(precision)`: date and time without a time zone as an ISO 8601 `string`, such as `"2026-01-15T10:00:00.000000"`.
 - `date`: `string`, such as `"2026-01-15"`.
 - `time`, `time.with(precision)`: `string`, such as `"10:00:00.000000"`.
@@ -44,6 +45,9 @@ Pass PostgreSQL type parameters with `with`, such as `varchar.with(255)` for `va
 
 Date and time strings have a fixed format, so comparing them as strings orders them chronologically.
 kern-orm expects the default `DateStyle` (`ISO`) and `bytea_output` (`hex`) settings.
+
+`timestamptz` decodes fastest in a session whose `TimeZone` is `UTC`, where its values have no offset to convert.
+If the SQL of the application does not depend on the time zone of the session, such as through `now()::date` or `date_trunc('day', created_at)`, set `TimeZone` to `UTC` in the connection options of the client, as the settings below show for `DateStyle`.
 
 :::: details Databases with other settings
 If the database or the role sets another `DateStyle` or `bytea_output`, set the defaults in the connection options of the client, which take precedence:
@@ -72,13 +76,47 @@ new SQL(process.env.DATABASE_URL!, {
 
 :::
 
-A library that runs on the connections of an application, whose settings it does not choose, can read dates by a [read expression](./custom-types#reading-values-by-an-expression) of a type of its own instead.
+A library that runs on the connections of an application, whose settings it does not choose, can read points in time with [`timestamptzPortable`](#points-in-time-on-any-connection) instead, and `date`, `timestamp`, and `bytea` values by a [read expression](./custom-types#reading-values-by-an-expression) of a type of its own.
 ::::
 
 ::: details Years outside 1 to 9999
 These years are written as in `Date.toISOString`: `+010000` for 10000, and `0000` for 1 BC, `-000001` for 2 BC, and so on.
 Such strings do not sort chronologically.
 :::
+
+## Points in time on any connection
+
+Code that runs on connections whose settings it does not choose, such as a library on the pool of an application, can give a `timestamptz` column the type `timestamptzPortable`.
+It returns and accepts the strings of `timestamptz`, which queries read by an expression that does not depend on the `DateStyle` and `TimeZone` settings of the session.
+Pass a string that one query returns to another, under any `DateStyle`, and it binds the same instant, with microseconds.
+
+```ts
+export const job = defineTable("job", {
+  id: t.integer.primaryKey(),
+  runAt: t.timestamptzPortable.columnName("run_at"),
+})
+
+// SELECT (to_jsonb("job"."run_at" AT TIME ZONE INTERVAL '00:00') #>> '{}') AS "runAt" FROM "job" AS "job" WHERE "job"."id" = $1
+const runAt = await db.job.find(jobId).get("runAt")
+// runAt: string, such as "2026-01-15T07:00:00.123456Z"
+```
+
+Queries select every value of the type that they return by the expression, also in related records, in the fields that a mutation returns, in [`columnsOf`](./queries/sql#rows-of-tables), and in a `sql` fragment of the type, such as `` sql(t.timestamptzPortable)`transaction_timestamp()` `` for the clock of the transaction.
+They filter and sort by the value itself, which keeps the comparison of instants and the indexes of the column.
+
+A statement of SQL text that lists such a field itself must select the expression, since `get(t.timestamptzPortable)` decodes the field that the statement selects; pass the value back with `param`:
+
+```ts
+import { param } from "kern-orm"
+
+const runAt = await db.$query`
+  SELECT (to_jsonb(run_at AT TIME ZONE INTERVAL '00:00') #>> '{}') FROM job WHERE id = ${jobId}
+`.get(t.timestamptzPortable)
+
+await db.$query`UPDATE job SET run_at = ${param(t.timestamptzPortable, runAt)} WHERE id = ${nextJobId}`
+```
+
+Use `timestamptz` wherever the application can set `DateStyle` to `ISO`: each value of `timestamptzPortable` costs PostgreSQL more to return.
 
 ## Nullable values
 

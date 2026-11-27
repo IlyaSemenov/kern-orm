@@ -107,6 +107,7 @@ The SQL that loads nested queries and relations.
 - [Read expression declared by a type](types/read-expression-of-a-type.md): as SQL text that its `decode` reads the result of, rather than an option of the columns of a record, a second decoder of a built-in type, or a function of `sql` fragments.
 - [Decoding quoted array elements in slices](types/quoted-array-elements.md).
 - [Reusing PostgreSQL date and time fields](types/decoding-dates.md).
+- [`timestamptzPortable` read as the JSON text of its UTC timestamp](types/portable-timestamptz-read-as-json-text.md): a type that users choose reads by `to_jsonb` of the timestamp at a zero interval, rather than by the epoch of `extract`, which rounds the largest instant up, by `to_char`, which is `NULL` for the infinities, or as the read of `timestamptz` itself.
 - [Hex of `bytea` converted by the runtime](types/hex-of-bytea.md): by the native hex methods of `Uint8Array`, or by `Buffer` where the runtime lacks them, rather than by a loop of JavaScript, by `Buffer` alone, or by `Buffer` writing into the result without a copy.
 
 ## Tables and schemas

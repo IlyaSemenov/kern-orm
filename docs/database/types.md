@@ -40,6 +40,7 @@ A value without an exact JavaScript counterpart is a string, so that no precisio
 - `uuid`: `string`.
 - `bytea`: `Uint8Array`.
 - `timestamptz`: point in time as a UTC ISO 8601 `string` with microseconds, such as `"2026-01-15T07:00:00.123456Z"`; accepts `Date` too.
+- `timestamptzPortable`: the values of `timestamptz`, read with any session settings; see [Points in time on any connection](#points-in-time-on-any-connection).
 - `timestamp`: date and time without a time zone as an ISO 8601 `string`, such as `"2026-01-15T10:00:00.000000"`.
 - `date`: `string`, such as `"2026-01-15"`.
 - `time`: `string`, such as `"10:00:00.000000"`.
@@ -55,6 +56,9 @@ A value without an exact JavaScript counterpart is a string, so that no precisio
 
 Date and time strings have a fixed format, so comparing them as strings orders them chronologically.
 kern-db expects the default `DateStyle` (`ISO`) and `bytea_output` (`hex`) settings.
+
+`timestamptz` decodes fastest in a session whose `TimeZone` is `UTC`, where its values have no offset to convert.
+If the SQL of the application does not depend on the time zone of the session, such as through `now()::date` or `date_trunc('day', created_at)`, set `TimeZone` to `UTC` in the connection options of the client, as the settings below show for `DateStyle`.
 
 :::: details Databases with other settings
 If the database or the role sets another `DateStyle` or `bytea_output`, set the defaults in the connection options of the client, which take precedence:
@@ -83,13 +87,36 @@ new SQL(process.env.DATABASE_URL!, {
 
 :::
 
-A library that runs on the connections of an application, whose settings it does not choose, can read dates by a [read expression](./custom-types#reading-values-by-an-expression) of a type of its own instead.
+A library that runs on the connections of an application, whose settings it does not choose, can read points in time with [`timestamptzPortable`](#points-in-time-on-any-connection) instead, and `date`, `timestamp`, and `bytea` values by a [read expression](./custom-types#reading-values-by-an-expression) of a type of its own.
 ::::
 
 ::: details Years outside 1 to 9999
 These years are written as in `Date.toISOString`: `+010000` for 10000, and `0000` for 1 BC, `-000001` for 2 BC, and so on.
 Such strings do not sort chronologically.
 :::
+
+## Points in time on any connection
+
+Code that runs on connections whose settings it does not choose, such as a library on the pool of an application, can read `timestamptz` values with `timestamptzPortable`.
+It returns and accepts the strings of `timestamptz`, which PostgreSQL writes by an expression that does not depend on the `DateStyle` and `TimeZone` settings of the session.
+Pass a string that one statement returns to `param` in another, under any `DateStyle`, and it binds the same instant, with microseconds.
+
+Select the value by `(to_jsonb(value AT TIME ZONE INTERVAL '00:00') #>> '{}')`, and pass it back with `param`:
+
+```ts
+const runAt = await database.query`
+  SELECT (to_jsonb(run_at AT TIME ZONE INTERVAL '00:00') #>> '{}') FROM job WHERE id = ${jobId}
+`.get(t.timestamptzPortable)
+// runAt: string, such as "2026-01-15T07:00:00.123456Z"
+
+await database.query`UPDATE job SET run_at = ${param(t.timestamptzPortable, runAt)} WHERE id = ${nextJobId}`
+```
+
+`get(t.timestamptzPortable)` decodes whatever field the statement selects, without applying the expression itself.
+[`createSqlColumns`](./query-builders#columns-of-your-tables) selects a column of `timestamptzPortable` by the expression itself.
+Filter and sort by the column itself rather than by the expression, which keeps the comparison of instants and the indexes of the column.
+
+Use `timestamptz` wherever the application can set `DateStyle` to `ISO`: each value of `timestamptzPortable` costs PostgreSQL more to return.
 
 ## Nullable values
 
@@ -239,7 +266,7 @@ These types take parameters:
 
 - `numeric.with(precision, scale?)`.
 - `varchar.with(length)` and `char.with(length)`; `char` alone has length 1, as in PostgreSQL.
-- `timestamptz.with(precision)`, `timestamp.with(precision)`, and `time.with(precision)`.
+- `timestamptz.with(precision)`, `timestamptzPortable.with(precision)`, `timestamp.with(precision)`, and `time.with(precision)`.
 - `vector.with(dimensions)`.
 
 ## Custom types

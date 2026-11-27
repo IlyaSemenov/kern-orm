@@ -3,16 +3,26 @@ import { formatTypeName } from "../type-name"
 
 // Date and time values are strings in fixed ISO 8601 formats, so that no precision or time zone is lost and string order is chronological for years 1 to 9999.
 // Other years are astronomical ISO 8601 years like those of `Date.toISOString`, such as `+010000` and `0000` for 1 BC, converted to the PostgreSQL format on encoding.
-// Parsing expects the default `DateStyle` setting (`ISO`).
+// Parsing expects the default `DateStyle` setting (`ISO`), apart from that of `timestamptzPortable`, whose read expression does not depend on it.
 // `with(precision)` sets the number of fractional digits of seconds that PostgreSQL stores.
 
 /** Point in time as a UTC ISO 8601 string with microseconds, such as `2026-01-15T07:00:00.123456Z`; accepts a `Date` too. */
 export const timestamptz = /* @__PURE__ */ defineType({ sqlType: "timestamptz" })
-  .transform({
-    decode: normalizeTimestamptz,
-    encode: (value: string | Date) =>
-      toPostgresYear(value instanceof Date ? value.toISOString() : value),
-  })
+  .transform({ decode: normalizeTimestamptz, encode: encodeTimestamptz })
+  .withParameters(/* @__PURE__ */ createPrecisionFormatter("timestamptz"))
+
+/**
+ * Point in time of a `timestamptz` column as a UTC ISO 8601 string with microseconds, as `timestamptz` returns it, read by an expression whose text does not depend on the `DateStyle` and `TimeZone` settings of the session; accepts a `Date` too.
+ *
+ * A statement must select a value by `(to_jsonb(value AT TIME ZONE INTERVAL '00:00') #>> '{}')`, which the columns of a record and the queries of a builder do; conditions and orders compare the value itself.
+ */
+export const timestamptzPortable = /* @__PURE__ */ defineType({
+  sqlType: "timestamptz",
+  // JSON writes a timestamp in ISO 8601 whatever the session settings, and the conversion to UTC leaves no offset to write.
+  // A zero interval rather than 'UTC': a POSIX `TimeZone` such as `UTC+05` gives the abbreviation `UTC` a nonzero offset.
+  read: value => `(to_jsonb(${value} AT TIME ZONE INTERVAL '00:00') #>> '{}')`,
+})
+  .transform({ decode: normalizeUtcJsonTimestamp, encode: encodeTimestamptz })
   .withParameters(/* @__PURE__ */ createPrecisionFormatter("timestamptz"))
 
 /** Date and time without a time zone as an ISO 8601 string with microseconds, such as `2026-01-15T10:00:00.000000`. */
@@ -34,6 +44,11 @@ export const time = /* @__PURE__ */ defineType({ sqlType: "time" })
 /** Interval in the PostgreSQL output format, such as `1 day 02:00:00`. */
 export const interval = /* @__PURE__ */ defineType({ sqlType: "interval" })
 
+/** Encodes a point in time, as a UTC ISO 8601 string or a `Date`, in the PostgreSQL format of its year. */
+function encodeTimestamptz(value: string | Date): string {
+  return toPostgresYear(value instanceof Date ? value.toISOString() : value)
+}
+
 function createPrecisionFormatter(name: string) {
   return (precision: number) => formatTypeName(name, precision)
 }
@@ -42,6 +57,9 @@ const timestamptzPattern =
   /^(\d{4,})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?([+-])(\d{2})(?::(\d{2}))?(?::(\d{2}))?( BC)?$/
 
 const timestampPattern = /^(\d{4,})(-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?( BC)?$/
+
+/** Timestamp that `to_jsonb` writes, which separates the time by `T`, drops trailing fractional zeros, and marks a year before 1 with a ` BC` suffix. */
+const jsonTimestampPattern = /^(\d{4,})(-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?( BC)?$/
 
 const datePattern = /^(\d{4,})(-\d{2}-\d{2})( BC)?$/
 
@@ -101,10 +119,37 @@ export function normalizeTimestamp(text: string): string {
   if (!match) {
     throw createDateStyleError("timestamp", text)
   }
+  return formatTimestampFields(match)
+}
+
+/**
+ * Normalizes the text that `to_jsonb` writes for a timestamp of a UTC instant, such as `2026-01-15T07:00:00.1234`, to the format of `timestamptz` values, such as `2026-01-15T07:00:00.123400Z`.
+ *
+ * It throws for text that it cannot convert, such as the output of a finite `timestamptz` that a statement selects without the read expression of `timestamptzPortable`.
+ */
+export function normalizeUtcJsonTimestamp(text: string): string {
+  // A four-digit AD year leaves only the precision and the UTC suffix to add.
+  if (text[4] === "-" && text[10] === "T" && hasLocalTimeSuffix(text, 19)) {
+    return formatLocalTimestamp(text, text.length) + "Z"
+  }
+  if (infinities.has(text)) {
+    return text
+  }
+  const match = jsonTimestampPattern.exec(text)
+  if (!match) {
+    throw new Error(
+      `Unsupported timestamptzPortable value "${text}"; a statement must select it by (to_jsonb(value AT TIME ZONE INTERVAL '00:00') #>> '{}')`,
+    )
+  }
+  return formatTimestampFields(match) + "Z"
+}
+
+/** Formats the fields of a match of `timestampPattern` or `jsonTimestampPattern` as an ISO 8601 timestamp with microseconds and an astronomical year. */
+function formatTimestampFields(match: RegExpExecArray): string {
   return `${formatYear(toAstronomicalYear(match[1]!, match[5]))}${match[2]}T${match[3]}.${padFraction(match[4])}`
 }
 
-/** Formats the date and local time preceding an optional UTC suffix, for a four-digit AD year. */
+/** Formats the date and local time preceding an optional UTC suffix, for a four-digit AD year, whatever separates them. */
 function formatLocalTimestamp(text: string, end: number): string {
   return text.slice(0, 10) + "T" + padTime(text.slice(11, end))
 }

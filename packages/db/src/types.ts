@@ -1,7 +1,14 @@
 export { array } from "./type/builtins/array"
 export { bytea } from "./type/builtins/bytea"
 export { boolean } from "./type/builtins/boolean"
-export { date, interval, time, timestamp, timestamptz } from "./type/builtins/datetime"
+export {
+  date,
+  interval,
+  time,
+  timestamp,
+  timestamptz,
+  timestamptzPortable,
+} from "./type/builtins/datetime"
 export { enumOf as enum } from "./type/builtins/enum"
 export type { JsonNull } from "./type/builtins/json"
 export { json, jsonb, jsonbWithJsonNull, jsonNull, jsonWithJsonNull } from "./type/builtins/json"

@@ -8,6 +8,15 @@ export const timestamptz = /* @__PURE__ */ defineType(dbTypes.timestamptz).withO
   orderingOperators,
 )
 
+/**
+ * Point in time of a `timestamptz` column as a UTC ISO 8601 string with microseconds, as `timestamptz` returns it, read by an expression whose text does not depend on the `DateStyle` and `TimeZone` settings of the session; accepts a `Date` too.
+ *
+ * Queries select a value by `(to_jsonb(value AT TIME ZONE INTERVAL '00:00') #>> '{}')` and compare and sort by the value itself; a statement of SQL text that lists such a field itself must select the expression.
+ */
+export const timestamptzPortable = /* @__PURE__ */ defineType(
+  dbTypes.timestamptzPortable,
+).withOperators(orderingOperators)
+
 /** Date and time without a time zone as an ISO 8601 string with microseconds, such as `2026-01-15T10:00:00.000000`. */
 export const timestamp = /* @__PURE__ */ defineType(dbTypes.timestamp).withOperators(
   orderingOperators,
