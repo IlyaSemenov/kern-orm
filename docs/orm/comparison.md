@@ -9,6 +9,8 @@ import { ormMatrix } from "../.vitepress/comparison/orm"
 
 # Comparison
 
+Comparisons: kern-orm · [kern-migrations](../migrations/comparison)
+
 This page helps you choose between kern-orm and other TypeScript ORMs and query builders for PostgreSQL: Drizzle ORM, Kysely, Prisma ORM, and Orchid ORM.
 
 ## When kern-orm does not fit

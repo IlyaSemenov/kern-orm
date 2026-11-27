@@ -1184,6 +1184,7 @@ export const ormMatrix = defineMatrix({
     {
       id: "schema-management",
       title: "Schema management",
+      link: { text: "Comparison of migrators", href: "/migrations/comparison" },
       features: [
         {
           id: "generated-migrations",

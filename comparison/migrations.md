@@ -36,7 +36,7 @@ A baseline, a migration without a key in the options of the history, takes a tar
 - TypeORM, lacks: `migration:run --fake` records migrations without running them ([docs](https://github.com/typeorm/typeorm/blob/1.1.3/docs/docs/migrations/08-faking.md#L1-L16)).
 - Kysely, lacks: its `Migrator` rejects an executed migration that its provider lacks ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/migration/migrator.ts#L653-L665)).
 - knex, lacks: it rejects applied migrations whose files are missing, unless `disableMigrationsListValidation` is set ([source](https://github.com/knex/knex/blob/3.3.0/lib/migrations/migrate/Migrator.js#L727-L745)).
-- rake-db, lacks: `pull` writes a migration of an existing database and records it as applied ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/rake-db/src/generate/pull.ts#L27-L34)), and nothing replaces the migrations of a history.
+- rake-db, lacks: `pull` writes a migration of an existing database and records it as applied ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/rake-db/src/generate/pull.ts#L27-L34)), and nothing replaces the migrations of a history; a request for squashing them was left open as nice to have ([orchid-orm#659](https://github.com/romeerez/orchid-orm/issues/659)).
 
 ## Rolling back a replaced history
 
@@ -48,9 +48,25 @@ A call that undoes every migration of a target undoes the replaced migrations to
 
 ## Migrating inside a transaction
 
-`migrate` creates the schema and the table of versions that it found missing with `IF NOT EXISTS` under its lock, so that creating them does not fail when something else has created them meanwhile, which would abort an enclosing transaction.
+`migrate` given the database of a transaction applies the migrations in that transaction, which commits or rolls them back.
+It creates the schema and the table of versions that it found missing with `IF NOT EXISTS` under its lock, so that creating them does not fail when something else has created them meanwhile, which would abort an enclosing transaction.
 
 - rake-db, fails: `migrate()` inside `$transaction` resolved after a logged `COMMIT`, but its changes were rolled back ([orchid-orm#702](https://github.com/romeerez/orchid-orm/issues/702)).
+- rake-db, same: `migrate` runs on the adapter of the current transaction, where its own transaction is a savepoint ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/rake-db/src/commands/migrate-or-rollback.ts#L174-L183), [source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/adapters/adapter.ts#L810-L834)), and its documentation states that it starts no transaction inside one ([docs](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/docs/src/guide/migration-programmatic-use.md#L310)).
+- Kysely, same: a `Migrator` given a transaction runs the migrations in it without `BEGIN` and `COMMIT` ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/migration/migrator.ts#L555-L569)), and takes and releases a session advisory lock in it ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/dialect/postgres/postgres-adapter.ts#L18-L39)).
+- Drizzle ORM, lacks: `migrate` given a transaction runs the migrations by `transaction` of the session of the database rather than of the transaction ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/dialect.ts#L95-L111), [source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/pg-core/db.ts#L56-L61)): on node-postgres, it sends `begin` and `commit` on the connection of the transaction ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/node-postgres/session.ts#L248-L268)), and on postgres.js, it calls `begin` of the client of the transaction, which that client lacks ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/postgres-js/session.ts#L175-L192)).
+- Prisma ORM, lacks: Prisma Migrate applies migrations in a schema engine of its own, over a connection that the engine opens from the URL of the configuration ([source](https://github.com/prisma/prisma/blob/7.10.1/packages/migrate/src/Migrate.ts#L48-L55), [source](https://github.com/prisma/prisma/blob/7.10.1/packages/migrate/src/SchemaEngineCLI.ts#L389-L405)).
+- node-pg-migrate, lacks: its runner sends `BEGIN` and `COMMIT` on the client of `dbClient` ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/runner.ts#L492-L507), [source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/migration.ts#L355-L378)).
+
+## Migrating in a transaction of another library
+
+`migrate` inside an external transaction of a database, or given the database of `runInExternalTransaction`, applies the migrations in a transaction of another library, on its connection that the library gives, such as of postgres.js or of Orchid ORM, or an object with `execute` and `executeScript` for another client.
+
+- Drizzle ORM, lacks: `drizzle` of the client that `sql.begin` of postgres.js passes writes the parsers of `client.options`, which that client lacks ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/postgres-js/driver.ts#L22-L36)), and over a client of node-postgres in a transaction, `migrate` sends `begin` and `commit` on it ([source](https://github.com/drizzle-team/drizzle-orm/blob/0.45.4/drizzle-orm/src/node-postgres/session.ts#L248-L268)).
+- Kysely, lacks: its dialect of PostgreSQL takes a pool ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/dialect/postgres/postgres-dialect-config.ts#L68-L87)), and its driver begins and commits transactions on the connections of the pool ([source](https://github.com/kysely-org/kysely/blob/v0.29.8/src/dialect/postgres/postgres-driver.ts#L77-L117)).
+- Prisma ORM, lacks: Prisma Migrate connects by the URL of its configuration, which has no option of a driver adapter since Prisma ORM 7 ([docs](https://www.prisma.io/docs/orm/v7/reference/prisma-config-reference)).
+- rake-db, lacks: `migrate` takes an instance of Orchid ORM or an adapter of pqb ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/rake-db/src/utils.ts#L3-L9)), which creates a pool of its own ([source](https://github.com/romeerez/orchid-orm/blob/3302410cb48b02e7c65dec837862bc33250254fd/packages/pqb/src/adapters/adapter.ts#L335-L382)).
+- node-pg-migrate, lacks: `dbClient` takes a client of node-postgres ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/runner.ts#L154-L165)), on which the runner sends `BEGIN` and `COMMIT`.
 
 ## Locks of targets
 
@@ -71,6 +87,7 @@ A step with `outsideTransaction` runs alone outside a transaction: the migration
 - Django, differs: a migration with `atomic = False` runs outside a transaction, and every other migration in a transaction of its own ([source](https://github.com/django/django/blob/6.0.10/django/db/migrations/executor.py#L253-L262)).
 - node-pg-migrate, same: a migration that calls `noTransaction()` commits the transaction of the migrations before it, runs outside a transaction, and starts a transaction for those after it ([source](https://github.com/salsita/node-pg-migrate/blob/v9.0.0/src/migration.ts#L355-L363)).
 - Rails, differs: a migration with `disable_ddl_transaction!` runs outside a transaction, and every other migration in a transaction of its own ([source](https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/migration.rb#L1594-L1604)).
+- Prisma ORM, differs: the schema engine runs each statement of a migration on its own, outside a transaction, so that `CREATE INDEX CONCURRENTLY` runs ([source](https://github.com/prisma/prisma-engines/blob/7.10.1/schema-engine/connectors/sql-schema-connector/src/flavour/postgres/connector/native/mod.rs#L150-L161)), and a migration that fails stays partly applied ([docs](https://www.prisma.io/docs/orm/v7/prisma-migrate/workflows/patching-and-hotfixing)).
 
 ## Migrations outside a transaction inside a transaction
 

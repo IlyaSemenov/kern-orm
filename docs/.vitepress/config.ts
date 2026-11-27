@@ -136,7 +136,10 @@ export default defineConfig({
       "/migrations/": [
         {
           text: "Introduction",
-          items: [{ text: "Getting Started", link: "/migrations/getting-started" }],
+          items: [
+            { text: "Getting Started", link: "/migrations/getting-started" },
+            { text: "Comparison", link: "/migrations/comparison" },
+          ],
         },
         {
           text: "Writing",

@@ -20,14 +20,14 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
 - Keep the overview of the Kern libraries, including kern-jobs, which has its own repository, in `docs/ecosystem.md`, outside the groups.
   Link the overview from the Kern menu of the nav.
   When a package joins the family or changes what it is for, update the overview and the Kern libraries sections of the READMEs.
-- Keep `docs/orm/comparison.md` a matrix of features for choosing a library, whose rows `docs/.vitepress/comparison/orm.ts` defines, with the review date:
-  - Take the status of a cell of another project from a record of [comparison/](../comparison/README.md), or, for a feature that kern-orm lacks, from the item of [backlog/](../backlog/README.md) that keeps the capability of the project, and link the source that the record cites, with its version when it differs from the version of its column.
+- Keep `docs/orm/comparison.md` and `docs/migrations/comparison.md` matrices of features for choosing a library, whose rows `docs/.vitepress/comparison/orm.ts` and `docs/.vitepress/comparison/migrations.ts` define, with the review date, and link each page from the other by a line of links under its title:
+  - Take the status of a cell of another project from a record of [comparison/](../comparison/README.md), or, for a feature that the Kern library of the page lacks, from the item of [backlog/](../backlog/README.md) that keeps the capability of the project, and link the source that the record cites, with its version when it differs from the version of its column.
     Link the record of comparison/ from its row, if there is one.
   - Choose the status of a cell by what the project can do for the feature, not by the verdict of the record, which compares it with Kern: a project that `differs` may support the feature.
   - Give a project `unsupported` for a defect only when its listed version has the defect, and `declined` only when the cell links the decision of its maintainers, such as a closed issue.
   - Keep a cell `unknown` until such a record checks it.
-  - Give a feature that kern-orm lacks a row, also with every other cell `unknown`, and link from the cell of kern-orm the item of backlog/ that would add it, or explain a feature that kern-orm leaves out by design, such as databases other than PostgreSQL, linking what to do instead when the site documents it.
-  - Add a row of a feature that kern-orm has only when a record checks it for another project; [Features of the comparison matrix](../backlog/features-of-the-comparison-matrix.md) lists such features.
+  - Give a feature that the Kern library lacks a row, also with every other cell `unknown`, and link from its cell the item of backlog/ that would add it, or explain a feature that it leaves out by design, such as databases other than PostgreSQL, linking what to do instead when the site documents it.
+  - Add a row of a feature that the Kern library has only when a record checks it for another project; [Features of the comparison matrix](../backlog/features-of-the-comparison-matrix.md) lists such features.
 
 ## Publishing
 

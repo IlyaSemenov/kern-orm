@@ -74,5 +74,5 @@ Scenarios worth comparing that the topics do not cover yet:
 - Do not link comparison/ back to architecture/.
 - Also record a scenario that another project fails while kern-orm covers it in a comment of the test that checks the scenario, such as `// Orchid ORM let a user OR bypass the relation condition: <issue URL>`.
 - Keep a capability that another project has and kern-orm lacks, such as `narrowAllTypes` of Orchid ORM, in the item of [backlog/](../backlog/README.md) that would add it, and move it here when the item is deleted.
-- Update the matrix of [docs/orm/comparison.md](../docs/orm/comparison.md), whose rows `docs/.vitepress/comparison/orm.ts` defines, when a record that a row links changes, as [user documentation](../development/user-documentation.md#site) describes.
+- Update the matrices of [docs/orm/comparison.md](../docs/orm/comparison.md) and [docs/migrations/comparison.md](../docs/migrations/comparison.md), whose rows `docs/.vitepress/comparison/orm.ts` and `docs/.vitepress/comparison/migrations.ts` define, when a record that a row links changes, as [user documentation](../development/user-documentation.md#site) describes.
 - Add a scenario worth comparing that the topics do not cover yet to [Scenarios to compare](#scenarios-to-compare).

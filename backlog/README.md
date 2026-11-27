@@ -14,7 +14,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
 - [Moving from rake-db](moving-from-rake-db.md): recording the first migration as applied on a schema that rake-db built, after a check of its applied versions.
 - [Writing and checking a baseline](writing-and-checking-a-baseline.md): a command that creates the baseline of a history, and `verifyMigrations` comparing it with the migrations that it replaces.
-- [Features of the comparison matrix](features-of-the-comparison-matrix.md): fill the `unknown` cells and add the missing features of the ORM comparison.
+- [Features of the comparison matrix](features-of-the-comparison-matrix.md): fill the `unknown` cells and add the missing features of the comparisons of the ORM and of migrations.
 
 ## Later
 
@@ -91,4 +91,4 @@ Ideas that wait for an application that needs them, or that are not planned.
   In Without a use case, add it at the end.
 - Group the items of one piece of work that build on each other in a subsection of the bucket of its first item, in the order of the work.
 - Delete an item, its file and its line in this index, once it is done, moving its lasting contracts to [architecture/](../architecture/README.md), or once it is decided against, moving the decision to [decisions/](../decisions/README.md).
-  Update every row of the [comparison matrix](../docs/.vitepress/comparison/orm.ts) whose cell of kern-orm links the item.
+  Update every row of the comparison matrices, [of the ORM](../docs/.vitepress/comparison/orm.ts) and [of migrations](../docs/.vitepress/comparison/migrations.ts), whose cell of the Kern library links the item.

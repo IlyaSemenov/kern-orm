@@ -77,7 +77,10 @@ function toHref(href: string): string {
               <span class="group-title"
                 ><a class="anchor" :href="`#${group.id}`" :aria-label="`Link to ${group.title}`"
                   >#</a
-                >{{ group.title }}</span
+                >{{ group.title
+                }}<a v-if="group.link" class="group-link" :href="toHref(group.link.href)">{{
+                  group.link.text
+                }}</a></span
               >
             </th>
           </tr>
@@ -228,6 +231,12 @@ function toHref(href: string): string {
 
 .group-title {
   display: inline-block;
+}
+
+.group-link {
+  margin-left: 12px;
+  font-weight: 500;
+  color: var(--vp-c-brand-1);
 }
 
 .anchor {

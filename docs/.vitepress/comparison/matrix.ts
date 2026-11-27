@@ -69,6 +69,8 @@ export interface Group<Id extends string = string> {
   /** The anchor of the group, unique on its page. */
   id: string
   title: string
+  /** A page that compares the features of the group in more detail, such as the matrix of another library. */
+  link?: { text: string; href: string }
   features: readonly Feature<Id>[]
 }
 
