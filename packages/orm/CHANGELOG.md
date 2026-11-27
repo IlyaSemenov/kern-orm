@@ -1,5 +1,15 @@
 # kern-orm
 
+## 0.33.0
+
+### Minor Changes
+
+- 50a5498: Add the built-in type `timestamptzPortable`, which reads a `timestamptz` with microsecond precision under any `DateStyle` and `TimeZone` settings and binds it back as the same instant under any `DateStyle`.
+
+### Patch Changes
+
+- Updated dependencies: kern-db@0.18.0
+
 ## 0.32.1
 
 ### Patch Changes

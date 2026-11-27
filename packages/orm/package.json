@@ -1,6 +1,6 @@
 {
   "name": "kern-orm",
-  "version": "0.32.1",
+  "version": "0.33.0",
   "description": "Fully typed relational query builder for PostgreSQL with ambient transactions and single-query relation loading",
   "keywords": [
     "orm",
@@ -47,7 +47,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "kern-db": "^0.17.0"
+    "kern-db": "^0.18.0"
   },
   "devDependencies": {
     "@kern-orm/test-harness": "workspace:*",

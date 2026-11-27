@@ -54,7 +54,7 @@
     },
     "packages/db": {
       "name": "kern-db",
-      "version": "0.17.0",
+      "version": "0.18.0",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "@types/pg": "catalog:",
@@ -76,7 +76,7 @@
     },
     "packages/migrations": {
       "name": "kern-migrations",
-      "version": "0.10.0",
+      "version": "0.10.1",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "kern-db": "workspace:*",
@@ -84,12 +84,12 @@
         "postgres": "catalog:",
       },
       "peerDependencies": {
-        "kern-db": "^0.17.0",
+        "kern-db": "^0.18.0",
       },
     },
     "packages/orchid-interop": {
       "name": "@kern-orm/orchid-interop",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
         "kern-db": "workspace:*",
@@ -99,16 +99,16 @@
         "postgres": "catalog:",
       },
       "peerDependencies": {
-        "kern-db": "^0.17.0",
+        "kern-db": "^0.18.0",
         "orchid-orm": "^1.78.61",
         "postgres": "^4.0.0",
       },
     },
     "packages/orm": {
       "name": "kern-orm",
-      "version": "0.32.1",
+      "version": "0.33.0",
       "dependencies": {
-        "kern-db": "^0.17.0",
+        "kern-db": "^0.18.0",
       },
       "devDependencies": {
         "@kern-orm/test-harness": "workspace:*",
