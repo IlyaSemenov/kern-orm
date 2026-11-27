@@ -13,6 +13,18 @@ Comparisons: kern-orm · [kern-migrations](../migrations/comparison)
 
 This page helps you choose between kern-orm and other TypeScript ORMs and query builders for PostgreSQL: Drizzle ORM, Kysely, Prisma ORM, and Orchid ORM.
 
+## When kern-orm fits
+
+kern-orm is a fully typed query builder for PostgreSQL with ambient transactions and single-query relation loading.
+
+Key capabilities:
+
+- [Nested related records](./queries/relations), typed and loaded in one SQL statement.
+- [Transactions shared across function calls](./transactions) without passing a transaction object.
+- [One `db` for a schema per tenant](./multiple-schemas), with the same table definitions and queries.
+- [Tests in transactions that roll back](./testing), including the transactions of the tested code.
+- [Records of tables from SQL statements](./queries/sql#rows-of-tables), decoded by your column definitions.
+
 ## When kern-orm does not fit
 
 Choose another library when you need:

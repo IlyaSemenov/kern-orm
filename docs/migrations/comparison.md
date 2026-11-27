@@ -13,6 +13,19 @@ Comparisons: [kern-orm](../orm/comparison) · kern-migrations
 
 This page helps you choose between kern-migrations and other migrators of PostgreSQL schemas for TypeScript: Drizzle Kit with the migrator of Drizzle ORM, the `Migrator` of Kysely, Prisma Migrate, rake-db, and node-pg-migrate.
 
+## When kern-migrations fits
+
+kern-migrations applies explicit, reversible migrations to any PostgreSQL schema and checks in tests that they roll back.
+
+Key capabilities:
+
+- [Indexes built concurrently](./outside-transaction) outside a transaction, with a failed build retried by the next `migrate`.
+- [Separate migration histories](./package-migrations) for the application and its packages.
+- [Migrations applied in a transaction](./applying#tenants) of the application, such as the one that creates a tenant.
+- The same migrations applied to [any schema](./applying#without-a-db), such as the schema of each tenant.
+- [Squashing a history](./squashing) without manual changes to existing databases.
+- [Automated checks](./testing) that a rollback restores the previous structure of the schema.
+
 ## When kern-migrations does not fit
 
 Choose another migrator when you need:
