@@ -3,7 +3,7 @@ aside: false
 ---
 
 <script setup>
-import ComparisonMatrix from "../.vitepress/comparison/ComparisonMatrix.vue"
+import { ComparisonMatrix } from "vitepress-comparison"
 import { ormMatrix } from "../.vitepress/comparison/orm"
 </script>
 

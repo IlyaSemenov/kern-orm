@@ -1,9 +1,11 @@
 // The matrix of docs/migrations/comparison.md: kern-migrations against other migrators of PostgreSQL schemas for TypeScript.
 // Each status of another project rests on a record of comparison/, which the row links, or on the item of backlog/ of a feature that kern-migrations lacks, and the cell links its source.
 
+import { defineMatrix } from "vitepress-comparison"
+
 import { version } from "../../../packages/migrations/package.json"
 
-import { backlog, defineMatrix, research } from "./matrix"
+import { backlog, research } from "./links"
 
 const drizzle = "https://github.com/drizzle-team/drizzle-orm/blob/0.45.4"
 const kysely = "https://github.com/kysely-org/kysely/blob/v0.29.8"
