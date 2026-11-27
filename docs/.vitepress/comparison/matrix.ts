@@ -61,7 +61,8 @@ export interface Feature<Id extends string = string> {
   description: string
   /** The record of the feature in comparison/, which the `research` function links. */
   research?: string
-  cells: Record<Id, Cell>
+  /** The cells by the ids of their projects. A project without a cell is `unknown`. */
+  cells: Partial<Record<Id, Cell>>
 }
 
 /** A titled group of rows. */
@@ -80,7 +81,7 @@ export interface Matrix {
   groups: readonly Group[]
 }
 
-/** Defines a matrix whose rows give a cell for every project, the first of which is the Kern library of the page. */
+/** Defines a matrix whose first project is the Kern library of the page. */
 export function defineMatrix<const Id extends string>(matrix: {
   projects: readonly Project<Id>[]
   groups: readonly Group<NoInfer<Id>>[]

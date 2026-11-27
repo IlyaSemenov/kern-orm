@@ -76,7 +76,6 @@ export const migrationsMatrix = defineMatrix({
               note: "`db g` generates migrations from the tables of Orchid ORM.",
               href: `${orchid}/docs/src/guide/generate-migrations.md`,
             },
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -91,15 +90,11 @@ export const migrationsMatrix = defineMatrix({
               note: "Helpers take each column as SQL text, such as `text NOT NULL`.",
               href: "/migrations/helpers",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             rakeDb: {
               status: "supported",
               note: "`createTable` and `changeTable` take column types.",
               href: `${orchid}/docs/src/guide/migration-writing.md#createtable-droptable`,
             },
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -113,10 +108,6 @@ export const migrationsMatrix = defineMatrix({
               status: "supported",
               href: "/migrations/helpers#replace-the-definition-of-a-function",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            rakeDb: "unknown",
             nodePgMigrate: {
               status: "unsupported",
               note: "`createFunction` with `replace: true` builds `CREATE OR REPLACE FUNCTION`, and its rollback drops the function.",
@@ -136,11 +127,6 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/helpers",
               plan: backlog("migration-helpers-of-enums.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            rakeDb: "unknown",
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -155,15 +141,11 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/helpers",
               plan: backlog("recurrent-sql-of-migrations.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             rakeDb: {
               status: "supported",
               note: "Recurrent migrations.",
               href: `${orchid}/docs/src/guide/migration-setup-and-overview.md#recurrent-migrations`,
             },
-            nodePgMigrate: "unknown",
           },
         },
       ],
@@ -335,8 +317,6 @@ export const migrationsMatrix = defineMatrix({
               note: "`migrate deploy` accepts applied migrations that have no directory.",
               href: `${prismaEngines}/schema-engine/commands/src/commands/apply_migrations.rs#L26-L45`,
             },
-            rakeDb: "unknown",
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -347,14 +327,11 @@ export const migrationsMatrix = defineMatrix({
           research: research("migrations.md#locks-of-targets"),
           cells: {
             kern: { status: "supported", href: "/migrations/applying#tenants" },
-            drizzle: "unknown",
             kysely: {
               status: "unsupported",
               note: "It locks every migration of a database with one key.",
               href: `${kysely}/src/dialect/postgres/postgres-adapter.ts#L6`,
             },
-            prisma: "unknown",
-            rakeDb: "unknown",
             nodePgMigrate: {
               status: "limited",
               note: "It locks every migration of a database with one key, unless `lockValue` gives another one.",
@@ -370,14 +347,11 @@ export const migrationsMatrix = defineMatrix({
           research: research("migrations.md#waiting-for-the-lock-of-a-target"),
           cells: {
             kern: { status: "supported", href: "/migrations/applying" },
-            drizzle: "unknown",
             kysely: {
               status: "unsupported",
               note: "It waits in `pg_advisory_lock`, whose snapshot a concurrent index build of the process that holds the lock waits for, until a `lock_timeout` of an hour.",
               href: `${kysely}/src/dialect/postgres/postgres-adapter.ts#L18-L32`,
             },
-            prisma: "unknown",
-            rakeDb: "unknown",
             nodePgMigrate: {
               status: "unsupported",
               note: "It rejects when another process holds the lock, or, with `advisoryLockMode: 'wait'`, waits in `pg_advisory_lock`, whose snapshot a concurrent index build waits for.",
@@ -403,7 +377,6 @@ export const migrationsMatrix = defineMatrix({
               note: "`createIndex()` has no concurrent build, and its `ifNotExists()` keeps an index that is not valid.",
               href: `${kysely}/src/schema/create-index-builder.ts#L43-L47`,
             },
-            prisma: "unknown",
             rakeDb: {
               status: "unsupported",
               note: "It runs every migration in a transaction, where PostgreSQL rejects a concurrent build.",
@@ -428,11 +401,6 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/applying#tenants",
               plan: backlog("migrating-every-tenant.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            rakeDb: "unknown",
-            nodePgMigrate: "unknown",
           },
         },
       ],
@@ -449,7 +417,6 @@ export const migrationsMatrix = defineMatrix({
           research: research("migrations.md#replacing-a-history"),
           cells: {
             kern: { status: "supported", href: "/migrations/squashing" },
-            drizzle: "unknown",
             kysely: {
               status: "unsupported",
               note: "Its `Migrator` rejects an executed migration that its provider lacks.",
@@ -484,8 +451,6 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/squashing#write-the-baseline",
               plan: backlog("writing-and-checking-a-baseline.md#writing"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
             prisma: {
               status: "supported",
               note: "`migrate diff` writes the migration.",
@@ -496,7 +461,6 @@ export const migrationsMatrix = defineMatrix({
               note: "`pull` writes a migration of an existing database.",
               href: `${orchid}/packages/rake-db/src/generate/pull.ts#L27-L34`,
             },
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -511,11 +475,6 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/squashing#write-the-baseline",
               plan: backlog("writing-and-checking-a-baseline.md#checking"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            rakeDb: "unknown",
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -526,8 +485,6 @@ export const migrationsMatrix = defineMatrix({
           research: research("migrations.md#replacing-a-history"),
           cells: {
             kern: { status: "unsupported", plan: backlog("moving-from-rake-db.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
             prisma: {
               status: "supported",
               note: "`migrate resolve --applied` marks a migration as applied.",
@@ -557,15 +514,11 @@ export const migrationsMatrix = defineMatrix({
               note: "Before a migration is applied anywhere, give it a number after the migrations already applied on any schema: `migrate` rejects a pending migration before an applied one.",
               href: "/migrations/applying",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             rakeDb: {
               status: "supported",
               note: "`rebase` and `change-ids`.",
               href: `${orchid}/docs/src/guide/migration-commands.md#rebase`,
             },
-            nodePgMigrate: "unknown",
           },
         },
       ],
@@ -582,15 +535,11 @@ export const migrationsMatrix = defineMatrix({
           research: research("migrations.md#verifying-a-history"),
           cells: {
             kern: { status: "supported", href: "/migrations/testing" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             rakeDb: {
               status: "limited",
               note: "The separate library rake-db-testing applies and rolls back each migration, but checks only the applied versions.",
               href: `${rakeDbTesting}/src/verify-migrations.ts#L53`,
             },
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -603,15 +552,11 @@ export const migrationsMatrix = defineMatrix({
               status: "supported",
               href: "/migrations/testing#check-how-a-migration-changes-data",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             rakeDb: {
               status: "external",
               note: "Scenarios of rake-db-testing.",
               href: `${rakeDbTesting}/src/migration-scenario.ts#L17`,
             },
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -626,11 +571,6 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/testing",
               plan: backlog("irreversible-migrations-in-verification.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            rakeDb: "unknown",
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -645,11 +585,6 @@ export const migrationsMatrix = defineMatrix({
               href: "/migrations/testing",
               plan: backlog("changes-outside-a-transaction-in-verification.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            rakeDb: "unknown",
-            nodePgMigrate: "unknown",
           },
         },
       ],
@@ -668,15 +603,11 @@ export const migrationsMatrix = defineMatrix({
               status: "unsupported",
               note: "Create and drop databases with the tools of PostgreSQL, such as `createdb`, or code of your own.",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             rakeDb: {
               status: "supported",
               note: "Its commands create, drop, and reset a database.",
               href: `${orchid}/docs/src/guide/migration-commands.md#create-and-drop-a-database`,
             },
-            nodePgMigrate: "unknown",
           },
         },
         {
@@ -685,11 +616,6 @@ export const migrationsMatrix = defineMatrix({
           description: "Apply migrations to MySQL, SQLite, or another database.",
           cells: {
             kern: { status: "unsupported", note: "kern-migrations is built for PostgreSQL alone." },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            rakeDb: "unknown",
-            nodePgMigrate: "unknown",
           },
         },
       ],

@@ -76,7 +76,6 @@ export const ormMatrix = defineMatrix({
               note: "`distinctOn`.",
               href: `${kysely}/src/query-builder/select-query-builder.ts#L413`,
             },
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`distinct` takes the columns of `DISTINCT ON`.",
@@ -92,9 +91,6 @@ export const ormMatrix = defineMatrix({
           research: research("queries.md#a-query-known-to-find-no-records"),
           cells: {
             kern: { status: "supported", href: "/orm/queries/filtering#no-records" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`none`.",
@@ -110,9 +106,6 @@ export const ormMatrix = defineMatrix({
           research: research("queries.md#row-locks-of-a-query-that-selects-related-records"),
           cells: {
             kern: { status: "supported", href: "/orm/locks#locking-rows" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "limited",
               note: "`forUpdate()` of such a query fails unless it names its table, and after waiting for a lock the query returns the related record of the old row.",
@@ -129,9 +122,6 @@ export const ormMatrix = defineMatrix({
           research: research("queries.md#row-locks-without-waiting"),
           cells: {
             kern: { status: "supported", href: "/orm/locks#locking-rows" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "unsupported",
               note: "Its `noWait()` compiles to `NO WAIT`, which PostgreSQL 18 rejects as a syntax error.",
@@ -177,9 +167,6 @@ export const ormMatrix = defineMatrix({
           research: research("results.md#map-of-a-null-value"),
           cells: {
             kern: { status: "supported", href: "/orm/queries/selecting#results-converted-in-code" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`map` converts each record, and `transform` the whole result.",
@@ -194,10 +181,6 @@ export const ormMatrix = defineMatrix({
             "Join other tables to the rows of a query, and select and filter by their columns.",
           cells: {
             kern: { status: "unsupported", plan: backlog("joins.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -207,9 +190,6 @@ export const ormMatrix = defineMatrix({
             "Query the related records of related records, such as the answers of a form through its fields, as a relation.",
           cells: {
             kern: { status: "unsupported", plan: backlog("through-and-many-to-many-relations.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`chain` queries the related records of related records.",
@@ -223,10 +203,6 @@ export const ormMatrix = defineMatrix({
           description: "Relate the records of two tables through a join table.",
           cells: {
             kern: { status: "unsupported", plan: backlog("through-and-many-to-many-relations.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -238,10 +214,6 @@ export const ormMatrix = defineMatrix({
               status: "unsupported",
               plan: backlog("unions-and-common-table-expressions.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -254,10 +226,6 @@ export const ormMatrix = defineMatrix({
               status: "unsupported",
               plan: backlog("unions-and-common-table-expressions.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -267,10 +235,6 @@ export const ormMatrix = defineMatrix({
             "Select the records of a relation of a table to itself at any depth, such as the ancestors of a category, with `WITH RECURSIVE`.",
           cells: {
             kern: { status: "unsupported", plan: backlog("records-of-a-relation-at-any-depth.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -279,10 +243,6 @@ export const ormMatrix = defineMatrix({
           description: "Read the page after the sort keys of the last row of the previous page.",
           cells: {
             kern: { status: "unsupported", plan: backlog("keyset-pagination.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -292,9 +252,6 @@ export const ormMatrix = defineMatrix({
             "Apply the conditions of a table to its queries, such as to leave out soft-deleted records.",
           cells: {
             kern: { status: "unsupported", plan: backlog("scopes-and-soft-delete.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`scopes` and soft delete of a table.",
@@ -326,8 +283,6 @@ export const ormMatrix = defineMatrix({
               note: "`eb(lhs, op, rhs)` takes an arithmetic operator and types the result by its left operand.",
               href: `${kysely}/src/expression/expression-builder.ts#L172-L190`,
             },
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -338,13 +293,11 @@ export const ormMatrix = defineMatrix({
           research: research("aggregates.md#aggregates-of-a-group"),
           cells: {
             kern: { status: "supported", href: "/orm/queries/aggregates" },
-            drizzle: "unknown",
             kysely: {
               status: "limited",
               note: "`sum` and `avg` are typed without `null`, and its documentation recommends adding it by hand.",
               href: `${kysely}/src/query-builder/function-module.ts#L216`,
             },
-            prisma: "unknown",
             orchid: {
               status: "limited",
               note: "`min`, `max`, `sum`, and `avg` are nullable also in groups, which always have rows.",
@@ -390,9 +343,6 @@ export const ormMatrix = defineMatrix({
             "Filter and select by the properties of JSON values, such as `config->>'type'`, typed by their shape.",
           cells: {
             kern: { status: "unsupported", plan: backlog("json-operators.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "Operators of `jsonb` columns and functions of JSON paths.",
@@ -407,10 +357,6 @@ export const ormMatrix = defineMatrix({
             "Add an interval to a timestamp, or subtract timestamps, with a typed result.",
           cells: {
             kern: { status: "unsupported", plan: backlog("arithmetic-of-dates-and-intervals.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -419,10 +365,6 @@ export const ormMatrix = defineMatrix({
           description: "Concatenate text, such as of a full name, without a SQL fragment.",
           cells: {
             kern: { status: "unsupported", plan: backlog("concatenation-of-text.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -435,9 +377,6 @@ export const ormMatrix = defineMatrix({
               status: "unsupported",
               plan: backlog("other-options-of-aggregate-functions.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`over` of aggregate functions.",
@@ -455,9 +394,6 @@ export const ormMatrix = defineMatrix({
               status: "unsupported",
               plan: backlog("other-options-of-aggregate-functions.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`distinct` of aggregate functions.",
@@ -477,9 +413,6 @@ export const ormMatrix = defineMatrix({
               note: "`halfvec`, `sparsevec`, and `bit` of `pg-core`, with `hammingDistance` and `jaccardDistance`.",
               href: `${drizzle}/drizzle-orm/src/sql/functions/vector.ts`,
             },
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
       ],
@@ -495,7 +428,6 @@ export const ormMatrix = defineMatrix({
           research: research("mutations.md#increment-of-a-column"),
           cells: {
             kern: { status: "supported", href: "/orm/queries/mutations#updating" },
-            drizzle: "unknown",
             kysely: {
               status: "supported",
               note: "`set` takes `eb('age', '+', 1)`.",
@@ -524,9 +456,6 @@ export const ormMatrix = defineMatrix({
               status: "supported",
               href: "/orm/queries/mutations#records-that-already-exist",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`onConflict` with `merge`; its `upsert` of a record runs an `UPDATE`, and an `INSERT` only when the update finds no row, so of two concurrent upserts of a missing record one fails.",
@@ -545,9 +474,6 @@ export const ormMatrix = defineMatrix({
               status: "supported",
               href: "/orm/queries/mutations#records-that-already-exist",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`onConflictDoNothing`.",
@@ -568,8 +494,6 @@ export const ormMatrix = defineMatrix({
               note: "`$defaultFn`.",
               href: `${drizzle}/drizzle-orm/src/pg-core/dialect.ts#L541-L546`,
             },
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "A callback of `.default`; a value or a SQL fragment is a default of the database.",
@@ -587,9 +511,6 @@ export const ormMatrix = defineMatrix({
               status: "unsupported",
               plan: backlog("updating-records-with-values-of-each.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`updateMany` and `updateManyBy`.",
@@ -603,9 +524,6 @@ export const ormMatrix = defineMatrix({
           description: "Insert the records that a query selects with `INSERT ... SELECT`.",
           cells: {
             kern: { status: "unsupported", plan: backlog("inserting-the-records-of-a-query.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`createOneFrom` and `createForEachFrom`.",
@@ -624,9 +542,6 @@ export const ormMatrix = defineMatrix({
               status: "unsupported",
               plan: backlog("bulk-inserts-beyond-the-parameter-limit.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "It splits such an insert into several statements.",
@@ -641,10 +556,6 @@ export const ormMatrix = defineMatrix({
             "Return the values of a changed row before the update, with `old` of `RETURNING` of PostgreSQL 18.",
           cells: {
             kern: { status: "unsupported", plan: backlog("values-before-an-update.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -653,10 +564,6 @@ export const ormMatrix = defineMatrix({
           description: "Insert or update a record together with its related records in one call.",
           cells: {
             kern: { status: "unsupported", plan: backlog("relation-aware-mutations.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
       ],
@@ -677,7 +584,6 @@ export const ormMatrix = defineMatrix({
               note: "`pgView(name, columns).existing()`.",
               href: "https://orm.drizzle.team/docs/views",
             },
-            kysely: "unknown",
             prisma: {
               status: "preview",
               note: "The preview feature `views` gives a read-only model of a `view` block.",
@@ -698,8 +604,6 @@ export const ormMatrix = defineMatrix({
           research: research("schemas.md#reading-postgresql-views"),
           cells: {
             kern: { status: "supported", href: "/orm/views" },
-            drizzle: "unknown",
-            kysely: "unknown",
             prisma: {
               status: "unsupported",
               note: "Its schema has no materialized views.",
@@ -721,9 +625,6 @@ export const ormMatrix = defineMatrix({
           research: research("schemas.md#tables-of-one-row"),
           cells: {
             kern: { status: "supported", href: "/orm/singleton-tables" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "unsupported",
               note: "Pass a constant key to every query, or read the row with `take` and change it with `all`.",
@@ -749,8 +650,6 @@ export const ormMatrix = defineMatrix({
               note: "`$type<T>()` takes any type, also one outside the values of the column; `text({ enum })` infers a union from a list of strings.",
               href: `${drizzle}/drizzle-orm/src/column-builder.ts`,
             },
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`narrowType` narrows the values of a column, and `narrowAllTypes` narrows the values that it returns and accepts apart.",
@@ -774,9 +673,6 @@ export const ormMatrix = defineMatrix({
               note: "`customType` converts values in JavaScript, and a query selects the column as it is.",
               href: `${drizzle}/drizzle-orm/src/pg-core/columns/custom.ts#L185-L197`,
             },
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -787,9 +683,6 @@ export const ormMatrix = defineMatrix({
           research: research("schemas.md#column-types-defined-apart-from-tables"),
           cells: {
             kern: { status: "supported", href: "/orm/custom-types" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "declined",
               note: "Column types come from the table factory of a project, and its maintainers declined types defined apart from it.",
@@ -834,9 +727,6 @@ export const ormMatrix = defineMatrix({
           research: research("schemas.md#column-naming-conventions"),
           cells: {
             kern: { status: "supported", href: "/orm/tables#naming-conventions" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "declined",
               note: "It has only its own `snakeCase`, and its maintainers declined a function of names.",
@@ -881,9 +771,6 @@ export const ormMatrix = defineMatrix({
             "Define a column of a table as an expression over its other columns, which queries select, filter, and sort by.",
           cells: {
             kern: { status: "unsupported", plan: backlog("computed-columns.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`computed` and `computeAtRuntime`.",
@@ -898,10 +785,6 @@ export const ormMatrix = defineMatrix({
             "Declare a column that the database computes, which inserts and updates reject.",
           cells: {
             kern: { status: "unsupported", plan: backlog("generated-columns.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
         {
@@ -911,9 +794,6 @@ export const ormMatrix = defineMatrix({
             "Give the values of a column, such as an identifier, a type that rejects a mixed-up value of another column.",
           cells: {
             kern: { status: "unsupported", plan: backlog("branded-types-of-columns.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`brand()`.",
@@ -975,7 +855,6 @@ export const ormMatrix = defineMatrix({
               note: "`transaction` of a transaction throws.",
               href: `${kysely}/src/kysely.ts#L675-L690`,
             },
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "A transaction in a transaction is a savepoint.",
@@ -994,9 +873,6 @@ export const ormMatrix = defineMatrix({
               status: "supported",
               href: "/orm/transactions#joining-the-current-transaction",
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`$ensureTransaction`.",
@@ -1012,9 +888,6 @@ export const ormMatrix = defineMatrix({
           research: research("errors.md#telling-a-rejected-statement-by-its-condition"),
           cells: {
             kern: { status: "supported", href: "/orm/errors" },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "limited",
               note: "`isUnique` of `QueryError` tells a unique violation, and other conditions require comparing `code`.",
@@ -1032,9 +905,6 @@ export const ormMatrix = defineMatrix({
               status: "unsupported",
               plan: backlog("columns-of-a-violated-unique-constraint.md"),
             },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`columns` of its `QueryError` gives the keys of the columns.",
@@ -1049,9 +919,6 @@ export const ormMatrix = defineMatrix({
             "Run a callback after the current transaction commits, such as to send notifications of its changes.",
           cells: {
             kern: { status: "unsupported", plan: backlog("after-commit-hooks.md") },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`$afterCommit`.",
@@ -1113,8 +980,6 @@ export const ormMatrix = defineMatrix({
               note: "`sql.id`.",
               href: `${kysely}/src/raw-builder/sql.ts#L271`,
             },
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
       ],
@@ -1176,7 +1041,6 @@ export const ormMatrix = defineMatrix({
               note: "`prisma migrate diff --exit-code` fails on any difference from the models in what Prisma ORM supports, also on an extra column.",
               href: "https://www.prisma.io/docs/cli/v7/migrate/diff",
             },
-            orchid: "unknown",
           },
         },
       ],
@@ -1240,7 +1104,6 @@ export const ormMatrix = defineMatrix({
               note: "kysely-codegen generates the TypeScript types of the database.",
               href: "https://github.com/RobinBlomberg/kysely-codegen/blob/0.20.0/README.md",
             },
-            prisma: "unknown",
             orchid: {
               status: "supported",
               note: "`db pull`.",
@@ -1260,10 +1123,6 @@ export const ormMatrix = defineMatrix({
           description: "Run the same code on MySQL, SQLite, or another database.",
           cells: {
             kern: { status: "unsupported", note: "kern-orm is built for PostgreSQL alone." },
-            drizzle: "unknown",
-            kysely: "unknown",
-            prisma: "unknown",
-            orchid: "unknown",
           },
         },
       ],

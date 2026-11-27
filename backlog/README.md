@@ -14,7 +14,7 @@ Within Next and Later, items run roughly from the most important; the order is a
 - [Conditions on columns of a related record](conditions-on-columns-of-a-related-record.md): a short condition on a column of a relation `one`, such as `where({ idea: { rubricId } })`.
 - [Moving from rake-db](moving-from-rake-db.md): recording the first migration as applied on a schema that rake-db built, after a check of its applied versions.
 - [Writing and checking a baseline](writing-and-checking-a-baseline.md): a command that creates the baseline of a history, and `verifyMigrations` comparing it with the migrations that it replaces.
-- [Features of the comparison matrix](features-of-the-comparison-matrix.md): fill the `unknown` cells and add the missing features of the comparisons of the ORM and of migrations.
+- [Features of the comparison matrix](features-of-the-comparison-matrix.md): rows of the documented features of the Kern libraries and of the features that they lack, reviewed for every project, starting with migrations.
 
 ## Later
 

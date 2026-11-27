@@ -25,9 +25,11 @@ How to write the user documentation of kern-orm, the VitePress site in `docs/`, 
     Link the record of comparison/ from its row, if there is one.
   - Choose the status of a cell by what the project can do for the feature, not by the verdict of the record, which compares it with Kern: a project that `differs` may support the feature.
   - Give a project `unsupported` for a defect only when its listed version has the defect, and `declined` only when the cell links the decision of its maintainers, such as a closed issue.
-  - Keep a cell `unknown` until such a record checks it.
-  - Give a feature that the Kern library lacks a row, also with every other cell `unknown`, and link from its cell the item of backlog/ that would add it, or explain a feature that it leaves out by design, such as databases other than PostgreSQL, linking what to do instead when the site documents it.
-  - Add a row of a feature that the Kern library has only when a record checks it for another project; [Features of the comparison matrix](../backlog/features-of-the-comparison-matrix.md) lists such features.
+  - Leave out the cell of another project until such a record checks it, which makes it `unknown`.
+    Give a cell with a note but without such a record the status `unknown`.
+  - Keep the rows an inventory of what users can build and operate with the Kern library: the features that its site documents, and the features of other projects that it lacks, rather than the items of backlog/ alone.
+    Give a feature of the inventory a row before its review, also with every other cell `unknown`.
+  - From the cell of the Kern library of a feature that it lacks, link the item of backlog/ that would add it, or explain a feature that it leaves out by design, such as databases other than PostgreSQL, linking what to do instead when the site documents it.
 
 ## Publishing
 
